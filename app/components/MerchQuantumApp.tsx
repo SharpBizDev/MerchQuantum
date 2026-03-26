@@ -1,6 +1,5 @@
 'use client';
 import React, { useMemo, useRef, useState } from "react";
-import React, { useMemo, useRef, useState } from "react";
 
 const APP_BRAND = "MerchQuantum";
 const APP_TAGLINE = "Bulk product creation, simplified";
