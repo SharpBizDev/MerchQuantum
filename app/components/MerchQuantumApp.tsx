@@ -22,7 +22,7 @@ type Template = {
 };
 
 type Shop = { id: string; title: string };
-type Product = { id: string; title: string; type: string; shopId: string };
+type Product = { id: string; title: string; type: string; shopId: string; description?: string };
 type ApiShop = { id: number | string; title: string; sales_channel?: string };
 type ApiProduct = { id: string; title: string; description?: string; shop_id?: number | string };
 
@@ -420,6 +420,7 @@ export default function MerchQuantumApp() {
             title: product.title || product.id,
             type: "Template",
             shopId: String(product.shop_id ?? nextShopId),
+            description: product.description || "",
           }))
         : [];
       setApiProducts(mapped);
@@ -518,6 +519,10 @@ async function loadProductTemplate() {
     const base =
       fallback.description?.trim() ||
       `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`;
+
+    const message =
+      error instanceof Error ? error.message : "Unable to load full product details from Printify.";
+    setApiStatus(message);
 
     setTemplate({
       reference: fallback.id,
