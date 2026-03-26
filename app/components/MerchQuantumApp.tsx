@@ -101,13 +101,111 @@ function titleKeywords(title: string) {
     .filter((w) => w && !STOP_WORDS.has(w.toLowerCase()));
 }
 
-function buildDescription(title: string, templateDescription: string, mode: "template" | "title") {
+function detectProductType(title: string) {
+  const lower = title.toLowerCase();
+  if (/(t-shirt|t shirt|tee)\b/.test(lower)) return "t-shirt";
+  if (/hoodie\b/.test(lower)) return "hoodie";
+  if (/sweatshirt\b/.test(lower)) return "sweatshirt";
+  if (/tank top\b|tank\b/.test(lower)) return "tank top";
+  if (/sticker\b/.test(lower)) return "sticker";
+  if (/mug\b/.test(lower)) return "mug";
+  if (/poster\b/.test(lower)) return "poster";
+  if (/canvas\b/.test(lower)) return "canvas print";
+  return "product";
+}
+
+function detectThemePhrase(title: string) {
+  const lower = title.toLowerCase();
+  if (/(christian|jesus|faith|saved|forgiven|church|bible|gospel|cross)\b/.test(lower)) return "faith-forward style";
+  if (/(retro|vintage|distressed)\b/.test(lower)) return "a retro-inspired look";
+  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) return "a playful, conversation-starting look";
+  if (/(dog|cat|pet|puppy)\b/.test(lower)) return "pet-lover style";
+  if (/(floral|rose|flower|botanical)\b/.test(lower)) return "a bold graphic look";
+  return "a standout graphic look";
+}
+
+function detectAudiencePhrase(title: string, productType: string) {
+  const lower = title.toLowerCase();
+  if (/(christian|jesus|faith|saved|forgiven|church|bible|gospel|cross)\b/.test(lower)) {
+    return productType === "product"
+      ? "Christian merchandise with bold devotional artwork"
+      : "Christian " + productType + " designs with bold devotional artwork";
+  }
+  if (/(retro|vintage|distressed)\b/.test(lower)) return "retro graphic designs with easy everyday appeal";
+  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) return "funny graphic designs with strong gift appeal";
+  if (/(dog|cat|pet|puppy)\b/.test(lower)) return "pet-lover graphic designs that still feel giftable";
+  return productType === "product" ? "niche product designs that stand out" : productType + " designs that stand out";
+}
+
+function detectUseCasePhrase(productType: string) {
+  if (["t-shirt", "hoodie", "sweatshirt", "tank top"].includes(productType)) {
+    return "daily wear, gifting, and casual styling";
+  }
+  if (productType === "sticker") return "laptops, water bottles, notebooks, and gifting";
+  if (productType === "mug") return "daily routines, desk setups, and gifting";
+  if (["poster", "canvas print"].includes(productType)) return "home décor, office spaces, and gifting";
+  return "everyday use, gifting, and niche-specific collections";
+}
+
+function buildSeoLead(title: string) {
   const clean = safeTitle(title, "Product");
-  const base = templateDescription.trim() || "Template description will load here after live API wiring.";
+  const productType = detectProductType(clean);
+  const theme = detectThemePhrase(clean);
+  const audience = detectAudiencePhrase(clean, productType);
+  const useCase = detectUseCasePhrase(productType);
+  const sentenceOne =
+    productType === "product"
+      ? clean + " delivers " + theme + " with a clear, niche-focused presentation."
+      : clean + " delivers " + theme + " in a " + productType + ".";
+
+  return sentenceOne + " Built for shoppers looking for " + audience + ", it works well for " + useCase + ".";
+}
+
+function formatTemplateDescription(templateDescription: string) {
+  const normalized = templateDescription.replace(/\r\n?/g, "\n").replace(/\u00a0/g, " ").trim();
+  if (!normalized) return "";
+
+  const sectionHeaders = new Set(["Product features", "Care instructions", "Size chart", "Product details", "Materials", "Sizing", "Dimensions"]);
+  const lines = normalized.split("\n");
+  const out: string[] = [];
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+
+    if (!trimmed) {
+      if (out.length && out[out.length - 1] !== "") out.push("");
+      continue;
+    }
+
+    const isHeader = sectionHeaders.has(trimmed.replace(/:$/, ""));
+    const isTableLike = /\t/.test(rawLine) || /^[A-Za-z0-9%.,/()\-]+(?:\s{2,}[A-Za-z0-9%.,/()\-]+)+$/.test(rawLine);
+    let line = trimmed;
+
+    if (/^[•●▪◦]/.test(line)) line = "- " + line.slice(1).trim();
+    if (/^[–—-]\s+/.test(line)) line = "- " + line.replace(/^[–—-]\s+/, "");
+    if (!isTableLike) line = line.replace(/\s+/g, " ");
+
+    if (isHeader && out.length && out[out.length - 1] !== "") out.push("");
+    out.push(line);
+  }
+
+  while (out.length && out[out.length - 1] === "") out.pop();
+  return out.join("\n");
+}
+
+function buildDescription(title: string, templateDescription: string, mode: "template" | "title") {
+  const base = formatTemplateDescription(templateDescription) || "Template description will load here after live API wiring.";
   if (mode === "template") return base;
-  const keywords = Array.from(new Set(titleKeywords(clean))).slice(0, 6);
-  const keywordLine = keywords.length ? `Keywords: ${keywords.join(", ")}. ` : "";
-  return `${clean}. ${keywordLine}${base}`.trim();
+
+  if (base.length < 80 && !base.includes("\n")) {
+    const clean = safeTitle(title, "Product");
+    const keywords = Array.from(new Set(titleKeywords(clean))).slice(0, 6);
+    const keywordLine = keywords.length ? "Keywords: " + keywords.join(", ") + ". " : "";
+    return (clean + ". " + keywordLine + base).trim();
+  }
+
+  const intro = buildSeoLead(title);
+  return (intro + "\n\n" + base).trim();
 }
 
 function buildTags(title: string, description: string, count: number) {
