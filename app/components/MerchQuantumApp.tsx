@@ -1,4 +1,3 @@
-'use client';
 import React, { useMemo, useRef, useState } from "react";
 
 const APP_BRAND = "MerchQuantum";
@@ -36,7 +35,7 @@ const FALLBACK_PRODUCTS: Product[] = [
   { id: "67890FGHIJ", title: "Example Template Product 67890FGHIJ", type: "Accessory", shopId: "451294" },
 ];
 const ACRONYMS = new Set(["AI", "USA", "POD", "DTG", "DTF", "SVG", "PNG", "JPG", "PDF", "XL", "XXL", "2XL", "3XL"]);
-const STOP_WORDS = new Set(["the", "a", "an", "and", "or", "for", "with", "of", "to", "in", "on", "graphic", "unisex", "shirt", "t", "tee"]);
+const STOP_WORDS = new Set(["the", "a", "an", "and", "or", "for", "with", "of", "to", "in", "on", "graphic", "unisex", "shirt", "t", "tee", "this", "it", "product", "features", "care", "instructions", "size", "chart", "details"]);
 
 function makeId() {
   return typeof crypto !== "undefined" && crypto.randomUUID
@@ -101,6 +100,53 @@ function titleKeywords(title: string) {
     .filter((w) => w && !STOP_WORDS.has(w.toLowerCase()));
 }
 
+function decodeHtmlEntities(value: string) {
+  return value
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+function formatTemplateDescription(templateDescription: string) {
+  const normalized = decodeHtmlEntities(templateDescription)
+    .replace(/\r\n?/g, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")
+    .replace(/<p[^>]*>/gi, "")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/?(?:ul|ol)[^>]*>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "- ")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\u00a0/g, " ");
+
+  const headers = new Set(["Product features", "Care instructions", "Size chart", "Product details", "Materials", "Sizing", "Dimensions"]);
+  const rawLines = normalized.split("\n");
+  const out: string[] = [];
+
+  for (const rawLine of rawLines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      if (out.length && out[out.length - 1] !== "") out.push("");
+      continue;
+    }
+
+    const cleaned = trimmed.startsWith("-")
+      ? "- " + trimmed.replace(/^[-–—]\s*/, "")
+      : trimmed.replace(/\s+/g, " ");
+    const header = cleaned.replace(/:$/, "");
+
+    if (headers.has(header) && out.length && out[out.length - 1] !== "") out.push("");
+    out.push(cleaned);
+  }
+
+  while (out.length && out[out.length - 1] === "") out.pop();
+  return out.join("\n");
+}
+
 function detectProductType(title: string) {
   const lower = title.toLowerCase();
   if (/(t-shirt|t shirt|tee)\b/.test(lower)) return "t-shirt";
@@ -138,9 +184,7 @@ function detectAudiencePhrase(title: string, productType: string) {
 }
 
 function detectUseCasePhrase(productType: string) {
-  if (["t-shirt", "hoodie", "sweatshirt", "tank top"].includes(productType)) {
-    return "daily wear, gifting, and casual styling";
-  }
+  if (["t-shirt", "hoodie", "sweatshirt", "tank top"].includes(productType)) return "daily wear, gifting, and casual styling";
   if (productType === "sticker") return "laptops, water bottles, notebooks, and gifting";
   if (productType === "mug") return "daily routines, desk setups, and gifting";
   if (["poster", "canvas print"].includes(productType)) return "home décor, office spaces, and gifting";
@@ -153,44 +197,11 @@ function buildSeoLead(title: string) {
   const theme = detectThemePhrase(clean);
   const audience = detectAudiencePhrase(clean, productType);
   const useCase = detectUseCasePhrase(productType);
-  const sentenceOne =
-    productType === "product"
-      ? clean + " delivers " + theme + " with a clear, niche-focused presentation."
-      : clean + " delivers " + theme + " in a " + productType + ".";
+  const sentenceOne = productType === "product"
+    ? clean + " delivers " + theme + " with a clear, niche-focused presentation."
+    : clean + " delivers " + theme + " in a " + productType + ".";
 
   return sentenceOne + " Built for shoppers looking for " + audience + ", it works well for " + useCase + ".";
-}
-
-function formatTemplateDescription(templateDescription: string) {
-  const normalized = templateDescription.replace(/\r\n?/g, "\n").replace(/\u00a0/g, " ").trim();
-  if (!normalized) return "";
-
-  const sectionHeaders = new Set(["Product features", "Care instructions", "Size chart", "Product details", "Materials", "Sizing", "Dimensions"]);
-  const lines = normalized.split("\n");
-  const out: string[] = [];
-
-  for (const rawLine of lines) {
-    const trimmed = rawLine.trim();
-
-    if (!trimmed) {
-      if (out.length && out[out.length - 1] !== "") out.push("");
-      continue;
-    }
-
-    const isHeader = sectionHeaders.has(trimmed.replace(/:$/, ""));
-    const isTableLike = /\t/.test(rawLine) || /^[A-Za-z0-9%.,/()\-]+(?:\s{2,}[A-Za-z0-9%.,/()\-]+)+$/.test(rawLine);
-    let line = trimmed;
-
-    if (/^[•●▪◦]/.test(line)) line = "- " + line.slice(1).trim();
-    if (/^[–—-]\s+/.test(line)) line = "- " + line.replace(/^[–—-]\s+/, "");
-    if (!isTableLike) line = line.replace(/\s+/g, " ");
-
-    if (isHeader && out.length && out[out.length - 1] !== "") out.push("");
-    out.push(line);
-  }
-
-  while (out.length && out[out.length - 1] === "") out.pop();
-  return out.join("\n");
 }
 
 function buildDescription(title: string, templateDescription: string, mode: "template" | "title") {
@@ -270,7 +281,12 @@ const cleanerTests = [
 ] as const;
 
 const contentTests = [
-  ["Retro Dog Mom", "Base description.", "title", "Retro Dog Mom. Keywords: Retro, Dog, Mom. Base description."],
+  [
+    "Retro Dog Mom",
+    "Base description.",
+    "title",
+    "Retro Dog Mom delivers a retro-inspired look with a clear, niche-focused presentation. Built for shoppers looking for retro graphic designs with easy everyday appeal, it works well for everyday use, gifting, and niche-specific collections.\n\nBase description.",
+  ],
   ["Retro Dog Mom", "Base description.", "template", "Base description."],
   ["Retro Dog Mom Shirt", "Base description.", "tags", "Retro, Dog, Mom, Base, Description"],
 ] as const;
@@ -481,68 +497,66 @@ export default function MerchQuantumApp() {
     setTemplate(null);
   }
 
-async function loadProductTemplate() {
-  const fallback = productSource.find((p) => p.id === productId);
-  if (!fallback || !shopId) return;
+  async function loadProductTemplate() {
+    const fallback = productSource.find((p) => p.id === productId);
+    if (!fallback || !shopId) return;
 
-  try {
-    const response = await fetch(
-      `/api/printify/product?shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(productId)}`
-    );
+    try {
+      const response = await fetch(
+        `/api/printify/product?shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(productId)}`
+      );
 
-    if (!response.ok) {
-      throw new Error(`Product request failed with status ${response.status}.`);
+      if (!response.ok) {
+        throw new Error(`Product request failed with status ${response.status}.`);
+      }
+
+      const data = await response.json();
+      const chosen = data?.product || fallback;
+
+      const title = chosen?.title || fallback.title;
+      const base = formatTemplateDescription(
+        chosen?.description?.trim() ||
+        fallback.description?.trim() ||
+        `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`
+      );
+
+      setTemplate({
+        reference: chosen?.id || fallback.id,
+        nickname: title,
+        source: "product",
+        shopId,
+        description: base,
+      });
+
+      setNickname(title);
+      setManualRef(chosen?.id || fallback.id);
+      setTemplateDescription(base);
+    } catch (error) {
+      const title = fallback.title;
+      const base = formatTemplateDescription(
+        fallback.description?.trim() ||
+        `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`
+      );
+
+      setTemplate({
+        reference: fallback.id,
+        nickname: title,
+        source: "product",
+        shopId,
+        description: base,
+      });
+
+      setNickname(title);
+      setManualRef(fallback.id);
+      setTemplateDescription(base);
     }
-
-    const data = await response.json();
-    const chosen = data?.product || fallback;
-
-    const title = chosen?.title || fallback.title;
-    const base =
-      chosen?.description?.trim() ||
-      fallback.description?.trim() ||
-      `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`;
-
-    setTemplate({
-      reference: chosen?.id || fallback.id,
-      nickname: title,
-      source: "product",
-      shopId,
-      description: base,
-    });
-
-    setNickname(title);
-    setManualRef(chosen?.id || fallback.id);
-    setTemplateDescription(base);
-  } catch (error) {
-    const title = fallback.title;
-    const base =
-      fallback.description?.trim() ||
-      `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`;
-
-    const message =
-      error instanceof Error ? error.message : "Unable to load full product details from Printify.";
-    setApiStatus(message);
-
-    setTemplate({
-      reference: fallback.id,
-      nickname: title,
-      source: "product",
-      shopId,
-      description: base,
-    });
-
-    setNickname(title);
-    setManualRef(fallback.id);
-    setTemplateDescription(base);
   }
-}
 
   function loadManualTemplate() {
     const ref = normalizeRef(manualRef);
     if (!ref || !shopId) return;
     const name = safeTitle(nickname, "Template");
-    const base = templateDescription.trim() || "Base description from the user template goes here until live API wiring is added.";
+    const base = formatTemplateDescription(templateDescription.trim()) || "Base description from the user template goes here until live API wiring is added.";
     setTemplate({ reference: ref, nickname: name, source: "manual", shopId, description: base });
     setNickname(name);
     setManualRef(ref);
