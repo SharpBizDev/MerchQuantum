@@ -208,13 +208,6 @@ function buildDescription(title: string, templateDescription: string, mode: "tem
   const base = formatTemplateDescription(templateDescription) || "Template description will load here after live API wiring.";
   if (mode === "template") return base;
 
-  if (base.length < 80 && !base.includes("\n")) {
-    const clean = safeTitle(title, "Product");
-    const keywords = Array.from(new Set(titleKeywords(clean))).slice(0, 6);
-    const keywordLine = keywords.length ? "Keywords: " + keywords.join(", ") + ". " : "";
-    return (clean + ". " + keywordLine + base).trim();
-  }
-
   const intro = buildSeoLead(title);
   return (intro + "\n\n" + base).trim();
 }
