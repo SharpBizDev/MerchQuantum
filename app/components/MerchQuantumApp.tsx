@@ -480,15 +480,58 @@ export default function MerchQuantumApp() {
     setTemplate(null);
   }
 
-  function loadProductTemplate() {
-    const chosen = productSource.find((p) => p.id === productId);
-    if (!chosen || !shopId) return;
-    const base = `${chosen.title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`;
-    setTemplate({ reference: chosen.id, nickname: chosen.title, source: "product", shopId, description: base });
-    setNickname(chosen.title);
-    setManualRef(chosen.id);
+async function loadProductTemplate() {
+  const fallback = productSource.find((p) => p.id === productId);
+  if (!fallback || !shopId) return;
+
+  try {
+    const response = await fetch(
+      `/api/printify/product?shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(productId)}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`Product request failed with status ${response.status}.`);
+    }
+
+    const data = await response.json();
+    const chosen = data?.product || fallback;
+
+    const title = chosen?.title || fallback.title;
+    const base =
+      chosen?.description?.trim() ||
+      fallback.description?.trim() ||
+      `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`;
+
+    setTemplate({
+      reference: chosen?.id || fallback.id,
+      nickname: title,
+      source: "product",
+      shopId,
+      description: base,
+    });
+
+    setNickname(title);
+    setManualRef(chosen?.id || fallback.id);
+    setTemplateDescription(base);
+  } catch (error) {
+    const title = fallback.title;
+    const base =
+      fallback.description?.trim() ||
+      `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`;
+
+    setTemplate({
+      reference: fallback.id,
+      nickname: title,
+      source: "product",
+      shopId,
+      description: base,
+    });
+
+    setNickname(title);
+    setManualRef(fallback.id);
     setTemplateDescription(base);
   }
+}
 
   function loadManualTemplate() {
     const ref = normalizeRef(manualRef);
