@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useMemo, useRef, useState } from "react";
 
 const APP_BRAND = "MerchQuantum";
@@ -21,21 +23,93 @@ type Template = {
 };
 
 type Shop = { id: string; title: string };
-type Product = { id: string; title: string; type: string; shopId: string; description?: string };
-type ApiShop = { id: number | string; title: string; sales_channel?: string };
-type ApiProduct = { id: string; title: string; description?: string; shop_id?: number | string };
+
+type Product = {
+  id: string;
+  title: string;
+  type: string;
+  shopId: string;
+  description?: string;
+};
+
+type ApiShop = {
+  id: number | string;
+  title: string;
+  sales_channel?: string;
+};
+
+type ApiProduct = {
+  id: string;
+  title: string;
+  description?: string;
+  shop_id?: number | string;
+};
 
 const MAX_BATCH_FILES = 50;
+
 const FALLBACK_SHOPS: Shop[] = [
   { id: "451293", title: "Primary Printify Shop" },
   { id: "451294", title: "Secondary Printify Shop" },
 ];
+
 const FALLBACK_PRODUCTS: Product[] = [
-  { id: "12345ABCDE", title: "Example Template Product 12345ABCDE", type: "Apparel", shopId: "451293" },
-  { id: "67890FGHIJ", title: "Example Template Product 67890FGHIJ", type: "Accessory", shopId: "451294" },
+  {
+    id: "12345ABCDE",
+    title: "Example Template Product 12345ABCDE",
+    type: "Apparel",
+    shopId: "451293",
+  },
+  {
+    id: "67890FGHIJ",
+    title: "Example Template Product 67890FGHIJ",
+    type: "Accessory",
+    shopId: "451294",
+  },
 ];
-const ACRONYMS = new Set(["AI", "USA", "POD", "DTG", "DTF", "SVG", "PNG", "JPG", "PDF", "XL", "XXL", "2XL", "3XL"]);
-                                                                                                                          const STOP_WORDS = new Set(["the", "a", "an", "and", "or", "for", "with", "of", "to", "in", "on", "graphic", "unisex", "shirt", "t", "tee", "this", "it", "product", "features", "care", "instructions", "size", "chart", "details"]);
+
+const ACRONYMS = new Set([
+  "AI",
+  "USA",
+  "POD",
+  "DTG",
+  "DTF",
+  "SVG",
+  "PNG",
+  "JPG",
+  "PDF",
+  "XL",
+  "XXL",
+  "2XL",
+  "3XL",
+]);
+
+const STOP_WORDS = new Set([
+  "the",
+  "a",
+  "an",
+  "and",
+  "or",
+  "for",
+  "with",
+  "of",
+  "to",
+  "in",
+  "on",
+  "graphic",
+  "unisex",
+  "shirt",
+  "t",
+  "tee",
+  "this",
+  "it",
+  "product",
+  "features",
+  "care",
+  "instructions",
+  "size",
+  "chart",
+  "details",
+]);
 
 function makeId() {
   return typeof crypto !== "undefined" && crypto.randomUUID
@@ -76,7 +150,9 @@ function normalizeRef(value: string) {
     const url = new URL(trimmed);
     const segments = url.pathname.split("/").filter(Boolean);
     const idx = segments.findIndex((s) => s.toLowerCase() === "products");
-    return idx >= 0 && segments[idx + 1] ? segments[idx + 1] : segments[segments.length - 1] || trimmed;
+    return idx >= 0 && segments[idx + 1]
+      ? segments[idx + 1]
+      : segments[segments.length - 1] || trimmed;
   } catch {
     return trimmed;
   }
@@ -107,7 +183,9 @@ function decodeHtmlEntities(value: string) {
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'")
     .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">");
+    .replace(/&gt;/gi, ">")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#x2F;/gi, "/");
 }
 
 function formatTemplateDescription(templateDescription: string) {
@@ -123,21 +201,36 @@ function formatTemplateDescription(templateDescription: string) {
     .replace(/<[^>]+>/g, "")
     .replace(/\u00a0/g, " ");
 
-  const headers = new Set(["Product features", "Care instructions", "Size chart", "Product details", "Materials", "Sizing", "Dimensions"]);
+  const headers = new Set([
+    "Product features",
+    "Care instructions",
+    "Size chart",
+    "Product details",
+    "Materials",
+    "Sizing",
+    "Dimensions",
+  ]);
+
   const rawLines = normalized.split("\n");
   const out: string[] = [];
 
   for (const rawLine of rawLines) {
     const trimmed = rawLine.trim();
+
     if (!trimmed) {
       if (out.length && out[out.length - 1] !== "") out.push("");
       continue;
     }
 
-    const cleaned = trimmed.startsWith("-") ? "- " + trimmed.replace(/^[-–—]\s*/, "") : trimmed.replace(/\s+/g, " ");
+    const cleaned = trimmed.startsWith("-")
+      ? "- " + trimmed.replace(/^[-–—]\s*/, "")
+      : trimmed.replace(/\s+/g, " ");
     const header = cleaned.replace(/:$/, "");
 
-    if (headers.has(header) && out.length && out[out.length - 1] !== "") out.push("");
+    if (headers.has(header) && out.length && out[out.length - 1] !== "") {
+      out.push("");
+    }
+
     out.push(cleaned);
   }
 
@@ -180,9 +273,13 @@ function detectProductType(title: string) {
 
 function detectThemePhrase(title: string) {
   const lower = title.toLowerCase();
-  if (/(christian|jesus|faith|saved|forgiven|church|bible|gospel|cross)\b/.test(lower)) return "faith-forward style";
+  if (/(christian|jesus|faith|saved|forgiven|church|bible|gospel|cross)\b/.test(lower)) {
+    return "faith-forward style";
+  }
   if (/(retro|vintage|distressed)\b/.test(lower)) return "a retro-inspired look";
-  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) return "a playful, conversation-starting look";
+  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) {
+    return "a playful, conversation-starting look";
+  }
   if (/(dog|cat|pet|puppy)\b/.test(lower)) return "pet-lover style";
   if (/(floral|rose|flower|botanical)\b/.test(lower)) return "a bold graphic look";
   return "a standout graphic look";
@@ -195,17 +292,31 @@ function detectAudiencePhrase(title: string, productType: string) {
       ? "Christian merchandise with bold devotional artwork"
       : "Christian " + productType + " designs with bold devotional artwork";
   }
-  if (/(retro|vintage|distressed)\b/.test(lower)) return "retro graphic designs with easy everyday appeal";
-  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) return "funny graphic designs with strong gift appeal";
-  if (/(dog|cat|pet|puppy)\b/.test(lower)) return "pet-lover graphic designs that still feel giftable";
-  return productType === "product" ? "niche product designs that stand out" : productType + " designs that stand out";
+  if (/(retro|vintage|distressed)\b/.test(lower)) {
+    return "retro graphic designs with easy everyday appeal";
+  }
+  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) {
+    return "funny graphic designs with strong gift appeal";
+  }
+  if (/(dog|cat|pet|puppy)\b/.test(lower)) {
+    return "pet-lover graphic designs that still feel giftable";
+  }
+  return productType === "product"
+    ? "niche product designs that stand out"
+    : productType + " designs that stand out";
 }
 
 function detectUseCasePhrase(productType: string) {
-  if (["t-shirt", "hoodie", "sweatshirt", "tank top"].includes(productType)) return "daily wear, gifting, and casual styling";
-  if (productType === "sticker") return "laptops, water bottles, notebooks, and gifting";
+  if (["t-shirt", "hoodie", "sweatshirt", "tank top"].includes(productType)) {
+    return "daily wear, gifting, and casual styling";
+  }
+  if (productType === "sticker") {
+    return "laptops, water bottles, notebooks, and gifting";
+  }
   if (productType === "mug") return "daily routines, desk setups, and gifting";
-  if (["poster", "canvas print"].includes(productType)) return "home décor, office spaces, and gifting";
+  if (["poster", "canvas print"].includes(productType)) {
+    return "home décor, office spaces, and gifting";
+  }
   return "everyday use, gifting, and niche-specific collections";
 }
 
@@ -215,21 +326,32 @@ function buildSeoLead(title: string) {
   const theme = detectThemePhrase(clean);
   const audience = detectAudiencePhrase(clean, productType);
   const useCase = detectUseCasePhrase(productType);
-  const sentenceOne = productType === "product"
-    ? clean + " delivers " + theme + " with a clear, niche-focused presentation."
-    : clean + " delivers " + theme + " in a " + productType + ".";
+
+  const sentenceOne =
+    productType === "product"
+      ? clean + " delivers " + theme + " with a clear, niche-focused presentation."
+      : clean + " delivers " + theme + " in a " + productType + ".";
 
   return sentenceOne + " Built for shoppers looking for " + audience + ", it works well for " + useCase + ".";
 }
 
-function buildDescription(title: string, templateDescription: string, mode: "template" | "title") {
-  const base = formatTemplateDescription(templateDescription) || "Template description will load here after live API wiring.";
+function buildDescription(
+  title: string,
+  templateDescription: string,
+  mode: "template" | "title"
+) {
+  const base =
+    formatTemplateDescription(templateDescription) ||
+    "Template description will load here after live API wiring.";
+
   if (mode === "template") return base;
 
   const intro = buildSeoLead(title);
-  return (intro + "
+  const reusableSections = extractReusableTemplateSections(base);
 
-" + base).trim();
+  return reusableSections
+    ? `${intro}\n\n${reusableSections}`.trim()
+    : `${intro}\n\n${base}`.trim();
 }
 
 function buildTags(title: string, description: string, count: number) {
@@ -265,14 +387,11 @@ function isImage(file: File) {
 function readDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onload = () =>
+      resolve(typeof reader.result === "string" ? reader.result : "");
     reader.onerror = () => reject(new Error("Failed to read file"));
     reader.readAsDataURL(file);
   });
-}
-
-function clampTagCount(n: number) {
-  return !Number.isFinite(n) ? 13 : Math.max(1, Math.min(20, Math.round(n)));
 }
 
 function formatApiError(message: string) {
@@ -294,15 +413,29 @@ const cleanerTests = [
 ] as const;
 
 const contentTests = [
-  ["Retro Dog Mom", "Base description.", "title", "Retro Dog Mom. Keywords: Retro, Dog, Mom. Base description."],
+  [
+    "Retro Dog Mom",
+    "Base description.",
+    "title",
+    "Retro Dog Mom delivers a retro-inspired look with a clear, niche-focused presentation. Built for shoppers looking for retro graphic designs with easy everyday appeal, it works well for everyday use, gifting, and niche-specific collections.\n\nBase description.",
+  ],
   ["Retro Dog Mom", "Base description.", "template", "Base description."],
   ["Retro Dog Mom Shirt", "Base description.", "tags", "Retro, Dog, Mom, Base, Description"],
 ] as const;
 
+const formatTests = [
+  [
+    "Line one<br/><br/>Product features<br/>- Soft cotton<br/><br/>Care instructions<br/>- Wash cold",
+    "Line one\n\nProduct features\n- Soft cotton\n\nCare instructions\n- Wash cold",
+  ],
+] as const;
+
 function Box({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 className="mb-4 text-lg font-semibold text-slate-900">{title}</h2>
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-950">
+      <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-slate-100">
+        {title}
+      </h2>
       {children}
     </div>
   );
@@ -311,51 +444,88 @@ function Box({ title, children }: { title: string; children: React.ReactNode }) 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-2 block text-sm font-medium text-slate-700">{label}</label>
+      <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+        {label}
+      </label>
       {children}
     </div>
   );
 }
 
 function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`w-full rounded-xl border border-slate-300 px-3 py-2 text-sm ${props.className || ""}`.trim()} />;
+  return (
+    <input
+      {...props}
+      className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 ${props.className || ""}`.trim()}
+    />
+  );
 }
 
 function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={`w-full rounded-xl border border-slate-300 px-3 py-2 text-sm ${props.className || ""}`.trim()} />;
+  return (
+    <textarea
+      {...props}
+      className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 ${props.className || ""}`.trim()}
+    />
+  );
 }
 
 function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={`w-full rounded-xl border border-slate-300 px-3 py-2 text-sm ${props.className || ""}`.trim()} />;
+  return (
+    <select
+      {...props}
+      className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 ${props.className || ""}`.trim()}
+    />
+  );
 }
 
-function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" }) {
+function Button(
+  props: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    variant?: "primary" | "secondary" | "ghost";
+  }
+) {
   const variant = props.variant || "primary";
   const classes =
     variant === "primary"
-      ? "bg-slate-900 text-white"
+      ? "bg-slate-900 text-white hover:bg-slate-800 dark:bg-violet-600 dark:hover:bg-violet-500"
       : variant === "secondary"
-        ? "border border-slate-300 bg-white text-slate-900"
-        : "bg-transparent text-slate-700";
+        ? "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
+        : "bg-transparent text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900";
 
-  return <button {...props} className={`rounded-xl px-3 py-2 text-sm disabled:opacity-50 ${classes} ${props.className || ""}`.trim()} />;
+  return (
+    <button
+      {...props}
+      className={`rounded-xl px-3 py-2 text-sm disabled:opacity-50 ${classes} ${props.className || ""}`.trim()}
+    />
+  );
 }
 
 function Badge({ on, children }: { on?: boolean; children: React.ReactNode }) {
-  return <span className={`rounded-full px-3 py-1 text-xs ${on ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"}`}>{children}</span>;
+  return (
+    <span
+      className={`rounded-full px-3 py-1 text-xs ${on ? "bg-slate-900 text-white dark:bg-violet-600" : "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300"}`}
+    >
+      {children}
+    </span>
+  );
 }
 
 function BrandMark() {
   return (
-    <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-slate-200">
-      <span className="absolute left-[10px] top-[13px] z-10 text-[2rem] font-semibold leading-none text-violet-500">M</span>
-      <span className="absolute right-[8px] top-[8px] text-[2.45rem] font-semibold leading-none text-white">Q</span>
+    <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-slate-200 dark:ring-slate-800">
+      <span className="absolute left-[10px] top-[13px] z-10 text-[2rem] font-semibold leading-none text-violet-500">
+        M
+      </span>
+      <span className="absolute right-[8px] top-[8px] text-[2.45rem] font-semibold leading-none text-white">
+        Q
+      </span>
     </div>
   );
 }
 
 export default function MerchQuantumApp() {
   const fileRef = useRef<HTMLInputElement | null>(null);
+
   const [token, setToken] = useState("");
   const [connected, setConnected] = useState(false);
   const [loadingApi, setLoadingApi] = useState(false);
@@ -371,46 +541,84 @@ export default function MerchQuantumApp() {
   const [templateDescription, setTemplateDescription] = useState("");
   const [template, setTemplate] = useState<Template | null>(null);
   const [saved, setSaved] = useState<Template[]>([]);
-  const FIXED_DESCRIPTION_MODE: "title" = "title";
-  const FIXED_TAG_COUNT = 13;
   const [publish, setPublish] = useState(false);
   const [images, setImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [message, setMessage] = useState("");
+
+  const FIXED_DESCRIPTION_MODE: "title" = "title";
+  const FIXED_TAG_COUNT = 13;
 
   const availableShops = connected ? (apiShops.length ? apiShops : FALLBACK_SHOPS) : [];
   const productSource = apiProducts.length ? apiProducts : FALLBACK_PRODUCTS;
 
   const visibleProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return productSource.filter((p) => p.shopId === shopId && (!q || p.title.toLowerCase().includes(q) || p.type.toLowerCase().includes(q)));
+    return productSource.filter(
+      (p) =>
+        p.shopId === shopId &&
+        (!q ||
+          p.title.toLowerCase().includes(q) ||
+          p.type.toLowerCase().includes(q))
+    );
   }, [shopId, search, productSource]);
 
-  const selectedImage = useMemo(() => images.find((img) => img.id === selectedId) || images[0] || null, [images, selectedId]);
-  const previewDescription = selectedImage ? buildDescription(selectedImage.final, templateDescription, FIXED_DESCRIPTION_MODE) : templateDescription;
-  const previewTags = selectedImage ? buildTags(selectedImage.final, previewDescription, FIXED_TAG_COUNT) : [];
-  const cleanerPass = cleanerTests.every(([input, expected]) => cleanTitle(input) === expected);
+  const selectedImage = useMemo(
+    () => images.find((img) => img.id === selectedId) || images[0] || null,
+    [images, selectedId]
+  );
+
+  const previewDescription = selectedImage
+    ? buildDescription(selectedImage.final, templateDescription, FIXED_DESCRIPTION_MODE)
+    : templateDescription;
+
+  const previewTags = selectedImage
+    ? buildTags(selectedImage.final, previewDescription, FIXED_TAG_COUNT)
+    : [];
+
+  const cleanerPass = cleanerTests.every(
+    ([input, expected]) => cleanTitle(input) === expected
+  );
   const contentPass = contentTests.every(([a, b, c, expected]) => {
-    const actual = c === "tags" ? buildTags(a, b, 5).join(", ") : buildDescription(a, b, c as "template" | "title");
+    const actual =
+      c === "tags"
+        ? buildTags(a, b, 5).join(", ")
+        : buildDescription(a, b, c as "template" | "title");
     return actual === expected;
   });
+  const formatPass = formatTests.every(
+    ([input, expected]) => formatTemplateDescription(input) === expected
+  );
 
   async function addFiles(list: FileList | null) {
     if (!list) return;
     setMessage("");
+
     const room = Math.max(0, MAX_BATCH_FILES - images.length);
     const valid = Array.from(list).filter(isImage).slice(0, room);
     const skippedByType = Array.from(list).filter((f) => !isImage(f)).length;
-    const skippedByLimit = Math.max(0, Array.from(list).filter(isImage).length - valid.length);
+    const skippedByLimit = Math.max(
+      0,
+      Array.from(list).filter(isImage).length - valid.length
+    );
 
     const results = await Promise.allSettled(
       valid.map(async (file) => {
         const cleaned = cleanTitle(file.name);
-        return { id: makeId(), name: file.name, preview: await readDataUrl(file), cleaned, final: cleaned } as Img;
+        return {
+          id: makeId(),
+          name: file.name,
+          preview: await readDataUrl(file),
+          cleaned,
+          final: cleaned,
+        } as Img;
       })
     );
 
-    const good = results.filter((r): r is PromiseFulfilledResult<Img> => r.status === "fulfilled").map((r) => r.value);
+    const good = results
+      .filter((r): r is PromiseFulfilledResult<Img> => r.status === "fulfilled")
+      .map((r) => r.value);
+
     const failed = results.length - good.length;
 
     setImages((current) => {
@@ -420,10 +628,20 @@ export default function MerchQuantumApp() {
     });
 
     const parts: string[] = [];
-    if (good.length) parts.push(`Loaded ${good.length} image${good.length === 1 ? "" : "s"}.`);
-    if (skippedByType) parts.push(`Skipped ${skippedByType} non-image file${skippedByType === 1 ? "" : "s"}.`);
-    if (skippedByLimit) parts.push(`Skipped ${skippedByLimit} image${skippedByLimit === 1 ? "" : "s"} above the ${MAX_BATCH_FILES}-file batch cap.`);
-    if (failed) parts.push(`Failed to preview ${failed} image${failed === 1 ? "" : "s"}.`);
+    if (good.length)
+      parts.push(`Loaded ${good.length} image${good.length === 1 ? "" : "s"}.`);
+    if (skippedByType) {
+      parts.push(
+        `Skipped ${skippedByType} non-image file${skippedByType === 1 ? "" : "s"}.`
+      );
+    }
+    if (skippedByLimit) {
+      parts.push(
+        `Skipped ${skippedByLimit} image${skippedByLimit === 1 ? "" : "s"} above the ${MAX_BATCH_FILES}-file batch cap.`
+      );
+    }
+    if (failed)
+      parts.push(`Failed to preview ${failed} image${failed === 1 ? "" : "s"}.`);
     setMessage(parts.join(" "));
   }
 
@@ -434,8 +652,13 @@ export default function MerchQuantumApp() {
     }
 
     try {
-      const response = await fetch(`/api/printify/products?shopId=${encodeURIComponent(nextShopId)}`);
-      if (!response.ok) throw new Error(`Products request failed with status ${response.status}.`);
+      const response = await fetch(
+        `/api/printify/products?shopId=${encodeURIComponent(nextShopId)}`
+      );
+      if (!response.ok) {
+        throw new Error(`Products request failed with status ${response.status}.`);
+      }
+
       const data = await response.json();
       const mapped: Product[] = Array.isArray(data?.products)
         ? data.products.map((product: ApiProduct) => ({
@@ -446,10 +669,12 @@ export default function MerchQuantumApp() {
             description: product.description || "",
           }))
         : [];
+
       setApiProducts(mapped);
     } catch (error) {
       setApiProducts([]);
-      const msg = error instanceof Error ? error.message : "Unable to load products.";
+      const msg =
+        error instanceof Error ? error.message : "Unable to load products.";
       setApiStatus(formatApiError(msg));
     }
   }
@@ -473,7 +698,10 @@ export default function MerchQuantumApp() {
 
       const data = await response.json();
       const shopsFromApi: Shop[] = Array.isArray(data?.shops)
-        ? data.shops.map((shop: ApiShop) => ({ id: String(shop.id), title: shop.title || `Shop ${shop.id}` }))
+        ? data.shops.map((shop: ApiShop) => ({
+            id: String(shop.id),
+            title: shop.title || `Shop ${shop.id}`,
+          }))
         : [];
 
       setApiShops(shopsFromApi);
@@ -483,7 +711,8 @@ export default function MerchQuantumApp() {
       setApiStatus("Connected to Printify.");
       void loadProductsForShop(firstShopId);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "Unable to connect to Printify.";
+      const msg =
+        error instanceof Error ? error.message : "Unable to connect to Printify.";
       setConnected(false);
       setApiShops([]);
       setApiProducts([]);
@@ -510,7 +739,9 @@ export default function MerchQuantumApp() {
 
     try {
       const response = await fetch(
-        `/api/printify/product?shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(productId)}`
+        `/api/printify/product?shopId=${encodeURIComponent(
+          shopId
+        )}&productId=${encodeURIComponent(productId)}`
       );
 
       if (!response.ok) {
@@ -519,12 +750,11 @@ export default function MerchQuantumApp() {
 
       const data = await response.json();
       const chosen = data?.product || fallback;
-
       const title = chosen?.title || fallback.title;
       const base = formatTemplateDescription(
         chosen?.description?.trim() ||
-        fallback.description?.trim() ||
-        `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`
+          fallback.description?.trim() ||
+          `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`
       );
 
       setTemplate({
@@ -538,11 +768,11 @@ export default function MerchQuantumApp() {
       setNickname(title);
       setManualRef(chosen?.id || fallback.id);
       setTemplateDescription(base);
-    } catch (error) {
+    } catch {
       const title = fallback.title;
       const base = formatTemplateDescription(
         fallback.description?.trim() ||
-        `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`
+          `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`
       );
 
       setTemplate({
@@ -563,8 +793,18 @@ export default function MerchQuantumApp() {
     const ref = normalizeRef(manualRef);
     if (!ref || !shopId) return;
     const name = safeTitle(nickname, "Template");
-    const base = formatTemplateDescription(templateDescription.trim()) || "Base description from the user template goes here until live API wiring is added.";
-    setTemplate({ reference: ref, nickname: name, source: "manual", shopId, description: base });
+    const base =
+      formatTemplateDescription(templateDescription.trim()) ||
+      "Base description from the user template goes here until live API wiring is added.";
+
+    setTemplate({
+      reference: ref,
+      nickname: name,
+      source: "manual",
+      shopId,
+      description: base,
+    });
+
     setNickname(name);
     setManualRef(ref);
     setTemplateDescription(base);
@@ -572,10 +812,20 @@ export default function MerchQuantumApp() {
 
   function saveTemplate() {
     if (!template) return;
-    const nextTemplate = { ...template, nickname: safeTitle(nickname, template.nickname), description: templateDescription };
+
+    const nextTemplate = {
+      ...template,
+      nickname: safeTitle(nickname, template.nickname),
+      description: templateDescription,
+    };
+
     setTemplate(nextTemplate);
     setSaved((current) => {
-      const idx = current.findIndex((t) => t.reference === nextTemplate.reference && t.shopId === nextTemplate.shopId);
+      const idx = current.findIndex(
+        (t) =>
+          t.reference === nextTemplate.reference &&
+          t.shopId === nextTemplate.shopId
+      );
       if (idx === -1) return [...current, nextTemplate];
       const next = [...current];
       next[idx] = nextTemplate;
@@ -584,23 +834,32 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 md:p-8">
+    <div className="min-h-screen bg-slate-50 p-6 text-slate-900 transition-colors dark:bg-black dark:text-slate-100 md:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-4">
             <BrandMark />
             <div>
               <h1 className="text-3xl font-semibold tracking-tight">
-                <span className="text-violet-600">Merch</span><span className="text-slate-900">Quantum</span>
+                <span className="text-violet-600">Merch</span>
+                <span className="text-slate-900 dark:text-white">Quantum</span>
               </h1>
-              <p className="mt-1 text-sm text-slate-600">
-                Bulk product creation, <span className="font-medium text-violet-600">simplified</span>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                Bulk product creation,{" "}
+                <span className="font-medium text-violet-600">simplified</span>
               </p>
             </div>
           </div>
+
           <div className="flex items-center gap-3">
-            <Badge on={connected}>{connected ? "Printify connected" : "Printify not connected"}</Badge>
-            {connected ? <Button variant="secondary" onClick={disconnectPrintify}>Disconnect</Button> : null}
+            <Badge on={connected}>
+              {connected ? "Printify connected" : "Printify not connected"}
+            </Badge>
+            {connected ? (
+              <Button variant="secondary" onClick={disconnectPrintify}>
+                Disconnect
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -614,23 +873,47 @@ export default function MerchQuantumApp() {
                     <option value="oauth">OAuth Connect Account</option>
                   </Select>
                 </Field>
+
                 <Field label="Masked Preview">
-                  <div className="max-w-[260px] overflow-hidden rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-sm whitespace-nowrap text-ellipsis">
+                  <div className="max-w-[260px] overflow-hidden rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-sm whitespace-nowrap text-ellipsis dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
                     {maskToken(token) || "No token entered"}
                   </div>
                 </Field>
               </div>
+
               <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto]">
                 <Field label="Personal Access Token">
-                  <Input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Paste token once" />
+                  <Input
+                    type="password"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    placeholder="Paste token once"
+                  />
                 </Field>
+
                 <div className="flex items-end">
-                  <Button onClick={() => { void connectPrintify(); }} disabled={!token.trim() || connected || loadingApi}>
+                  <Button
+                    onClick={() => {
+                      void connectPrintify();
+                    }}
+                    disabled={!token.trim() || connected || loadingApi}
+                  >
                     {loadingApi ? "Connecting..." : "Connect to Printify"}
                   </Button>
                 </div>
               </div>
-              {apiStatus ? <p className={`mt-3 text-sm ${connected ? "text-green-700" : "text-amber-700"}`}>{apiStatus}</p> : null}
+
+              {apiStatus ? (
+                <p
+                  className={`mt-3 text-sm ${
+                    connected
+                      ? "text-green-700 dark:text-green-400"
+                      : "text-amber-700 dark:text-amber-400"
+                  }`}
+                >
+                  {apiStatus}
+                </p>
+              ) : null}
             </Box>
 
             <Box title="Batch Setup">
@@ -647,11 +930,21 @@ export default function MerchQuantumApp() {
                     disabled={!connected || loadingApi}
                   >
                     <option value="">Select a shop</option>
-                    {availableShops.map((shop) => <option key={shop.id} value={shop.id}>{shop.title}</option>)}
+                    {availableShops.map((shop) => (
+                      <option key={shop.id} value={shop.id}>
+                        {shop.title}
+                      </option>
+                    ))}
                   </Select>
                 </Field>
+
                 <Field label="Template Source">
-                  <Select value={source} onChange={(e) => setSource(e.target.value as "product" | "manual") }>
+                  <Select
+                    value={source}
+                    onChange={(e) =>
+                      setSource(e.target.value as "product" | "manual")
+                    }
+                  >
                     <option value="product">Choose From My Products</option>
                     <option value="manual">Paste Product Reference</option>
                   </Select>
@@ -660,18 +953,28 @@ export default function MerchQuantumApp() {
 
               <div className="mt-4">
                 <Field label="Template Nickname">
-                  <Input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Example: Unisex Tee Front Print" />
+                  <Input
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    placeholder="Example: Unisex Tee Front Print"
+                  />
                 </Field>
               </div>
 
               {source === "product" ? (
                 <div className="mt-4 space-y-4">
                   <Field label="Search My Products">
-                    <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by title or type" disabled={!connected || !shopId} />
+                    <Input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search by title or type"
+                      disabled={!connected || !shopId}
+                    />
                   </Field>
-                  <div className="max-h-52 overflow-auto rounded-xl border border-slate-200">
+
+                  <div className="max-h-52 overflow-auto rounded-xl border border-slate-200 dark:border-slate-800">
                     <table className="min-w-full border-collapse text-sm">
-                      <thead className="bg-slate-100">
+                      <thead className="bg-slate-100 dark:bg-slate-900">
                         <tr>
                           <th className="px-3 py-2 text-left">Use</th>
                           <th className="px-3 py-2 text-left">Example</th>
@@ -679,13 +982,37 @@ export default function MerchQuantumApp() {
                       </thead>
                       <tbody>
                         {!connected || !shopId ? (
-                          <tr><td colSpan={2} className="px-3 py-8 text-center text-slate-500">Connect to Printify and select a shop first.</td></tr>
+                          <tr>
+                            <td
+                              colSpan={2}
+                              className="px-3 py-8 text-center text-slate-500 dark:text-slate-400"
+                            >
+                              Connect to Printify and select a shop first.
+                            </td>
+                          </tr>
                         ) : visibleProducts.length === 0 ? (
-                          <tr><td colSpan={2} className="px-3 py-8 text-center text-slate-500">No examples found.</td></tr>
+                          <tr>
+                            <td
+                              colSpan={2}
+                              className="px-3 py-8 text-center text-slate-500 dark:text-slate-400"
+                            >
+                              No examples found.
+                            </td>
+                          </tr>
                         ) : (
                           visibleProducts.map((product) => (
-                            <tr key={product.id} className="border-t border-slate-200">
-                              <td className="px-3 py-2"><input type="radio" name="template-product" checked={productId === product.id} onChange={() => setProductId(product.id)} /></td>
+                            <tr
+                              key={product.id}
+                              className="border-t border-slate-200 dark:border-slate-800"
+                            >
+                              <td className="px-3 py-2">
+                                <input
+                                  type="radio"
+                                  name="template-product"
+                                  checked={productId === product.id}
+                                  onChange={() => setProductId(product.id)}
+                                />
+                              </td>
                               <td className="px-3 py-2">{product.title}</td>
                             </tr>
                           ))
@@ -693,75 +1020,257 @@ export default function MerchQuantumApp() {
                       </tbody>
                     </table>
                   </div>
-                  <Button onClick={loadProductTemplate} disabled={!productId || !shopId}>Load Selected Template Example</Button>
+
+                  <Button
+                    onClick={loadProductTemplate}
+                    disabled={!productId || !shopId}
+                  >
+                    Load Selected Template Example
+                  </Button>
                 </div>
               ) : (
-                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4">
-                  <div className="text-sm font-medium text-slate-900">Paste Product Reference</div>
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4 dark:border-slate-800 dark:bg-slate-900">
+                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    Paste Product Reference
+                  </div>
                   <Field label="Template Product Reference">
-                    <Input value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Paste a Printify product ID or URL" />
+                    <Input
+                      value={manualRef}
+                      onChange={(e) => setManualRef(e.target.value)}
+                      placeholder="Paste a Printify product ID or URL"
+                    />
                   </Field>
-                  <Button onClick={loadManualTemplate} disabled={!manualRef.trim() || !shopId}>Load Manual Template</Button>
+                  <Button
+                    onClick={loadManualTemplate}
+                    disabled={!manualRef.trim() || !shopId}
+                  >
+                    Load Manual Template
+                  </Button>
                 </div>
               )}
 
               <div className="mt-4">
                 <Field label="Template Description Source">
-                  <Textarea rows={5} value={templateDescription} onChange={(e) => setTemplateDescription(e.target.value)} placeholder="This is where the loaded template description will appear after the selected product template is loaded." />
+                  <Textarea
+                    rows={8}
+                    value={templateDescription}
+                    onChange={(e) => setTemplateDescription(e.target.value)}
+                    placeholder="This is where the loaded template description will appear after the selected product template is loaded."
+                  />
                 </Field>
               </div>
 
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                <div><b>Loaded Template:</b> {template ? template.nickname : "None loaded"}</div>
-                {template ? <div className="mt-1 break-all text-slate-600">{template.reference} • {template.source} • Shop {template.shopId}</div> : null}
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-4 md:grid md:grid-cols-3">
-                <Field label="Title Source"><div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm">Filename Required</div></Field>
-                <Field label="Description Mode"><div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm">Title Assisted</div></Field>
-                <Field label="Tags"><div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm">13 from Title + Description</div></Field>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-4 md:grid md:grid-cols-1">
-                <div className="flex items-end justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <div><b>Publish after creation</b><div className="text-xs text-slate-500">Keep off during testing.</div></div>
-                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} />{publish ? "Enabled" : "Disabled"}</label>
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-800 dark:bg-slate-900">
+                <div>
+                  <b>Loaded Template:</b>{" "}
+                  {template ? template.nickname : "None loaded"}
                 </div>
+                {template ? (
+                  <div className="mt-1 break-all text-slate-600 dark:text-slate-400">
+                    {template.reference} • {template.source} • Shop{" "}
+                    {template.shopId}
+                  </div>
+                ) : null}
               </div>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <Field label="Title Source">
+                  <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950">
+                    Filename Required
+                  </div>
                 </Field>
-                <div className="flex items-end justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <div><b>Publish after creation</b><div className="text-xs text-slate-500">Keep off during testing.</div></div>
-                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} />{publish ? "Enabled" : "Disabled"}</label>
+
+                <Field label="Description Mode">
+                  <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950">
+                    Title Assisted
+                  </div>
+                </Field>
+
+                <Field label="Tags">
+                  <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950">
+                    13 from Title + Description
+                  </div>
+                </Field>
+              </div>
+
+              <div className="mt-4">
+                <div className="flex items-end justify-between rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                  <div>
+                    <b>Publish after creation</b>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      Keep off during testing.
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={publish}
+                      onChange={(e) => setPublish(e.target.checked)}
+                    />
+                    {publish ? "Enabled" : "Disabled"}
+                  </label>
                 </div>
               </div>
             </Box>
 
             <Box title="Image Upload">
-              <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); void addFiles(e.dataTransfer.files); }} onClick={() => fileRef.current?.click()} className="cursor-pointer rounded-2xl border-2 border-dashed border-slate-300 bg-white p-10 text-center hover:bg-slate-50">
-                <input ref={fileRef} type="file" multiple accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg" className="hidden" onChange={(e) => { void addFiles(e.target.files); e.currentTarget.value = ""; }} />
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-2xl">🖼️</div>
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  void addFiles(e.dataTransfer.files);
+                }}
+                onClick={() => fileRef.current?.click()}
+                className="cursor-pointer rounded-2xl border-2 border-dashed border-slate-300 bg-white p-10 text-center hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-900"
+              >
+                <input
+                  ref={fileRef}
+                  type="file"
+                  multiple
+                  accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg"
+                  className="hidden"
+                  onChange={(e) => {
+                    void addFiles(e.target.files);
+                    e.currentTarget.value = "";
+                  }}
+                />
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-2xl dark:bg-slate-900">
+                  🖼️
+                </div>
                 <p className="mt-4 font-medium">Drop images here or click to upload</p>
-                <p className="mt-1 text-sm text-slate-500">File titles drive the listing title. Current prototype cap: {MAX_BATCH_FILES} images per batch.</p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  File titles drive the listing title. Current prototype cap:{" "}
+                  {MAX_BATCH_FILES} images per batch.
+                </p>
               </div>
-              <div className="mt-4 flex flex-wrap items-center gap-3"><Button onClick={() => fileRef.current?.click()}>Add Images</Button><Button variant="secondary" onClick={() => { setImages([]); setSelectedId(""); setMessage(""); }} disabled={!images.length}>Clear All</Button><Badge>{images.length}/{MAX_BATCH_FILES}</Badge></div>
-              {message ? <p className="mt-3 text-sm text-slate-600">{message}</p> : null}
+
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <Button onClick={() => fileRef.current?.click()}>Add Images</Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setImages([]);
+                    setSelectedId("");
+                    setMessage("");
+                  }}
+                  disabled={!images.length}
+                >
+                  Clear All
+                </Button>
+                <Badge>
+                  {images.length}/{MAX_BATCH_FILES}
+                </Badge>
+              </div>
+
+              {message ? (
+                <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">
+                  {message}
+                </p>
+              ) : null}
             </Box>
 
             <Box title="Batch Preview">
-              <div className="max-h-[520px] overflow-auto rounded-xl border border-slate-200">
+              <div className="max-h-[520px] overflow-auto rounded-xl border border-slate-200 dark:border-slate-800">
                 <table className="min-w-full border-collapse text-sm">
-                  <thead className="sticky top-0 bg-slate-100"><tr><th className="px-3 py-2 text-left">Preview</th><th className="px-3 py-2 text-left">Filename</th><th className="px-3 py-2 text-left">Suggested Title</th><th className="px-3 py-2 text-left">Final Title</th><th className="px-3 py-2 text-left">Action</th></tr></thead>
+                  <thead className="sticky top-0 bg-slate-100 dark:bg-slate-900">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Preview</th>
+                      <th className="px-3 py-2 text-left">Filename</th>
+                      <th className="px-3 py-2 text-left">Suggested Title</th>
+                      <th className="px-3 py-2 text-left">Final Title</th>
+                      <th className="px-3 py-2 text-left">Action</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {images.length === 0 ? (
-                      <tr><td colSpan={5} className="px-3 py-10 text-center text-slate-500">No images loaded yet.</td></tr>
+                      <tr>
+                        <td
+                          colSpan={5}
+                          className="px-3 py-10 text-center text-slate-500 dark:text-slate-400"
+                        >
+                          No images loaded yet.
+                        </td>
+                      </tr>
                     ) : (
                       images.map((img) => (
-                        <tr key={img.id} className={`border-t border-slate-200 ${selectedImage?.id === img.id ? "bg-slate-50" : ""}`} onClick={() => setSelectedId(img.id)}>
-                          <td className="px-3 py-2">{img.preview ? <img src={img.preview} alt={safeTitle(img.final, img.cleaned)} className="h-16 w-16 rounded-lg border border-slate-200 object-contain bg-white" /> : <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-xs">No Preview</div>}</td>
-                          <td className="px-3 py-2 text-xs text-slate-600">{img.name}</td>
+                        <tr
+                          key={img.id}
+                          className={`border-t border-slate-200 dark:border-slate-800 ${
+                            selectedImage?.id === img.id
+                              ? "bg-slate-50 dark:bg-slate-900"
+                              : ""
+                          }`}
+                          onClick={() => setSelectedId(img.id)}
+                        >
+                          <td className="px-3 py-2">
+                            {img.preview ? (
+                              <img
+                                src={img.preview}
+                                alt={safeTitle(img.final, img.cleaned)}
+                                className="h-16 w-16 rounded-lg border border-slate-200 object-contain bg-white dark:border-slate-800 dark:bg-slate-950"
+                              />
+                            ) : (
+                              <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-xs dark:border-slate-800 dark:bg-slate-900">
+                                No Preview
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-slate-600 dark:text-slate-400">
+                            {img.name}
+                          </td>
                           <td className="px-3 py-2 font-medium">{img.cleaned}</td>
-                          <td className="px-3 py-2"><div className="space-y-2"><Input value={img.final} onChange={(e) => setImages((current) => current.map((x) => x.id === img.id ? { ...x, final: e.target.value } : x))} onBlur={() => setImages((current) => current.map((x) => x.id === img.id ? { ...x, final: safeTitle(x.final, x.cleaned) } : x))} /><Button variant="ghost" onClick={(e) => { e.stopPropagation(); setImages((current) => current.map((x) => x.id === img.id ? { ...x, final: x.cleaned } : x)); }}>Use Suggested</Button></div></td>
-                          <td className="px-3 py-2"><Button variant="ghost" onClick={(e) => { e.stopPropagation(); setImages((current) => current.filter((x) => x.id !== img.id)); if (selectedId === img.id) setSelectedId(""); }}>Remove</Button></td>
+                          <td className="px-3 py-2">
+                            <div className="space-y-2">
+                              <Input
+                                value={img.final}
+                                onChange={(e) =>
+                                  setImages((current) =>
+                                    current.map((x) =>
+                                      x.id === img.id
+                                        ? { ...x, final: e.target.value }
+                                        : x
+                                    )
+                                  )
+                                }
+                                onBlur={() =>
+                                  setImages((current) =>
+                                    current.map((x) =>
+                                      x.id === img.id
+                                        ? { ...x, final: safeTitle(x.final, x.cleaned) }
+                                        : x
+                                    )
+                                  )
+                                }
+                              />
+                              <Button
+                                variant="ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setImages((current) =>
+                                    current.map((x) =>
+                                      x.id === img.id ? { ...x, final: x.cleaned } : x
+                                    )
+                                  );
+                                }}
+                              >
+                                Use Suggested
+                              </Button>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <Button
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setImages((current) =>
+                                  current.filter((x) => x.id !== img.id)
+                                );
+                                if (selectedId === img.id) setSelectedId("");
+                              }}
+                            >
+                              Remove
+                            </Button>
+                          </td>
                         </tr>
                       ))
                     )}
@@ -774,18 +1283,220 @@ export default function MerchQuantumApp() {
           <div className="space-y-6">
             <Box title="Listing Content Preview">
               {!selectedImage ? (
-                <p className="text-sm text-slate-500">Select or upload an image to preview title, description, and tags.</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Select or upload an image to preview title, description, and tags.
+                </p>
               ) : (
                 <div className="space-y-4">
-                  <div className="flex h-64 w-full items-center justify-center rounded-xl border border-slate-200 bg-white p-4">{selectedImage.preview ? <img src={selectedImage.preview} alt={safeTitle(selectedImage.final, selectedImage.cleaned)} className="max-h-full max-w-full object-contain" /> : null}</div>
-                  <Field label="Title"><Input value={selectedImage.final} onChange={(e) => setImages((current) => current.map((x) => x.id === selectedImage.id ? { ...x, final: e.target.value } : x))} /></Field>
-                  <Field label="Description"><Textarea rows={8} value={previewDescription} readOnly /></Field>
-                  <div><label className="mb-2 block text-sm font-medium text-slate-700">Tags</label>{previewTags.length === 0 ? <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">No tags enabled.</div> : <div className="flex flex-wrap gap-2">{previewTags.map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">{tag}</span>)}</div>}</div>
+                  <div className="flex h-64 w-full items-center justify-center rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+                    {selectedImage.preview ? (
+                      <img
+                        src={selectedImage.preview}
+                        alt={safeTitle(
+                          selectedImage.final,
+                          selectedImage.cleaned
+                        )}
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    ) : null}
+                  </div>
+
+                  <Field label="Title">
+                    <Input
+                      value={selectedImage.final}
+                      onChange={(e) =>
+                        setImages((current) =>
+                          current.map((x) =>
+                            x.id === selectedImage.id
+                              ? { ...x, final: e.target.value }
+                              : x
+                          )
+                        )
+                      }
+                    />
+                  </Field>
+
+                  <Field label="Description">
+                    <Textarea rows={16} value={previewDescription} readOnly />
+                  </Field>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Tags
+                    </label>
+                    {previewTags.length === 0 ? (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                        No tags enabled.
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {previewTags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </Box>
 
             <Box title="Run Summary">
-              <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Shop</div><div className="mt-1 font-medium">{availableShops.find((s) => s.id === shopId)?.title || "None selected"}</div></div><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Loaded Template</div><div className="mt-1 font-medium">{template?.nickname || "None loaded"}</div></div><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Title Source</div><div className="mt-1 font-medium">Filename Required</div></div><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Description</div><div className="mt-1 font-medium">Title Assisted</div></div><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Tags</div><div className="mt-1 font-medium">From Title + Description (13)</div></div><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Images</div><div className="mt-1 font-medium">{images.length}</div></div></div>
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">{connected ? "MerchQuantum is ready for backend wiring. Live routes will populate shops, products, and template descriptions when available." : "Connect to Printify first."}</div>
-  
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+                  <div className="text-xs uppercase text-slate-500 dark:text-slate-400">
+                    Shop
+                  </div>
+                  <div className="mt-1 font-medium">
+                    {availableShops.find((s) => s.id === shopId)?.title ||
+                      "None selected"}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+                  <div className="text-xs uppercase text-slate-500 dark:text-slate-400">
+                    Loaded Template
+                  </div>
+                  <div className="mt-1 font-medium">
+                    {template?.nickname || "None loaded"}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+                  <div className="text-xs uppercase text-slate-500 dark:text-slate-400">
+                    Title Source
+                  </div>
+                  <div className="mt-1 font-medium">Filename Required</div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+                  <div className="text-xs uppercase text-slate-500 dark:text-slate-400">
+                    Description
+                  </div>
+                  <div className="mt-1 font-medium">Title Assisted</div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+                  <div className="text-xs uppercase text-slate-500 dark:text-slate-400">
+                    Tags
+                  </div>
+                  <div className="mt-1 font-medium">
+                    From Title + Description (13)
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+                  <div className="text-xs uppercase text-slate-500 dark:text-slate-400">
+                    Images
+                  </div>
+                  <div className="mt-1 font-medium">{images.length}</div>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                {connected
+                  ? "MerchQuantum is ready for backend wiring. Live routes will populate shops, products, and template descriptions when available."
+                  : "Connect to Printify first."}
+              </div>
+
+              <div className="mt-4">
+                <Button
+                  className="w-full"
+                  disabled={!connected || !template || images.length === 0}
+                >
+                  Run Draft Batch
+                </Button>
+              </div>
+            </Box>
+
+            <Box title="Saved Templates">
+              {saved.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  No saved templates yet.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {saved.map((t) => (
+                    <div
+                      key={`${t.shopId}:${t.reference}`}
+                      className="flex items-center justify-between rounded-xl border border-slate-200 p-4 dark:border-slate-800"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-medium">{t.nickname}</div>
+                        <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                          {t.reference}
+                        </div>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setTemplate(t);
+                          setShopId(t.shopId);
+                          setNickname(t.nickname);
+                          setManualRef(t.reference);
+                          setSource(t.source);
+                          setTemplateDescription(t.description);
+                        }}
+                      >
+                        Use
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-4">
+                <Button
+                  variant="secondary"
+                  onClick={saveTemplate}
+                  disabled={!template}
+                >
+                  Save Loaded Template
+                </Button>
+              </div>
+            </Box>
+
+            <Box title="Validation Summary">
+              <div className="space-y-2 text-sm">
+                <div
+                  className={
+                    cleanerPass
+                      ? "text-green-700 dark:text-green-400"
+                      : "text-red-700 dark:text-red-400"
+                  }
+                >
+                  Filename cleaner checks: {cleanerPass ? "PASS" : "FAIL"}
+                </div>
+                <div
+                  className={
+                    contentPass
+                      ? "text-green-700 dark:text-green-400"
+                      : "text-red-700 dark:text-red-400"
+                  }
+                >
+                  Description and tag checks: {contentPass ? "PASS" : "FAIL"}
+                </div>
+                <div
+                  className={
+                    formatPass
+                      ? "text-green-700 dark:text-green-400"
+                      : "text-red-700 dark:text-red-400"
+                  }
+                >
+                  Description formatting checks: {formatPass ? "PASS" : "FAIL"}
+                </div>
+                <div className="text-slate-500 dark:text-slate-400">
+                  Detailed debug lists are hidden to keep the UI smaller.
+                </div>
+              </div>
+            </Box>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
