@@ -2,7 +2,6 @@
 
 import React, { useMemo, useRef, useState } from "react";
 
-const APP_BRAND = "MerchQuantum";
 const APP_TAGLINE = "Bulk product creation, simplified";
 const PRIMARY_PLATFORM = "Printify";
 
@@ -32,17 +31,20 @@ type Product = {
   description?: string;
 };
 
-type ApiShop = {
-  id: number | string;
-  title: string;
-  sales_channel?: string;
-};
-
+type ApiShop = { id: number | string; title: string; sales_channel?: string };
 type ApiProduct = {
   id: string;
   title: string;
   description?: string;
   shop_id?: number | string;
+};
+
+type BatchResult = {
+  fileName: string;
+  title: string;
+  productId?: string;
+  published?: boolean;
+  message: string;
 };
 
 const MAX_BATCH_FILES = 50;
@@ -67,48 +69,10 @@ const FALLBACK_PRODUCTS: Product[] = [
   },
 ];
 
-const ACRONYMS = new Set([
-  "AI",
-  "USA",
-  "POD",
-  "DTG",
-  "DTF",
-  "SVG",
-  "PNG",
-  "JPG",
-  "PDF",
-  "XL",
-  "XXL",
-  "2XL",
-  "3XL",
-]);
-
 const STOP_WORDS = new Set([
-  "the",
-  "a",
-  "an",
-  "and",
-  "or",
-  "for",
-  "with",
-  "of",
-  "to",
-  "in",
-  "on",
-  "graphic",
-  "unisex",
-  "shirt",
-  "t",
-  "tee",
-  "this",
-  "it",
-  "product",
-  "features",
-  "care",
-  "instructions",
-  "size",
-  "chart",
-  "details",
+  "the","a","an","and","or","for","with","of","to","in","on","graphic",
+  "unisex","shirt","t","tee","this","it","product","features","care",
+  "instructions","size","chart","details"
 ]);
 
 function makeId() {
@@ -133,9 +97,11 @@ function cleanTitle(filename: string) {
     .filter(Boolean)
     .map((word) => {
       if (word === "&") return word;
-      const upper = word.toUpperCase();
-      if (ACRONYMS.has(upper)) return upper;
       if (/^\d+$/.test(word)) return word;
+      const upper = word.toUpperCase();
+      if (["AI","USA","POD","DTG","DTF","SVG","PNG","JPG","PDF","XL","XXL","2XL","3XL"].includes(upper)) {
+        return upper;
+      }
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     })
     .join(" ");
@@ -145,11 +111,10 @@ function normalizeRef(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return "";
   if (!/^https?:\/\//i.test(trimmed)) return trimmed;
-
   try {
     const url = new URL(trimmed);
     const segments = url.pathname.split("/").filter(Boolean);
-    const idx = segments.findIndex((s) => s.toLowerCase() === "products");
+    const idx = segments.findIndex((segment) => segment.toLowerCase() === "products");
     return idx >= 0 && segments[idx + 1]
       ? segments[idx + 1]
       : segments[segments.length - 1] || trimmed;
@@ -167,13 +132,6 @@ function maskToken(value: string) {
 
 function safeTitle(value: string, fallback: string) {
   return value.replace(/\s+/g, " ").trim() || fallback;
-}
-
-function titleKeywords(title: string) {
-  return cleanTitle(title)
-    .split(" ")
-    .map((w) => w.trim())
-    .filter((w) => w && !STOP_WORDS.has(w.toLowerCase()));
 }
 
 function decodeHtmlEntities(value: string) {
@@ -216,7 +174,6 @@ function formatTemplateDescription(templateDescription: string) {
 
   for (const rawLine of rawLines) {
     const trimmed = rawLine.trim();
-
     if (!trimmed) {
       if (out.length && out[out.length - 1] !== "") out.push("");
       continue;
@@ -227,10 +184,7 @@ function formatTemplateDescription(templateDescription: string) {
       : trimmed.replace(/\s+/g, " ");
     const header = cleaned.replace(/:$/, "");
 
-    if (headers.has(header) && out.length && out[out.length - 1] !== "") {
-      out.push("");
-    }
-
+    if (headers.has(header) && out.length && out[out.length - 1] !== "") out.push("");
     out.push(cleaned);
   }
 
@@ -248,7 +202,6 @@ function extractReusableTemplateSections(formattedDescription: string) {
     "Sizing",
     "Dimensions",
   ];
-
   const positions = headers
     .map((header) => formattedDescription.indexOf(header))
     .filter((index) => index >= 0)
@@ -273,13 +226,9 @@ function detectProductType(title: string) {
 
 function detectThemePhrase(title: string) {
   const lower = title.toLowerCase();
-  if (/(christian|jesus|faith|saved|forgiven|church|bible|gospel|cross)\b/.test(lower)) {
-    return "faith-forward style";
-  }
+  if (/(christian|jesus|faith|saved|forgiven|church|bible|gospel|cross)\b/.test(lower)) return "faith-forward style";
   if (/(retro|vintage|distressed)\b/.test(lower)) return "a retro-inspired look";
-  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) {
-    return "a playful, conversation-starting look";
-  }
+  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) return "a playful, conversation-starting look";
   if (/(dog|cat|pet|puppy)\b/.test(lower)) return "pet-lover style";
   if (/(floral|rose|flower|botanical)\b/.test(lower)) return "a bold graphic look";
   return "a standout graphic look";
@@ -290,33 +239,23 @@ function detectAudiencePhrase(title: string, productType: string) {
   if (/(christian|jesus|faith|saved|forgiven|church|bible|gospel|cross)\b/.test(lower)) {
     return productType === "product"
       ? "Christian merchandise with bold devotional artwork"
-      : "Christian " + productType + " designs with bold devotional artwork";
+      : `Christian ${productType} designs with bold devotional artwork`;
   }
-  if (/(retro|vintage|distressed)\b/.test(lower)) {
-    return "retro graphic designs with easy everyday appeal";
-  }
-  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) {
-    return "funny graphic designs with strong gift appeal";
-  }
-  if (/(dog|cat|pet|puppy)\b/.test(lower)) {
-    return "pet-lover graphic designs that still feel giftable";
-  }
+  if (/(retro|vintage|distressed)\b/.test(lower)) return "retro graphic designs with easy everyday appeal";
+  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) return "funny graphic designs with strong gift appeal";
+  if (/(dog|cat|pet|puppy)\b/.test(lower)) return "pet-lover graphic designs that still feel giftable";
   return productType === "product"
     ? "niche product designs that stand out"
-    : productType + " designs that stand out";
+    : `${productType} designs that stand out`;
 }
 
 function detectUseCasePhrase(productType: string) {
   if (["t-shirt", "hoodie", "sweatshirt", "tank top"].includes(productType)) {
     return "daily wear, gifting, and casual styling";
   }
-  if (productType === "sticker") {
-    return "laptops, water bottles, notebooks, and gifting";
-  }
+  if (productType === "sticker") return "laptops, water bottles, notebooks, and gifting";
   if (productType === "mug") return "daily routines, desk setups, and gifting";
-  if (["poster", "canvas print"].includes(productType)) {
-    return "home décor, office spaces, and gifting";
-  }
+  if (["poster", "canvas print"].includes(productType)) return "home décor, office spaces, and gifting";
   return "everyday use, gifting, and niche-specific collections";
 }
 
@@ -326,25 +265,18 @@ function buildSeoLead(title: string) {
   const theme = detectThemePhrase(clean);
   const audience = detectAudiencePhrase(clean, productType);
   const useCase = detectUseCasePhrase(productType);
-
   const sentenceOne =
     productType === "product"
-      ? clean + " delivers " + theme + " with a clear, niche-focused presentation."
-      : clean + " delivers " + theme + " in a " + productType + ".";
+      ? `${clean} delivers ${theme} with a clear, niche-focused presentation.`
+      : `${clean} delivers ${theme} in a ${productType}.`;
 
-  return sentenceOne + " Built for shoppers looking for " + audience + ", it works well for " + useCase + ".";
+  return `${sentenceOne} Built for shoppers looking for ${audience}, it works well for ${useCase}.`;
 }
 
-function buildDescription(
-  title: string,
-  templateDescription: string,
-  mode: "template" | "title"
-) {
+function buildDescription(title: string, templateDescription: string) {
   const base =
     formatTemplateDescription(templateDescription) ||
     "Template description will load here after live API wiring.";
-
-  if (mode === "template") return base;
 
   const intro = buildSeoLead(title);
   const reusableSections = extractReusableTemplateSections(base);
@@ -360,8 +292,8 @@ function buildTags(title: string, description: string, count: number) {
   const words = `${title} ${description}`
     .replace(/[^A-Za-z0-9 ]+/g, " ")
     .split(/\s+/)
-    .map((w) => w.trim())
-    .filter((w) => w && !STOP_WORDS.has(w.toLowerCase()));
+    .map((word) => word.trim())
+    .filter((word) => word && !STOP_WORDS.has(word.toLowerCase()));
 
   const seen = new Set<string>();
   const tags: string[] = [];
@@ -405,30 +337,6 @@ function formatApiError(message: string) {
   }
   return raw.length > 220 ? `${raw.slice(0, 220)}...` : raw;
 }
-
-const cleanerTests = [
-  ["sunset-mountain-vibes.png", "Sunset Mountain Vibes"],
-  ["retro_dog_mom_2026.png", "Retro Dog Mom 2026"],
-  ["usa.flag.tee.jpg", "USA Flag Tee"],
-] as const;
-
-const contentTests = [
-  [
-    "Retro Dog Mom",
-    "Base description.",
-    "title",
-    "Retro Dog Mom delivers a retro-inspired look with a clear, niche-focused presentation. Built for shoppers looking for retro graphic designs with easy everyday appeal, it works well for everyday use, gifting, and niche-specific collections.\n\nBase description.",
-  ],
-  ["Retro Dog Mom", "Base description.", "template", "Base description."],
-  ["Retro Dog Mom Shirt", "Base description.", "tags", "Retro, Dog, Mom, Base, Description"],
-] as const;
-
-const formatTests = [
-  [
-    "Line one<br/><br/>Product features<br/>- Soft cotton<br/><br/>Care instructions<br/>- Wash cold",
-    "Line one\n\nProduct features\n- Soft cotton\n\nCare instructions\n- Wash cold",
-  ],
-] as const;
 
 function Box({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -541,15 +449,20 @@ export default function MerchQuantumApp() {
   const [templateDescription, setTemplateDescription] = useState("");
   const [template, setTemplate] = useState<Template | null>(null);
   const [saved, setSaved] = useState<Template[]>([]);
-  const [publish, setPublish] = useState(false);
   const [images, setImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [message, setMessage] = useState("");
+  const [runStatus, setRunStatus] = useState("");
+  const [isRunningBatch, setIsRunningBatch] = useState(false);
+  const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
 
-  const FIXED_DESCRIPTION_MODE: "title" = "title";
   const FIXED_TAG_COUNT = 13;
 
-  const availableShops = connected ? (apiShops.length ? apiShops : FALLBACK_SHOPS) : [];
+  const availableShops = connected
+    ? apiShops.length
+      ? apiShops
+      : FALLBACK_SHOPS
+    : [];
   const productSource = apiProducts.length ? apiProducts : FALLBACK_PRODUCTS;
 
   const visibleProducts = useMemo(() => {
@@ -569,26 +482,12 @@ export default function MerchQuantumApp() {
   );
 
   const previewDescription = selectedImage
-    ? buildDescription(selectedImage.final, templateDescription, FIXED_DESCRIPTION_MODE)
+    ? buildDescription(selectedImage.final, templateDescription)
     : templateDescription;
 
   const previewTags = selectedImage
     ? buildTags(selectedImage.final, previewDescription, FIXED_TAG_COUNT)
     : [];
-
-  const cleanerPass = cleanerTests.every(
-    ([input, expected]) => cleanTitle(input) === expected
-  );
-  const contentPass = contentTests.every(([a, b, c, expected]) => {
-    const actual =
-      c === "tags"
-        ? buildTags(a, b, 5).join(", ")
-        : buildDescription(a, b, c as "template" | "title");
-    return actual === expected;
-  });
-  const formatPass = formatTests.every(
-    ([input, expected]) => formatTemplateDescription(input) === expected
-  );
 
   async function addFiles(list: FileList | null) {
     if (!list) return;
@@ -731,6 +630,8 @@ export default function MerchQuantumApp() {
     setShopId("");
     setProductId("");
     setTemplate(null);
+    setBatchResults([]);
+    setRunStatus("");
   }
 
   async function loadProductTemplate() {
@@ -833,6 +734,52 @@ export default function MerchQuantumApp() {
     });
   }
 
+  async function runDraftBatch() {
+    if (!template || !shopId || images.length === 0) return;
+
+    setIsRunningBatch(true);
+    setRunStatus("");
+    setBatchResults([]);
+
+    try {
+      const items = images.map((img) => {
+        const description = buildDescription(img.final, templateDescription);
+        const tags = buildTags(img.final, description, FIXED_TAG_COUNT);
+        return {
+          fileName: img.name,
+          title: safeTitle(img.final, img.cleaned),
+          description,
+          tags,
+          imageDataUrl: img.preview,
+        };
+      });
+
+      const response = await fetch("/api/printify/batch-create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          shopId,
+          templateProductId: template.reference,
+          items,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || `Batch request failed with status ${response.status}.`);
+      }
+
+      setBatchResults(Array.isArray(data?.results) ? data.results : []);
+      setRunStatus(data?.message || "Batch completed.");
+    } catch (error) {
+      setRunStatus(error instanceof Error ? error.message : "Batch failed.");
+    } finally {
+      setIsRunningBatch(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 p-6 text-slate-900 transition-colors dark:bg-black dark:text-slate-100 md:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -845,8 +792,7 @@ export default function MerchQuantumApp() {
                 <span className="text-slate-900 dark:text-white">Quantum</span>
               </h1>
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                Bulk product creation,{" "}
-                <span className="font-medium text-violet-600">simplified</span>
+                {APP_TAGLINE}
               </p>
             </div>
           </div>
@@ -870,7 +816,6 @@ export default function MerchQuantumApp() {
                 <Field label="Connection Method">
                   <Select disabled value="pat">
                     <option value="pat">Personal Access Token</option>
-                    <option value="oauth">OAuth Connect Account</option>
                   </Select>
                 </Field>
 
@@ -904,13 +849,7 @@ export default function MerchQuantumApp() {
               </div>
 
               {apiStatus ? (
-                <p
-                  className={`mt-3 text-sm ${
-                    connected
-                      ? "text-green-700 dark:text-green-400"
-                      : "text-amber-700 dark:text-amber-400"
-                  }`}
-                >
+                <p className={`mt-3 text-sm ${connected ? "text-green-700 dark:text-green-400" : "text-amber-700 dark:text-amber-400"}`}>
                   {apiStatus}
                 </p>
               ) : null}
@@ -941,9 +880,7 @@ export default function MerchQuantumApp() {
                 <Field label="Template Source">
                   <Select
                     value={source}
-                    onChange={(e) =>
-                      setSource(e.target.value as "product" | "manual")
-                    }
+                    onChange={(e) => setSource(e.target.value as "product" | "manual")}
                   >
                     <option value="product">Choose From My Products</option>
                     <option value="manual">Paste Product Reference</option>
@@ -983,28 +920,19 @@ export default function MerchQuantumApp() {
                       <tbody>
                         {!connected || !shopId ? (
                           <tr>
-                            <td
-                              colSpan={2}
-                              className="px-3 py-8 text-center text-slate-500 dark:text-slate-400"
-                            >
+                            <td colSpan={2} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
                               Connect to Printify and select a shop first.
                             </td>
                           </tr>
                         ) : visibleProducts.length === 0 ? (
                           <tr>
-                            <td
-                              colSpan={2}
-                              className="px-3 py-8 text-center text-slate-500 dark:text-slate-400"
-                            >
+                            <td colSpan={2} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
                               No examples found.
                             </td>
                           </tr>
                         ) : (
                           visibleProducts.map((product) => (
-                            <tr
-                              key={product.id}
-                              className="border-t border-slate-200 dark:border-slate-800"
-                            >
+                            <tr key={product.id} className="border-t border-slate-200 dark:border-slate-800">
                               <td className="px-3 py-2">
                                 <input
                                   type="radio"
@@ -1021,10 +949,7 @@ export default function MerchQuantumApp() {
                     </table>
                   </div>
 
-                  <Button
-                    onClick={loadProductTemplate}
-                    disabled={!productId || !shopId}
-                  >
+                  <Button onClick={loadProductTemplate} disabled={!productId || !shopId}>
                     Load Selected Template Example
                   </Button>
                 </div>
@@ -1040,10 +965,7 @@ export default function MerchQuantumApp() {
                       placeholder="Paste a Printify product ID or URL"
                     />
                   </Field>
-                  <Button
-                    onClick={loadManualTemplate}
-                    disabled={!manualRef.trim() || !shopId}
-                  >
+                  <Button onClick={loadManualTemplate} disabled={!manualRef.trim() || !shopId}>
                     Load Manual Template
                   </Button>
                 </div>
@@ -1062,13 +984,11 @@ export default function MerchQuantumApp() {
 
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-800 dark:bg-slate-900">
                 <div>
-                  <b>Loaded Template:</b>{" "}
-                  {template ? template.nickname : "None loaded"}
+                  <b>Loaded Template:</b> {template ? template.nickname : "None loaded"}
                 </div>
                 {template ? (
                   <div className="mt-1 break-all text-slate-600 dark:text-slate-400">
-                    {template.reference} • {template.source} • Shop{" "}
-                    {template.shopId}
+                    {template.reference} • {template.source} • Shop {template.shopId}
                   </div>
                 ) : null}
               </div>
@@ -1091,25 +1011,6 @@ export default function MerchQuantumApp() {
                     13 from Title + Description
                   </div>
                 </Field>
-              </div>
-
-              <div className="mt-4">
-                <div className="flex items-end justify-between rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                  <div>
-                    <b>Publish after creation</b>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                      Keep off during testing.
-                    </div>
-                  </div>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={publish}
-                      onChange={(e) => setPublish(e.target.checked)}
-                    />
-                    {publish ? "Enabled" : "Disabled"}
-                  </label>
-                </div>
               </div>
             </Box>
 
@@ -1139,8 +1040,7 @@ export default function MerchQuantumApp() {
                 </div>
                 <p className="mt-4 font-medium">Drop images here or click to upload</p>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  File titles drive the listing title. Current prototype cap:{" "}
-                  {MAX_BATCH_FILES} images per batch.
+                  File titles drive the listing title. Current prototype cap: {MAX_BATCH_FILES} images per batch.
                 </p>
               </div>
 
@@ -1157,15 +1057,11 @@ export default function MerchQuantumApp() {
                 >
                   Clear All
                 </Button>
-                <Badge>
-                  {images.length}/{MAX_BATCH_FILES}
-                </Badge>
+                <Badge>{images.length}/{MAX_BATCH_FILES}</Badge>
               </div>
 
               {message ? (
-                <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">
-                  {message}
-                </p>
+                <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{message}</p>
               ) : null}
             </Box>
 
@@ -1184,10 +1080,7 @@ export default function MerchQuantumApp() {
                   <tbody>
                     {images.length === 0 ? (
                       <tr>
-                        <td
-                          colSpan={5}
-                          className="px-3 py-10 text-center text-slate-500 dark:text-slate-400"
-                        >
+                        <td colSpan={5} className="px-3 py-10 text-center text-slate-500 dark:text-slate-400">
                           No images loaded yet.
                         </td>
                       </tr>
@@ -1195,11 +1088,7 @@ export default function MerchQuantumApp() {
                       images.map((img) => (
                         <tr
                           key={img.id}
-                          className={`border-t border-slate-200 dark:border-slate-800 ${
-                            selectedImage?.id === img.id
-                              ? "bg-slate-50 dark:bg-slate-900"
-                              : ""
-                          }`}
+                          className={`border-t border-slate-200 dark:border-slate-800 ${selectedImage?.id === img.id ? "bg-slate-50 dark:bg-slate-900" : ""}`}
                           onClick={() => setSelectedId(img.id)}
                         >
                           <td className="px-3 py-2">
@@ -1292,10 +1181,7 @@ export default function MerchQuantumApp() {
                     {selectedImage.preview ? (
                       <img
                         src={selectedImage.preview}
-                        alt={safeTitle(
-                          selectedImage.final,
-                          selectedImage.cleaned
-                        )}
+                        alt={safeTitle(selectedImage.final, selectedImage.cleaned)}
                         className="max-h-full max-w-full object-contain"
                       />
                     ) : null}
@@ -1324,22 +1210,16 @@ export default function MerchQuantumApp() {
                     <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
                       Tags
                     </label>
-                    {previewTags.length === 0 ? (
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                        No tags enabled.
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {previewTags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 dark:bg-slate-900 dark:text-slate-300"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    <div className="flex flex-wrap gap-2">
+                      {previewTags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1368,13 +1248,6 @@ export default function MerchQuantumApp() {
 
                 <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
                   <div className="text-xs uppercase text-slate-500 dark:text-slate-400">
-                    Title Source
-                  </div>
-                  <div className="mt-1 font-medium">Filename Required</div>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-                  <div className="text-xs uppercase text-slate-500 dark:text-slate-400">
                     Description
                   </div>
                   <div className="mt-1 font-medium">Title Assisted</div>
@@ -1388,29 +1261,44 @@ export default function MerchQuantumApp() {
                     From Title + Description (13)
                   </div>
                 </div>
-
-                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-                  <div className="text-xs uppercase text-slate-500 dark:text-slate-400">
-                    Images
-                  </div>
-                  <div className="mt-1 font-medium">{images.length}</div>
-                </div>
               </div>
 
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                {connected
-                  ? "MerchQuantum is ready for backend wiring. Live routes will populate shops, products, and template descriptions when available."
-                  : "Connect to Printify first."}
+                The main button now creates products and attempts to publish them immediately.
               </div>
 
               <div className="mt-4">
                 <Button
                   className="w-full"
-                  disabled={!connected || !template || images.length === 0}
+                  disabled={!connected || !template || images.length === 0 || isRunningBatch}
+                  onClick={() => {
+                    void runDraftBatch();
+                  }}
                 >
-                  Run Draft Batch
+                  {isRunningBatch ? "Creating & Publishing..." : "Create & Publish Batch"}
                 </Button>
               </div>
+
+              {runStatus ? (
+                <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{runStatus}</p>
+              ) : null}
+
+              {batchResults.length > 0 ? (
+                <div className="mt-4 space-y-2 rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
+                  {batchResults.map((result) => (
+                    <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                      <div className="font-medium">{result.title}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">{result.fileName}</div>
+                      <div className="mt-1 text-sm">{result.message}</div>
+                      {result.productId ? (
+                        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                          Product ID: {result.productId}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </Box>
 
             <Box title="Saved Templates">
@@ -1457,41 +1345,6 @@ export default function MerchQuantumApp() {
                 >
                   Save Loaded Template
                 </Button>
-              </div>
-            </Box>
-
-            <Box title="Validation Summary">
-              <div className="space-y-2 text-sm">
-                <div
-                  className={
-                    cleanerPass
-                      ? "text-green-700 dark:text-green-400"
-                      : "text-red-700 dark:text-red-400"
-                  }
-                >
-                  Filename cleaner checks: {cleanerPass ? "PASS" : "FAIL"}
-                </div>
-                <div
-                  className={
-                    contentPass
-                      ? "text-green-700 dark:text-green-400"
-                      : "text-red-700 dark:text-red-400"
-                  }
-                >
-                  Description and tag checks: {contentPass ? "PASS" : "FAIL"}
-                </div>
-                <div
-                  className={
-                    formatPass
-                      ? "text-green-700 dark:text-green-400"
-                      : "text-red-700 dark:text-red-400"
-                  }
-                >
-                  Description formatting checks: {formatPass ? "PASS" : "FAIL"}
-                </div>
-                <div className="text-slate-500 dark:text-slate-400">
-                  Detailed debug lists are hidden to keep the UI smaller.
-                </div>
               </div>
             </Box>
           </div>
