@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useMemo, useRef, useState } from "react";
 
 const APP_BRAND = "MerchQuantum";
@@ -37,7 +35,7 @@ const FALLBACK_PRODUCTS: Product[] = [
   { id: "67890FGHIJ", title: "Example Template Product 67890FGHIJ", type: "Accessory", shopId: "451294" },
 ];
 const ACRONYMS = new Set(["AI", "USA", "POD", "DTG", "DTF", "SVG", "PNG", "JPG", "PDF", "XL", "XXL", "2XL", "3XL"]);
-const STOP_WORDS = new Set(["the", "a", "an", "and", "or", "for", "with", "of", "to", "in", "on", "graphic", "unisex", "shirt", "t", "tee", "this", "it", "product", "features", "care", "instructions", "size", "chart", "details"]);
+                                                                                                                          const STOP_WORDS = new Set(["the", "a", "an", "and", "or", "for", "with", "of", "to", "in", "on", "graphic", "unisex", "shirt", "t", "tee", "this", "it", "product", "features", "care", "instructions", "size", "chart", "details"]);
 
 function makeId() {
   return typeof crypto !== "undefined" && crypto.randomUUID
@@ -136,9 +134,7 @@ function formatTemplateDescription(templateDescription: string) {
       continue;
     }
 
-    const cleaned = trimmed.startsWith("-")
-      ? "- " + trimmed.replace(/^[-–—]\s*/, "")
-      : trimmed.replace(/\s+/g, " ");
+    const cleaned = trimmed.startsWith("-") ? "- " + trimmed.replace(/^[-–—]\s*/, "") : trimmed.replace(/\s+/g, " ");
     const header = cleaned.replace(/:$/, "");
 
     if (headers.has(header) && out.length && out[out.length - 1] !== "") out.push("");
@@ -147,6 +143,26 @@ function formatTemplateDescription(templateDescription: string) {
 
   while (out.length && out[out.length - 1] === "") out.pop();
   return out.join("\n");
+}
+
+function extractReusableTemplateSections(formattedDescription: string) {
+  const headers = [
+    "Product features",
+    "Care instructions",
+    "Size chart",
+    "Product details",
+    "Materials",
+    "Sizing",
+    "Dimensions",
+  ];
+
+  const positions = headers
+    .map((header) => formattedDescription.indexOf(header))
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b);
+
+  if (!positions.length) return "";
+  return formattedDescription.slice(positions[0]).trim();
 }
 
 function detectProductType(title: string) {
@@ -211,7 +227,9 @@ function buildDescription(title: string, templateDescription: string, mode: "tem
   if (mode === "template") return base;
 
   const intro = buildSeoLead(title);
-  return (intro + "\n\n" + base).trim();
+  return (intro + "
+
+" + base).trim();
 }
 
 function buildTags(title: string, description: string, count: number) {
@@ -276,12 +294,7 @@ const cleanerTests = [
 ] as const;
 
 const contentTests = [
-  [
-    "Retro Dog Mom",
-    "Base description.",
-    "title",
-    "Retro Dog Mom delivers a retro-inspired look with a clear, niche-focused presentation. Built for shoppers looking for retro graphic designs with easy everyday appeal, it works well for everyday use, gifting, and niche-specific collections.\n\nBase description.",
-  ],
+  ["Retro Dog Mom", "Base description.", "title", "Retro Dog Mom. Keywords: Retro, Dog, Mom. Base description."],
   ["Retro Dog Mom", "Base description.", "template", "Base description."],
   ["Retro Dog Mom Shirt", "Base description.", "tags", "Retro, Dog, Mom, Base, Description"],
 ] as const;
@@ -358,9 +371,8 @@ export default function MerchQuantumApp() {
   const [templateDescription, setTemplateDescription] = useState("");
   const [template, setTemplate] = useState<Template | null>(null);
   const [saved, setSaved] = useState<Template[]>([]);
-  const [descMode, setDescMode] = useState<"template" | "title">("template");
-  const [tagsMode, setTagsMode] = useState<"none" | "title" | "custom">("none");
-  const [tagCount, setTagCount] = useState(0);
+  const FIXED_DESCRIPTION_MODE: "title" = "title";
+  const FIXED_TAG_COUNT = 13;
   const [publish, setPublish] = useState(false);
   const [images, setImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -375,8 +387,8 @@ export default function MerchQuantumApp() {
   }, [shopId, search, productSource]);
 
   const selectedImage = useMemo(() => images.find((img) => img.id === selectedId) || images[0] || null, [images, selectedId]);
-  const previewDescription = selectedImage ? buildDescription(selectedImage.final, templateDescription, descMode) : templateDescription;
-  const previewTags = selectedImage && tagsMode !== "none" ? buildTags(selectedImage.final, previewDescription, tagsMode === "title" ? 13 : tagCount) : [];
+  const previewDescription = selectedImage ? buildDescription(selectedImage.final, templateDescription, FIXED_DESCRIPTION_MODE) : templateDescription;
+  const previewTags = selectedImage ? buildTags(selectedImage.final, previewDescription, FIXED_TAG_COUNT) : [];
   const cleanerPass = cleanerTests.every(([input, expected]) => cleanTitle(input) === expected);
   const contentPass = contentTests.every(([a, b, c, expected]) => {
     const actual = c === "tags" ? buildTags(a, b, 5).join(", ") : buildDescription(a, b, c as "template" | "title");
@@ -706,45 +718,16 @@ export default function MerchQuantumApp() {
 
               <div className="mt-4 flex flex-wrap gap-4 md:grid md:grid-cols-3">
                 <Field label="Title Source"><div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm">Filename Required</div></Field>
-                <Field label="Description Mode">
-                  <Select value={descMode} onChange={(e) => setDescMode(e.target.value as "template" | "title")}>
-                    <option value="template">Template Only</option>
-                    <option value="title">Title Assisted</option>
-                  </Select>
-                </Field>
-                <Field label="Tags">
-                  <Select
-                    value={tagsMode}
-                    onChange={(e) => {
-                      const nextMode = e.target.value as "none" | "title" | "custom";
-                      setTagsMode(nextMode);
-                      if (nextMode === "none") setTagCount(0);
-                      if (nextMode === "title") setTagCount(13);
-                      if (nextMode === "custom") setTagCount(0);
-                    }}
-                  >
-                    <option value="none">None</option>
-                    <option value="title">From Title + Description</option>
-                    <option value="custom">Custom Count</option>
-                  </Select>
-                </Field>
+                <Field label="Description Mode"><div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm">Title Assisted</div></Field>
+                <Field label="Tags"><div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm">13 from Title + Description</div></Field>
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-4 md:grid md:grid-cols-2">
-                <Field label="Enter tag count (1-20)">
-                  <div className="space-y-2">
-                    <Input
-                      type="number"
-                      min={0}
-                      max={20}
-                      step={1}
-                      value={tagsMode === "none" ? "" : tagCount}
-                      onChange={(e) => setTagCount(e.target.value === "" ? 0 : clampTagCount(Number(e.target.value)))}
-                      disabled={tagsMode !== "custom"}
-                      placeholder={tagsMode === "none" ? "0" : tagsMode === "custom" ? "0" : "1-20"}
-                    />
-                    {tagsMode === "custom" ? <p className="text-xs text-slate-500">Enter the number of tags to create.</p> : tagsMode === "title" ? <p className="text-xs text-slate-500">Uses 13 tags from the title and description.</p> : <p className="text-xs text-slate-500">No tags will be added.</p>}
-                  </div>
+              <div className="mt-4 flex flex-wrap gap-4 md:grid md:grid-cols-1">
+                <div className="flex items-end justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div><b>Publish after creation</b><div className="text-xs text-slate-500">Keep off during testing.</div></div>
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} />{publish ? "Enabled" : "Disabled"}</label>
+                </div>
+              </div>
                 </Field>
                 <div className="flex items-end justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <div><b>Publish after creation</b><div className="text-xs text-slate-500">Keep off during testing.</div></div>
@@ -803,22 +786,6 @@ export default function MerchQuantumApp() {
             </Box>
 
             <Box title="Run Summary">
-              <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Shop</div><div className="mt-1 font-medium">{availableShops.find((s) => s.id === shopId)?.title || "None selected"}</div></div><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Loaded Template</div><div className="mt-1 font-medium">{template?.nickname || "None loaded"}</div></div><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Title Source</div><div className="mt-1 font-medium">Filename Required</div></div><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Description</div><div className="mt-1 font-medium">{descMode === "template" ? "Template Only" : "Title Assisted"}</div></div><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Tags</div><div className="mt-1 font-medium">{tagsMode === "none" ? "None" : tagsMode === "title" ? "From Title + Description (13)" : `Custom (${tagCount})`}</div></div><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Images</div><div className="mt-1 font-medium">{images.length}</div></div></div>
+              <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Shop</div><div className="mt-1 font-medium">{availableShops.find((s) => s.id === shopId)?.title || "None selected"}</div></div><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Loaded Template</div><div className="mt-1 font-medium">{template?.nickname || "None loaded"}</div></div><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Title Source</div><div className="mt-1 font-medium">Filename Required</div></div><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Description</div><div className="mt-1 font-medium">Title Assisted</div></div><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Tags</div><div className="mt-1 font-medium">From Title + Description (13)</div></div><div className="rounded-xl border border-slate-200 p-4"><div className="text-xs uppercase text-slate-500">Images</div><div className="mt-1 font-medium">{images.length}</div></div></div>
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">{connected ? "MerchQuantum is ready for backend wiring. Live routes will populate shops, products, and template descriptions when available." : "Connect to Printify first."}</div>
-              <div className="mt-4"><Button className="w-full" disabled={!connected || !template || images.length === 0}>Run Draft Batch</Button></div>
-            </Box>
-
-            <Box title="Saved Templates">
-              {saved.length === 0 ? <p className="text-sm text-slate-500">No saved templates yet.</p> : <div className="space-y-3">{saved.map((t) => <div key={`${t.shopId}:${t.reference}`} className="flex items-center justify-between rounded-xl border border-slate-200 p-4"><div className="min-w-0"><div className="font-medium">{t.nickname}</div><div className="truncate text-xs text-slate-500">{t.reference}</div></div><Button variant="secondary" onClick={() => { setTemplate(t); setShopId(t.shopId); setNickname(t.nickname); setManualRef(t.reference); setSource(t.source); setTemplateDescription(t.description); }}>Use</Button></div>)}</div>}
-              <div className="mt-4"><Button variant="secondary" onClick={saveTemplate} disabled={!template}>Save Loaded Template</Button></div>
-            </Box>
-
-            <Box title="Validation Summary">
-              <div className="space-y-2 text-sm"><div className={cleanerPass ? "text-green-700" : "text-red-700"}>Filename cleaner checks: {cleanerPass ? "PASS" : "FAIL"}</div><div className={contentPass ? "text-green-700" : "text-red-700"}>Description and tag checks: {contentPass ? "PASS" : "FAIL"}</div><div className="text-slate-500">Detailed debug lists are hidden to keep the UI smaller.</div></div>
-            </Box>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+  
