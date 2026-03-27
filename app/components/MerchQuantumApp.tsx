@@ -1264,7 +1264,7 @@ export default function MerchQuantumApp() {
               </div>
 
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                The main button now creates products and attempts to publish them immediately.
+                The main button creates products in Printify and also sends a publish request when the connected sales channel supports it.
               </div>
 
               <div className="mt-4">
@@ -1275,7 +1275,7 @@ export default function MerchQuantumApp() {
                     void runDraftBatch();
                   }}
                 >
-                  {isRunningBatch ? "Creating & Publishing..." : "Create & Publish Batch"}
+                  {isRunningBatch ? "Creating Products..." : "Create Products"}
                 </Button>
               </div>
 
