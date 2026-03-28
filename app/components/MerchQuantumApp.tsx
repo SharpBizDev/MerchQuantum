@@ -292,6 +292,29 @@ function decodeHtmlEntities(value: string) {
     .replace(/&#x2F;/gi, "/");
 }
 
+function stripHtml(value: string) {
+  return decodeHtmlEntities(value)
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<li[^>]*>/gi, "- ")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\u00a0/g, " ")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function formatTemplateDescription(templateDescription: string) {
   const normalized = decodeHtmlEntities(templateDescription)
     .replace(/\r\n?/g, "\n")
@@ -338,27 +361,8 @@ function formatTemplateDescription(templateDescription: string) {
   return out.join("\n");
 }
 
-function extractReusableTemplateSections(formattedDescription: string) {
-  const headers = [
-    "Product features",
-    "Care instructions",
-    "Size chart",
-    "Product details",
-    "Materials",
-    "Sizing",
-    "Dimensions",
-  ];
-  const positions = headers
-    .map((header) => formattedDescription.indexOf(header))
-    .filter((index) => index >= 0)
-    .sort((a, b) => a - b);
-
-  if (!positions.length) return "";
-  return formattedDescription.slice(positions[0]).trim();
-}
-
 function detectProductFamilyFromText(value: string) {
-  const text = value.trim();
+  const text = stripHtml(value).trim();
   if (!text) return null;
 
   for (const rule of FAMILY_RULES) {
@@ -371,24 +375,99 @@ function detectProductFamilyFromText(value: string) {
 }
 
 function resolveProductFamily(title: string, templateDescription: string): ProductFamily {
-  const titleFamily = detectProductFamilyFromText(title);
   const templateFamily = detectProductFamilyFromText(templateDescription);
+  const titleFamily = detectProductFamilyFromText(title);
 
-  if (titleFamily) return titleFamily;
   if (templateFamily) return templateFamily;
+  if (titleFamily) return titleFamily;
   return "product";
 }
 
 function detectThemePhrase(title: string) {
   const lower = title.toLowerCase();
-  if (/(christian|jesus|faith|saved|forgiven|church|bible|gospel|cross)\b/.test(lower)) return "faith-driven artwork";
-  if (/(retro|vintage|distressed)\b/.test(lower)) return "retro-inspired styling";
-  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) return "conversation-starting humor";
-  if (/(dog|cat|pet|puppy)\b/.test(lower)) return "pet-lover appeal";
-  if (/(floral|rose|flower|botanical)\b/.test(lower)) return "bold graphic appeal";
-  if (/(usa|american|patriotic|flag)\b/.test(lower)) return "patriotic graphic energy";
-  if (/(halloween|fall|thanksgiving|christmas|holiday)\b/.test(lower)) return "seasonal gift-ready appeal";
-  return "clean graphic appeal";
+  if (/(christian|jesus|faith|saved|forgiven|church|bible|gospel|cross)\b/.test(lower)) return "faith-forward";
+  if (/(retro|vintage|distressed)\b/.test(lower)) return "retro-inspired";
+  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) return "conversation-starting";
+  if (/(dog|cat|pet|puppy)\b/.test(lower)) return "pet-lover";
+  if (/(floral|rose|flower|botanical)\b/.test(lower)) return "bold graphic";
+  if (/(usa|american|patriotic|flag)\b/.test(lower)) return "patriotic";
+  if (/(halloween|fall|thanksgiving|christmas|holiday)\b/.test(lower)) return "seasonal gift-ready";
+  return "clean graphic";
+}
+
+type TemplateSection = {
+  heading: string;
+  paragraphs: string[];
+  bullets: string[];
+};
+
+function parseTemplateDescription(formattedDescription: string) {
+  const headers = new Set([
+    "Product features",
+    "Care instructions",
+    "Size chart",
+    "Product details",
+    "Materials",
+    "Sizing",
+    "Dimensions",
+  ]);
+
+  const introParagraphs: string[] = [];
+  const sections: TemplateSection[] = [];
+  let currentSection: TemplateSection | null = null;
+
+  const lines = formattedDescription
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const normalizedHeader = line.replace(/:$/, "");
+
+    if (headers.has(normalizedHeader)) {
+      currentSection = {
+        heading: normalizedHeader,
+        paragraphs: [],
+        bullets: [],
+      };
+      sections.push(currentSection);
+      continue;
+    }
+
+    if (line.startsWith("- ")) {
+      const bullet = line.replace(/^[-–—]\s*/, "").trim();
+      if (currentSection) {
+        currentSection.bullets.push(bullet);
+      } else {
+        introParagraphs.push(bullet);
+      }
+      continue;
+    }
+
+    if (currentSection) {
+      currentSection.paragraphs.push(line);
+    } else {
+      introParagraphs.push(line);
+    }
+  }
+
+  return { introParagraphs, sections };
+}
+
+function dedupeParagraphs(paragraphs: string[]) {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const paragraph of paragraphs) {
+    const cleaned = paragraph.trim();
+    if (!cleaned) continue;
+    const key = cleaned.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(cleaned);
+  }
+
+  return unique;
 }
 
 function getFamilyLabel(family: ProductFamily) {
@@ -426,61 +505,129 @@ function getFamilyLabel(family: ProductFamily) {
   }
 }
 
-function buildShortDescription(title: string, templateDescription: string) {
+function buildLeadParagraphs(title: string, templateDescription: string) {
   const family = resolveProductFamily(title, templateDescription);
   const theme = detectThemePhrase(title);
+  const productName = safeTitle(title, "This product");
 
   switch (family) {
     case "t-shirt":
-      return `A ${theme} graphic tee built for everyday wear, easy layering, and strong gift appeal. It is a clean casual listing fit for niche apparel collections and daily rotation.`;
+      return [
+        `${productName} is a ${theme} graphic tee built for everyday wear, easy layering, and clear niche appeal.`,
+        `It is designed to read cleanly in a listing, wear comfortably through daily use, and carry the kind of polished product copy that works well for personal wear, gifting, and apparel collections with a strong point of view.`,
+      ];
     case "hoodie":
-      return `A ${theme} hoodie built for comfort, cooler weather, and easy casual layering. It is a strong fit for giftable apparel listings and everyday off-duty style.`;
+      return [
+        `${productName} is a ${theme} hoodie built for comfort, cooler weather, and easy casual layering.`,
+        `It fits naturally into giftable apparel drops, everyday streetwear styling, and niche collections that need warmer weight, clean presentation, and a stronger listing presence.`,
+      ];
     case "sweatshirt":
-      return `A ${theme} sweatshirt designed for comfort, relaxed styling, and easy gifting. It works well for casual wardrobes, seasonal drops, and graphic apparel collections.`;
+      return [
+        `${productName} is a ${theme} sweatshirt designed for comfort, clean graphic presentation, and relaxed everyday wear.`,
+        `It works well for casual wardrobes, seasonal drops, and gift-ready apparel listings that benefit from a familiar fit and straightforward, polished copy.`,
+      ];
     case "tank top":
-      return `A ${theme} tank top with lightweight casual appeal and a clean athletic-to-everyday feel. It is a strong fit for warm-weather styling, gifting, and niche apparel shops.`;
+      return [
+        `${productName} is a ${theme} tank top built for lightweight comfort, warm-weather styling, and easy everyday wear.`,
+        `It is a strong fit for casual apparel collections, gym-to-weekend use, and giftable listings that need clear product language without sounding generic or flat.`,
+      ];
     case "hat":
-      return `A ${theme} hat that adds an easy finishing touch to casual outfits and giftable accessory lines. It is a strong choice for everyday wear, collections, and simple grab-and-go styling.`;
+      return [
+        `${productName} is a ${theme} headwear piece that adds an easy finishing touch to casual outfits and giftable accessory lines.`,
+        `It is built for everyday rotation, simple grab-and-go styling, and clean merchandising across niche collections where the product title needs to match the item clearly.`,
+      ];
     case "drinkware":
-      return `A ${theme} drinkware listing designed for daily use, desk setups, and easy gift occasions. It fits well in practical lifestyle collections with clean personal or niche branding.`;
+      return [
+        `${productName} is a ${theme} drinkware listing designed for daily use, desk setups, gifting, and practical personal style.`,
+        `It fits well in lifestyle assortments that need a product description with better structure, clearer benefits, and a more polished sales presentation than a short generic placeholder.`,
+      ];
     case "candle":
-      return `A ${theme} candle made for cozy spaces, thoughtful gifting, and atmosphere-driven home collections. It fits well in décor, seasonal, and niche lifestyle listings.`;
+      return [
+        `${productName} is a ${theme} candle built for atmosphere, thoughtful gifting, and décor-driven product lines.`,
+        `It is positioned for cozy spaces, seasonal collections, and lifestyle shops that benefit from stronger descriptive copy while still keeping the original product details intact.`,
+      ];
     case "bath-body":
-      return `A ${theme} bath and body listing built for self-care, simple gifting, and niche personal care collections. It works well when the product title clearly signals the exact item and use case.`;
+      return [
+        `${productName} is a ${theme} bath and body listing created for self-care, gifting, and clean personal-use merchandising.`,
+        `It works best when the title clearly signals the item type, allowing the listing copy to stay aligned with the product and present it as a polished, market-ready offering.`,
+      ];
     case "home-kitchen":
-      return `A ${theme} home and kitchen listing that balances everyday usefulness with gift-ready presentation. It fits well in décor, kitchen, and practical household collections.`;
+      return [
+        `${productName} is a ${theme} home and kitchen item that balances usefulness, presentation, and gift-ready appeal.`,
+        `It fits naturally into décor, kitchen, and household collections where buyers benefit from cleaner formatting, clearer product positioning, and easier-to-read details.`,
+      ];
     case "wall-art":
-      return `A ${theme} wall art listing built for home décor, office spaces, and thoughtful gifting. It works well in niche art collections where the title clearly signals the exact format.`;
+      return [
+        `${productName} is a ${theme} wall art listing built for home décor, office spaces, gifting, and standout niche presentation.`,
+        `It is written to support a cleaner visual flow, stronger product relevance, and a more complete description than a short one-line placeholder can deliver.`,
+      ];
     case "sticker":
-      return `A ${theme} sticker listing made for laptops, water bottles, notebooks, and easy low-ticket gifting. It is a strong fit for niche drops, bundles, and impulse-friendly graphic sales.`;
+      return [
+        `${productName} is a ${theme} sticker listing made for laptops, water bottles, notebooks, bundles, and easy low-ticket gifting.`,
+        `It works well in niche drops that need fast, readable product copy with better structure and stronger merchandising language.`,
+      ];
     case "bag":
-      return `A ${theme} bag listing built for daily carry, practical use, and giftable accessory collections. It works well in casual, travel, and niche lifestyle assortments.`;
+      return [
+        `${productName} is a ${theme} bag listing built for daily carry, practical use, and giftable accessory collections.`,
+        `It is suited to casual, travel, and lifestyle assortments that benefit from clearer formatting and a more complete description before the template details begin.`,
+      ];
     case "accessory":
-      return `A ${theme} accessory listing designed for practical use, gift appeal, and clean niche presentation. It fits well in broad lifestyle collections where the title clearly defines the item.`;
+      return [
+        `${productName} is a ${theme} accessory listing designed for practical use, gift appeal, and clean niche presentation.`,
+        `It is written to keep the product type clear, preserve template details, and give the final listing a more complete and professional feel.`,
+      ];
     case "footwear":
-      return `A ${theme} footwear listing built for casual wear, giftable style, and standout niche presentation. It works best when the product title clearly calls out the exact shoe type.`;
+      return [
+        `${productName} is a ${theme} footwear listing built for casual wear, giftable style, and standout niche presentation.`,
+        `It works best when the title clearly identifies the item, allowing the supporting copy to stay aligned with the product and preserve its detailed template information.`,
+      ];
     default:
-      return `A ${theme} product listing built for clear presentation, stronger search relevance, and better template alignment. Accurate product titles help this short description stay matched to the actual item type.`;
+      return [
+        `${productName} is a ${theme} product listing built for clearer presentation, stronger search relevance, and better alignment with the selected template.`,
+        `Accurate titles help the description stay matched to the product type while preserving the imported product details that matter to shoppers.`,
+      ];
   }
+}
+
+function paragraphsToHtml(paragraphs: string[]) {
+  return paragraphs
+    .filter(Boolean)
+    .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+    .join("");
+}
+
+function sectionsToHtml(sections: TemplateSection[]) {
+  return sections
+    .map((section) => {
+      const heading = `<h3>${escapeHtml(section.heading)}</h3>`;
+      const paragraphs = paragraphsToHtml(section.paragraphs);
+      const bullets = section.bullets.length
+        ? `<ul>${section.bullets
+            .map((item) => `<li>${escapeHtml(item)}</li>`)
+            .join("")}</ul>`
+        : "";
+
+      return `${heading}${paragraphs}${bullets}`;
+    })
+    .join("");
 }
 
 function buildDescription(title: string, templateDescription: string) {
   const base =
     formatTemplateDescription(templateDescription) ||
     "Template description will load here after live API wiring.";
+  const parsed = parseTemplateDescription(base);
+  const leadParagraphs = buildLeadParagraphs(title, templateDescription);
+  const introParagraphs = dedupeParagraphs([...leadParagraphs, ...parsed.introParagraphs]);
 
-  const intro = buildShortDescription(title, templateDescription);
-  const reusableSections = extractReusableTemplateSections(base);
-
-  return reusableSections
-    ? `${intro}\n\n${reusableSections}`.trim()
-    : `${intro}\n\n${base}`.trim();
+  return `${paragraphsToHtml(introParagraphs)}${sectionsToHtml(parsed.sections)}`.trim();
 }
 
 function buildTags(title: string, description: string, count: number) {
   if (count <= 0) return [];
 
-  const words = `${title} ${description}`
+  const searchableDescription = stripHtml(description);
+  const words = `${title} ${searchableDescription}`
     .replace(/[^A-Za-z0-9 ]+/g, " ")
     .split(/\s+/)
     .map((word) => word.trim())
@@ -498,7 +645,7 @@ function buildTags(title: string, description: string, count: number) {
     if (tags.length >= count) break;
   }
 
-  const family = getFamilyLabel(resolveProductFamily(title, description));
+  const family = getFamilyLabel(resolveProductFamily(title, searchableDescription));
   const familyTag = cleanTitle(family);
   if (familyTag && !seen.has(familyTag.toLowerCase()) && tags.length < count) {
     tags.push(familyTag);
@@ -819,7 +966,7 @@ export default function MerchQuantumApp() {
 
       const data = await parseResponsePayload(response);
       if (!response.ok) {
-        throw new Error(data?.error || `Connect failed with status ${response.status}.`);
+        throw new Error(data?.error || `${selectedProvider.label} connect failed with status ${response.status}.`);
       }
 
       const shopsFromApi: Shop[] = Array.isArray(data?.shops)
@@ -833,11 +980,11 @@ export default function MerchQuantumApp() {
       setConnected(true);
       const firstShopId = shopsFromApi[0]?.id || FALLBACK_SHOPS[0].id;
       setShopId(firstShopId);
-      setApiStatus("Connected to Printify.");
+      setApiStatus(`Connected to ${selectedProvider.label}.`);
       void loadProductsForShop(firstShopId);
     } catch (error) {
       const msg =
-        error instanceof Error ? error.message : "Unable to connect to Printify.";
+        error instanceof Error ? error.message : `Unable to connect to ${selectedProvider.label}.`;
       resetProviderState(false);
       setApiStatus(formatApiError(msg));
     } finally {
@@ -1053,7 +1200,7 @@ export default function MerchQuantumApp() {
           <div className="space-y-6">
             <Box title="Quantum Connection">
               <div className="grid gap-4 md:grid-cols-3">
-                <Field label="Provider">
+                <Field label="Choose Provider">
                   <Select
                     value={provider}
                     onChange={(e) => {
@@ -1073,9 +1220,9 @@ export default function MerchQuantumApp() {
                 </Field>
 
                 <Field label="Provider API Token">
-                  <Select disabled value="pat">
-                    <option value="pat">Personal Access Token</option>
-                  </Select>
+                  <div className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                    Personal Access Token
+                  </div>
                 </Field>
 
                 <Field label="Masked Preview">
@@ -1184,7 +1331,7 @@ export default function MerchQuantumApp() {
                         {!connected || !shopId ? (
                           <tr>
                             <td colSpan={2} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
-                              Connect to Printify and select a shop first.
+                              Connect and select a shop first.
                             </td>
                           </tr>
                         ) : visibleProducts.length === 0 ? (
@@ -1213,7 +1360,7 @@ export default function MerchQuantumApp() {
                   </div>
 
                   <Button onClick={loadProductTemplate} disabled={!productId || !shopId}>
-                    Load Selected Template Example
+                    Load Template Description
                   </Button>
                 </div>
               ) : (
@@ -1475,7 +1622,13 @@ export default function MerchQuantumApp() {
                   </Field>
 
                   <Field label="Description">
-                    <Textarea rows={16} value={previewDescription} readOnly />
+                    <div className="rounded-xl border border-slate-300 bg-white px-4 py-4 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                      <div
+                        className="space-y-3 leading-6 [&_h3]:mt-5 [&_h3]:text-sm [&_h3]:font-semibold [&_p]:mb-3 [&_ul]:mb-3 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5"
+                        dangerouslySetInnerHTML={{ __html: previewDescription }}
+                      />
+                    </div>
+                    <FieldNote>Formatted as Printify-ready HTML paragraphs and lists so the converted description stays easier to read after export.</FieldNote>
                   </Field>
 
                   <div>
