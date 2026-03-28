@@ -1689,7 +1689,7 @@ export default function MerchQuantumApp() {
               </div>
 
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                Products are saved as drafts from the selected template. Artwork is applied to the front print area only, and publishing is left for manual review inside Printify.
+                Products are uploaded in bulk as drafts to your selected provider. Artwork is applied to the front print area only with a top-safe placement, so you can review everything first and publish when ready.
               </div>
 
               <div className="mt-4">
