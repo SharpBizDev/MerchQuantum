@@ -46,9 +46,185 @@ type TemplateProduct = {
   print_details?: Record<string, unknown>;
 };
 
+function extractDataUrlParts(dataUrl: string) {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return null;
+
+  return {
+    mime: match[1].toLowerCase(),
+    contents: match[2],
+  };
+}
+
 function extractBase64(dataUrl: string) {
-  const match = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
-  return match ? match[1] : "";
+  const parts = extractDataUrlParts(dataUrl);
+  return parts ? parts.contents : "";
+}
+
+type ImageDimensions = {
+  width: number;
+  height: number;
+  mime: string;
+};
+
+function readPngDimensions(buffer: Buffer) {
+  if (buffer.length < 24) return null;
+  const pngSignature = "89504e470d0a1a0a";
+  if (buffer.subarray(0, 8).toString("hex") !== pngSignature) return null;
+
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20),
+  };
+}
+
+function readGifDimensions(buffer: Buffer) {
+  if (buffer.length < 10) return null;
+  const header = buffer.subarray(0, 6).toString("ascii");
+  if (header !== "GIF87a" && header !== "GIF89a") return null;
+
+  return {
+    width: buffer.readUInt16LE(6),
+    height: buffer.readUInt16LE(8),
+  };
+}
+
+function readJpegDimensions(buffer: Buffer) {
+  if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) return null;
+
+  let offset = 2;
+  while (offset < buffer.length - 1) {
+    if (buffer[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+
+    while (offset < buffer.length && buffer[offset] === 0xff) {
+      offset += 1;
+    }
+
+    if (offset >= buffer.length) break;
+    const marker = buffer[offset];
+    offset += 1;
+
+    if (marker === 0xd9 || marker === 0xda) break;
+    if (offset + 1 >= buffer.length) break;
+
+    const length = buffer.readUInt16BE(offset);
+    if (length < 2 || offset + length > buffer.length) break;
+
+    const isStartOfFrame = [
+      0xc0, 0xc1, 0xc2, 0xc3,
+      0xc5, 0xc6, 0xc7,
+      0xc9, 0xca, 0xcb,
+      0xcd, 0xce, 0xcf,
+    ].includes(marker);
+
+    if (isStartOfFrame) {
+      if (offset + 7 >= buffer.length) break;
+      return {
+        height: buffer.readUInt16BE(offset + 3),
+        width: buffer.readUInt16BE(offset + 5),
+      };
+    }
+
+    offset += length;
+  }
+
+  return null;
+}
+
+function readSvgDimensions(svgText: string) {
+  const widthMatch = svgText.match(/\bwidth=["']([0-9.]+)(px)?["']/i);
+  const heightMatch = svgText.match(/\bheight=["']([0-9.]+)(px)?["']/i);
+
+  if (widthMatch && heightMatch) {
+    return {
+      width: Number(widthMatch[1]),
+      height: Number(heightMatch[1]),
+    };
+  }
+
+  const viewBoxMatch = svgText.match(/\bviewBox=["']\s*([0-9.+-]+)[ ,]+([0-9.+-]+)[ ,]+([0-9.+-]+)[ ,]+([0-9.+-]+)\s*["']/i);
+  if (viewBoxMatch) {
+    return {
+      width: Number(viewBoxMatch[3]),
+      height: Number(viewBoxMatch[4]),
+    };
+  }
+
+  return null;
+}
+
+function getImageDimensionsFromDataUrl(dataUrl: string): ImageDimensions | null {
+  const parts = extractDataUrlParts(dataUrl);
+  if (!parts) return null;
+
+  try {
+    const buffer = Buffer.from(parts.contents, "base64");
+    let size: { width: number; height: number } | null = null;
+
+    if (parts.mime === "image/png") {
+      size = readPngDimensions(buffer);
+    } else if (parts.mime === "image/jpeg" || parts.mime === "image/jpg") {
+      size = readJpegDimensions(buffer);
+    } else if (parts.mime === "image/gif") {
+      size = readGifDimensions(buffer);
+    } else if (parts.mime === "image/svg+xml") {
+      size = readSvgDimensions(buffer.toString("utf8"));
+    }
+
+    if (!size || !Number.isFinite(size.width) || !Number.isFinite(size.height) || size.width <= 0 || size.height <= 0) {
+      return null;
+    }
+
+    return {
+      width: size.width,
+      height: size.height,
+      mime: parts.mime,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getTopSafePlacement(
+  imageDataUrl: string,
+  templateDefaults?: TemplateProduct["print_areas"][number]["placeholders"][number]["images"][number]
+) {
+  const dimensions = getImageDimensionsFromDataUrl(imageDataUrl);
+  const aspectRatio = dimensions ? dimensions.width / dimensions.height : 1;
+
+  let scaleCap = 0.72;
+  let y = 0.27;
+
+  if (aspectRatio >= 1.6) {
+    scaleCap = 0.84;
+    y = 0.3;
+  } else if (aspectRatio >= 1.2) {
+    scaleCap = 0.8;
+    y = 0.29;
+  } else if (aspectRatio >= 0.9) {
+    scaleCap = 0.72;
+    y = 0.27;
+  } else if (aspectRatio >= 0.7) {
+    scaleCap = 0.64;
+    y = 0.25;
+  } else {
+    scaleCap = 0.56;
+    y = 0.23;
+  }
+
+  const templateScale = typeof templateDefaults?.scale === "number" ? templateDefaults.scale : 1;
+  const safeScale = Math.min(templateScale || 1, scaleCap);
+
+  return {
+    x: 0.5,
+    y: Number(y.toFixed(4)),
+    scale: Number(safeScale.toFixed(4)),
+    angle: typeof templateDefaults?.angle === "number" ? templateDefaults.angle : 0,
+    ...(templateDefaults?.pattern ? { pattern: templateDefaults.pattern } : {}),
+  };
 }
 
 async function parseJsonOrText(response: Response) {
@@ -112,10 +288,12 @@ function chooseFrontPlacement(template: TemplateProduct) {
   return fallback;
 }
 
-function buildFrontOnlyPrintAreas(template: TemplateProduct, uploadId: string) {
+function buildFrontOnlyPrintAreas(template: TemplateProduct, uploadId: string, imageDataUrl: string) {
   const target = chooseFrontPlacement(template);
 
   if (!target) return [];
+
+  const placement = getTopSafePlacement(imageDataUrl, target.imageDefaults);
 
   return (template.print_areas || [])
     .map((area, areaIndex) => {
@@ -128,18 +306,16 @@ function buildFrontOnlyPrintAreas(template: TemplateProduct, uploadId: string) {
             return null;
           }
 
-          const img = target.imageDefaults;
-
           return {
             position: placeholder.position,
             images: [
               {
                 id: uploadId,
-                x: typeof img?.x === "number" ? img.x : 0.5,
-                y: typeof img?.y === "number" ? img.y : 0.5,
-                scale: typeof img?.scale === "number" ? img.scale : 1,
-                angle: typeof img?.angle === "number" ? img.angle : 0,
-                ...(img?.pattern ? { pattern: img.pattern } : {}),
+                x: placement.x,
+                y: placement.y,
+                scale: placement.scale,
+                angle: placement.angle,
+                ...(placement.pattern ? { pattern: placement.pattern } : {}),
               },
             ],
           };
@@ -261,7 +437,7 @@ export async function POST(req: NextRequest) {
         }
 
         const uploaded = await uploadResponse.json();
-        const printAreas = buildFrontOnlyPrintAreas(template, uploaded.id);
+        const printAreas = buildFrontOnlyPrintAreas(template, uploaded.id, item.imageDataUrl);
 
         if (!printAreas.length) {
           throw new Error("Unable to determine a front print area from the selected template.");
@@ -305,7 +481,7 @@ export async function POST(req: NextRequest) {
           fileName: item.fileName,
           title: item.title,
           productId: created.id,
-          message: "Created draft product. Front print area only.",
+          message: "Created draft product. Front print area only with top-safe placement.",
         });
       } catch (error) {
         results.push({
