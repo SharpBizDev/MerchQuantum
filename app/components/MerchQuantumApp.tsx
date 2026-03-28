@@ -3,7 +3,36 @@
 import React, { useMemo, useRef, useState } from "react";
 
 const APP_TAGLINE = "Bulk product creation, simplified";
-const PRIMARY_PLATFORM = "Printify";
+const MAX_BATCH_FILES = 50;
+const FIXED_TAG_COUNT = 13;
+
+type ProviderId =
+  | "printify"
+  | "printful"
+  | "gelato"
+  | "gooten"
+  | "apliiq"
+  | "spod"
+  | "prodigi"
+  | "lulu_direct"
+  | "tshirtgang";
+
+type ProductFamily =
+  | "t-shirt"
+  | "hoodie"
+  | "sweatshirt"
+  | "tank top"
+  | "hat"
+  | "drinkware"
+  | "candle"
+  | "bath-body"
+  | "home-kitchen"
+  | "wall-art"
+  | "sticker"
+  | "bag"
+  | "accessory"
+  | "footwear"
+  | "product";
 
 type Img = {
   id: string;
@@ -43,11 +72,27 @@ type BatchResult = {
   fileName: string;
   title: string;
   productId?: string;
-  published?: boolean;
   message: string;
 };
 
-const MAX_BATCH_FILES = 50;
+type ProviderOption = {
+  id: ProviderId;
+  label: string;
+  isLive: boolean;
+  statusText?: string;
+};
+
+const PROVIDERS: ProviderOption[] = [
+  { id: "printify", label: "Printify", isLive: true },
+  { id: "printful", label: "Printful", isLive: false, statusText: "Coming soon" },
+  { id: "gelato", label: "Gelato", isLive: false, statusText: "Coming soon" },
+  { id: "gooten", label: "Gooten", isLive: false, statusText: "Coming soon" },
+  { id: "apliiq", label: "Apliiq", isLive: false, statusText: "Coming soon" },
+  { id: "spod", label: "SPOD / Spreadconnect", isLive: false, statusText: "Coming soon" },
+  { id: "prodigi", label: "Prodigi", isLive: false, statusText: "Coming soon" },
+  { id: "lulu_direct", label: "Lulu Direct", isLive: false, statusText: "Coming soon" },
+  { id: "tshirtgang", label: "Tshirtgang", isLive: false, statusText: "Coming soon" },
+];
 
 const FALLBACK_SHOPS: Shop[] = [
   { id: "451293", title: "Primary Printify Shop" },
@@ -70,10 +115,111 @@ const FALLBACK_PRODUCTS: Product[] = [
 ];
 
 const STOP_WORDS = new Set([
-  "the","a","an","and","or","for","with","of","to","in","on","graphic",
-  "unisex","shirt","t","tee","this","it","product","features","care",
-  "instructions","size","chart","details"
+  "the",
+  "a",
+  "an",
+  "and",
+  "or",
+  "for",
+  "with",
+  "of",
+  "to",
+  "in",
+  "on",
+  "graphic",
+  "unisex",
+  "shirt",
+  "t",
+  "tee",
+  "this",
+  "it",
+  "product",
+  "features",
+  "care",
+  "instructions",
+  "size",
+  "chart",
+  "details",
+  "made",
+  "from",
+  "your",
+  "our",
+  "that",
+  "will",
+  "into",
+  "front",
+  "print",
+  "design",
+  "style",
 ]);
+
+const FAMILY_RULES: Array<{
+  family: ProductFamily;
+  patterns: RegExp[];
+}> = [
+  {
+    family: "t-shirt",
+    patterns: [
+      /\b(t[- ]?shirt|tee|graphic tee|short sleeve tee|heavyweight tee|softstyle tee|cotton tee)\b/i,
+    ],
+  },
+  {
+    family: "hoodie",
+    patterns: [/\b(hoodie|pullover hoodie|zip hoodie|hooded sweatshirt)\b/i],
+  },
+  {
+    family: "sweatshirt",
+    patterns: [/\b(sweatshirt|crewneck|crew neck|fleece pullover)\b/i],
+  },
+  {
+    family: "tank top",
+    patterns: [/\b(tank top|tank|sleeveless tee|muscle tank|racerback)\b/i],
+  },
+  {
+    family: "hat",
+    patterns: [/\b(hat|cap|beanie|snapback|dad hat|trucker hat|bucket hat)\b/i],
+  },
+  {
+    family: "drinkware",
+    patterns: [/\b(mug|tumbler|cup|glassware|glass|bottle|drinkware|travel mug)\b/i],
+  },
+  {
+    family: "candle",
+    patterns: [/\b(candle|soy candle|scented candle|jar candle|wax melt)\b/i],
+  },
+  {
+    family: "bath-body",
+    patterns: [
+      /\b(soap|body bar|bath bomb|toothpaste|body wash|lotion|scrub|personal care|bath and body)\b/i,
+    ],
+  },
+  {
+    family: "home-kitchen",
+    patterns: [
+      /\b(cutting board|serving board|kitchen|home decor|blanket|pillow|towel|ornament|coaster|journal|notebook|kitchen accessory|home good|mat|rug)\b/i,
+    ],
+  },
+  {
+    family: "wall-art",
+    patterns: [/\b(poster|canvas|art print|wall art|framed print|print)\b/i],
+  },
+  {
+    family: "sticker",
+    patterns: [/\b(sticker|decal|kiss cut)\b/i],
+  },
+  {
+    family: "bag",
+    patterns: [/\b(bag|tote|pouch|backpack|duffel|fanny pack)\b/i],
+  },
+  {
+    family: "footwear",
+    patterns: [/\b(shoe|shoes|sneaker|slides|slippers|boots)\b/i],
+  },
+  {
+    family: "accessory",
+    patterns: [/\b(phone case|mouse pad|accessory|jewelry|keychain|lanyard|pet accessory)\b/i],
+  },
+];
 
 function makeId() {
   return typeof crypto !== "undefined" && crypto.randomUUID
@@ -99,7 +245,7 @@ function cleanTitle(filename: string) {
       if (word === "&") return word;
       if (/^\d+$/.test(word)) return word;
       const upper = word.toUpperCase();
-      if (["AI","USA","POD","DTG","DTF","SVG","PNG","JPG","PDF","XL","XXL","2XL","3XL"].includes(upper)) {
+      if (["AI", "USA", "POD", "DTG", "DTF", "SVG", "PNG", "JPG", "PDF", "XL", "XXL", "2XL", "3XL"].includes(upper)) {
         return upper;
       }
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
@@ -126,8 +272,8 @@ function normalizeRef(value: string) {
 function maskToken(value: string) {
   const s = value.trim();
   if (!s) return "";
-  if (s.length <= 8) return "•".repeat(s.length);
-  return `${s.slice(0, 4)}${"•".repeat(Math.max(4, s.length - 8))}${s.slice(-4)}`;
+  const visible = s.slice(-10);
+  return `••••••••••${visible}`;
 }
 
 function safeTitle(value: string, fallback: string) {
@@ -211,66 +357,111 @@ function extractReusableTemplateSections(formattedDescription: string) {
   return formattedDescription.slice(positions[0]).trim();
 }
 
-function detectProductType(title: string) {
-  const lower = title.toLowerCase();
-  if (/(t-shirt|t shirt|tee)\b/.test(lower)) return "t-shirt";
-  if (/hoodie\b/.test(lower)) return "hoodie";
-  if (/sweatshirt\b/.test(lower)) return "sweatshirt";
-  if (/tank top\b|tank\b/.test(lower)) return "tank top";
-  if (/sticker\b/.test(lower)) return "sticker";
-  if (/mug\b/.test(lower)) return "mug";
-  if (/poster\b/.test(lower)) return "poster";
-  if (/canvas\b/.test(lower)) return "canvas print";
+function detectProductFamilyFromText(value: string) {
+  const text = value.trim();
+  if (!text) return null;
+
+  for (const rule of FAMILY_RULES) {
+    if (rule.patterns.some((pattern) => pattern.test(text))) {
+      return rule.family;
+    }
+  }
+
+  return null;
+}
+
+function resolveProductFamily(title: string, templateDescription: string): ProductFamily {
+  const titleFamily = detectProductFamilyFromText(title);
+  const templateFamily = detectProductFamilyFromText(templateDescription);
+
+  if (titleFamily) return titleFamily;
+  if (templateFamily) return templateFamily;
   return "product";
 }
 
 function detectThemePhrase(title: string) {
   const lower = title.toLowerCase();
-  if (/(christian|jesus|faith|saved|forgiven|church|bible|gospel|cross)\b/.test(lower)) return "faith-forward style";
-  if (/(retro|vintage|distressed)\b/.test(lower)) return "a retro-inspired look";
-  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) return "a playful, conversation-starting look";
-  if (/(dog|cat|pet|puppy)\b/.test(lower)) return "pet-lover style";
-  if (/(floral|rose|flower|botanical)\b/.test(lower)) return "a bold graphic look";
-  return "a standout graphic look";
+  if (/(christian|jesus|faith|saved|forgiven|church|bible|gospel|cross)\b/.test(lower)) return "faith-driven artwork";
+  if (/(retro|vintage|distressed)\b/.test(lower)) return "retro-inspired styling";
+  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) return "conversation-starting humor";
+  if (/(dog|cat|pet|puppy)\b/.test(lower)) return "pet-lover appeal";
+  if (/(floral|rose|flower|botanical)\b/.test(lower)) return "bold graphic appeal";
+  if (/(usa|american|patriotic|flag)\b/.test(lower)) return "patriotic graphic energy";
+  if (/(halloween|fall|thanksgiving|christmas|holiday)\b/.test(lower)) return "seasonal gift-ready appeal";
+  return "clean graphic appeal";
 }
 
-function detectAudiencePhrase(title: string, productType: string) {
-  const lower = title.toLowerCase();
-  if (/(christian|jesus|faith|saved|forgiven|church|bible|gospel|cross)\b/.test(lower)) {
-    return productType === "product"
-      ? "Christian merchandise with bold devotional artwork"
-      : `Christian ${productType} designs with bold devotional artwork`;
+function getFamilyLabel(family: ProductFamily) {
+  switch (family) {
+    case "t-shirt":
+      return "graphic tee";
+    case "hoodie":
+      return "hoodie";
+    case "sweatshirt":
+      return "sweatshirt";
+    case "tank top":
+      return "tank top";
+    case "hat":
+      return "hat";
+    case "drinkware":
+      return "drinkware piece";
+    case "candle":
+      return "candle";
+    case "bath-body":
+      return "bath and body item";
+    case "home-kitchen":
+      return "home and kitchen piece";
+    case "wall-art":
+      return "wall art piece";
+    case "sticker":
+      return "sticker";
+    case "bag":
+      return "bag";
+    case "accessory":
+      return "accessory";
+    case "footwear":
+      return "footwear item";
+    default:
+      return "product";
   }
-  if (/(retro|vintage|distressed)\b/.test(lower)) return "retro graphic designs with easy everyday appeal";
-  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) return "funny graphic designs with strong gift appeal";
-  if (/(dog|cat|pet|puppy)\b/.test(lower)) return "pet-lover graphic designs that still feel giftable";
-  return productType === "product"
-    ? "niche product designs that stand out"
-    : `${productType} designs that stand out`;
 }
 
-function detectUseCasePhrase(productType: string) {
-  if (["t-shirt", "hoodie", "sweatshirt", "tank top"].includes(productType)) {
-    return "daily wear, gifting, and casual styling";
+function buildShortDescription(title: string, templateDescription: string) {
+  const family = resolveProductFamily(title, templateDescription);
+  const theme = detectThemePhrase(title);
+
+  switch (family) {
+    case "t-shirt":
+      return `A ${theme} graphic tee built for everyday wear, easy layering, and strong gift appeal. It is a clean casual listing fit for niche apparel collections and daily rotation.`;
+    case "hoodie":
+      return `A ${theme} hoodie built for comfort, cooler weather, and easy casual layering. It is a strong fit for giftable apparel listings and everyday off-duty style.`;
+    case "sweatshirt":
+      return `A ${theme} sweatshirt designed for comfort, relaxed styling, and easy gifting. It works well for casual wardrobes, seasonal drops, and graphic apparel collections.`;
+    case "tank top":
+      return `A ${theme} tank top with lightweight casual appeal and a clean athletic-to-everyday feel. It is a strong fit for warm-weather styling, gifting, and niche apparel shops.`;
+    case "hat":
+      return `A ${theme} hat that adds an easy finishing touch to casual outfits and giftable accessory lines. It is a strong choice for everyday wear, collections, and simple grab-and-go styling.`;
+    case "drinkware":
+      return `A ${theme} drinkware listing designed for daily use, desk setups, and easy gift occasions. It fits well in practical lifestyle collections with clean personal or niche branding.`;
+    case "candle":
+      return `A ${theme} candle made for cozy spaces, thoughtful gifting, and atmosphere-driven home collections. It fits well in décor, seasonal, and niche lifestyle listings.`;
+    case "bath-body":
+      return `A ${theme} bath and body listing built for self-care, simple gifting, and niche personal care collections. It works well when the product title clearly signals the exact item and use case.`;
+    case "home-kitchen":
+      return `A ${theme} home and kitchen listing that balances everyday usefulness with gift-ready presentation. It fits well in décor, kitchen, and practical household collections.`;
+    case "wall-art":
+      return `A ${theme} wall art listing built for home décor, office spaces, and thoughtful gifting. It works well in niche art collections where the title clearly signals the exact format.`;
+    case "sticker":
+      return `A ${theme} sticker listing made for laptops, water bottles, notebooks, and easy low-ticket gifting. It is a strong fit for niche drops, bundles, and impulse-friendly graphic sales.`;
+    case "bag":
+      return `A ${theme} bag listing built for daily carry, practical use, and giftable accessory collections. It works well in casual, travel, and niche lifestyle assortments.`;
+    case "accessory":
+      return `A ${theme} accessory listing designed for practical use, gift appeal, and clean niche presentation. It fits well in broad lifestyle collections where the title clearly defines the item.`;
+    case "footwear":
+      return `A ${theme} footwear listing built for casual wear, giftable style, and standout niche presentation. It works best when the product title clearly calls out the exact shoe type.`;
+    default:
+      return `A ${theme} product listing built for clear presentation, stronger search relevance, and better template alignment. Accurate product titles help this short description stay matched to the actual item type.`;
   }
-  if (productType === "sticker") return "laptops, water bottles, notebooks, and gifting";
-  if (productType === "mug") return "daily routines, desk setups, and gifting";
-  if (["poster", "canvas print"].includes(productType)) return "home décor, office spaces, and gifting";
-  return "everyday use, gifting, and niche-specific collections";
-}
-
-function buildSeoLead(title: string) {
-  const clean = safeTitle(title, "Product");
-  const productType = detectProductType(clean);
-  const theme = detectThemePhrase(clean);
-  const audience = detectAudiencePhrase(clean, productType);
-  const useCase = detectUseCasePhrase(productType);
-  const sentenceOne =
-    productType === "product"
-      ? `${clean} delivers ${theme} with a clear, niche-focused presentation.`
-      : `${clean} delivers ${theme} in a ${productType}.`;
-
-  return `${sentenceOne} Built for shoppers looking for ${audience}, it works well for ${useCase}.`;
 }
 
 function buildDescription(title: string, templateDescription: string) {
@@ -278,7 +469,7 @@ function buildDescription(title: string, templateDescription: string) {
     formatTemplateDescription(templateDescription) ||
     "Template description will load here after live API wiring.";
 
-  const intro = buildSeoLead(title);
+  const intro = buildShortDescription(title, templateDescription);
   const reusableSections = extractReusableTemplateSections(base);
 
   return reusableSections
@@ -307,7 +498,13 @@ function buildTags(title: string, description: string, count: number) {
     if (tags.length >= count) break;
   }
 
-  return tags;
+  const family = getFamilyLabel(resolveProductFamily(title, description));
+  const familyTag = cleanTitle(family);
+  if (familyTag && !seen.has(familyTag.toLowerCase()) && tags.length < count) {
+    tags.push(familyTag);
+  }
+
+  return tags.slice(0, count);
 }
 
 function isImage(file: File) {
@@ -328,7 +525,7 @@ function readDataUrl(file: File): Promise<string> {
 
 function formatApiError(message: string) {
   const raw = message.trim();
-  if (!raw) return "Live Printify connection is not available in this preview.";
+  if (!raw) return "Live provider connection is not available in this preview.";
   if (raw.includes("UnsupportedHttpVerb")) {
     return "Live Printify connection is not available in this preview. The backend API route is not installed in this environment yet.";
   }
@@ -336,6 +533,17 @@ function formatApiError(message: string) {
     return "Live Printify connection is not available in this preview. The request reached a static host instead of a backend API route.";
   }
   return raw.length > 220 ? `${raw.slice(0, 220)}...` : raw;
+}
+
+async function parseResponsePayload(response: Response) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  const text = await response.text();
+  return { error: text || `Request failed with status ${response.status}.` };
 }
 
 function Box({ title, children }: { title: string; children: React.ReactNode }) {
@@ -357,6 +565,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       </label>
       {children}
     </div>
+  );
+}
+
+function FieldNote({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{children}</p>
   );
 }
 
@@ -403,7 +617,7 @@ function Button(
   return (
     <button
       {...props}
-      className={`rounded-xl px-3 py-2 text-sm disabled:opacity-50 ${classes} ${props.className || ""}`.trim()}
+      className={`rounded-xl px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${classes} ${props.className || ""}`.trim()}
     />
   );
 }
@@ -434,6 +648,7 @@ function BrandMark() {
 export default function MerchQuantumApp() {
   const fileRef = useRef<HTMLInputElement | null>(null);
 
+  const [provider, setProvider] = useState<ProviderId>("printify");
   const [token, setToken] = useState("");
   const [connected, setConnected] = useState(false);
   const [loadingApi, setLoadingApi] = useState(false);
@@ -456,12 +671,11 @@ export default function MerchQuantumApp() {
   const [isRunningBatch, setIsRunningBatch] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
 
-  const FIXED_TAG_COUNT = 13;
+  const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || PROVIDERS[0];
+  const isLiveProvider = selectedProvider.isLive;
 
-  const availableShops = connected
-    ? apiShops.length
-      ? apiShops
-      : FALLBACK_SHOPS
+  const availableShops = connected && isLiveProvider
+    ? (apiShops.length ? apiShops : FALLBACK_SHOPS)
     : [];
   const productSource = apiProducts.length ? apiProducts : FALLBACK_PRODUCTS;
 
@@ -488,6 +702,19 @@ export default function MerchQuantumApp() {
   const previewTags = selectedImage
     ? buildTags(selectedImage.final, previewDescription, FIXED_TAG_COUNT)
     : [];
+
+  function resetProviderState(clearStatus = true) {
+    setConnected(false);
+    setLoadingApi(false);
+    if (clearStatus) setApiStatus("");
+    setApiShops([]);
+    setApiProducts([]);
+    setShopId("");
+    setProductId("");
+    setTemplate(null);
+    setBatchResults([]);
+    setRunStatus("");
+  }
 
   async function addFiles(list: FileList | null) {
     if (!list) return;
@@ -545,7 +772,7 @@ export default function MerchQuantumApp() {
   }
 
   async function loadProductsForShop(nextShopId: string) {
-    if (!connected || !nextShopId) {
+    if (!connected || !isLiveProvider || !nextShopId) {
       setApiProducts([]);
       return;
     }
@@ -554,11 +781,11 @@ export default function MerchQuantumApp() {
       const response = await fetch(
         `/api/printify/products?shopId=${encodeURIComponent(nextShopId)}`
       );
+      const data = await parseResponsePayload(response);
       if (!response.ok) {
-        throw new Error(`Products request failed with status ${response.status}.`);
+        throw new Error(data?.error || `Products request failed with status ${response.status}.`);
       }
 
-      const data = await response.json();
       const mapped: Product[] = Array.isArray(data?.products)
         ? data.products.map((product: ApiProduct) => ({
             id: product.id,
@@ -579,7 +806,7 @@ export default function MerchQuantumApp() {
   }
 
   async function connectPrintify() {
-    if (!token.trim()) return;
+    if (!token.trim() || !isLiveProvider) return;
     setLoadingApi(true);
     setApiStatus("");
 
@@ -590,12 +817,11 @@ export default function MerchQuantumApp() {
         body: JSON.stringify({ token }),
       });
 
+      const data = await parseResponsePayload(response);
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || `Connect failed with status ${response.status}.`);
+        throw new Error(data?.error || `Connect failed with status ${response.status}.`);
       }
 
-      const data = await response.json();
       const shopsFromApi: Shop[] = Array.isArray(data?.shops)
         ? data.shops.map((shop: ApiShop) => ({
             id: String(shop.id),
@@ -612,9 +838,7 @@ export default function MerchQuantumApp() {
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : "Unable to connect to Printify.";
-      setConnected(false);
-      setApiShops([]);
-      setApiProducts([]);
+      resetProviderState(false);
       setApiStatus(formatApiError(msg));
     } finally {
       setLoadingApi(false);
@@ -622,16 +846,7 @@ export default function MerchQuantumApp() {
   }
 
   function disconnectPrintify() {
-    setConnected(false);
-    setLoadingApi(false);
-    setApiStatus("");
-    setApiShops([]);
-    setApiProducts([]);
-    setShopId("");
-    setProductId("");
-    setTemplate(null);
-    setBatchResults([]);
-    setRunStatus("");
+    resetProviderState(true);
   }
 
   async function loadProductTemplate() {
@@ -645,11 +860,11 @@ export default function MerchQuantumApp() {
         )}&productId=${encodeURIComponent(productId)}`
       );
 
+      const data = await parseResponsePayload(response);
       if (!response.ok) {
-        throw new Error(`Product request failed with status ${response.status}.`);
+        throw new Error(data?.error || `Product request failed with status ${response.status}.`);
       }
 
-      const data = await response.json();
       const chosen = data?.product || fallback;
       const title = chosen?.title || fallback.title;
       const base = formatTemplateDescription(
@@ -735,46 +950,71 @@ export default function MerchQuantumApp() {
   }
 
   async function runDraftBatch() {
-    if (!template || !shopId || images.length === 0) return;
+    if (!template || !shopId || images.length === 0 || !isLiveProvider) return;
 
     setIsRunningBatch(true);
     setRunStatus("");
     setBatchResults([]);
 
+    const nextResults: BatchResult[] = [];
+
     try {
-      const items = images.map((img) => {
+      for (let index = 0; index < images.length; index += 1) {
+        const img = images[index];
         const description = buildDescription(img.final, templateDescription);
         const tags = buildTags(img.final, description, FIXED_TAG_COUNT);
-        return {
-          fileName: img.name,
-          title: safeTitle(img.final, img.cleaned),
-          description,
-          tags,
-          imageDataUrl: img.preview,
-        };
-      });
 
-      const response = await fetch("/api/printify/batch-create", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          shopId,
-          templateProductId: template.reference,
-          items,
-        }),
-      });
+        setRunStatus(`Saving draft ${index + 1} of ${images.length}...`);
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error || `Batch request failed with status ${response.status}.`);
+        try {
+          const response = await fetch("/api/printify/batch-create", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              shopId,
+              templateProductId: template.reference,
+              items: [
+                {
+                  fileName: img.name,
+                  title: safeTitle(img.final, img.cleaned),
+                  description,
+                  tags,
+                  imageDataUrl: img.preview,
+                },
+              ],
+            }),
+          });
+
+          const data = await parseResponsePayload(response);
+          if (!response.ok) {
+            throw new Error(data?.error || `Draft request failed with status ${response.status}.`);
+          }
+
+          const result = Array.isArray(data?.results) && data.results[0]
+            ? (data.results[0] as BatchResult)
+            : {
+                fileName: img.name,
+                title: safeTitle(img.final, img.cleaned),
+                message: data?.message || "Created draft product.",
+              };
+
+          nextResults.push(result);
+          setBatchResults([...nextResults]);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Draft create failed.";
+          nextResults.push({
+            fileName: img.name,
+            title: safeTitle(img.final, img.cleaned),
+            message,
+          });
+          setBatchResults([...nextResults]);
+        }
       }
 
-      setBatchResults(Array.isArray(data?.results) ? data.results : []);
-      setRunStatus(data?.message || "Batch completed.");
-    } catch (error) {
-      setRunStatus(error instanceof Error ? error.message : "Batch failed.");
+      const createdCount = nextResults.filter((result) => !!result.productId).length;
+      setRunStatus(`Saved ${createdCount} draft product${createdCount === 1 ? "" : "s"} out of ${images.length}.`);
     } finally {
       setIsRunningBatch(false);
     }
@@ -799,7 +1039,7 @@ export default function MerchQuantumApp() {
 
           <div className="flex items-center gap-3">
             <Badge on={connected}>
-              {connected ? "Printify connected" : "Printify not connected"}
+              {connected ? "Quantum connected" : "Quantum not connected"}
             </Badge>
             {connected ? (
               <Button variant="secondary" onClick={disconnectPrintify}>
@@ -811,9 +1051,28 @@ export default function MerchQuantumApp() {
 
         <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-6">
-            <Box title={`${PRIMARY_PLATFORM} Connection`}>
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Connection Method">
+            <Box title="Quantum Connection">
+              <div className="grid gap-4 md:grid-cols-3">
+                <Field label="Provider">
+                  <Select
+                    value={provider}
+                    onChange={(e) => {
+                      const nextProvider = e.target.value as ProviderId;
+                      setProvider(nextProvider);
+                      resetProviderState(false);
+                      const nextMeta = PROVIDERS.find((entry) => entry.id === nextProvider);
+                      setApiStatus(nextMeta?.isLive ? "" : `${nextMeta?.label || "This provider"} is coming soon.`);
+                    }}
+                  >
+                    {PROVIDERS.map((entry) => (
+                      <option key={entry.id} value={entry.id}>
+                        {entry.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+
+                <Field label="Provider API Token">
                   <Select disabled value="pat">
                     <option value="pat">Personal Access Token</option>
                   </Select>
@@ -823,6 +1082,7 @@ export default function MerchQuantumApp() {
                   <div className="max-w-[260px] overflow-hidden rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-sm whitespace-nowrap text-ellipsis dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
                     {maskToken(token) || "No token entered"}
                   </div>
+                  <FieldNote>Showing last 10 characters</FieldNote>
                 </Field>
               </div>
 
@@ -832,7 +1092,8 @@ export default function MerchQuantumApp() {
                     type="password"
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
-                    placeholder="Paste token once"
+                    placeholder="Paste API key once"
+                    disabled={!isLiveProvider}
                   />
                 </Field>
 
@@ -841,9 +1102,9 @@ export default function MerchQuantumApp() {
                     onClick={() => {
                       void connectPrintify();
                     }}
-                    disabled={!token.trim() || connected || loadingApi}
+                    disabled={!token.trim() || connected || loadingApi || !isLiveProvider}
                   >
-                    {loadingApi ? "Connecting..." : "Connect to Printify"}
+                    {loadingApi ? "Connecting..." : "Connect"}
                   </Button>
                 </div>
               </div>
@@ -881,6 +1142,7 @@ export default function MerchQuantumApp() {
                   <Select
                     value={source}
                     onChange={(e) => setSource(e.target.value as "product" | "manual")}
+                    disabled={!isLiveProvider}
                   >
                     <option value="product">Choose From My Products</option>
                     <option value="manual">Paste Product Reference</option>
@@ -894,6 +1156,7 @@ export default function MerchQuantumApp() {
                     value={nickname}
                     onChange={(e) => setNickname(e.target.value)}
                     placeholder="Example: Unisex Tee Front Print"
+                    disabled={!isLiveProvider}
                   />
                 </Field>
               </div>
@@ -954,7 +1217,7 @@ export default function MerchQuantumApp() {
                   </Button>
                 </div>
               ) : (
-                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4 dark:border-slate-800 dark:bg-slate-900">
+                <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
                   <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
                     Paste Product Reference
                   </div>
@@ -963,6 +1226,7 @@ export default function MerchQuantumApp() {
                       value={manualRef}
                       onChange={(e) => setManualRef(e.target.value)}
                       placeholder="Paste a Printify product ID or URL"
+                      disabled={!isLiveProvider}
                     />
                   </Field>
                   <Button onClick={loadManualTemplate} disabled={!manualRef.trim() || !shopId}>
@@ -978,6 +1242,7 @@ export default function MerchQuantumApp() {
                     value={templateDescription}
                     onChange={(e) => setTemplateDescription(e.target.value)}
                     placeholder="This is where the loaded template description will appear after the selected product template is loaded."
+                    disabled={!isLiveProvider}
                   />
                 </Field>
               </div>
@@ -994,15 +1259,15 @@ export default function MerchQuantumApp() {
               </div>
 
               <div className="mt-4 grid gap-4 md:grid-cols-3">
-                <Field label="Title Source">
+                <Field label="Title Signal">
                   <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950">
-                    Filename Required
+                    Filename / Final Title
                   </div>
                 </Field>
 
                 <Field label="Description Mode">
                   <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950">
-                    Title Assisted
+                    Title + Template Matched
                   </div>
                 </Field>
 
@@ -1012,6 +1277,10 @@ export default function MerchQuantumApp() {
                   </div>
                 </Field>
               </div>
+
+              <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
+                Clear product titles improve category matching, short-description accuracy, and alignment with the imported template description.
+              </p>
             </Box>
 
             <Box title="Image Upload">
@@ -1096,7 +1365,7 @@ export default function MerchQuantumApp() {
                               <img
                                 src={img.preview}
                                 alt={safeTitle(img.final, img.cleaned)}
-                                className="h-16 w-16 rounded-lg border border-slate-200 object-contain bg-white dark:border-slate-800 dark:bg-slate-950"
+                                className="h-16 w-16 rounded-lg border border-slate-200 bg-white object-contain dark:border-slate-800 dark:bg-slate-950"
                               />
                             ) : (
                               <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-xs dark:border-slate-800 dark:bg-slate-900">
@@ -1200,6 +1469,9 @@ export default function MerchQuantumApp() {
                         )
                       }
                     />
+                    <FieldNote>
+                      Strong titles help the app match the right short description and keep the imported template copy aligned with the actual product.
+                    </FieldNote>
                   </Field>
 
                   <Field label="Description">
@@ -1250,7 +1522,7 @@ export default function MerchQuantumApp() {
                   <div className="text-xs uppercase text-slate-500 dark:text-slate-400">
                     Description
                   </div>
-                  <div className="mt-1 font-medium">Title Assisted</div>
+                  <div className="mt-1 font-medium">Title + Template Matched</div>
                 </div>
 
                 <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
@@ -1264,7 +1536,7 @@ export default function MerchQuantumApp() {
               </div>
 
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                The main button creates products in Printify and also sends a publish request when the connected sales channel supports it.
+                Products are saved as drafts from the selected template. Artwork is applied to the front print area only, and publishing is left for manual review inside Printify.
               </div>
 
               <div className="mt-4">
@@ -1275,7 +1547,7 @@ export default function MerchQuantumApp() {
                     void runDraftBatch();
                   }}
                 >
-                  {isRunningBatch ? "Creating Products..." : "Create Products"}
+                  {isRunningBatch ? "Saving Draft Products..." : "Save Draft Products"}
                 </Button>
               </div>
 
