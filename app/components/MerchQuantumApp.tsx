@@ -513,78 +513,78 @@ function buildLeadParagraphs(title: string, templateDescription: string) {
   switch (family) {
     case "t-shirt":
       return [
-        `${productName} is a ${theme} graphic tee built for everyday wear, easy layering, and clear niche appeal.`,
-        `It is designed to read cleanly in a listing, wear comfortably through daily use, and carry the kind of polished product copy that works well for personal wear, gifting, and apparel collections with a strong point of view.`,
+        `${productName} brings a ${theme} look to an easygoing everyday tee made for casual wear, simple layering, and standout gift appeal.`,
+        `It is a strong fit for daily rotation, niche apparel drops, and laid-back outfits that benefit from comfortable wear and a design with real personality.`,
       ];
     case "hoodie":
       return [
-        `${productName} is a ${theme} hoodie built for comfort, cooler weather, and easy casual layering.`,
-        `It fits naturally into giftable apparel drops, everyday streetwear styling, and niche collections that need warmer weight, clean presentation, and a stronger listing presence.`,
+        `${productName} brings a ${theme} look to a comfortable hoodie made for cooler weather, easy layering, and everyday wear.`,
+        `It works well for casual wardrobes, giftable apparel drops, and design-led collections that need warmth, comfort, and a strong visual point of view.`,
       ];
     case "sweatshirt":
       return [
-        `${productName} is a ${theme} sweatshirt designed for comfort, clean graphic presentation, and relaxed everyday wear.`,
-        `It works well for casual wardrobes, seasonal drops, and gift-ready apparel listings that benefit from a familiar fit and straightforward, polished copy.`,
+        `${productName} brings a ${theme} look to a classic sweatshirt built for comfort, relaxed styling, and easy everyday use.`,
+        `It fits naturally into seasonal drops, weekend wardrobes, and gift-ready apparel collections that need familiar comfort with a stronger design presence.`,
       ];
     case "tank top":
       return [
-        `${productName} is a ${theme} tank top built for lightweight comfort, warm-weather styling, and easy everyday wear.`,
-        `It is a strong fit for casual apparel collections, gym-to-weekend use, and giftable listings that need clear product language without sounding generic or flat.`,
+        `${productName} brings a ${theme} look to a lightweight tank made for warm-weather wear, casual comfort, and easy daily styling.`,
+        `It suits gym-to-weekend outfits, summer assortments, and giftable apparel collections that need a cleaner balance of comfort, versatility, and visual appeal.`,
       ];
     case "hat":
       return [
-        `${productName} is a ${theme} headwear piece that adds an easy finishing touch to casual outfits and giftable accessory lines.`,
-        `It is built for everyday rotation, simple grab-and-go styling, and clean merchandising across niche collections where the product title needs to match the item clearly.`,
+        `${productName} adds a ${theme} finish to casual outfits, daily errands, and easy giftable accessory collections.`,
+        `It is built for grab-and-go wear, everyday rotation, and simple styling that gives the design room to stand out without overcomplicating the look.`,
       ];
     case "drinkware":
       return [
-        `${productName} is a ${theme} drinkware listing designed for daily use, desk setups, gifting, and practical personal style.`,
-        `It fits well in lifestyle assortments that need a product description with better structure, clearer benefits, and a more polished sales presentation than a short generic placeholder.`,
+        `${productName} brings a ${theme} touch to daily routines, desk setups, coffee breaks, and easy gift giving.`,
+        `It works well for personal use, practical gifting, and lifestyle collections that need something functional, cleanly presented, and easy to enjoy every day.`,
       ];
     case "candle":
       return [
-        `${productName} is a ${theme} candle built for atmosphere, thoughtful gifting, and décor-driven product lines.`,
-        `It is positioned for cozy spaces, seasonal collections, and lifestyle shops that benefit from stronger descriptive copy while still keeping the original product details intact.`,
+        `${productName} brings a ${theme} feel to cozy spaces, thoughtful gifting, and décor-driven everyday use.`,
+        `It fits naturally into seasonal collections, self-care moments, and home accents that need a warm atmosphere with a polished, gift-ready presentation.`,
       ];
     case "bath-body":
       return [
-        `${productName} is a ${theme} bath and body listing created for self-care, gifting, and clean personal-use merchandising.`,
-        `It works best when the title clearly signals the item type, allowing the listing copy to stay aligned with the product and present it as a polished, market-ready offering.`,
+        `${productName} brings a ${theme} touch to self-care routines, everyday use, and giftable bath and body collections.`,
+        `It works well for practical personal care, simple pampering, and lifestyle assortments that benefit from a cleaner, more polished presentation.`,
       ];
     case "home-kitchen":
       return [
-        `${productName} is a ${theme} home and kitchen item that balances usefulness, presentation, and gift-ready appeal.`,
-        `It fits naturally into décor, kitchen, and household collections where buyers benefit from cleaner formatting, clearer product positioning, and easier-to-read details.`,
+        `${productName} brings a ${theme} touch to the home, combining useful function with a more gift-ready presentation.`,
+        `It fits well in kitchen, décor, and household collections where buyers want something practical, visually appealing, and easy to enjoy day after day.`,
       ];
     case "wall-art":
       return [
-        `${productName} is a ${theme} wall art listing built for home décor, office spaces, gifting, and standout niche presentation.`,
-        `It is written to support a cleaner visual flow, stronger product relevance, and a more complete description than a short one-line placeholder can deliver.`,
+        `${productName} brings a ${theme} statement to walls, workspaces, and giftable décor collections.`,
+        `It suits home styling, office setups, and design-forward spaces that need a stronger focal point with clean presentation and everyday visual appeal.`,
       ];
     case "sticker":
       return [
-        `${productName} is a ${theme} sticker listing made for laptops, water bottles, notebooks, bundles, and easy low-ticket gifting.`,
-        `It works well in niche drops that need fast, readable product copy with better structure and stronger merchandising language.`,
+        `${productName} adds a ${theme} hit of personality to laptops, water bottles, notebooks, bundles, and low-ticket gift add-ons.`,
+        `It works well for casual everyday use, niche drops, and collectible-style assortments that benefit from fast, easy visual appeal.`,
       ];
     case "bag":
       return [
-        `${productName} is a ${theme} bag listing built for daily carry, practical use, and giftable accessory collections.`,
-        `It is suited to casual, travel, and lifestyle assortments that benefit from clearer formatting and a more complete description before the template details begin.`,
+        `${productName} brings a ${theme} look to daily carry, errands, travel, and giftable accessory collections.`,
+        `It fits naturally into practical lifestyle use while still giving the design enough presence to feel intentional, polished, and easy to merchandize.`,
       ];
     case "accessory":
       return [
-        `${productName} is a ${theme} accessory listing designed for practical use, gift appeal, and clean niche presentation.`,
-        `It is written to keep the product type clear, preserve template details, and give the final listing a more complete and professional feel.`,
+        `${productName} brings a ${theme} touch to everyday use, gift giving, and simple accessory styling.`,
+        `It works best in collections that need something practical, easy to wear or use, and cleanly presented without losing the personality of the design.`,
       ];
     case "footwear":
       return [
-        `${productName} is a ${theme} footwear listing built for casual wear, giftable style, and standout niche presentation.`,
-        `It works best when the title clearly identifies the item, allowing the supporting copy to stay aligned with the product and preserve its detailed template information.`,
+        `${productName} brings a ${theme} look to casual footwear built for comfort, daily wear, and giftable style.`,
+        `It fits naturally into easygoing outfits, everyday routines, and apparel assortments that benefit from comfort, personality, and a more polished finish.`,
       ];
     default:
       return [
-        `${productName} is a ${theme} product listing built for clearer presentation, stronger search relevance, and better alignment with the selected template.`,
-        `Accurate titles help the description stay matched to the product type while preserving the imported product details that matter to shoppers.`,
+        `${productName} brings a ${theme} look to a product built for everyday use, gift appeal, and clearer presentation.`,
+        `It works well in collections that need practical value, a stronger visual identity, and a more complete product description before the template details begin.`,
       ];
   }
 }
