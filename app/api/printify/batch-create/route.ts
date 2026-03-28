@@ -3,6 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 const PRINTIFY_API_BASE = "https://api.printify.com/v1";
 const USER_AGENT = "MerchQuantum";
+const FRONT_POSITION_PATTERNS = [
+  /front/i,
+  /chest/i,
+  /center/i,
+  /default/i,
+];
 
 type IncomingItem = {
   fileName: string;
@@ -45,29 +51,110 @@ function extractBase64(dataUrl: string) {
   return match ? match[1] : "";
 }
 
-function buildPrintAreas(template: TemplateProduct, uploadId: string) {
-  return (template.print_areas || []).map((area) => ({
-    variant_ids: area.variant_ids,
-    ...(area.background ? { background: area.background } : {}),
-    placeholders: (area.placeholders || []).map((placeholder) => {
-      const sourceImages =
-        Array.isArray(placeholder.images) && placeholder.images.length
-          ? placeholder.images
-          : [{ x: 0.5, y: 0.5, scale: 1, angle: 0 }];
+async function parseJsonOrText(response: Response) {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  return response.text();
+}
+
+async function readErrorMessage(response: Response, fallback: string) {
+  const payload = await parseJsonOrText(response);
+  if (typeof payload === "string") {
+    return payload.trim() || fallback;
+  }
+
+  if (payload && typeof payload === "object") {
+    const errorValue =
+      "error" in payload
+        ? payload.error
+        : "message" in payload
+          ? payload.message
+          : "errors" in payload
+            ? JSON.stringify(payload.errors)
+            : "";
+
+    if (typeof errorValue === "string" && errorValue.trim()) {
+      return errorValue.trim();
+    }
+  }
+
+  return fallback;
+}
+
+function chooseFrontPlacement(template: TemplateProduct) {
+  let fallback: {
+    areaIndex: number;
+    placeholderIndex: number;
+    imageDefaults?: TemplateProduct["print_areas"][number]["placeholders"][number]["images"][number];
+  } | null = null;
+
+  for (let areaIndex = 0; areaIndex < (template.print_areas || []).length; areaIndex += 1) {
+    const area = template.print_areas[areaIndex];
+    for (let placeholderIndex = 0; placeholderIndex < (area.placeholders || []).length; placeholderIndex += 1) {
+      const placeholder = area.placeholders[placeholderIndex];
+      const imageDefaults = Array.isArray(placeholder.images) && placeholder.images.length
+        ? placeholder.images[0]
+        : undefined;
+
+      if (!fallback) {
+        fallback = { areaIndex, placeholderIndex, imageDefaults };
+      }
+
+      if (FRONT_POSITION_PATTERNS.some((pattern) => pattern.test(placeholder.position || ""))) {
+        return { areaIndex, placeholderIndex, imageDefaults };
+      }
+    }
+  }
+
+  return fallback;
+}
+
+function buildFrontOnlyPrintAreas(template: TemplateProduct, uploadId: string) {
+  const target = chooseFrontPlacement(template);
+
+  if (!target) return [];
+
+  return (template.print_areas || [])
+    .map((area, areaIndex) => {
+      const placeholders = (area.placeholders || [])
+        .map((placeholder, placeholderIndex) => {
+          if (
+            areaIndex !== target.areaIndex ||
+            placeholderIndex !== target.placeholderIndex
+          ) {
+            return null;
+          }
+
+          const img = target.imageDefaults;
+
+          return {
+            position: placeholder.position,
+            images: [
+              {
+                id: uploadId,
+                x: typeof img?.x === "number" ? img.x : 0.5,
+                y: typeof img?.y === "number" ? img.y : 0.5,
+                scale: typeof img?.scale === "number" ? img.scale : 1,
+                angle: typeof img?.angle === "number" ? img.angle : 0,
+                ...(img?.pattern ? { pattern: img.pattern } : {}),
+              },
+            ],
+          };
+        })
+        .filter(Boolean);
+
+      if (!placeholders.length) return null;
 
       return {
-        position: placeholder.position,
-        images: sourceImages.map((img) => ({
-          id: uploadId,
-          x: typeof img.x === "number" ? img.x : 0.5,
-          y: typeof img.y === "number" ? img.y : 0.5,
-          scale: typeof img.scale === "number" ? img.scale : 1,
-          angle: typeof img.angle === "number" ? img.angle : 0,
-          ...(img.pattern ? { pattern: img.pattern } : {}),
-        })),
+        variant_ids: area.variant_ids,
+        ...(area.background ? { background: area.background } : {}),
+        placeholders,
       };
-    }),
-  }));
+    })
+    .filter(Boolean);
 }
 
 export async function POST(req: NextRequest) {
@@ -110,9 +197,12 @@ export async function POST(req: NextRequest) {
     );
 
     if (!templateResponse.ok) {
-      const text = await templateResponse.text();
+      const text = await readErrorMessage(
+        templateResponse,
+        `Template request failed with status ${templateResponse.status}.`
+      );
       return NextResponse.json(
-        { error: text || `Template request failed with status ${templateResponse.status}.` },
+        { error: text },
         { status: templateResponse.status }
       );
     }
@@ -139,7 +229,6 @@ export async function POST(req: NextRequest) {
       fileName: string;
       title: string;
       productId?: string;
-      published?: boolean;
       message: string;
     }> = [];
 
@@ -164,11 +253,19 @@ export async function POST(req: NextRequest) {
         });
 
         if (!uploadResponse.ok) {
-          const text = await uploadResponse.text();
-          throw new Error(text || `Upload failed with status ${uploadResponse.status}.`);
+          const text = await readErrorMessage(
+            uploadResponse,
+            `Upload failed with status ${uploadResponse.status}.`
+          );
+          throw new Error(text);
         }
 
         const uploaded = await uploadResponse.json();
+        const printAreas = buildFrontOnlyPrintAreas(template, uploaded.id);
+
+        if (!printAreas.length) {
+          throw new Error("Unable to determine a front print area from the selected template.");
+        }
 
         const createPayload = {
           title: item.title,
@@ -177,7 +274,7 @@ export async function POST(req: NextRequest) {
           print_provider_id: template.print_provider_id,
           tags: Array.isArray(item.tags) ? item.tags.slice(0, 13) : [],
           variants: enabledVariants,
-          print_areas: buildPrintAreas(template, uploaded.id),
+          print_areas: printAreas,
           ...(template.print_details ? { print_details: template.print_details } : {}),
         };
 
@@ -195,53 +292,20 @@ export async function POST(req: NextRequest) {
         );
 
         if (!createResponse.ok) {
-          const text = await createResponse.text();
-          throw new Error(text || `Create failed with status ${createResponse.status}.`);
+          const text = await readErrorMessage(
+            createResponse,
+            `Create failed with status ${createResponse.status}.`
+          );
+          throw new Error(text);
         }
 
         const created = await createResponse.json();
-
-        let published = false;
-        let message = "Created.";
-
-        const publishResponse = await fetch(
-          `${PRINTIFY_API_BASE}/shops/${encodeURIComponent(
-            shopId
-          )}/products/${encodeURIComponent(created.id)}/publish.json`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "User-Agent": USER_AGENT,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              title: true,
-              description: true,
-              images: true,
-              variants: true,
-              tags: true,
-              keyFeatures: true,
-              shipping_template: true,
-            }),
-          }
-        );
-
-        if (publishResponse.ok) {
-          published = true;
-          message = "Created and publish request sent.";
-        } else {
-          const text = await publishResponse.text();
-          message =
-            text || `Created, but publish failed with status ${publishResponse.status}.`;
-        }
 
         results.push({
           fileName: item.fileName,
           title: item.title,
           productId: created.id,
-          published,
-          message,
+          message: "Created draft product. Front print area only.",
         });
       } catch (error) {
         results.push({
@@ -255,7 +319,7 @@ export async function POST(req: NextRequest) {
     const createdCount = results.filter((result) => !!result.productId).length;
 
     return NextResponse.json({
-      message: `Processed ${results.length} item(s). Created ${createdCount}.`,
+      message: `Processed ${results.length} item(s). Saved ${createdCount} draft product${createdCount === 1 ? "" : "s"}.`,
       results,
     });
   } catch (error) {
