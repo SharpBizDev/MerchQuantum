@@ -1987,7 +1987,7 @@ export default function MerchQuantumApp() {
                   <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Uploaded Artwork</div>
-                      <Badge on={template?.placementGuide?.source === "live"}>{template?.placementGuide?.source === "live" ? "Live Boundary" : "Safe Defaults"}</Badge>
+                      <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Safe Defaults</div>
                     </div>
                     <div className="flex h-64 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
                       {selectedImage.preview ? (
