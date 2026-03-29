@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 const APP_TAGLINE = "Bulk product creation, simplified";
 const MAX_BATCH_FILES = 50;
@@ -37,6 +37,7 @@ type ProductFamily =
 type Img = {
   id: string;
   name: string;
+  file: File;
   preview: string;
   cleaned: string;
   final: string;
@@ -375,11 +376,11 @@ function detectProductFamilyFromText(value: string) {
 }
 
 function resolveProductFamily(title: string, templateDescription: string): ProductFamily {
-  const templateFamily = detectProductFamilyFromText(templateDescription);
   const titleFamily = detectProductFamilyFromText(title);
+  const templateFamily = detectProductFamilyFromText(templateDescription);
 
-  if (templateFamily) return templateFamily;
   if (titleFamily) return titleFamily;
+  if (templateFamily) return templateFamily;
   return "product";
 }
 
@@ -623,32 +624,129 @@ function buildDescription(title: string, templateDescription: string) {
   return `${paragraphsToHtml(introParagraphs)}${sectionsToHtml(parsed.sections)}`.trim();
 }
 
+function canonicalTagKey(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => (word.length > 4 && word.endsWith("s") ? word.slice(0, -1) : word))
+    .join(" ")
+    .trim();
+}
+
+function normalizeTagCandidate(value: string) {
+  const cleaned = cleanTitle(value)
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) return "";
+  if (cleaned.length < 2 || cleaned.length > 30) return "";
+  return cleaned;
+}
+
+function buildPhraseCandidates(title: string) {
+  const words = title
+    .replace(/[^A-Za-z0-9&' ]+/g, " ")
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter((word) => word && !STOP_WORDS.has(word.toLowerCase()))
+    .slice(0, 16);
+
+  const phrases: string[] = [];
+
+  for (let size = 4; size >= 2; size -= 1) {
+    for (let index = 0; index <= words.length - size; index += 1) {
+      phrases.push(words.slice(index, index + size).join(" "));
+    }
+  }
+
+  for (const word of words) {
+    phrases.push(word);
+  }
+
+  return phrases;
+}
+
+function buildThemeTags(title: string) {
+  const lower = title.toLowerCase();
+  if (/(christian|jesus|faith|saved|forgiven|church|bible|gospel|cross)\b/.test(lower)) {
+    return ["Faith Inspired", "Christian Gift", "Religious Graphic"];
+  }
+  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) {
+    return ["Funny Graphic", "Humor Gift", "Conversation Starter"];
+  }
+  if (/(retro|vintage|distressed)\b/.test(lower)) {
+    return ["Vintage Style", "Retro Graphic"];
+  }
+  if (/(dog|cat|pet|puppy)\b/.test(lower)) {
+    return ["Pet Lover Gift", "Animal Graphic"];
+  }
+  if (/(halloween|fall|thanksgiving|christmas|holiday)\b/.test(lower)) {
+    return ["Seasonal Gift", "Holiday Graphic"];
+  }
+  return [];
+}
+
+function buildFamilyTags(family: ProductFamily) {
+  switch (family) {
+    case "t-shirt":
+      return ["Graphic Tee", "Unisex T Shirt", "Everyday Apparel"];
+    case "hoodie":
+      return ["Graphic Hoodie", "Cozy Apparel", "Layered Style"];
+    case "sweatshirt":
+      return ["Graphic Sweatshirt", "Casual Fleece", "Giftable Apparel"];
+    case "tank top":
+      return ["Graphic Tank", "Warm Weather Style", "Lightweight Apparel"];
+    case "hat":
+      return ["Graphic Hat", "Casual Accessory", "Everyday Cap"];
+    case "drinkware":
+      return ["Giftable Drinkware", "Daily Use Cup", "Desk Friendly"];
+    case "candle":
+      return ["Giftable Candle", "Home Fragrance", "Cozy Decor"];
+    case "bath-body":
+      return ["Bath And Body", "Self Care Gift", "Personal Care"];
+    case "home-kitchen":
+      return ["Home Kitchen Decor", "Gift Ready Home", "Useful Houseware"];
+    case "wall-art":
+      return ["Wall Art Decor", "Giftable Artwork", "Home Accent"];
+    case "sticker":
+      return ["Sticker Design", "Laptop Sticker", "Bottle Decal"];
+    case "bag":
+      return ["Everyday Bag", "Giftable Accessory", "Carryall Style"];
+    case "accessory":
+      return ["Graphic Accessory", "Gift Ready", "Lifestyle Item"];
+    case "footwear":
+      return ["Casual Footwear", "Graphic Slides", "Comfort Style"];
+    default:
+      return ["Gift Ready", "Everyday Use"];
+  }
+}
+
 function buildTags(title: string, description: string, count: number) {
   if (count <= 0) return [];
 
   const searchableDescription = stripHtml(description);
-  const words = `${title} ${searchableDescription}`
-    .replace(/[^A-Za-z0-9 ]+/g, " ")
-    .split(/\s+/)
-    .map((word) => word.trim())
-    .filter((word) => word && !STOP_WORDS.has(word.toLowerCase()));
+  const family = resolveProductFamily(title, searchableDescription);
+  const candidates = [
+    ...buildPhraseCandidates(title),
+    ...buildFamilyTags(family),
+    ...buildThemeTags(title),
+    ...buildPhraseCandidates(searchableDescription).slice(0, 12),
+    getFamilyLabel(family),
+  ];
 
   const seen = new Set<string>();
   const tags: string[] = [];
 
-  for (const word of words) {
-    const formatted = cleanTitle(word);
-    const key = formatted.toLowerCase();
-    if (!formatted || seen.has(key)) continue;
+  for (const candidate of candidates) {
+    const formatted = normalizeTagCandidate(candidate);
+    const key = canonicalTagKey(formatted);
+    if (!formatted || !key || seen.has(key)) continue;
     seen.add(key);
     tags.push(formatted);
     if (tags.length >= count) break;
-  }
-
-  const family = getFamilyLabel(resolveProductFamily(title, searchableDescription));
-  const familyTag = cleanTitle(family);
-  if (familyTag && !seen.has(familyTag.toLowerCase()) && tags.length < count) {
-    tags.push(familyTag);
   }
 
   return tags.slice(0, count);
@@ -670,6 +768,22 @@ function readDataUrl(file: File): Promise<string> {
   });
 }
 
+const REQUEST_TIMEOUT_MS = 45000;
+
+async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function formatApiError(message: string) {
   const raw = message.trim();
   if (!raw) return "Live provider connection is not available in this preview.";
@@ -678,6 +792,9 @@ function formatApiError(message: string) {
   }
   if (raw.startsWith("<?xml")) {
     return "Live Printify connection is not available in this preview. The request reached a static host instead of a backend API route.";
+  }
+  if (raw.toLowerCase().includes("abort") || raw.toLowerCase().includes("timed out")) {
+    return "The request timed out before the provider responded. Please try again.";
   }
   return raw.length > 220 ? `${raw.slice(0, 220)}...` : raw;
 }
@@ -794,6 +911,7 @@ function BrandMark() {
 
 export default function MerchQuantumApp() {
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const previousPreviewUrlsRef = useRef<string[]>([]);
 
   const [provider, setProvider] = useState<ProviderId>("printify");
   const [token, setToken] = useState("");
@@ -809,6 +927,7 @@ export default function MerchQuantumApp() {
   const [manualRef, setManualRef] = useState("");
   const [nickname, setNickname] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
+  const [templateStatus, setTemplateStatus] = useState("");
   const [template, setTemplate] = useState<Template | null>(null);
   const [saved, setSaved] = useState<Template[]>([]);
   const [images, setImages] = useState<Img[]>([]);
@@ -850,6 +969,30 @@ export default function MerchQuantumApp() {
     ? buildTags(selectedImage.final, previewDescription, FIXED_TAG_COUNT)
     : [];
 
+
+  useEffect(() => {
+    const previous = previousPreviewUrlsRef.current;
+    const current = images.map((img) => img.preview);
+
+    for (const url of previous) {
+      if (url.startsWith("blob:") && !current.includes(url)) {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    previousPreviewUrlsRef.current = current;
+  }, [images]);
+
+  useEffect(() => {
+    return () => {
+      for (const url of previousPreviewUrlsRef.current) {
+        if (url.startsWith("blob:")) {
+          URL.revokeObjectURL(url);
+        }
+      }
+    };
+  }, []);
+
   function resetProviderState(clearStatus = true) {
     setConnected(false);
     setLoadingApi(false);
@@ -859,6 +1002,7 @@ export default function MerchQuantumApp() {
     setShopId("");
     setProductId("");
     setTemplate(null);
+    setTemplateStatus("");
     setBatchResults([]);
     setRunStatus("");
   }
@@ -875,24 +1019,19 @@ export default function MerchQuantumApp() {
       Array.from(list).filter(isImage).length - valid.length
     );
 
-    const results = await Promise.allSettled(
-      valid.map(async (file) => {
-        const cleaned = cleanTitle(file.name);
-        return {
-          id: makeId(),
-          name: file.name,
-          preview: await readDataUrl(file),
-          cleaned,
-          final: cleaned,
-        } as Img;
-      })
-    );
+    const good = valid.map((file) => {
+      const cleaned = cleanTitle(file.name);
+      return {
+        id: makeId(),
+        name: file.name,
+        file,
+        preview: URL.createObjectURL(file),
+        cleaned,
+        final: cleaned,
+      } as Img;
+    });
 
-    const good = results
-      .filter((r): r is PromiseFulfilledResult<Img> => r.status === "fulfilled")
-      .map((r) => r.value);
-
-    const failed = results.length - good.length;
+    const failed = 0;
 
     setImages((current) => {
       const next = [...current, ...good];
@@ -925,7 +1064,7 @@ export default function MerchQuantumApp() {
     }
 
     try {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/printify/products?shopId=${encodeURIComponent(nextShopId)}`
       );
       const data = await parseResponsePayload(response);
@@ -958,7 +1097,7 @@ export default function MerchQuantumApp() {
     setApiStatus("");
 
     try {
-      const response = await fetch("/api/printify/connect", {
+      const response = await fetchWithTimeout("/api/printify/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
@@ -992,8 +1131,17 @@ export default function MerchQuantumApp() {
     }
   }
 
-  function disconnectPrintify() {
-    resetProviderState(true);
+  async function disconnectPrintify() {
+    try {
+      await fetchWithTimeout("/api/printify/disconnect", {
+        method: "POST",
+      });
+    } catch {
+      // Fall back to local reset even if the disconnect route is unavailable.
+    } finally {
+      resetProviderState(true);
+      setApiStatus("");
+    }
   }
 
   async function loadProductTemplate() {
@@ -1001,7 +1149,7 @@ export default function MerchQuantumApp() {
     if (!fallback || !shopId) return;
 
     try {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/printify/product?shopId=${encodeURIComponent(
           shopId
         )}&productId=${encodeURIComponent(productId)}`
@@ -1014,6 +1162,7 @@ export default function MerchQuantumApp() {
 
       const chosen = data?.product || fallback;
       const title = chosen?.title || fallback.title;
+      const usingFallbackDescription = !chosen?.description?.trim();
       const base = formatTemplateDescription(
         chosen?.description?.trim() ||
           fallback.description?.trim() ||
@@ -1031,7 +1180,12 @@ export default function MerchQuantumApp() {
       setNickname(title);
       setManualRef(chosen?.id || fallback.id);
       setTemplateDescription(base);
-    } catch {
+      setTemplateStatus(
+        usingFallbackDescription
+          ? "Live template loaded, but it did not include a description. Using the saved fallback description."
+          : "Live template description loaded successfully."
+      );
+    } catch (error) {
       const title = fallback.title;
       const base = formatTemplateDescription(
         fallback.description?.trim() ||
@@ -1049,6 +1203,8 @@ export default function MerchQuantumApp() {
       setNickname(title);
       setManualRef(fallback.id);
       setTemplateDescription(base);
+      const msg = error instanceof Error ? error.message : "Unable to load live template description.";
+      setTemplateStatus(`Using local fallback description because the live template could not be loaded. ${formatApiError(msg)}`);
     }
   }
 
@@ -1071,6 +1227,7 @@ export default function MerchQuantumApp() {
     setNickname(name);
     setManualRef(ref);
     setTemplateDescription(base);
+    setTemplateStatus("Manual template description loaded.");
   }
 
   function saveTemplate() {
@@ -1083,6 +1240,7 @@ export default function MerchQuantumApp() {
     };
 
     setTemplate(nextTemplate);
+    setTemplateStatus("Template saved for this session.");
     setSaved((current) => {
       const idx = current.findIndex(
         (t) =>
@@ -1114,7 +1272,9 @@ export default function MerchQuantumApp() {
         setRunStatus(`Saving draft ${index + 1} of ${images.length}...`);
 
         try {
-          const response = await fetch("/api/printify/batch-create", {
+          const imageDataUrl = await readDataUrl(img.file);
+
+          const response = await fetchWithTimeout("/api/printify/batch-create", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -1122,15 +1282,13 @@ export default function MerchQuantumApp() {
             body: JSON.stringify({
               shopId,
               templateProductId: template.reference,
-              items: [
-                {
-                  fileName: img.name,
-                  title: safeTitle(img.final, img.cleaned),
-                  description,
-                  tags,
-                  imageDataUrl: img.preview,
-                },
-              ],
+              item: {
+                fileName: img.name,
+                title: safeTitle(img.final, img.cleaned),
+                description,
+                tags,
+                imageDataUrl,
+              },
             }),
           });
 
@@ -1150,7 +1308,8 @@ export default function MerchQuantumApp() {
           nextResults.push(result);
           setBatchResults([...nextResults]);
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Draft create failed.";
+          const rawMessage = error instanceof Error ? error.message : "Draft create failed.";
+          const message = formatApiError(rawMessage);
           nextResults.push({
             fileName: img.name,
             title: safeTitle(img.final, img.cleaned),
@@ -1189,7 +1348,7 @@ export default function MerchQuantumApp() {
               {connected ? "Quantum connected" : "Quantum not connected"}
             </Badge>
             {connected ? (
-              <Button variant="secondary" onClick={disconnectPrintify}>
+              <Button variant="secondary" onClick={() => { void disconnectPrintify(); }}>
                 Disconnect
               </Button>
             ) : null}
@@ -1207,8 +1366,9 @@ export default function MerchQuantumApp() {
                       const nextProvider = e.target.value as ProviderId;
                       setProvider(nextProvider);
                       resetProviderState(false);
+                      setTemplateStatus("");
                       const nextMeta = PROVIDERS.find((entry) => entry.id === nextProvider);
-                      setApiStatus(nextMeta?.isLive ? "" : `${nextMeta?.label || "This provider"} is coming soon.`);
+                      setApiStatus(nextMeta?.isLive ? "" : `${nextMeta?.label || "This provider"} is coming soon. Live API connection is currently available for Printify.`);
                     }}
                   >
                     {PROVIDERS.map((entry) => (
@@ -1394,6 +1554,12 @@ export default function MerchQuantumApp() {
                 </Field>
               </div>
 
+              {templateStatus ? (
+                <p className={`mt-3 text-sm ${templateStatus.toLowerCase().includes("successfully") || templateStatus.toLowerCase().includes("saved") || templateStatus.toLowerCase().includes("manual") ? "text-green-700 dark:text-green-400" : "text-amber-700 dark:text-amber-400"}`}>
+                  {templateStatus}
+                </p>
+              ) : null}
+
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-800 dark:bg-slate-900">
                 <div>
                   <b>Loaded Template:</b> {template ? template.nickname : "None loaded"}
@@ -1567,10 +1733,13 @@ export default function MerchQuantumApp() {
                               variant="ghost"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setImages((current) =>
-                                  current.filter((x) => x.id !== img.id)
-                                );
-                                if (selectedId === img.id) setSelectedId("");
+                                setImages((current) => {
+                                  const next = current.filter((x) => x.id !== img.id);
+                                  if (selectedId === img.id) {
+                                    setSelectedId(next[0]?.id || "");
+                                  }
+                                  return next;
+                                });
                               }}
                             >
                               Remove
