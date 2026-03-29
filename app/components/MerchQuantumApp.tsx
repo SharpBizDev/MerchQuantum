@@ -51,11 +51,6 @@ type PlacementGuide = {
   decorationMethod?: string;
 };
 
-type PlacementSettings = {
-  topGapPct: number;
-  fillPct: number;
-};
-
 type Img = {
   id: string;
   name: string;
@@ -151,11 +146,6 @@ const DEFAULT_PLACEMENT_GUIDE: PlacementGuide = {
   width: 3153,
   height: 3995,
   source: "fallback",
-};
-
-const DEFAULT_PLACEMENT_SETTINGS: PlacementSettings = {
-  topGapPct: 10,
-  fillPct: 90,
 };
 
 const STOP_WORDS = new Set([
@@ -426,56 +416,6 @@ async function analyzeArtworkBounds(file: File): Promise<ArtworkBounds> {
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
-}
-
-function computePlacementPreview(
-  bounds: ArtworkBounds | undefined,
-  guide: PlacementGuide | undefined,
-  settings: PlacementSettings
-) {
-  const placementGuide = guide || DEFAULT_PLACEMENT_GUIDE;
-  const placeholderWidth = Math.max(1, placementGuide.width || DEFAULT_PLACEMENT_GUIDE.width);
-  const placeholderHeight = Math.max(1, placementGuide.height || DEFAULT_PLACEMENT_GUIDE.height);
-  const normalizedBounds = normalizeArtworkBounds(bounds, bounds?.canvasWidth || placeholderWidth, bounds?.canvasHeight || placeholderHeight);
-
-  const sideInsetPct = 0.06;
-  const bottomInsetPct = 0.08;
-  const topInsetPct = clamp(settings.topGapPct / 100, 0.02, 0.16);
-  const fillPct = clamp(settings.fillPct / 100, 0.75, 1);
-
-  const safeLeft = placeholderWidth * sideInsetPct;
-  const safeTop = placeholderHeight * topInsetPct;
-  const safeWidth = placeholderWidth * (1 - sideInsetPct * 2);
-  const safeHeight = placeholderHeight * (1 - topInsetPct - bottomInsetPct);
-
-  const scaleFactor = Math.min(
-    safeWidth / normalizedBounds.visibleWidth,
-    safeHeight / normalizedBounds.visibleHeight
-  ) * fillPct;
-
-  const renderedWidth = normalizedBounds.canvasWidth * scaleFactor;
-  const renderedHeight = normalizedBounds.canvasHeight * scaleFactor;
-  const visibleWidth = normalizedBounds.visibleWidth * scaleFactor;
-  const left = safeLeft + (safeWidth - visibleWidth) / 2 - normalizedBounds.visibleLeft * scaleFactor;
-  const top = safeTop - normalizedBounds.visibleTop * scaleFactor;
-
-  return {
-    imageStyle: {
-      left: `${(left / placeholderWidth) * 100}%`,
-      top: `${(top / placeholderHeight) * 100}%`,
-      width: `${(renderedWidth / placeholderWidth) * 100}%`,
-      height: `${(renderedHeight / placeholderHeight) * 100}%`,
-    },
-    safeAreaStyle: {
-      left: `${sideInsetPct * 100}%`,
-      right: `${sideInsetPct * 100}%`,
-      top: `${topInsetPct * 100}%`,
-      bottom: `${bottomInsetPct * 100}%`,
-    },
-    frameStyle: {
-      aspectRatio: `${placeholderWidth} / ${placeholderHeight}`,
-    } as React.CSSProperties,
-  };
 }
 
 function decodeHtmlEntities(value: string) {
@@ -1127,7 +1067,6 @@ export default function MerchQuantumApp() {
   const [templateDescription, setTemplateDescription] = useState("");
   const [templateStatus, setTemplateStatus] = useState("");
   const [template, setTemplate] = useState<Template | null>(null);
-  const [placementSettings, setPlacementSettings] = useState<PlacementSettings>(DEFAULT_PLACEMENT_SETTINGS);
   const [saved, setSaved] = useState<Template[]>([]);
   const [images, setImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -1167,12 +1106,6 @@ export default function MerchQuantumApp() {
   const previewTags = selectedImage
     ? buildTags(selectedImage.final, previewDescription, FIXED_TAG_COUNT)
     : [];
-
-  const placementGuide = template?.placementGuide || DEFAULT_PLACEMENT_GUIDE;
-  const placementPreview = useMemo(
-    () => computePlacementPreview(selectedImage?.artworkBounds, placementGuide, placementSettings),
-    [selectedImage?.artworkBounds, placementGuide, placementSettings]
-  );
 
   useEffect(() => {
     const previous = previousPreviewUrlsRef.current;
@@ -1541,7 +1474,6 @@ export default function MerchQuantumApp() {
                 tags,
                 imageDataUrl,
                 artworkBounds,
-                placementSettings,
               },
             }),
           });
@@ -2072,69 +2004,16 @@ export default function MerchQuantumApp() {
                     <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
                       <div className="mb-3 flex items-center justify-between gap-3">
                         <div>
-                          <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Guided Placement Preview</div>
+                          <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Automatic Placement</div>
                           <div className="text-xs text-slate-500 dark:text-slate-400">
-                            Built from the loaded template&apos;s front print boundary when available.
+                            Front-only placement is built in with top-centered alignment, a 10% safe gap, and a 90% artwork fill for cleaner bulk uploads.
                           </div>
                         </div>
-                        <Badge on={template?.placementGuide?.source === "live"}>{template?.placementGuide?.source === "live" ? "Live Guide" : "Fallback Guide"}</Badge>
+                        <Badge on={template?.placementGuide?.source === "live"}>{template?.placementGuide?.source === "live" ? "Live Boundary" : "Safe Defaults"}</Badge>
                       </div>
 
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-black">
-                        <div className="relative mx-auto w-full max-w-[18rem] overflow-hidden rounded-lg border border-slate-300 bg-[linear-gradient(135deg,rgba(99,102,241,0.06),rgba(15,23,42,0.02))] dark:border-slate-700" style={placementPreview.frameStyle}>
-                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.12),transparent_45%)]" />
-                          <div className="absolute border border-dashed border-violet-400/80" style={placementPreview.safeAreaStyle} />
-                          <div className="absolute left-3 right-3 top-2 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-slate-400">
-                            <span>Top Safe Zone</span>
-                            <span>{placementGuide.width} × {placementGuide.height}</span>
-                          </div>
-                          {selectedImage.preview ? (
-                            <img
-                              src={selectedImage.preview}
-                              alt={safeTitle(selectedImage.final, selectedImage.cleaned)}
-                              className="absolute max-w-none"
-                              style={placementPreview.imageStyle}
-                            />
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                        <Field label={`Top Safe Gap (${placementSettings.topGapPct}%)`}>
-                          <input
-                            type="range"
-                            min={10}
-                            max={12}
-                            step={1}
-                            value={placementSettings.topGapPct}
-                            onChange={(e) =>
-                              setPlacementSettings((current) => ({
-                                ...current,
-                                topGapPct: Number(e.target.value),
-                              }))
-                            }
-                            className="w-full accent-violet-500"
-                          />
-                          <FieldNote>Keeps artwork top centered with a safer gap so uploaded designs stay inside the print margin more consistently.</FieldNote>
-                        </Field>
-
-                        <Field label={`Artwork Fill (${placementSettings.fillPct}%)`}>
-                          <input
-                            type="range"
-                            min={82}
-                            max={90}
-                            step={1}
-                            value={placementSettings.fillPct}
-                            onChange={(e) =>
-                              setPlacementSettings((current) => ({
-                                ...current,
-                                fillPct: Number(e.target.value),
-                              }))
-                            }
-                            className="w-full accent-violet-500"
-                          />
-                          <FieldNote>Keeps uploaded art inside the print area more reliably, even when provider templates include extra transparent space.</FieldNote>
-                        </Field>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-slate-800 dark:bg-black dark:text-slate-300">
+                        Artwork is automatically placed top centered inside the front print area with fixed safeguards built in, so you can upload in bulk without adjusting image position by hand.
                       </div>
                     </div>
                   </div>
@@ -2225,7 +2104,7 @@ export default function MerchQuantumApp() {
               </div>
 
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                Products are uploaded in bulk as drafts to your selected provider. Artwork is placed top centered inside the front print area with a built-in safety gap, so you can review everything first and publish when ready.
+                Products are uploaded in bulk as drafts to your selected provider. Artwork is automatically placed top centered in the front print area with built-in safeguards, so you can review everything first and publish when ready.
               </div>
 
               <div className="mt-4">
