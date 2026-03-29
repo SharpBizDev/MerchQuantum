@@ -154,8 +154,8 @@ const DEFAULT_PLACEMENT_GUIDE: PlacementGuide = {
 };
 
 const DEFAULT_PLACEMENT_SETTINGS: PlacementSettings = {
-  topGapPct: 6,
-  fillPct: 92,
+  topGapPct: 10,
+  fillPct: 90,
 };
 
 const STOP_WORDS = new Set([
@@ -1512,7 +1512,7 @@ export default function MerchQuantumApp() {
         const description = buildDescription(img.final, templateDescription);
         const tags = buildTags(img.final, description, FIXED_TAG_COUNT);
 
-        setRunStatus(`Saving draft ${index + 1} of ${images.length}...`);
+        setRunStatus(`Uploading draft ${index + 1} of ${images.length}...`);
 
         try {
           const imageDataUrl = await readDataUrl(img.file);
@@ -1574,7 +1574,7 @@ export default function MerchQuantumApp() {
       }
 
       const createdCount = nextResults.filter((result) => !!result.productId).length;
-      setRunStatus(`Saved ${createdCount} draft product${createdCount === 1 ? "" : "s"} out of ${images.length}.`);
+      setRunStatus(`Uploaded ${createdCount} draft product${createdCount === 1 ? "" : "s"} out of ${images.length}.`);
     } finally {
       setIsRunningBatch(false);
     }
@@ -2103,7 +2103,7 @@ export default function MerchQuantumApp() {
                         <Field label={`Top Safe Gap (${placementSettings.topGapPct}%)`}>
                           <input
                             type="range"
-                            min={3}
+                            min={10}
                             max={12}
                             step={1}
                             value={placementSettings.topGapPct}
@@ -2115,14 +2115,14 @@ export default function MerchQuantumApp() {
                             }
                             className="w-full accent-violet-500"
                           />
-                          <FieldNote>Moves the artwork down from the top edge while keeping it top centered.</FieldNote>
+                          <FieldNote>Keeps artwork top centered with a safer gap so uploaded designs stay inside the print margin more consistently.</FieldNote>
                         </Field>
 
                         <Field label={`Artwork Fill (${placementSettings.fillPct}%)`}>
                           <input
                             type="range"
                             min={82}
-                            max={100}
+                            max={90}
                             step={1}
                             value={placementSettings.fillPct}
                             onChange={(e) =>
@@ -2133,7 +2133,7 @@ export default function MerchQuantumApp() {
                             }
                             className="w-full accent-violet-500"
                           />
-                          <FieldNote>Back the art off slightly so transparent templates do not push visible content out of bounds.</FieldNote>
+                          <FieldNote>Keeps uploaded art inside the print area more reliably, even when provider templates include extra transparent space.</FieldNote>
                         </Field>
                       </div>
                     </div>
@@ -2225,7 +2225,7 @@ export default function MerchQuantumApp() {
               </div>
 
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                Products are uploaded in bulk as drafts to your selected provider. Artwork is applied to the front print area only with a top-safe placement, so you can review everything first and publish when ready.
+                Products are uploaded in bulk as drafts to your selected provider. Artwork is placed top centered inside the front print area with a built-in safety gap, so you can review everything first and publish when ready.
               </div>
 
               <div className="mt-4">
@@ -2236,7 +2236,7 @@ export default function MerchQuantumApp() {
                     void runDraftBatch();
                   }}
                 >
-                  {isRunningBatch ? "Saving Draft Products..." : "Save Draft Products"}
+                  {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
                 </Button>
               </div>
 
@@ -2245,19 +2245,21 @@ export default function MerchQuantumApp() {
               ) : null}
 
               {batchResults.length > 0 ? (
-                <div className="mt-4 space-y-2 rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
-                  {batchResults.map((result) => (
-                    <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                      <div className="font-medium">{result.title}</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">{result.fileName}</div>
-                      <div className="mt-1 text-sm">{result.message}</div>
-                      {result.productId ? (
-                        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                          Product ID: {result.productId}
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
+                <div className="mt-4 max-h-[520px] overflow-auto rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
+                  <div className="space-y-2">
+                    {batchResults.map((result) => (
+                      <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                        <div className="font-medium">{result.title}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">{result.fileName}</div>
+                        <div className="mt-1 text-sm">{result.message}</div>
+                        {result.productId ? (
+                          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            Product ID: {result.productId}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : null}
             </Box>
