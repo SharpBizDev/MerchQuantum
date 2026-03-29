@@ -1460,31 +1460,22 @@ export default function MerchQuantumApp() {
 
                 <Field label="Template Source">
                   <div className="space-y-2">
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant={source === "product" ? "primary" : "secondary"}
-                        disabled={!isLiveProvider}
-                        onClick={() => {
-                          setSource("product");
-                          if (shopId) {
-                            void loadProductsForShop(shopId);
-                          }
-                        }}
-                      >
-                        Choose From My Products
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={source === "manual" ? "primary" : "secondary"}
-                        disabled={!isLiveProvider}
-                        onClick={() => setSource("manual")}
-                      >
-                        Paste Product Reference
-                      </Button>
-                    </div>
+                    <Select
+                      value={source}
+                      onChange={(e) => {
+                        const nextSource = e.target.value as "product" | "manual";
+                        setSource(nextSource);
+                        if (nextSource === "product" && shopId) {
+                          void loadProductsForShop(shopId);
+                        }
+                      }}
+                      disabled={!isLiveProvider}
+                    >
+                      <option value="product">Choose From My Products</option>
+                      <option value="manual">Paste Product Reference</option>
+                    </Select>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      My Products is the default. Your saved provider products load here automatically after you connect and choose a shop.
+                      My Products loads by default so saved provider products are ready as soon as you connect and choose a shop.
                     </p>
                   </div>
                 </Field>
