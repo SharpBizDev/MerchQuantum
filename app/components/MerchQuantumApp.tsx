@@ -949,8 +949,8 @@ async function parseResponsePayload(response: Response) {
 
 function Box({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-950">
-      <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-slate-100">
+    <div className="rounded-2xl border border-slate-200/90 bg-white/95 p-5 shadow-sm shadow-slate-200/60 transition-colors dark:border-slate-800 dark:bg-slate-950">
+      <h2 className="mb-4 text-[1.05rem] font-semibold tracking-tight text-slate-900 dark:text-slate-100">
         {title}
       </h2>
       {children}
@@ -961,7 +961,7 @@ function Box({ title, children }: { title: string; children: React.ReactNode }) 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+      <label className="mb-2 block text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">
         {label}
       </label>
       {children}
@@ -971,7 +971,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function FieldNote({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{children}</p>
+    <p className="mt-2 text-[0.8rem] leading-5 text-slate-500 dark:text-slate-400">{children}</p>
   );
 }
 
@@ -979,7 +979,7 @@ function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 ${props.className || ""}`.trim()}
+      className={`min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-violet-400 ${props.className || ""}`.trim()}
     />
   );
 }
@@ -988,7 +988,7 @@ function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       {...props}
-      className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 ${props.className || ""}`.trim()}
+      className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-violet-400 ${props.className || ""}`.trim()}
     />
   );
 }
@@ -997,7 +997,7 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
       {...props}
-      className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 ${props.className || ""}`.trim()}
+      className={`min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 transition-colors focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-violet-400 ${props.className || ""}`.trim()}
     />
   );
 }
@@ -1018,7 +1018,7 @@ function Button(
   return (
     <button
       {...props}
-      className={`rounded-xl px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${classes} ${props.className || ""}`.trim()}
+      className={`min-h-[44px] rounded-xl px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${classes} ${props.className || ""}`.trim()}
     />
   );
 }
@@ -1026,7 +1026,7 @@ function Button(
 function Badge({ on, children }: { on?: boolean; children: React.ReactNode }) {
   return (
     <span
-      className={`rounded-full px-3 py-1 text-xs ${on ? "bg-slate-900 text-white dark:bg-violet-600" : "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300"}`}
+      className={`rounded-full px-3 py-1 text-xs font-medium ${on ? "bg-slate-900 text-white dark:bg-violet-600" : "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300"}`}
     >
       {children}
     </span>
@@ -1870,7 +1870,7 @@ export default function MerchQuantumApp() {
             </Box>
 
             <Box title="Batch Preview">
-              <div className="max-h-[520px] overflow-auto rounded-xl border border-slate-200 dark:border-slate-800">
+              <div className="max-h-[24rem] overflow-auto rounded-xl border border-slate-200 dark:border-slate-800">
                 <table className="min-w-full border-collapse text-sm">
                   <thead className="sticky top-0 bg-slate-100 dark:bg-slate-900">
                     <tr>
@@ -1984,21 +1984,19 @@ export default function MerchQuantumApp() {
                 </p>
               ) : (
                 <div className="space-y-4">
-                  <div>
-                    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-                      <div className="mb-3 flex items-center justify-between">
-                        <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Uploaded Artwork</div>
-                        <Badge>Safe Defaults Applied</Badge>
-                      </div>
-                      <div className="flex h-64 w-full items-center justify-center rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-black">
-                        {selectedImage.preview ? (
-                          <img
-                            src={selectedImage.preview}
-                            alt={safeTitle(selectedImage.final, selectedImage.cleaned)}
-                            className="max-h-full max-w-full object-contain"
-                          />
-                        ) : null}
-                      </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Uploaded Artwork</div>
+                      <Badge on={template?.placementGuide?.source === "live"}>{template?.placementGuide?.source === "live" ? "Live Boundary" : "Safe Defaults"}</Badge>
+                    </div>
+                    <div className="flex h-64 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                      {selectedImage.preview ? (
+                        <img
+                          src={selectedImage.preview}
+                          alt={safeTitle(selectedImage.final, selectedImage.cleaned)}
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      ) : null}
                     </div>
                   </div>
 
@@ -2108,7 +2106,7 @@ export default function MerchQuantumApp() {
               ) : null}
 
               {batchResults.length > 0 ? (
-                <div className="mt-4 max-h-[520px] overflow-auto rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
+                <div className="mt-4 max-h-[24rem] overflow-auto rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
                   <div className="space-y-2">
                     {batchResults.map((result) => (
                       <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
