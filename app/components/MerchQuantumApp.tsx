@@ -1985,9 +1985,13 @@ export default function MerchQuantumApp() {
               ) : (
                 <div className="space-y-4">
                   <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Uploaded Artwork</div>
-                      <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Safe Defaults</div>
+                    <div className="mb-3 flex items-center gap-6">
+                      <span className="block bg-transparent p-0 m-0 text-sm font-medium tracking-tight text-slate-700 shadow-none ring-0 dark:text-slate-300">
+                        Uploaded Artwork
+                      </span>
+                      <span className="block bg-transparent p-0 m-0 text-sm font-medium tracking-tight text-slate-700 shadow-none ring-0 dark:text-slate-300">
+                        Safe Defaults
+                      </span>
                     </div>
                     <div className="flex h-64 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
                       {selectedImage.preview ? (
