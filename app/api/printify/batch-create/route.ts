@@ -3,12 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 const PRINTIFY_API_BASE = "https://api.printify.com/v1";
 const USER_AGENT = "MerchQuantum";
-const FRONT_POSITION_PATTERNS = [
-  /front/i,
-  /chest/i,
-  /center/i,
-  /default/i,
-];
+const PROVIDER_TIMEOUT_MS = 90000;
+const FRONT_POSITION_PATTERNS = [/front/i, /chest/i, /center/i, /default/i];
 
 type IncomingItem = {
   fileName: string;
@@ -46,6 +42,26 @@ type TemplateProduct = {
   print_details?: Record<string, unknown>;
 };
 
+type ImageDimensions = {
+  width: number;
+  height: number;
+  mime: string;
+};
+
+async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = PROVIDER_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function extractDataUrlParts(dataUrl: string) {
   const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
   if (!match) return null;
@@ -60,12 +76,6 @@ function extractBase64(dataUrl: string) {
   const parts = extractDataUrlParts(dataUrl);
   return parts ? parts.contents : "";
 }
-
-type ImageDimensions = {
-  width: number;
-  height: number;
-  mime: string;
-};
 
 function readPngDimensions(buffer: Buffer) {
   if (buffer.length < 24) return null;
@@ -113,12 +123,7 @@ function readJpegDimensions(buffer: Buffer) {
     const length = buffer.readUInt16BE(offset);
     if (length < 2 || offset + length > buffer.length) break;
 
-    const isStartOfFrame = [
-      0xc0, 0xc1, 0xc2, 0xc3,
-      0xc5, 0xc6, 0xc7,
-      0xc9, 0xca, 0xcb,
-      0xcd, 0xce, 0xcf,
-    ].includes(marker);
+    const isStartOfFrame = [0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker);
 
     if (isStartOfFrame) {
       if (offset + 7 >= buffer.length) break;
@@ -188,45 +193,6 @@ function getImageDimensionsFromDataUrl(dataUrl: string): ImageDimensions | null 
   }
 }
 
-function getTopSafePlacement(
-  imageDataUrl: string,
-  templateDefaults?: TemplateProduct["print_areas"][number]["placeholders"][number]["images"][number]
-) {
-  const dimensions = getImageDimensionsFromDataUrl(imageDataUrl);
-  const aspectRatio = dimensions ? dimensions.width / dimensions.height : 1;
-
-  let scaleCap = 0.72;
-  let y = 0.27;
-
-  if (aspectRatio >= 1.6) {
-    scaleCap = 0.84;
-    y = 0.3;
-  } else if (aspectRatio >= 1.2) {
-    scaleCap = 0.8;
-    y = 0.29;
-  } else if (aspectRatio >= 0.9) {
-    scaleCap = 0.72;
-    y = 0.27;
-  } else if (aspectRatio >= 0.7) {
-    scaleCap = 0.64;
-    y = 0.25;
-  } else {
-    scaleCap = 0.56;
-    y = 0.23;
-  }
-
-  const templateScale = typeof templateDefaults?.scale === "number" ? templateDefaults.scale : 1;
-  const safeScale = Math.min(templateScale || 1, scaleCap);
-
-  return {
-    x: 0.5,
-    y: Number(y.toFixed(4)),
-    scale: Number(safeScale.toFixed(4)),
-    angle: typeof templateDefaults?.angle === "number" ? templateDefaults.angle : 0,
-    ...(templateDefaults?.pattern ? { pattern: templateDefaults.pattern } : {}),
-  };
-}
-
 async function parseJsonOrText(response: Response) {
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
@@ -271,9 +237,7 @@ function chooseFrontPlacement(template: TemplateProduct) {
     const area = template.print_areas[areaIndex];
     for (let placeholderIndex = 0; placeholderIndex < (area.placeholders || []).length; placeholderIndex += 1) {
       const placeholder = area.placeholders[placeholderIndex];
-      const imageDefaults = Array.isArray(placeholder.images) && placeholder.images.length
-        ? placeholder.images[0]
-        : undefined;
+      const imageDefaults = Array.isArray(placeholder.images) && placeholder.images.length ? placeholder.images[0] : undefined;
 
       if (!fallback) {
         fallback = { areaIndex, placeholderIndex, imageDefaults };
@@ -288,9 +252,50 @@ function chooseFrontPlacement(template: TemplateProduct) {
   return fallback;
 }
 
+function getTopSafePlacement(
+  imageDataUrl: string,
+  templateDefaults?: TemplateProduct["print_areas"][number]["placeholders"][number]["images"][number]
+) {
+  const dimensions = getImageDimensionsFromDataUrl(imageDataUrl);
+  const aspectRatio = dimensions ? dimensions.width / dimensions.height : 1;
+
+  const templateScale = typeof templateDefaults?.scale === "number" && templateDefaults.scale > 0 ? templateDefaults.scale : 1;
+  const templateY = typeof templateDefaults?.y === "number" ? templateDefaults.y : 0.5;
+
+  let scaleCap = 0.72;
+  let y = 0.28;
+
+  if (aspectRatio >= 1.8) {
+    scaleCap = 0.86;
+    y = 0.31;
+  } else if (aspectRatio >= 1.35) {
+    scaleCap = 0.81;
+    y = 0.295;
+  } else if (aspectRatio >= 0.95) {
+    scaleCap = 0.72;
+    y = 0.28;
+  } else if (aspectRatio >= 0.7) {
+    scaleCap = 0.64;
+    y = 0.26;
+  } else {
+    scaleCap = 0.56;
+    y = 0.24;
+  }
+
+  const safeScale = Math.min(templateScale * 0.9, scaleCap);
+  const safeY = Math.min(templateY - 0.06, y);
+
+  return {
+    x: 0.5,
+    y: Number(Math.max(0.2, safeY).toFixed(4)),
+    scale: Number(Math.max(0.42, safeScale).toFixed(4)),
+    angle: typeof templateDefaults?.angle === "number" ? templateDefaults.angle : 0,
+    ...(templateDefaults?.pattern ? { pattern: templateDefaults.pattern } : {}),
+  };
+}
+
 function buildFrontOnlyPrintAreas(template: TemplateProduct, uploadId: string, imageDataUrl: string) {
   const target = chooseFrontPlacement(template);
-
   if (!target) return [];
 
   const placement = getTopSafePlacement(imageDataUrl, target.imageDefaults);
@@ -299,10 +304,7 @@ function buildFrontOnlyPrintAreas(template: TemplateProduct, uploadId: string, i
     .map((area, areaIndex) => {
       const placeholders = (area.placeholders || [])
         .map((placeholder, placeholderIndex) => {
-          if (
-            areaIndex !== target.areaIndex ||
-            placeholderIndex !== target.placeholderIndex
-          ) {
+          if (areaIndex !== target.areaIndex || placeholderIndex !== target.placeholderIndex) {
             return null;
           }
 
@@ -338,29 +340,25 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const shopId = String(body?.shopId || "").trim();
     const templateProductId = String(body?.templateProductId || "").trim();
-    const items = Array.isArray(body?.items) ? (body.items as IncomingItem[]) : [];
+    const items = Array.isArray(body?.items)
+      ? (body.items as IncomingItem[])
+      : body?.item
+        ? [body.item as IncomingItem]
+        : [];
 
     if (!shopId || !templateProductId || !items.length) {
-      return NextResponse.json(
-        { error: "Missing shopId, templateProductId, or items." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing shopId, templateProductId, or item payload." }, { status: 400 });
     }
 
     const cookieStore = await cookies();
     const token = cookieStore.get("printify_token")?.value?.trim();
 
     if (!token) {
-      return NextResponse.json(
-        { error: "No Printify token found. Connect again." },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "No Printify token found. Connect again." }, { status: 401 });
     }
 
-    const templateResponse = await fetch(
-      `${PRINTIFY_API_BASE}/shops/${encodeURIComponent(
-        shopId
-      )}/products/${encodeURIComponent(templateProductId)}.json`,
+    const templateResponse = await fetchWithTimeout(
+      `${PRINTIFY_API_BASE}/shops/${encodeURIComponent(shopId)}/products/${encodeURIComponent(templateProductId)}.json`,
       {
         method: "GET",
         headers: {
@@ -377,10 +375,7 @@ export async function POST(req: NextRequest) {
         templateResponse,
         `Template request failed with status ${templateResponse.status}.`
       );
-      return NextResponse.json(
-        { error: text },
-        { status: templateResponse.status }
-      );
+      return NextResponse.json({ error: text }, { status: templateResponse.status });
     }
 
     const template = (await templateResponse.json()) as TemplateProduct;
@@ -395,18 +390,10 @@ export async function POST(req: NextRequest) {
       }));
 
     if (!enabledVariants.length) {
-      return NextResponse.json(
-        { error: "Template has no enabled variants." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Template has no enabled variants." }, { status: 400 });
     }
 
-    const results: Array<{
-      fileName: string;
-      title: string;
-      productId?: string;
-      message: string;
-    }> = [];
+    const results: Array<{ fileName: string; title: string; productId?: string; message: string }> = [];
 
     for (const item of items) {
       try {
@@ -415,7 +402,7 @@ export async function POST(req: NextRequest) {
           throw new Error("Image data is missing or not base64.");
         }
 
-        const uploadResponse = await fetch(`${PRINTIFY_API_BASE}/uploads/images.json`, {
+        const uploadResponse = await fetchWithTimeout(`${PRINTIFY_API_BASE}/uploads/images.json`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -429,10 +416,7 @@ export async function POST(req: NextRequest) {
         });
 
         if (!uploadResponse.ok) {
-          const text = await readErrorMessage(
-            uploadResponse,
-            `Upload failed with status ${uploadResponse.status}.`
-          );
+          const text = await readErrorMessage(uploadResponse, `Upload failed with status ${uploadResponse.status}.`);
           throw new Error(text);
         }
 
@@ -454,7 +438,7 @@ export async function POST(req: NextRequest) {
           ...(template.print_details ? { print_details: template.print_details } : {}),
         };
 
-        const createResponse = await fetch(
+        const createResponse = await fetchWithTimeout(
           `${PRINTIFY_API_BASE}/shops/${encodeURIComponent(shopId)}/products.json`,
           {
             method: "POST",
@@ -468,10 +452,7 @@ export async function POST(req: NextRequest) {
         );
 
         if (!createResponse.ok) {
-          const text = await readErrorMessage(
-            createResponse,
-            `Create failed with status ${createResponse.status}.`
-          );
+          const text = await readErrorMessage(createResponse, `Create failed with status ${createResponse.status}.`);
           throw new Error(text);
         }
 
@@ -499,8 +480,17 @@ export async function POST(req: NextRequest) {
       results,
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unable to run batch create.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = error instanceof DOMException && error.name === "AbortError" ? 504 : 500;
+    return NextResponse.json(
+      {
+        error:
+          status === 504
+            ? "Printify took too long to respond during draft creation. Please try again."
+            : error instanceof Error
+              ? error.message
+              : "Unable to run batch create.",
+      },
+      { status }
+    );
   }
 }
