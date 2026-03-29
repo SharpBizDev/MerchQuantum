@@ -1984,11 +1984,11 @@ export default function MerchQuantumApp() {
                 </p>
               ) : (
                 <div className="space-y-4">
-                  <div className="grid gap-4 xl:grid-cols-2">
+                  <div>
                     <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
                       <div className="mb-3 flex items-center justify-between">
                         <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Uploaded Artwork</div>
-                        <Badge>{selectedImage.artworkBounds ? "Bounds Detected" : "Analyzing"}</Badge>
+                        <Badge>Safe Defaults Applied</Badge>
                       </div>
                       <div className="flex h-64 w-full items-center justify-center rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-black">
                         {selectedImage.preview ? (
@@ -1998,13 +1998,6 @@ export default function MerchQuantumApp() {
                             className="max-h-full max-w-full object-contain"
                           />
                         ) : null}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-                      <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Safe Defaults</div>
-                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-slate-800 dark:bg-black dark:text-slate-300">
-                        Artwork is automatically placed top centered inside the front print area with fixed safeguards built in, so you can upload in bulk without adjusting image position by hand.
                       </div>
                     </div>
                   </div>
