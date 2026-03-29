@@ -259,36 +259,41 @@ function getTopSafePlacement(
   const dimensions = getImageDimensionsFromDataUrl(imageDataUrl);
   const aspectRatio = dimensions ? dimensions.width / dimensions.height : 1;
 
+  const normalizedAspectRatio = Number.isFinite(aspectRatio) && aspectRatio > 0 ? aspectRatio : 1;
   const templateScale = typeof templateDefaults?.scale === "number" && templateDefaults.scale > 0 ? templateDefaults.scale : 1;
-  const templateY = typeof templateDefaults?.y === "number" ? templateDefaults.y : 0.5;
 
-  let scaleCap = 0.72;
-  let y = 0.28;
+  const topInset = 0.04;
+  const bottomInset = 0.06;
+  const availableHeight = Math.max(0.72, 1 - topInset - bottomInset);
 
-  if (aspectRatio >= 1.8) {
-    scaleCap = 0.86;
-    y = 0.31;
-  } else if (aspectRatio >= 1.35) {
-    scaleCap = 0.81;
-    y = 0.295;
-  } else if (aspectRatio >= 0.95) {
-    scaleCap = 0.72;
-    y = 0.28;
-  } else if (aspectRatio >= 0.7) {
-    scaleCap = 0.64;
-    y = 0.26;
+  let widthScaleCap = 0.72;
+
+  if (normalizedAspectRatio >= 1.8) {
+    widthScaleCap = 0.84;
+  } else if (normalizedAspectRatio >= 1.35) {
+    widthScaleCap = 0.8;
+  } else if (normalizedAspectRatio >= 0.95) {
+    widthScaleCap = 0.72;
+  } else if (normalizedAspectRatio >= 0.7) {
+    widthScaleCap = 0.62;
   } else {
-    scaleCap = 0.56;
-    y = 0.24;
+    widthScaleCap = 0.5;
   }
 
-  const safeScale = Math.min(templateScale * 0.9, scaleCap);
-  const safeY = Math.min(templateY - 0.06, y);
+  const heightLimitedScale = availableHeight * normalizedAspectRatio;
+  const safeScale = Math.min(templateScale * 0.82, widthScaleCap, heightLimitedScale);
+  const boundedScale = Number(Math.max(0.38, safeScale).toFixed(4));
+
+  const normalizedHeight = boundedScale / normalizedAspectRatio;
+  const minimumSafeY = topInset + normalizedHeight / 2;
+  const maximumSafeY = 1 - bottomInset - normalizedHeight / 2;
+  const preferredTopY = minimumSafeY;
+  const boundedY = Math.min(Math.max(preferredTopY, minimumSafeY), maximumSafeY);
 
   return {
     x: 0.5,
-    y: Number(Math.max(0.2, safeY).toFixed(4)),
-    scale: Number(Math.max(0.42, safeScale).toFixed(4)),
+    y: Number(boundedY.toFixed(4)),
+    scale: boundedScale,
     angle: typeof templateDefaults?.angle === "number" ? templateDefaults.angle : 0,
     ...(templateDefaults?.pattern ? { pattern: templateDefaults.pattern } : {}),
   };
