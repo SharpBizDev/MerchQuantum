@@ -920,7 +920,7 @@ export default function MerchQuantumApp() {
   const [apiStatus, setApiStatus] = useState("");
   const [apiShops, setApiShops] = useState<Shop[]>([]);
   const [apiProducts, setApiProducts] = useState<Product[]>([]);
-  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const [loadingProducts, setLoadingProducts] = useState(false);
   const [shopId, setShopId] = useState("");
   const [source, setSource] = useState<"product" | "manual">("product");
   const [productId, setProductId] = useState("");
@@ -994,12 +994,19 @@ export default function MerchQuantumApp() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!connected || !isLiveProvider || !shopId || source !== "product") return;
+    if (loadingProducts || apiProducts.some((product) => product.shopId === shopId)) return;
+    void loadProductsForShop(shopId);
+  }, [connected, isLiveProvider, shopId, source, loadingProducts, apiProducts]);
+
   function resetProviderState(clearStatus = true) {
     setConnected(false);
     setLoadingApi(false);
     if (clearStatus) setApiStatus("");
     setApiShops([]);
     setApiProducts([]);
+    setLoadingProducts(false);
     setShopId("");
     setProductId("");
     setTemplate(null);
@@ -1058,24 +1065,14 @@ export default function MerchQuantumApp() {
     setMessage(parts.join(" "));
   }
 
-
-  useEffect(() => {
-    if (!connected || !isLiveProvider || source !== "product" || !shopId || apiProducts.length > 0) {
-      return;
-    }
-
-    void loadProductsForShop(shopId);
-  }, [connected, isLiveProvider, source, shopId]);
-
   async function loadProductsForShop(nextShopId: string) {
     if (!connected || !isLiveProvider || !nextShopId) {
       setApiProducts([]);
-      setIsLoadingProducts(false);
+      setLoadingProducts(false);
       return;
     }
 
-    setIsLoadingProducts(true);
-
+    setLoadingProducts(true);
     try {
       const response = await fetchWithTimeout(
         `/api/printify/products?shopId=${encodeURIComponent(nextShopId)}`
@@ -1096,13 +1093,14 @@ export default function MerchQuantumApp() {
         : [];
 
       setApiProducts(mapped);
+      setApiStatus((current) => (current.startsWith("Unable to load products") ? "" : current));
     } catch (error) {
       setApiProducts([]);
       const msg =
         error instanceof Error ? error.message : "Unable to load products.";
       setApiStatus(formatApiError(msg));
     } finally {
-      setIsLoadingProducts(false);
+      setLoadingProducts(false);
     }
   }
 
@@ -1461,35 +1459,33 @@ export default function MerchQuantumApp() {
                 </Field>
 
                 <Field label="Template Source">
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSource("product");
-                        if (connected && shopId) {
-                          void loadProductsForShop(shopId);
-                        }
-                      }}
-                      disabled={!isLiveProvider}
-                      className={`rounded-xl border px-3 py-3 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${source === "product" ? "border-violet-500 bg-violet-50 text-slate-900 dark:bg-violet-950/40 dark:text-slate-100" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900"}`}
-                    >
-                      <div className="font-medium">Choose From My Products</div>
-                      <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        Best for fast setup. Your templates stay visible and ready to load.
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setSource("manual")}
-                      disabled={!isLiveProvider}
-                      className={`rounded-xl border px-3 py-3 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${source === "manual" ? "border-violet-500 bg-violet-50 text-slate-900 dark:bg-violet-950/40 dark:text-slate-100" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900"}`}
-                    >
-                      <div className="font-medium">Paste Product Reference</div>
-                      <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        Use a direct product ID or URL when you already know the exact template.
-                      </div>
-                    </button>
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant={source === "product" ? "primary" : "secondary"}
+                        disabled={!isLiveProvider}
+                        onClick={() => {
+                          setSource("product");
+                          if (shopId) {
+                            void loadProductsForShop(shopId);
+                          }
+                        }}
+                      >
+                        Choose From My Products
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={source === "manual" ? "primary" : "secondary"}
+                        disabled={!isLiveProvider}
+                        onClick={() => setSource("manual")}
+                      >
+                        Paste Product Reference
+                      </Button>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      My Products is the default. Your saved provider products load here automatically after you connect and choose a shop.
+                    </p>
                   </div>
                 </Field>
               </div>
@@ -1507,43 +1503,21 @@ export default function MerchQuantumApp() {
 
               {source === "product" ? (
                 <div className="mt-4 space-y-4">
-                  <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900 md:flex-row md:items-end md:justify-between">
-                    <div className="flex-1">
-                      <Field label="Search My Products">
-                        <Input
-                          value={search}
-                          onChange={(e) => setSearch(e.target.value)}
-                          placeholder="Search by title or type"
-                          disabled={!connected || !shopId || isLoadingProducts}
-                        />
-                      </Field>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <div className="text-xs text-slate-500 dark:text-slate-400">
-                        {!connected || !shopId
-                          ? "Connect and choose a shop to load templates."
-                          : isLoadingProducts
-                            ? "Loading products..."
-                            : `${visibleProducts.length} template${visibleProducts.length === 1 ? "" : "s"} ready`}
-                      </div>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => { void loadProductsForShop(shopId); }}
-                        disabled={!connected || !shopId || isLoadingProducts}
-                      >
-                        {isLoadingProducts ? "Loading..." : "Refresh"}
-                      </Button>
-                    </div>
-                  </div>
+                  <Field label="Search My Products">
+                    <Input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search by title or type"
+                      disabled={!connected || !shopId}
+                    />
+                  </Field>
 
                   <div className="max-h-52 overflow-auto rounded-xl border border-slate-200 dark:border-slate-800">
                     <table className="min-w-full border-collapse text-sm">
                       <thead className="bg-slate-100 dark:bg-slate-900">
                         <tr>
                           <th className="px-3 py-2 text-left">Use</th>
-                          <th className="px-3 py-2 text-left">Template</th>
+                          <th className="px-3 py-2 text-left">Example</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1553,16 +1527,16 @@ export default function MerchQuantumApp() {
                               Connect and select a shop first.
                             </td>
                           </tr>
-                        ) : isLoadingProducts ? (
+                        ) : loadingProducts ? (
                           <tr>
                             <td colSpan={2} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
-                              Loading your products...
+                              Loading your provider products...
                             </td>
                           </tr>
                         ) : visibleProducts.length === 0 ? (
                           <tr>
                             <td colSpan={2} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
-                              No templates found for this shop.
+                              No products found for this shop yet.
                             </td>
                           </tr>
                         ) : (
@@ -1584,9 +1558,23 @@ export default function MerchQuantumApp() {
                     </table>
                   </div>
 
-                  <Button onClick={loadProductTemplate} disabled={!productId || !shopId || isLoadingProducts}>
-                    Load Template Description
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        if (shopId) {
+                          void loadProductsForShop(shopId);
+                        }
+                      }}
+                      disabled={!connected || !shopId || loadingProducts}
+                    >
+                      {loadingProducts ? "Refreshing..." : "Refresh My Products"}
+                    </Button>
+                    <Button onClick={loadProductTemplate} disabled={!productId || !shopId}>
+                      Load Template Description
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
