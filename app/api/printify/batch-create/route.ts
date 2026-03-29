@@ -404,8 +404,8 @@ function getContentAwarePlacement(
   const placeholderHeight = Math.max(1, guide.height || DEFAULT_PLACEMENT_GUIDE.height);
   const sideInsetPct = 0.06;
   const bottomInsetPct = 0.08;
-  const topInsetPct = clamp((placementSettings?.topGapPct ?? 6) / 100, 0.02, 0.16);
-  const fillPct = clamp((placementSettings?.fillPct ?? 92) / 100, 0.75, 1);
+  const topInsetPct = clamp((placementSettings?.topGapPct ?? 10) / 100, 0.1, 0.18);
+  const fillPct = clamp((placementSettings?.fillPct ?? 90) / 100, 0.75, 0.9);
 
   const safeLeft = placeholderWidth * sideInsetPct;
   const safeTop = placeholderHeight * topInsetPct;
