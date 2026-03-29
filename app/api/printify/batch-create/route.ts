@@ -6,12 +6,34 @@ const USER_AGENT = "MerchQuantum";
 const PROVIDER_TIMEOUT_MS = 90000;
 const FRONT_POSITION_PATTERNS = [/front/i, /chest/i, /center/i, /default/i];
 
+const DEFAULT_PLACEMENT_GUIDE = {
+  position: "front",
+  width: 3153,
+  height: 3995,
+};
+
+type ArtworkBounds = {
+  canvasWidth?: number;
+  canvasHeight?: number;
+  visibleLeft?: number;
+  visibleTop?: number;
+  visibleWidth?: number;
+  visibleHeight?: number;
+};
+
+type PlacementSettings = {
+  topGapPct?: number;
+  fillPct?: number;
+};
+
 type IncomingItem = {
   fileName: string;
   title: string;
   description: string;
   tags: string[];
   imageDataUrl: string;
+  artworkBounds?: ArtworkBounds;
+  placementSettings?: PlacementSettings;
 };
 
 type TemplateProduct = {
@@ -42,10 +64,27 @@ type TemplateProduct = {
   print_details?: Record<string, unknown>;
 };
 
+type CatalogVariant = {
+  id: number;
+  placeholders?: Array<{
+    position?: string;
+    decoration_method?: string;
+    width?: number;
+    height?: number;
+  }>;
+};
+
 type ImageDimensions = {
   width: number;
   height: number;
   mime: string;
+};
+
+type PlacementGuide = {
+  position: string;
+  width: number;
+  height: number;
+  decorationMethod?: string;
 };
 
 async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = PROVIDER_TIMEOUT_MS) {
@@ -226,10 +265,19 @@ async function readErrorMessage(response: Response, fallback: string) {
   return fallback;
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function round4(value: number) {
+  return Number(value.toFixed(4));
+}
+
 function chooseFrontPlacement(template: TemplateProduct) {
   let fallback: {
     areaIndex: number;
     placeholderIndex: number;
+    position: string;
     imageDefaults?: TemplateProduct["print_areas"][number]["placeholders"][number]["images"][number];
   } | null = null;
 
@@ -238,13 +286,14 @@ function chooseFrontPlacement(template: TemplateProduct) {
     for (let placeholderIndex = 0; placeholderIndex < (area.placeholders || []).length; placeholderIndex += 1) {
       const placeholder = area.placeholders[placeholderIndex];
       const imageDefaults = Array.isArray(placeholder.images) && placeholder.images.length ? placeholder.images[0] : undefined;
+      const position = String(placeholder.position || "").trim() || DEFAULT_PLACEMENT_GUIDE.position;
 
       if (!fallback) {
-        fallback = { areaIndex, placeholderIndex, imageDefaults };
+        fallback = { areaIndex, placeholderIndex, position, imageDefaults };
       }
 
-      if (FRONT_POSITION_PATTERNS.some((pattern) => pattern.test(placeholder.position || ""))) {
-        return { areaIndex, placeholderIndex, imageDefaults };
+      if (FRONT_POSITION_PATTERNS.some((pattern) => pattern.test(position))) {
+        return { areaIndex, placeholderIndex, position, imageDefaults };
       }
     }
   }
@@ -252,58 +301,158 @@ function chooseFrontPlacement(template: TemplateProduct) {
   return fallback;
 }
 
-function getTopSafePlacement(
-  imageDataUrl: string,
-  templateDefaults?: TemplateProduct["print_areas"][number]["placeholders"][number]["images"][number]
-) {
-  const dimensions = getImageDimensionsFromDataUrl(imageDataUrl);
-  const aspectRatio = dimensions ? dimensions.width / dimensions.height : 1;
+function chooseVariantId(template: TemplateProduct) {
+  const enabled = (template.variants || []).filter((variant) => variant.is_enabled !== false);
+  return enabled.find((variant) => variant.is_default)?.id || enabled[0]?.id || template.variants?.[0]?.id;
+}
 
-  const normalizedAspectRatio = Number.isFinite(aspectRatio) && aspectRatio > 0 ? aspectRatio : 1;
-  const templateScale = typeof templateDefaults?.scale === "number" && templateDefaults.scale > 0 ? templateDefaults.scale : 1;
-
-  const topInset = 0.04;
-  const bottomInset = 0.06;
-  const availableHeight = Math.max(0.72, 1 - topInset - bottomInset);
-
-  let widthScaleCap = 0.72;
-
-  if (normalizedAspectRatio >= 1.8) {
-    widthScaleCap = 0.84;
-  } else if (normalizedAspectRatio >= 1.35) {
-    widthScaleCap = 0.8;
-  } else if (normalizedAspectRatio >= 0.95) {
-    widthScaleCap = 0.72;
-  } else if (normalizedAspectRatio >= 0.7) {
-    widthScaleCap = 0.62;
-  } else {
-    widthScaleCap = 0.5;
+async function resolvePlacementGuide(
+  template: TemplateProduct,
+  token: string,
+  preferredPosition: string
+): Promise<PlacementGuide> {
+  if (!template.blueprint_id || !template.print_provider_id) {
+    return { ...DEFAULT_PLACEMENT_GUIDE };
   }
 
-  const heightLimitedScale = availableHeight * normalizedAspectRatio;
-  const safeScale = Math.min(templateScale * 0.82, widthScaleCap, heightLimitedScale);
-  const boundedScale = Number(Math.max(0.38, safeScale).toFixed(4));
+  try {
+    const response = await fetchWithTimeout(
+      `${PRINTIFY_API_BASE}/catalog/blueprints/${encodeURIComponent(String(template.blueprint_id))}/print_providers/${encodeURIComponent(String(template.print_provider_id))}/variants.json`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "User-Agent": USER_AGENT,
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      }
+    );
 
-  const normalizedHeight = boundedScale / normalizedAspectRatio;
-  const minimumSafeY = topInset + normalizedHeight / 2;
-  const maximumSafeY = 1 - bottomInset - normalizedHeight / 2;
-  const preferredTopY = minimumSafeY;
-  const boundedY = Math.min(Math.max(preferredTopY, minimumSafeY), maximumSafeY);
+    if (!response.ok) {
+      return { ...DEFAULT_PLACEMENT_GUIDE, position: preferredPosition || DEFAULT_PLACEMENT_GUIDE.position };
+    }
+
+    const variants = (await response.json()) as CatalogVariant[];
+    const preferredVariantId = chooseVariantId(template);
+    const orderedVariants = [
+      variants.find((variant) => variant.id === preferredVariantId),
+      ...variants,
+    ].filter(Boolean) as CatalogVariant[];
+
+    for (const variant of orderedVariants) {
+      const exact = (variant.placeholders || []).find((placeholder) => String(placeholder.position || "").trim() === preferredPosition);
+      const generic = exact || (variant.placeholders || []).find((placeholder) => {
+        const position = String(placeholder.position || "").trim();
+        return FRONT_POSITION_PATTERNS.some((pattern) => pattern.test(position));
+      });
+
+      if (generic?.width && generic?.height) {
+        return {
+          position: generic.position || preferredPosition,
+          width: generic.width,
+          height: generic.height,
+          decorationMethod: generic.decoration_method,
+        };
+      }
+    }
+  } catch {
+    // Fall through to default guide.
+  }
+
+  return { ...DEFAULT_PLACEMENT_GUIDE, position: preferredPosition || DEFAULT_PLACEMENT_GUIDE.position };
+}
+
+function normalizeArtworkBounds(dimensions: ImageDimensions | null, bounds?: ArtworkBounds) {
+  const canvasWidth = Number.isFinite(bounds?.canvasWidth) && (bounds?.canvasWidth || 0) > 0
+    ? Number(bounds!.canvasWidth)
+    : dimensions?.width || DEFAULT_PLACEMENT_GUIDE.width;
+  const canvasHeight = Number.isFinite(bounds?.canvasHeight) && (bounds?.canvasHeight || 0) > 0
+    ? Number(bounds!.canvasHeight)
+    : dimensions?.height || DEFAULT_PLACEMENT_GUIDE.height;
+
+  const visibleLeft = Number.isFinite(bounds?.visibleLeft) ? clamp(Number(bounds!.visibleLeft), 0, canvasWidth) : 0;
+  const visibleTop = Number.isFinite(bounds?.visibleTop) ? clamp(Number(bounds!.visibleTop), 0, canvasHeight) : 0;
+  const visibleWidth = Number.isFinite(bounds?.visibleWidth) && (bounds?.visibleWidth || 0) > 0
+    ? clamp(Number(bounds!.visibleWidth), 1, canvasWidth - visibleLeft)
+    : canvasWidth;
+  const visibleHeight = Number.isFinite(bounds?.visibleHeight) && (bounds?.visibleHeight || 0) > 0
+    ? clamp(Number(bounds!.visibleHeight), 1, canvasHeight - visibleTop)
+    : canvasHeight;
 
   return {
-    x: 0.5,
-    y: Number(boundedY.toFixed(4)),
-    scale: boundedScale,
+    canvasWidth,
+    canvasHeight,
+    visibleLeft,
+    visibleTop,
+    visibleWidth,
+    visibleHeight,
+  };
+}
+
+function getContentAwarePlacement(
+  imageDataUrl: string,
+  guide: PlacementGuide,
+  templateDefaults?: TemplateProduct["print_areas"][number]["placeholders"][number]["images"][number],
+  artworkBounds?: ArtworkBounds,
+  placementSettings?: PlacementSettings
+) {
+  const dimensions = getImageDimensionsFromDataUrl(imageDataUrl);
+  const bounds = normalizeArtworkBounds(dimensions, artworkBounds);
+
+  const placeholderWidth = Math.max(1, guide.width || DEFAULT_PLACEMENT_GUIDE.width);
+  const placeholderHeight = Math.max(1, guide.height || DEFAULT_PLACEMENT_GUIDE.height);
+  const sideInsetPct = 0.06;
+  const bottomInsetPct = 0.08;
+  const topInsetPct = clamp((placementSettings?.topGapPct ?? 6) / 100, 0.02, 0.16);
+  const fillPct = clamp((placementSettings?.fillPct ?? 92) / 100, 0.75, 1);
+
+  const safeLeft = placeholderWidth * sideInsetPct;
+  const safeTop = placeholderHeight * topInsetPct;
+  const safeWidth = placeholderWidth * (1 - sideInsetPct * 2);
+  const safeHeight = placeholderHeight * (1 - topInsetPct - bottomInsetPct);
+
+  const scaleFactor = Math.min(
+    safeWidth / bounds.visibleWidth,
+    safeHeight / bounds.visibleHeight
+  ) * fillPct;
+
+  const renderedWidth = bounds.canvasWidth * scaleFactor;
+  const renderedHeight = bounds.canvasHeight * scaleFactor;
+  const visibleRenderedWidth = bounds.visibleWidth * scaleFactor;
+
+  const left = safeLeft + (safeWidth - visibleRenderedWidth) / 2 - bounds.visibleLeft * scaleFactor;
+  const top = safeTop - bounds.visibleTop * scaleFactor;
+
+  const x = (left + renderedWidth / 2) / placeholderWidth;
+  const y = (top + renderedHeight / 2) / placeholderHeight;
+  const scale = renderedWidth / placeholderWidth;
+
+  return {
+    x: round4(x),
+    y: round4(y),
+    scale: round4(scale),
     angle: typeof templateDefaults?.angle === "number" ? templateDefaults.angle : 0,
     ...(templateDefaults?.pattern ? { pattern: templateDefaults.pattern } : {}),
   };
 }
 
-function buildFrontOnlyPrintAreas(template: TemplateProduct, uploadId: string, imageDataUrl: string) {
+function buildFrontOnlyPrintAreas(
+  template: TemplateProduct,
+  uploadId: string,
+  item: IncomingItem,
+  guide: PlacementGuide
+) {
   const target = chooseFrontPlacement(template);
   if (!target) return [];
 
-  const placement = getTopSafePlacement(imageDataUrl, target.imageDefaults);
+  const placement = getContentAwarePlacement(
+    item.imageDataUrl,
+    guide,
+    target.imageDefaults,
+    item.artworkBounds,
+    item.placementSettings
+  );
 
   return (template.print_areas || [])
     .map((area, areaIndex) => {
@@ -398,6 +547,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Template has no enabled variants." }, { status: 400 });
     }
 
+    const frontTarget = chooseFrontPlacement(template);
+    if (!frontTarget) {
+      return NextResponse.json({ error: "Unable to determine a front print area from the selected template." }, { status: 400 });
+    }
+
+    const placementGuide = await resolvePlacementGuide(template, token, frontTarget.position);
     const results: Array<{ fileName: string; title: string; productId?: string; message: string }> = [];
 
     for (const item of items) {
@@ -426,7 +581,7 @@ export async function POST(req: NextRequest) {
         }
 
         const uploaded = await uploadResponse.json();
-        const printAreas = buildFrontOnlyPrintAreas(template, uploaded.id, item.imageDataUrl);
+        const printAreas = buildFrontOnlyPrintAreas(template, uploaded.id, item, placementGuide);
 
         if (!printAreas.length) {
           throw new Error("Unable to determine a front print area from the selected template.");
@@ -467,7 +622,7 @@ export async function POST(req: NextRequest) {
           fileName: item.fileName,
           title: item.title,
           productId: created.id,
-          message: "Created draft product. Front print area only with top-safe placement.",
+          message: `Created draft product with guided ${placementGuide.position || "front"} placement.`,
         });
       } catch (error) {
         results.push({
@@ -483,6 +638,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       message: `Processed ${results.length} item(s). Saved ${createdCount} draft product${createdCount === 1 ? "" : "s"}.`,
       results,
+      placementGuide,
     });
   } catch (error) {
     const status = error instanceof DOMException && error.name === "AbortError" ? 504 : 500;
