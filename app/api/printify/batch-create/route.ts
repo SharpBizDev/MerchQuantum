@@ -11,6 +11,8 @@ const DEFAULT_PLACEMENT_GUIDE = {
   width: 3153,
   height: 3995,
 };
+const FIXED_TOP_GAP_PCT = 10;
+const FIXED_FILL_PCT = 90;
 
 type ArtworkBounds = {
   canvasWidth?: number;
@@ -21,11 +23,6 @@ type ArtworkBounds = {
   visibleHeight?: number;
 };
 
-type PlacementSettings = {
-  topGapPct?: number;
-  fillPct?: number;
-};
-
 type IncomingItem = {
   fileName: string;
   title: string;
@@ -33,7 +30,6 @@ type IncomingItem = {
   tags: string[];
   imageDataUrl: string;
   artworkBounds?: ArtworkBounds;
-  placementSettings?: PlacementSettings;
 };
 
 type TemplateProduct = {
@@ -394,8 +390,7 @@ function getContentAwarePlacement(
   imageDataUrl: string,
   guide: PlacementGuide,
   templateDefaults?: TemplateProduct["print_areas"][number]["placeholders"][number]["images"][number],
-  artworkBounds?: ArtworkBounds,
-  placementSettings?: PlacementSettings
+  artworkBounds?: ArtworkBounds
 ) {
   const dimensions = getImageDimensionsFromDataUrl(imageDataUrl);
   const bounds = normalizeArtworkBounds(dimensions, artworkBounds);
@@ -404,8 +399,8 @@ function getContentAwarePlacement(
   const placeholderHeight = Math.max(1, guide.height || DEFAULT_PLACEMENT_GUIDE.height);
   const sideInsetPct = 0.06;
   const bottomInsetPct = 0.08;
-  const topInsetPct = clamp((placementSettings?.topGapPct ?? 10) / 100, 0.1, 0.18);
-  const fillPct = clamp((placementSettings?.fillPct ?? 90) / 100, 0.75, 0.9);
+  const topInsetPct = clamp(FIXED_TOP_GAP_PCT / 100, 0.1, 0.18);
+  const fillPct = clamp(FIXED_FILL_PCT / 100, 0.75, 0.9);
 
   const safeLeft = placeholderWidth * sideInsetPct;
   const safeTop = placeholderHeight * topInsetPct;
@@ -450,8 +445,7 @@ function buildFrontOnlyPrintAreas(
     item.imageDataUrl,
     guide,
     target.imageDefaults,
-    item.artworkBounds,
-    item.placementSettings
+    item.artworkBounds
   );
 
   return (template.print_areas || [])
