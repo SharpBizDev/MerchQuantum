@@ -34,6 +34,28 @@ type ProductFamily =
   | "footwear"
   | "product";
 
+type ArtworkBounds = {
+  canvasWidth: number;
+  canvasHeight: number;
+  visibleLeft: number;
+  visibleTop: number;
+  visibleWidth: number;
+  visibleHeight: number;
+};
+
+type PlacementGuide = {
+  position: string;
+  width: number;
+  height: number;
+  source: "live" | "fallback";
+  decorationMethod?: string;
+};
+
+type PlacementSettings = {
+  topGapPct: number;
+  fillPct: number;
+};
+
 type Img = {
   id: string;
   name: string;
@@ -41,6 +63,7 @@ type Img = {
   preview: string;
   cleaned: string;
   final: string;
+  artworkBounds?: ArtworkBounds;
 };
 
 type Template = {
@@ -49,6 +72,7 @@ type Template = {
   source: "product" | "manual";
   shopId: string;
   description: string;
+  placementGuide?: PlacementGuide;
 };
 
 type Shop = { id: string; title: string };
@@ -67,6 +91,13 @@ type ApiProduct = {
   title: string;
   description?: string;
   shop_id?: number | string;
+  blueprint_id?: number;
+  print_provider_id?: number;
+};
+
+type ApiTemplateResponse = {
+  product?: ApiProduct & { description?: string };
+  placementGuide?: PlacementGuide;
 };
 
 type BatchResult = {
@@ -114,6 +145,18 @@ const FALLBACK_PRODUCTS: Product[] = [
     shopId: "451294",
   },
 ];
+
+const DEFAULT_PLACEMENT_GUIDE: PlacementGuide = {
+  position: "front",
+  width: 3153,
+  height: 3995,
+  source: "fallback",
+};
+
+const DEFAULT_PLACEMENT_SETTINGS: PlacementSettings = {
+  topGapPct: 6,
+  fillPct: 92,
+};
 
 const STOP_WORDS = new Set([
   "the",
@@ -279,6 +322,160 @@ function maskToken(value: string) {
 
 function safeTitle(value: string, fallback: string) {
   return value.replace(/\s+/g, " ").trim() || fallback;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function round4(value: number) {
+  return Number(value.toFixed(4));
+}
+
+function normalizeArtworkBounds(bounds: ArtworkBounds | undefined, width: number, height: number): ArtworkBounds {
+  const canvasWidth = Number.isFinite(bounds?.canvasWidth) && (bounds?.canvasWidth || 0) > 0 ? Number(bounds!.canvasWidth) : width;
+  const canvasHeight = Number.isFinite(bounds?.canvasHeight) && (bounds?.canvasHeight || 0) > 0 ? Number(bounds!.canvasHeight) : height;
+  const visibleLeft = Number.isFinite(bounds?.visibleLeft) ? clamp(Number(bounds!.visibleLeft), 0, canvasWidth) : 0;
+  const visibleTop = Number.isFinite(bounds?.visibleTop) ? clamp(Number(bounds!.visibleTop), 0, canvasHeight) : 0;
+  const maxVisibleWidth = Math.max(1, canvasWidth - visibleLeft);
+  const maxVisibleHeight = Math.max(1, canvasHeight - visibleTop);
+  const visibleWidth = Number.isFinite(bounds?.visibleWidth) && (bounds?.visibleWidth || 0) > 0
+    ? clamp(Number(bounds!.visibleWidth), 1, maxVisibleWidth)
+    : canvasWidth;
+  const visibleHeight = Number.isFinite(bounds?.visibleHeight) && (bounds?.visibleHeight || 0) > 0
+    ? clamp(Number(bounds!.visibleHeight), 1, maxVisibleHeight)
+    : canvasHeight;
+
+  return {
+    canvasWidth,
+    canvasHeight,
+    visibleLeft,
+    visibleTop,
+    visibleWidth,
+    visibleHeight,
+  };
+}
+
+function loadImageElement(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Unable to read image preview."));
+    img.src = src;
+  });
+}
+
+async function analyzeArtworkBounds(file: File): Promise<ArtworkBounds> {
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const img = await loadImageElement(objectUrl);
+    const canvasWidth = img.naturalWidth || img.width || 1;
+    const canvasHeight = img.naturalHeight || img.height || 1;
+
+    if (canvasWidth <= 0 || canvasHeight <= 0) {
+      return normalizeArtworkBounds(undefined, 1, 1);
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+    if (!ctx) {
+      return normalizeArtworkBounds(undefined, canvasWidth, canvasHeight);
+    }
+
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+
+    const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight).data;
+    let minX = canvasWidth;
+    let minY = canvasHeight;
+    let maxX = -1;
+    let maxY = -1;
+
+    for (let y = 0; y < canvasHeight; y += 1) {
+      for (let x = 0; x < canvasWidth; x += 1) {
+        const alpha = imageData[(y * canvasWidth + x) * 4 + 3];
+        if (alpha > 8) {
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    if (maxX < minX || maxY < minY) {
+      return normalizeArtworkBounds(undefined, canvasWidth, canvasHeight);
+    }
+
+    return normalizeArtworkBounds(
+      {
+        canvasWidth,
+        canvasHeight,
+        visibleLeft: minX,
+        visibleTop: minY,
+        visibleWidth: maxX - minX + 1,
+        visibleHeight: maxY - minY + 1,
+      },
+      canvasWidth,
+      canvasHeight
+    );
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function computePlacementPreview(
+  bounds: ArtworkBounds | undefined,
+  guide: PlacementGuide | undefined,
+  settings: PlacementSettings
+) {
+  const placementGuide = guide || DEFAULT_PLACEMENT_GUIDE;
+  const placeholderWidth = Math.max(1, placementGuide.width || DEFAULT_PLACEMENT_GUIDE.width);
+  const placeholderHeight = Math.max(1, placementGuide.height || DEFAULT_PLACEMENT_GUIDE.height);
+  const normalizedBounds = normalizeArtworkBounds(bounds, bounds?.canvasWidth || placeholderWidth, bounds?.canvasHeight || placeholderHeight);
+
+  const sideInsetPct = 0.06;
+  const bottomInsetPct = 0.08;
+  const topInsetPct = clamp(settings.topGapPct / 100, 0.02, 0.16);
+  const fillPct = clamp(settings.fillPct / 100, 0.75, 1);
+
+  const safeLeft = placeholderWidth * sideInsetPct;
+  const safeTop = placeholderHeight * topInsetPct;
+  const safeWidth = placeholderWidth * (1 - sideInsetPct * 2);
+  const safeHeight = placeholderHeight * (1 - topInsetPct - bottomInsetPct);
+
+  const scaleFactor = Math.min(
+    safeWidth / normalizedBounds.visibleWidth,
+    safeHeight / normalizedBounds.visibleHeight
+  ) * fillPct;
+
+  const renderedWidth = normalizedBounds.canvasWidth * scaleFactor;
+  const renderedHeight = normalizedBounds.canvasHeight * scaleFactor;
+  const visibleWidth = normalizedBounds.visibleWidth * scaleFactor;
+  const left = safeLeft + (safeWidth - visibleWidth) / 2 - normalizedBounds.visibleLeft * scaleFactor;
+  const top = safeTop - normalizedBounds.visibleTop * scaleFactor;
+
+  return {
+    imageStyle: {
+      left: `${(left / placeholderWidth) * 100}%`,
+      top: `${(top / placeholderHeight) * 100}%`,
+      width: `${(renderedWidth / placeholderWidth) * 100}%`,
+      height: `${(renderedHeight / placeholderHeight) * 100}%`,
+    },
+    safeAreaStyle: {
+      left: `${sideInsetPct * 100}%`,
+      right: `${sideInsetPct * 100}%`,
+      top: `${topInsetPct * 100}%`,
+      bottom: `${bottomInsetPct * 100}%`,
+    },
+    frameStyle: {
+      aspectRatio: `${placeholderWidth} / ${placeholderHeight}`,
+    } as React.CSSProperties,
+  };
 }
 
 function decodeHtmlEntities(value: string) {
@@ -930,6 +1127,7 @@ export default function MerchQuantumApp() {
   const [templateDescription, setTemplateDescription] = useState("");
   const [templateStatus, setTemplateStatus] = useState("");
   const [template, setTemplate] = useState<Template | null>(null);
+  const [placementSettings, setPlacementSettings] = useState<PlacementSettings>(DEFAULT_PLACEMENT_SETTINGS);
   const [saved, setSaved] = useState<Template[]>([]);
   const [images, setImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -970,6 +1168,11 @@ export default function MerchQuantumApp() {
     ? buildTags(selectedImage.final, previewDescription, FIXED_TAG_COUNT)
     : [];
 
+  const placementGuide = template?.placementGuide || DEFAULT_PLACEMENT_GUIDE;
+  const placementPreview = useMemo(
+    () => computePlacementPreview(selectedImage?.artworkBounds, placementGuide, placementSettings),
+    [selectedImage?.artworkBounds, placementGuide, placementSettings]
+  );
 
   useEffect(() => {
     const previous = previousPreviewUrlsRef.current;
@@ -993,6 +1196,28 @@ export default function MerchQuantumApp() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!selectedImage || selectedImage.artworkBounds) return;
+
+    let cancelled = false;
+    void analyzeArtworkBounds(selectedImage.file)
+      .then((bounds) => {
+        if (cancelled) return;
+        setImages((current) =>
+          current.map((img) =>
+            img.id === selectedImage.id ? { ...img, artworkBounds: bounds } : img
+          )
+        );
+      })
+      .catch(() => {
+        // Leave preview operational even if bounds detection fails.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedImage]);
 
   useEffect(() => {
     if (!connected || !isLiveProvider || !shopId || source !== "product") return;
@@ -1173,7 +1398,8 @@ export default function MerchQuantumApp() {
         throw new Error(data?.error || `Product request failed with status ${response.status}.`);
       }
 
-      const chosen = data?.product || fallback;
+      const responseData = (data || {}) as ApiTemplateResponse;
+      const chosen = responseData.product || fallback;
       const title = chosen?.title || fallback.title;
       const usingFallbackDescription = !chosen?.description?.trim();
       const base = formatTemplateDescription(
@@ -1181,6 +1407,7 @@ export default function MerchQuantumApp() {
           fallback.description?.trim() ||
           `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`
       );
+      const nextPlacementGuide = responseData.placementGuide || template?.placementGuide || DEFAULT_PLACEMENT_GUIDE;
 
       setTemplate({
         reference: chosen?.id || fallback.id,
@@ -1188,6 +1415,7 @@ export default function MerchQuantumApp() {
         source: "product",
         shopId,
         description: base,
+        placementGuide: nextPlacementGuide,
       });
 
       setNickname(title);
@@ -1211,6 +1439,7 @@ export default function MerchQuantumApp() {
         source: "product",
         shopId,
         description: base,
+        placementGuide: template?.placementGuide || DEFAULT_PLACEMENT_GUIDE,
       });
 
       setNickname(title);
@@ -1235,6 +1464,7 @@ export default function MerchQuantumApp() {
       source: "manual",
       shopId,
       description: base,
+      placementGuide: template?.placementGuide || DEFAULT_PLACEMENT_GUIDE,
     });
 
     setNickname(name);
@@ -1286,6 +1516,15 @@ export default function MerchQuantumApp() {
 
         try {
           const imageDataUrl = await readDataUrl(img.file);
+          const artworkBounds = img.artworkBounds || await analyzeArtworkBounds(img.file);
+
+          if (!img.artworkBounds) {
+            setImages((current) =>
+              current.map((entry) =>
+                entry.id === img.id ? { ...entry, artworkBounds } : entry
+              )
+            );
+          }
 
           const response = await fetchWithTimeout("/api/printify/batch-create", {
             method: "POST",
@@ -1301,6 +1540,8 @@ export default function MerchQuantumApp() {
                 description,
                 tags,
                 imageDataUrl,
+                artworkBounds,
+                placementSettings,
               },
             }),
           });
@@ -1609,9 +1850,14 @@ export default function MerchQuantumApp() {
                   <b>Loaded Template:</b> {template ? template.nickname : "None loaded"}
                 </div>
                 {template ? (
-                  <div className="mt-1 break-all text-slate-600 dark:text-slate-400">
-                    {template.reference} • {template.source} • Shop {template.shopId}
-                  </div>
+                  <>
+                    <div className="mt-1 break-all text-slate-600 dark:text-slate-400">
+                      {template.reference} • {template.source} • Shop {template.shopId}
+                    </div>
+                    <div className="mt-2 text-slate-600 dark:text-slate-400">
+                      Front print guide: {template.placementGuide?.width || DEFAULT_PLACEMENT_GUIDE.width} × {template.placementGuide?.height || DEFAULT_PLACEMENT_GUIDE.height}px • {template.placementGuide?.source === "live" ? "Live template boundary" : "General fallback boundary"}
+                    </div>
+                  </>
                 ) : null}
               </div>
 
@@ -1806,14 +2052,91 @@ export default function MerchQuantumApp() {
                 </p>
               ) : (
                 <div className="space-y-4">
-                  <div className="flex h-64 w-full items-center justify-center rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-                    {selectedImage.preview ? (
-                      <img
-                        src={selectedImage.preview}
-                        alt={safeTitle(selectedImage.final, selectedImage.cleaned)}
-                        className="max-h-full max-w-full object-contain"
-                      />
-                    ) : null}
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Uploaded Artwork</div>
+                        <Badge>{selectedImage.artworkBounds ? "Bounds Detected" : "Analyzing"}</Badge>
+                      </div>
+                      <div className="flex h-64 w-full items-center justify-center rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-black">
+                        {selectedImage.preview ? (
+                          <img
+                            src={selectedImage.preview}
+                            alt={safeTitle(selectedImage.final, selectedImage.cleaned)}
+                            className="max-h-full max-w-full object-contain"
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Guided Placement Preview</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400">
+                            Built from the loaded template&apos;s front print boundary when available.
+                          </div>
+                        </div>
+                        <Badge on={template?.placementGuide?.source === "live"}>{template?.placementGuide?.source === "live" ? "Live Guide" : "Fallback Guide"}</Badge>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-black">
+                        <div className="relative mx-auto w-full max-w-[18rem] overflow-hidden rounded-lg border border-slate-300 bg-[linear-gradient(135deg,rgba(99,102,241,0.06),rgba(15,23,42,0.02))] dark:border-slate-700" style={placementPreview.frameStyle}>
+                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.12),transparent_45%)]" />
+                          <div className="absolute border border-dashed border-violet-400/80" style={placementPreview.safeAreaStyle} />
+                          <div className="absolute left-3 right-3 top-2 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                            <span>Top Safe Zone</span>
+                            <span>{placementGuide.width} × {placementGuide.height}</span>
+                          </div>
+                          {selectedImage.preview ? (
+                            <img
+                              src={selectedImage.preview}
+                              alt={safeTitle(selectedImage.final, selectedImage.cleaned)}
+                              className="absolute max-w-none"
+                              style={placementPreview.imageStyle}
+                            />
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                        <Field label={`Top Safe Gap (${placementSettings.topGapPct}%)`}>
+                          <input
+                            type="range"
+                            min={3}
+                            max={12}
+                            step={1}
+                            value={placementSettings.topGapPct}
+                            onChange={(e) =>
+                              setPlacementSettings((current) => ({
+                                ...current,
+                                topGapPct: Number(e.target.value),
+                              }))
+                            }
+                            className="w-full accent-violet-500"
+                          />
+                          <FieldNote>Moves the artwork down from the top edge while keeping it top centered.</FieldNote>
+                        </Field>
+
+                        <Field label={`Artwork Fill (${placementSettings.fillPct}%)`}>
+                          <input
+                            type="range"
+                            min={82}
+                            max={100}
+                            step={1}
+                            value={placementSettings.fillPct}
+                            onChange={(e) =>
+                              setPlacementSettings((current) => ({
+                                ...current,
+                                fillPct: Number(e.target.value),
+                              }))
+                            }
+                            className="w-full accent-violet-500"
+                          />
+                          <FieldNote>Back the art off slightly so transparent templates do not push visible content out of bounds.</FieldNote>
+                        </Field>
+                      </div>
+                    </div>
                   </div>
 
                   <Field label="Title">
