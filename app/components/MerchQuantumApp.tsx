@@ -51,6 +51,14 @@ type PlacementGuide = {
   decorationMethod?: string;
 };
 
+type AiListingDraft = {
+  title: string;
+  leadParagraphs: string[];
+  model: string;
+  confidence: number;
+  templateReference: string;
+};
+
 type Img = {
   id: string;
   name: string;
@@ -59,6 +67,7 @@ type Img = {
   cleaned: string;
   final: string;
   artworkBounds?: ArtworkBounds;
+  aiDraft?: AiListingDraft;
 };
 
 type Template = {
@@ -147,6 +156,12 @@ const DEFAULT_PLACEMENT_GUIDE: PlacementGuide = {
   height: 3995,
   source: "fallback",
 };
+
+const AI_MODEL_LABEL = "OpenAI GPT-4o mini";
+const AI_TITLE_MIN_CHARS = 45;
+const AI_TITLE_MAX_CHARS = 120;
+const AI_LEAD_MIN_CHARS = 220;
+const AI_LEAD_MAX_CHARS = 380;
 
 const STOP_WORDS = new Set([
   "the",
@@ -312,6 +327,25 @@ function maskToken(value: string) {
 
 function safeTitle(value: string, fallback: string) {
   return value.replace(/\s+/g, " ").trim() || fallback;
+}
+
+function trimToSentence(value: string, maxChars: number) {
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (!clean || clean.length <= maxChars) return clean;
+
+  const clipped = clean.slice(0, maxChars).trim();
+  const sentenceBreak = Math.max(
+    clipped.lastIndexOf(". "),
+    clipped.lastIndexOf("! "),
+    clipped.lastIndexOf("? ")
+  );
+
+  if (sentenceBreak >= Math.floor(maxChars * 0.6)) {
+    return clipped.slice(0, sentenceBreak + 1).trim();
+  }
+
+  const spaceBreak = clipped.lastIndexOf(" ");
+  return `${clipped.slice(0, Math.max(spaceBreak, 1)).trim()}...`;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -512,6 +546,36 @@ function detectProductFamilyFromText(value: string) {
   return null;
 }
 
+function normalizeAiLeadParagraphs(paragraphs: string[]) {
+  const cleaned = paragraphs
+    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .map((paragraph) => trimToSentence(paragraph, 220));
+
+  if (cleaned.length === 0) return [];
+
+  let total = cleaned.join(" ").length;
+  if (total <= AI_LEAD_MAX_CHARS) return cleaned;
+
+  const next = [...cleaned];
+  while (next.length > 1 && total > AI_LEAD_MAX_CHARS) {
+    const last = next[next.length - 1];
+    const shortened = trimToSentence(last, Math.max(70, last.length - (total - AI_LEAD_MAX_CHARS)));
+    next[next.length - 1] = shortened;
+    total = next.join(" ").length;
+    if (total > AI_LEAD_MAX_CHARS && next.length > 1 && shortened.length < 90) {
+      next.pop();
+      total = next.join(" ").length;
+    }
+  }
+
+  if (next.join(" ").length > AI_LEAD_MAX_CHARS) {
+    next[0] = trimToSentence(next[0], AI_LEAD_MAX_CHARS);
+  }
+
+  return next.filter(Boolean);
+}
+
 function resolveProductFamily(title: string, templateDescription: string): ProductFamily {
   const titleFamily = detectProductFamilyFromText(title);
   const templateFamily = detectProductFamilyFromText(templateDescription);
@@ -590,6 +654,12 @@ function parseTemplateDescription(formattedDescription: string) {
   }
 
   return { introParagraphs, sections };
+}
+
+function buildTemplateContext(templateDescription: string) {
+  const formatted = formatTemplateDescription(templateDescription);
+  const parsed = parseTemplateDescription(formatted);
+  return parsed.introParagraphs.join(" ").replace(/\s+/g, " ").trim();
 }
 
 function dedupeParagraphs(paragraphs: string[]) {
@@ -750,12 +820,12 @@ function sectionsToHtml(sections: TemplateSection[]) {
     .join("");
 }
 
-function buildDescription(title: string, templateDescription: string) {
+function buildDescription(title: string, templateDescription: string, leadOverride?: string[]) {
   const base =
     formatTemplateDescription(templateDescription) ||
     "Template description will load here after live API wiring.";
   const parsed = parseTemplateDescription(base);
-  const leadParagraphs = buildLeadParagraphs(title, templateDescription);
+  const leadParagraphs = normalizeAiLeadParagraphs(leadOverride || buildLeadParagraphs(title, templateDescription));
   const introParagraphs = dedupeParagraphs([...leadParagraphs, ...parsed.introParagraphs]);
 
   return `${paragraphsToHtml(introParagraphs)}${sectionsToHtml(parsed.sections)}`.trim();
@@ -1074,6 +1144,9 @@ export default function MerchQuantumApp() {
   const [runStatus, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
+  const [useAiRewrite, setUseAiRewrite] = useState(true);
+  const [aiStatus, setAiStatus] = useState("");
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
 
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || PROVIDERS[0];
   const isLiveProvider = selectedProvider.isLive;
@@ -1099,8 +1172,10 @@ export default function MerchQuantumApp() {
     [images, selectedId]
   );
 
+  const previewLeadParagraphs = selectedImage?.aiDraft?.leadParagraphs || undefined;
+
   const previewDescription = selectedImage
-    ? buildDescription(selectedImage.final, templateDescription)
+    ? buildDescription(selectedImage.final, templateDescription, previewLeadParagraphs)
     : templateDescription;
 
   const previewTags = selectedImage
@@ -1153,6 +1228,11 @@ export default function MerchQuantumApp() {
   }, [selectedImage]);
 
   useEffect(() => {
+    setImages((current) => current.map((img) => (img.aiDraft ? { ...img, aiDraft: undefined } : img)));
+    setAiStatus("");
+  }, [template?.reference, templateDescription]);
+
+  useEffect(() => {
     if (!connected || !isLiveProvider || !shopId || source !== "product") return;
     if (loadingProducts || apiProducts.some((product) => product.shopId === shopId)) return;
     void loadProductsForShop(shopId);
@@ -1171,6 +1251,83 @@ export default function MerchQuantumApp() {
     setTemplateStatus("");
     setBatchResults([]);
     setRunStatus("");
+  }
+
+  async function requestAiListingRewrite(img: Img) {
+    const templateReference = template?.reference || "";
+    const productFamily = resolveProductFamily(img.final, templateDescription);
+    const templateContext = buildTemplateContext(templateDescription).slice(0, 1200);
+
+    const imageDataUrl = await readDataUrl(img.file);
+    const response = await fetchWithTimeout("/api/ai/listing", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        imageDataUrl,
+        title: safeTitle(img.final, img.cleaned),
+        fileName: img.name,
+        productFamily,
+        templateContext,
+      }),
+    }, 60000);
+
+    const data = await parseResponsePayload(response);
+    if (!response.ok) {
+      throw new Error(data?.error || `AI request failed with status ${response.status}.`);
+    }
+
+    const rawTitle = typeof data?.title === "string" ? data.title : "";
+    const rawParagraphs = Array.isArray(data?.leadParagraphs)
+      ? data.leadParagraphs
+      : [data?.leadParagraph1, data?.leadParagraph2].filter(Boolean);
+    const normalizedTitle = safeTitle(trimToSentence(rawTitle, AI_TITLE_MAX_CHARS), img.cleaned);
+    const normalizedParagraphs = normalizeAiLeadParagraphs(rawParagraphs);
+
+    if (normalizedTitle.length < AI_TITLE_MIN_CHARS) {
+      throw new Error("AI title output was too short to use reliably.");
+    }
+
+    const totalLeadLength = normalizedParagraphs.join(" ").length;
+    if (normalizedParagraphs.length === 0 || totalLeadLength < AI_LEAD_MIN_CHARS) {
+      throw new Error("AI description output was too short to use reliably.");
+    }
+
+    return {
+      title: normalizedTitle,
+      leadParagraphs: normalizedParagraphs,
+      model: typeof data?.model === "string" ? data.model : AI_MODEL_LABEL,
+      confidence: typeof data?.confidence === "number" ? data.confidence : 0.8,
+      templateReference,
+    } satisfies AiListingDraft;
+  }
+
+  async function generateSelectedAiPreview() {
+    if (!selectedImage || !templateDescription.trim()) return;
+    setIsGeneratingAi(true);
+    setAiStatus("");
+
+    try {
+      const aiDraft = await requestAiListingRewrite(selectedImage);
+      setImages((current) =>
+        current.map((img) =>
+          img.id === selectedImage.id
+            ? {
+                ...img,
+                final: aiDraft.title,
+                aiDraft,
+              }
+            : img
+        )
+      );
+      setAiStatus(`AI preview ready with ${aiDraft.model}.`);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Unable to generate AI preview.";
+      setAiStatus(formatApiError(msg));
+    } finally {
+      setIsGeneratingAi(false);
+    }
   }
 
   async function addFiles(list: FileList | null) {
@@ -1442,8 +1599,42 @@ export default function MerchQuantumApp() {
     try {
       for (let index = 0; index < images.length; index += 1) {
         const img = images[index];
-        const description = buildDescription(img.final, templateDescription);
-        const tags = buildTags(img.final, description, FIXED_TAG_COUNT);
+        let titleForUpload = safeTitle(img.final, img.cleaned);
+        let leadParagraphs: string[] | undefined = img.aiDraft?.leadParagraphs;
+
+        const canReuseAiDraft =
+          !!img.aiDraft &&
+          img.aiDraft.templateReference === template.reference &&
+          safeTitle(img.final, img.cleaned) === img.aiDraft.title;
+
+        if (useAiRewrite && canReuseAiDraft) {
+          titleForUpload = img.aiDraft!.title;
+          leadParagraphs = img.aiDraft!.leadParagraphs;
+        } else if (useAiRewrite) {
+          try {
+            setRunStatus(`Generating AI copy ${index + 1} of ${images.length}...`);
+            const aiDraft = await requestAiListingRewrite(img);
+            titleForUpload = aiDraft.title;
+            leadParagraphs = aiDraft.leadParagraphs;
+            setImages((current) =>
+              current.map((entry) =>
+                entry.id === img.id
+                  ? {
+                      ...entry,
+                      final: aiDraft.title,
+                      aiDraft,
+                    }
+                  : entry
+              )
+            );
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : "AI rewrite unavailable.";
+            setAiStatus(`AI fallback used on ${img.name}: ${formatApiError(msg)}`);
+          }
+        }
+
+        const description = buildDescription(titleForUpload, templateDescription, leadParagraphs);
+        const tags = buildTags(titleForUpload, description, FIXED_TAG_COUNT);
 
         setRunStatus(`Uploading draft ${index + 1} of ${images.length}...`);
 
@@ -1469,7 +1660,7 @@ export default function MerchQuantumApp() {
               templateProductId: template.reference,
               item: {
                 fileName: img.name,
-                title: safeTitle(img.final, img.cleaned),
+                title: titleForUpload,
                 description,
                 tags,
                 imageDataUrl,
@@ -1487,7 +1678,7 @@ export default function MerchQuantumApp() {
             ? (data.results[0] as BatchResult)
             : {
                 fileName: img.name,
-                title: safeTitle(img.final, img.cleaned),
+                title: titleForUpload,
                 message: data?.message || "Created draft product.",
               };
 
@@ -1498,7 +1689,7 @@ export default function MerchQuantumApp() {
           const message = formatApiError(rawMessage);
           nextResults.push({
             fileName: img.name,
-            title: safeTitle(img.final, img.cleaned),
+            title: titleForUpload,
             message,
           });
           setBatchResults([...nextResults]);
@@ -1818,6 +2009,50 @@ export default function MerchQuantumApp() {
               </p>
             </Box>
 
+            <Box title="AI Listing Writing">
+              <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+                <div className="space-y-4">
+                  <Field label="AI Mode">
+                    <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950">
+                      Standard · {AI_MODEL_LABEL}
+                    </div>
+                  </Field>
+
+                  <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                      checked={useAiRewrite}
+                      onChange={(e) => setUseAiRewrite(e.target.checked)}
+                    />
+                    <span>
+                      Rewrite titles and write only the lead intro with AI during upload. Template product features and care instructions stay intact.
+                    </span>
+                  </label>
+                </div>
+
+                <Button
+                  variant="secondary"
+                  disabled={!selectedImage || !templateDescription.trim() || isGeneratingAi || !useAiRewrite}
+                  onClick={() => {
+                    void generateSelectedAiPreview();
+                  }}
+                >
+                  {isGeneratingAi ? "Generating AI Preview..." : "Preview AI Rewrite"}
+                </Button>
+              </div>
+
+              <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
+                AI rewrites the title every time, adds a tight custom intro, and leaves the loaded template structure exactly as provided.
+              </p>
+
+              {aiStatus ? (
+                <p className={`mt-3 text-sm ${aiStatus.toLowerCase().includes("ready") ? "text-green-700 dark:text-green-400" : "text-amber-700 dark:text-amber-400"}`}>
+                  {aiStatus}
+                </p>
+              ) : null}
+            </Box>
+
             <Box title="Image Upload">
               <div
                 onDragOver={(e) => e.preventDefault()}
@@ -1920,7 +2155,7 @@ export default function MerchQuantumApp() {
                                   setImages((current) =>
                                     current.map((x) =>
                                       x.id === img.id
-                                        ? { ...x, final: e.target.value }
+                                        ? { ...x, final: e.target.value, aiDraft: undefined }
                                         : x
                                     )
                                   )
@@ -1929,7 +2164,7 @@ export default function MerchQuantumApp() {
                                   setImages((current) =>
                                     current.map((x) =>
                                       x.id === img.id
-                                        ? { ...x, final: safeTitle(x.final, x.cleaned) }
+                                        ? { ...x, final: safeTitle(x.final, x.cleaned), aiDraft: undefined }
                                         : x
                                     )
                                   )
@@ -1941,7 +2176,7 @@ export default function MerchQuantumApp() {
                                   e.stopPropagation();
                                   setImages((current) =>
                                     current.map((x) =>
-                                      x.id === img.id ? { ...x, final: x.cleaned } : x
+                                      x.id === img.id ? { ...x, final: x.cleaned, aiDraft: undefined } : x
                                     )
                                   );
                                 }}
@@ -2011,7 +2246,7 @@ export default function MerchQuantumApp() {
                         setImages((current) =>
                           current.map((x) =>
                             x.id === selectedImage.id
-                              ? { ...x, final: e.target.value }
+                              ? { ...x, final: e.target.value, aiDraft: undefined }
                               : x
                           )
                         )
