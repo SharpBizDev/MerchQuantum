@@ -51,12 +51,15 @@ type PlacementGuide = {
   decorationMethod?: string;
 };
 
+type ReviewStatus = "pending" | "ready" | "review" | "error";
+
 type AiListingDraft = {
   title: string;
   leadParagraphs: string[];
   model: string;
   confidence: number;
   templateReference: string;
+  reasonFlags: string[];
 };
 
 type Img = {
@@ -66,6 +69,12 @@ type Img = {
   preview: string;
   cleaned: string;
   final: string;
+  finalDescription: string;
+  tags: string[];
+  status: ReviewStatus;
+  statusReason: string;
+  aiProcessing?: boolean;
+  processedTemplateKey?: string;
   artworkBounds?: ArtworkBounds;
   aiDraft?: AiListingDraft;
 };
@@ -157,7 +166,7 @@ const DEFAULT_PLACEMENT_GUIDE: PlacementGuide = {
   source: "fallback",
 };
 
-const AI_MODEL_LABEL = "OpenAI GPT-4o mini";
+const AI_MODEL_LABEL = "Quantum AI";
 const AI_TITLE_MIN_CHARS = 45;
 const AI_TITLE_MAX_CHARS = 120;
 const AI_LEAD_MIN_CHARS = 220;
@@ -1017,12 +1026,15 @@ async function parseResponsePayload(response: Response) {
   return { error: text || `Request failed with status ${response.status}.` };
 }
 
-function Box({ title, children }: { title: string; children: React.ReactNode }) {
+function Box({ title, actions, children }: { title: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="rounded-2xl border border-slate-200/90 bg-white/95 p-5 shadow-sm shadow-slate-200/60 transition-colors dark:border-slate-800 dark:bg-slate-950">
-      <h2 className="mb-4 text-[1.05rem] font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-        {title}
-      </h2>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-[1.05rem] font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+          {title}
+        </h2>
+        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      </div>
       {children}
     </div>
   );
@@ -1116,15 +1128,64 @@ function BrandMark() {
   );
 }
 
+
+function getStatusMeta(status: ReviewStatus) {
+  switch (status) {
+    case "ready":
+      return { label: "Ready", dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-400", ring: "ring-emerald-200 dark:ring-emerald-900/60" };
+    case "review":
+      return { label: "Needs Review", dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400", ring: "ring-amber-200 dark:ring-amber-900/60" };
+    case "error":
+      return { label: "Error", dot: "bg-rose-500", text: "text-rose-700 dark:text-rose-400", ring: "ring-rose-200 dark:ring-rose-900/60" };
+    default:
+      return { label: "Processing", dot: "bg-slate-400", text: "text-slate-600 dark:text-slate-400", ring: "ring-slate-200 dark:ring-slate-800" };
+  }
+}
+
+function getStatusSortValue(status: ReviewStatus) {
+  switch (status) {
+    case "error":
+      return 0;
+    case "review":
+      return 1;
+    case "pending":
+      return 2;
+    case "ready":
+    default:
+      return 3;
+  }
+}
+
+function htmlToEditableText(html: string) {
+  return stripHtml(html)
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function editableTextToHtml(value: string) {
+  const paragraphs = value
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  return paragraphsToHtml(paragraphs);
+}
+
+function buildLeadOnlyDescription(leadParagraphs: string[]) {
+  return paragraphsToHtml(normalizeAiLeadParagraphs(leadParagraphs));
+}
+
 export default function MerchQuantumApp() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const previousPreviewUrlsRef = useRef<string[]>([]);
+  const aiLoopBusyRef = useRef(false);
 
-  const [provider, setProvider] = useState<ProviderId>("printify");
+  const [provider, setProvider] = useState<ProviderId | "">("");
   const [token, setToken] = useState("");
   const [connected, setConnected] = useState(false);
   const [loadingApi, setLoadingApi] = useState(false);
   const [apiStatus, setApiStatus] = useState("");
+  const [pulseConnected, setPulseConnected] = useState(false);
   const [apiShops, setApiShops] = useState<Shop[]>([]);
   const [apiProducts, setApiProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
@@ -1137,50 +1198,48 @@ export default function MerchQuantumApp() {
   const [templateDescription, setTemplateDescription] = useState("");
   const [templateStatus, setTemplateStatus] = useState("");
   const [template, setTemplate] = useState<Template | null>(null);
-  const [saved, setSaved] = useState<Template[]>([]);
   const [images, setImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [message, setMessage] = useState("");
   const [runStatus, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
-  const [useAiRewrite, setUseAiRewrite] = useState(true);
-  const [aiStatus, setAiStatus] = useState("");
-  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [showAllTags, setShowAllTags] = useState(false);
 
-  const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || PROVIDERS[0];
-  const isLiveProvider = selectedProvider.isLive;
-
-  const availableShops = connected && isLiveProvider
-    ? (apiShops.length ? apiShops : FALLBACK_SHOPS)
-    : [];
+  const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
+  const isLiveProvider = selectedProvider?.isLive || false;
+  const availableShops = connected && isLiveProvider ? (apiShops.length ? apiShops : FALLBACK_SHOPS) : [];
   const productSource = apiProducts.length ? apiProducts : FALLBACK_PRODUCTS;
+  const templateKey = useMemo(() => `${template?.reference || "no-template"}::${templateDescription.trim()}`, [template?.reference, templateDescription]);
 
   const visibleProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
     return productSource.filter(
       (p) =>
         p.shopId === shopId &&
-        (!q ||
-          p.title.toLowerCase().includes(q) ||
-          p.type.toLowerCase().includes(q))
+        (!q || p.title.toLowerCase().includes(q) || p.type.toLowerCase().includes(q))
     );
   }, [shopId, search, productSource]);
 
+  const sortedImages = useMemo(() => {
+    return [...images].sort((a, b) => {
+      const statusDelta = getStatusSortValue(a.status) - getStatusSortValue(b.status);
+      if (statusDelta !== 0) return statusDelta;
+      return a.name.localeCompare(b.name);
+    });
+  }, [images]);
+
   const selectedImage = useMemo(
-    () => images.find((img) => img.id === selectedId) || images[0] || null,
-    [images, selectedId]
+    () => images.find((img) => img.id === selectedId) || sortedImages[0] || null,
+    [images, selectedId, sortedImages]
   );
 
-  const previewLeadParagraphs = selectedImage?.aiDraft?.leadParagraphs || undefined;
-
-  const previewDescription = selectedImage
-    ? buildDescription(selectedImage.final, templateDescription, previewLeadParagraphs)
-    : templateDescription;
-
-  const previewTags = selectedImage
-    ? buildTags(selectedImage.final, previewDescription, FIXED_TAG_COUNT)
-    : [];
+  const readyCount = images.filter((img) => img.status === "ready").length;
+  const reviewCount = images.filter((img) => img.status === "review").length;
+  const errorCount = images.filter((img) => img.status === "error").length;
+  const processingCount = images.filter((img) => img.status === "pending" || img.aiProcessing).length;
+  const uploadDisabled = !connected || !template || images.length === 0 || isRunningBatch || processingCount > 0;
+  const visibleDetailTags = selectedImage ? (showAllTags ? selectedImage.tags : selectedImage.tags.slice(0, 8)) : [];
 
   useEffect(() => {
     const previous = previousPreviewUrlsRef.current;
@@ -1198,12 +1257,14 @@ export default function MerchQuantumApp() {
   useEffect(() => {
     return () => {
       for (const url of previousPreviewUrlsRef.current) {
-        if (url.startsWith("blob:")) {
-          URL.revokeObjectURL(url);
-        }
+        if (url.startsWith("blob:")) URL.revokeObjectURL(url);
       }
     };
   }, []);
+
+  useEffect(() => {
+    setShowAllTags(false);
+  }, [selectedId]);
 
   useEffect(() => {
     if (!selectedImage || selectedImage.artworkBounds) return;
@@ -1213,14 +1274,10 @@ export default function MerchQuantumApp() {
       .then((bounds) => {
         if (cancelled) return;
         setImages((current) =>
-          current.map((img) =>
-            img.id === selectedImage.id ? { ...img, artworkBounds: bounds } : img
-          )
+          current.map((img) => (img.id === selectedImage.id ? { ...img, artworkBounds: bounds } : img))
         );
       })
-      .catch(() => {
-        // Leave preview operational even if bounds detection fails.
-      });
+      .catch(() => undefined);
 
     return () => {
       cancelled = true;
@@ -1228,9 +1285,22 @@ export default function MerchQuantumApp() {
   }, [selectedImage]);
 
   useEffect(() => {
-    setImages((current) => current.map((img) => (img.aiDraft ? { ...img, aiDraft: undefined } : img)));
-    setAiStatus("");
-  }, [template?.reference, templateDescription]);
+    if (!images.length) return;
+    setImages((current) =>
+      current.map((img) =>
+        img.processedTemplateKey === templateKey
+          ? img
+          : {
+              ...img,
+              processedTemplateKey: undefined,
+              aiDraft: undefined,
+              aiProcessing: false,
+              status: "pending",
+              statusReason: "Quantum AI is preparing listing copy.",
+            }
+      )
+    );
+  }, [templateKey]);
 
   useEffect(() => {
     if (!connected || !isLiveProvider || !shopId || source !== "product") return;
@@ -1238,9 +1308,119 @@ export default function MerchQuantumApp() {
     void loadProductsForShop(shopId);
   }, [connected, isLiveProvider, shopId, source, loadingProducts, apiProducts]);
 
+  useEffect(() => {
+    if (aiLoopBusyRef.current) return;
+    const nextImage = images.find((img) => !img.aiProcessing && img.processedTemplateKey !== templateKey);
+    if (!nextImage) return;
+
+    aiLoopBusyRef.current = true;
+    setImages((current) =>
+      current.map((img) =>
+        img.id === nextImage.id
+          ? { ...img, aiProcessing: true, status: "pending", statusReason: "Quantum AI is analyzing artwork." }
+          : img
+      )
+    );
+
+    void (async () => {
+      try {
+        const imageDataUrl = await readDataUrl(nextImage.file);
+        const response = await fetchWithTimeout(
+          "/api/ai/listing",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              imageDataUrl,
+              title: safeTitle(nextImage.final, nextImage.cleaned),
+              fileName: nextImage.name,
+              productFamily: resolveProductFamily(nextImage.final, templateDescription),
+              templateContext: buildTemplateContext(templateDescription),
+            }),
+          },
+          60000
+        );
+
+        const data = await parseResponsePayload(response);
+        if (!response.ok) {
+          throw new Error(data?.error || `Quantum AI request failed with status ${response.status}.`);
+        }
+
+        const rawParagraphs = Array.isArray(data?.leadParagraphs)
+          ? data.leadParagraphs
+          : [data?.leadParagraph1, data?.leadParagraph2].filter(Boolean);
+        const leadParagraphs = normalizeAiLeadParagraphs(rawParagraphs.length ? rawParagraphs : buildLeadParagraphs(nextImage.cleaned, templateDescription));
+        const finalTitle = safeTitle(trimToSentence(String(data?.title || nextImage.cleaned), AI_TITLE_MAX_CHARS), nextImage.cleaned);
+        const finalDescription = templateDescription.trim()
+          ? buildDescription(finalTitle, templateDescription, leadParagraphs)
+          : buildLeadOnlyDescription(leadParagraphs);
+        const tags = buildTags(finalTitle, finalDescription, FIXED_TAG_COUNT);
+        const confidence = typeof data?.confidence === "number" ? clamp(data.confidence, 0, 1) : 0.8;
+        const reasonFlags = Array.isArray(data?.reasonFlags)
+          ? data.reasonFlags.filter((flag: unknown) => typeof flag === "string" && flag.trim())
+          : [];
+        const status: ReviewStatus = confidence >= 0.78 && reasonFlags.length === 0 ? "ready" : "review";
+        const statusReason = status === "ready"
+          ? "Quantum AI is confident in this listing."
+          : reasonFlags[0] || "This item may need a quick review before upload.";
+
+        setImages((current) =>
+          current.map((img) =>
+            img.id === nextImage.id
+              ? {
+                  ...img,
+                  final: finalTitle,
+                  finalDescription,
+                  tags,
+                  aiProcessing: false,
+                  status,
+                  statusReason,
+                  processedTemplateKey: templateKey,
+                  aiDraft: {
+                    title: finalTitle,
+                    leadParagraphs,
+                    model: typeof data?.model === "string" ? data.model : AI_MODEL_LABEL,
+                    confidence,
+                    templateReference: template?.reference || "",
+                    reasonFlags,
+                  },
+                }
+              : img
+          )
+        );
+      } catch (error) {
+        const leadParagraphs = normalizeAiLeadParagraphs(buildLeadParagraphs(nextImage.cleaned, templateDescription));
+        const fallbackTitle = safeTitle(nextImage.final, nextImage.cleaned);
+        const fallbackDescription = templateDescription.trim()
+          ? buildDescription(fallbackTitle, templateDescription, leadParagraphs)
+          : buildLeadOnlyDescription(leadParagraphs);
+        const message = formatApiError(error instanceof Error ? error.message : "Quantum AI could not process this item.");
+        setImages((current) =>
+          current.map((img) =>
+            img.id === nextImage.id
+              ? {
+                  ...img,
+                  final: fallbackTitle,
+                  finalDescription: fallbackDescription,
+                  tags: buildTags(fallbackTitle, fallbackDescription, FIXED_TAG_COUNT),
+                  aiProcessing: false,
+                  status: "review",
+                  statusReason: message,
+                  processedTemplateKey: templateKey,
+                }
+              : img
+          )
+        );
+      } finally {
+        aiLoopBusyRef.current = false;
+      }
+    })();
+  }, [images, templateDescription, templateKey, template?.reference]);
+
   function resetProviderState(clearStatus = true) {
     setConnected(false);
     setLoadingApi(false);
+    setPulseConnected(false);
     if (clearStatus) setApiStatus("");
     setApiShops([]);
     setApiProducts([]);
@@ -1253,83 +1433,6 @@ export default function MerchQuantumApp() {
     setRunStatus("");
   }
 
-  async function requestAiListingRewrite(img: Img) {
-    const templateReference = template?.reference || "";
-    const productFamily = resolveProductFamily(img.final, templateDescription);
-    const templateContext = buildTemplateContext(templateDescription).slice(0, 1200);
-
-    const imageDataUrl = await readDataUrl(img.file);
-    const response = await fetchWithTimeout("/api/ai/listing", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        imageDataUrl,
-        title: safeTitle(img.final, img.cleaned),
-        fileName: img.name,
-        productFamily,
-        templateContext,
-      }),
-    }, 60000);
-
-    const data = await parseResponsePayload(response);
-    if (!response.ok) {
-      throw new Error(data?.error || `AI request failed with status ${response.status}.`);
-    }
-
-    const rawTitle = typeof data?.title === "string" ? data.title : "";
-    const rawParagraphs = Array.isArray(data?.leadParagraphs)
-      ? data.leadParagraphs
-      : [data?.leadParagraph1, data?.leadParagraph2].filter(Boolean);
-    const normalizedTitle = safeTitle(trimToSentence(rawTitle, AI_TITLE_MAX_CHARS), img.cleaned);
-    const normalizedParagraphs = normalizeAiLeadParagraphs(rawParagraphs);
-
-    if (normalizedTitle.length < AI_TITLE_MIN_CHARS) {
-      throw new Error("AI title output was too short to use reliably.");
-    }
-
-    const totalLeadLength = normalizedParagraphs.join(" ").length;
-    if (normalizedParagraphs.length === 0 || totalLeadLength < AI_LEAD_MIN_CHARS) {
-      throw new Error("AI description output was too short to use reliably.");
-    }
-
-    return {
-      title: normalizedTitle,
-      leadParagraphs: normalizedParagraphs,
-      model: typeof data?.model === "string" ? data.model : AI_MODEL_LABEL,
-      confidence: typeof data?.confidence === "number" ? data.confidence : 0.8,
-      templateReference,
-    } satisfies AiListingDraft;
-  }
-
-  async function generateSelectedAiPreview() {
-    if (!selectedImage || !templateDescription.trim()) return;
-    setIsGeneratingAi(true);
-    setAiStatus("");
-
-    try {
-      const aiDraft = await requestAiListingRewrite(selectedImage);
-      setImages((current) =>
-        current.map((img) =>
-          img.id === selectedImage.id
-            ? {
-                ...img,
-                final: aiDraft.title,
-                aiDraft,
-              }
-            : img
-        )
-      );
-      setAiStatus(`AI preview ready with ${aiDraft.model}.`);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "Unable to generate AI preview.";
-      setAiStatus(formatApiError(msg));
-    } finally {
-      setIsGeneratingAi(false);
-    }
-  }
-
   async function addFiles(list: FileList | null) {
     if (!list) return;
     setMessage("");
@@ -1337,13 +1440,11 @@ export default function MerchQuantumApp() {
     const room = Math.max(0, MAX_BATCH_FILES - images.length);
     const valid = Array.from(list).filter(isImage).slice(0, room);
     const skippedByType = Array.from(list).filter((f) => !isImage(f)).length;
-    const skippedByLimit = Math.max(
-      0,
-      Array.from(list).filter(isImage).length - valid.length
-    );
+    const skippedByLimit = Math.max(0, Array.from(list).filter(isImage).length - valid.length);
 
     const good = valid.map((file) => {
       const cleaned = cleanTitle(file.name);
+      const leadDescription = templateDescription.trim() ? buildDescription(cleaned, templateDescription) : buildLeadOnlyDescription(buildLeadParagraphs(cleaned, templateDescription));
       return {
         id: makeId(),
         name: file.name,
@@ -1351,10 +1452,12 @@ export default function MerchQuantumApp() {
         preview: URL.createObjectURL(file),
         cleaned,
         final: cleaned,
-      } as Img;
+        finalDescription: leadDescription,
+        tags: buildTags(cleaned, leadDescription, FIXED_TAG_COUNT),
+        status: "pending" as ReviewStatus,
+        statusReason: "Quantum AI is preparing listing copy.",
+      } satisfies Img;
     });
-
-    const failed = 0;
 
     setImages((current) => {
       const next = [...current, ...good];
@@ -1363,20 +1466,9 @@ export default function MerchQuantumApp() {
     });
 
     const parts: string[] = [];
-    if (good.length)
-      parts.push(`Loaded ${good.length} image${good.length === 1 ? "" : "s"}.`);
-    if (skippedByType) {
-      parts.push(
-        `Skipped ${skippedByType} non-image file${skippedByType === 1 ? "" : "s"}.`
-      );
-    }
-    if (skippedByLimit) {
-      parts.push(
-        `Skipped ${skippedByLimit} image${skippedByLimit === 1 ? "" : "s"} above the ${MAX_BATCH_FILES}-file batch cap.`
-      );
-    }
-    if (failed)
-      parts.push(`Failed to preview ${failed} image${failed === 1 ? "" : "s"}.`);
+    if (good.length) parts.push(`Loaded ${good.length} image${good.length === 1 ? "" : "s"}.`);
+    if (skippedByType) parts.push(`Skipped ${skippedByType} non-image file${skippedByType === 1 ? "" : "s"}.`);
+    if (skippedByLimit) parts.push(`Skipped ${skippedByLimit} image${skippedByLimit === 1 ? "" : "s"} above the ${MAX_BATCH_FILES}-file batch cap.`);
     setMessage(parts.join(" "));
   }
 
@@ -1389,13 +1481,9 @@ export default function MerchQuantumApp() {
 
     setLoadingProducts(true);
     try {
-      const response = await fetchWithTimeout(
-        `/api/printify/products?shopId=${encodeURIComponent(nextShopId)}`
-      );
+      const response = await fetchWithTimeout(`/api/printify/products?shopId=${encodeURIComponent(nextShopId)}`);
       const data = await parseResponsePayload(response);
-      if (!response.ok) {
-        throw new Error(data?.error || `Products request failed with status ${response.status}.`);
-      }
+      if (!response.ok) throw new Error(data?.error || `Products request failed with status ${response.status}.`);
 
       const mapped: Product[] = Array.isArray(data?.products)
         ? data.products.map((product: ApiProduct) => ({
@@ -1411,8 +1499,7 @@ export default function MerchQuantumApp() {
       setApiStatus((current) => (current.startsWith("Unable to load products") ? "" : current));
     } catch (error) {
       setApiProducts([]);
-      const msg =
-        error instanceof Error ? error.message : "Unable to load products.";
+      const msg = error instanceof Error ? error.message : "Unable to load products.";
       setApiStatus(formatApiError(msg));
     } finally {
       setLoadingProducts(false);
@@ -1420,7 +1507,7 @@ export default function MerchQuantumApp() {
   }
 
   async function connectPrintify() {
-    if (!token.trim() || !isLiveProvider) return;
+    if (!provider || !token.trim() || !isLiveProvider) return;
     setLoadingApi(true);
     setApiStatus("");
 
@@ -1432,26 +1519,21 @@ export default function MerchQuantumApp() {
       });
 
       const data = await parseResponsePayload(response);
-      if (!response.ok) {
-        throw new Error(data?.error || `${selectedProvider.label} connect failed with status ${response.status}.`);
-      }
+      if (!response.ok) throw new Error(data?.error || `${selectedProvider?.label || "Provider"} connect failed with status ${response.status}.`);
 
       const shopsFromApi: Shop[] = Array.isArray(data?.shops)
-        ? data.shops.map((shop: ApiShop) => ({
-            id: String(shop.id),
-            title: shop.title || `Shop ${shop.id}`,
-          }))
+        ? data.shops.map((shop: ApiShop) => ({ id: String(shop.id), title: shop.title || `Shop ${shop.id}` }))
         : [];
 
       setApiShops(shopsFromApi);
       setConnected(true);
       const firstShopId = shopsFromApi[0]?.id || FALLBACK_SHOPS[0].id;
       setShopId(firstShopId);
-      setApiStatus(`Connected to ${selectedProvider.label}.`);
+      setPulseConnected(true);
+      setTimeout(() => setPulseConnected(false), 1200);
       void loadProductsForShop(firstShopId);
     } catch (error) {
-      const msg =
-        error instanceof Error ? error.message : `Unable to connect to ${selectedProvider.label}.`;
+      const msg = error instanceof Error ? error.message : `Unable to connect to ${selectedProvider?.label || "provider"}.`;
       resetProviderState(false);
       setApiStatus(formatApiError(msg));
     } finally {
@@ -1461,12 +1543,11 @@ export default function MerchQuantumApp() {
 
   async function disconnectPrintify() {
     try {
-      await fetchWithTimeout("/api/printify/disconnect", {
-        method: "POST",
-      });
+      await fetchWithTimeout("/api/printify/disconnect", { method: "POST" });
     } catch {
-      // Fall back to local reset even if the disconnect route is unavailable.
+      // local reset only
     } finally {
+      setToken("");
       resetProviderState(true);
       setApiStatus("");
     }
@@ -1477,16 +1558,9 @@ export default function MerchQuantumApp() {
     if (!fallback || !shopId) return;
 
     try {
-      const response = await fetchWithTimeout(
-        `/api/printify/product?shopId=${encodeURIComponent(
-          shopId
-        )}&productId=${encodeURIComponent(productId)}`
-      );
-
+      const response = await fetchWithTimeout(`/api/printify/product?shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(productId)}`);
       const data = await parseResponsePayload(response);
-      if (!response.ok) {
-        throw new Error(data?.error || `Product request failed with status ${response.status}.`);
-      }
+      if (!response.ok) throw new Error(data?.error || `Product request failed with status ${response.status}.`);
 
       const responseData = (data || {}) as ApiTemplateResponse;
       const chosen = responseData.product || fallback;
@@ -1507,15 +1581,10 @@ export default function MerchQuantumApp() {
         description: base,
         placementGuide: nextPlacementGuide,
       });
-
       setNickname(title);
       setManualRef(chosen?.id || fallback.id);
       setTemplateDescription(base);
-      setTemplateStatus(
-        usingFallbackDescription
-          ? "Live template loaded, but it did not include a description. Using the saved fallback description."
-          : "Live template description loaded successfully."
-      );
+      setTemplateStatus(usingFallbackDescription ? "Live template loaded with fallback description." : "Template description loaded.");
     } catch (error) {
       const title = fallback.title;
       const base = formatTemplateDescription(
@@ -1531,12 +1600,11 @@ export default function MerchQuantumApp() {
         description: base,
         placementGuide: template?.placementGuide || DEFAULT_PLACEMENT_GUIDE,
       });
-
       setNickname(title);
       setManualRef(fallback.id);
       setTemplateDescription(base);
       const msg = error instanceof Error ? error.message : "Unable to load live template description.";
-      setTemplateStatus(`Using local fallback description because the live template could not be loaded. ${formatApiError(msg)}`);
+      setTemplateStatus(`Using local fallback description. ${formatApiError(msg)}`);
     }
   }
 
@@ -1544,8 +1612,7 @@ export default function MerchQuantumApp() {
     const ref = normalizeRef(manualRef);
     if (!ref || !shopId) return;
     const name = safeTitle(nickname, "Template");
-    const base =
-      formatTemplateDescription(templateDescription.trim()) ||
+    const base = formatTemplateDescription(templateDescription.trim()) ||
       "Base description from the user template goes here until live API wiring is added.";
 
     setTemplate({
@@ -1556,35 +1623,10 @@ export default function MerchQuantumApp() {
       description: base,
       placementGuide: template?.placementGuide || DEFAULT_PLACEMENT_GUIDE,
     });
-
     setNickname(name);
     setManualRef(ref);
     setTemplateDescription(base);
     setTemplateStatus("Manual template description loaded.");
-  }
-
-  function saveTemplate() {
-    if (!template) return;
-
-    const nextTemplate = {
-      ...template,
-      nickname: safeTitle(nickname, template.nickname),
-      description: templateDescription,
-    };
-
-    setTemplate(nextTemplate);
-    setTemplateStatus("Template saved for this session.");
-    setSaved((current) => {
-      const idx = current.findIndex(
-        (t) =>
-          t.reference === nextTemplate.reference &&
-          t.shopId === nextTemplate.shopId
-      );
-      if (idx === -1) return [...current, nextTemplate];
-      const next = [...current];
-      next[idx] = nextTemplate;
-      return next;
-    });
   }
 
   async function runDraftBatch() {
@@ -1593,68 +1635,27 @@ export default function MerchQuantumApp() {
     setIsRunningBatch(true);
     setRunStatus("");
     setBatchResults([]);
-
     const nextResults: BatchResult[] = [];
 
     try {
       for (let index = 0; index < images.length; index += 1) {
         const img = images[index];
-        let titleForUpload = safeTitle(img.final, img.cleaned);
-        let leadParagraphs: string[] | undefined = img.aiDraft?.leadParagraphs;
-
-        const canReuseAiDraft =
-          !!img.aiDraft &&
-          img.aiDraft.templateReference === template.reference &&
-          safeTitle(img.final, img.cleaned) === img.aiDraft.title;
-
-        if (useAiRewrite && canReuseAiDraft) {
-          titleForUpload = img.aiDraft!.title;
-          leadParagraphs = img.aiDraft!.leadParagraphs;
-        } else if (useAiRewrite) {
-          try {
-            setRunStatus(`Generating AI copy ${index + 1} of ${images.length}...`);
-            const aiDraft = await requestAiListingRewrite(img);
-            titleForUpload = aiDraft.title;
-            leadParagraphs = aiDraft.leadParagraphs;
-            setImages((current) =>
-              current.map((entry) =>
-                entry.id === img.id
-                  ? {
-                      ...entry,
-                      final: aiDraft.title,
-                      aiDraft,
-                    }
-                  : entry
-              )
-            );
-          } catch (error) {
-            const msg = error instanceof Error ? error.message : "AI rewrite unavailable.";
-            setAiStatus(`AI fallback used on ${img.name}: ${formatApiError(msg)}`);
-          }
-        }
-
-        const description = buildDescription(titleForUpload, templateDescription, leadParagraphs);
-        const tags = buildTags(titleForUpload, description, FIXED_TAG_COUNT);
+        const titleForUpload = safeTitle(img.final, img.cleaned);
+        const description = img.finalDescription || buildDescription(titleForUpload, templateDescription, img.aiDraft?.leadParagraphs);
+        const tags = img.tags.length ? img.tags : buildTags(titleForUpload, description, FIXED_TAG_COUNT);
 
         setRunStatus(`Uploading draft ${index + 1} of ${images.length}...`);
 
         try {
           const imageDataUrl = await readDataUrl(img.file);
-          const artworkBounds = img.artworkBounds || await analyzeArtworkBounds(img.file);
-
+          const artworkBounds = img.artworkBounds || (await analyzeArtworkBounds(img.file));
           if (!img.artworkBounds) {
-            setImages((current) =>
-              current.map((entry) =>
-                entry.id === img.id ? { ...entry, artworkBounds } : entry
-              )
-            );
+            setImages((current) => current.map((entry) => (entry.id === img.id ? { ...entry, artworkBounds } : entry)));
           }
 
           const response = await fetchWithTimeout("/api/printify/batch-create", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               shopId,
               templateProductId: template.reference,
@@ -1670,28 +1671,18 @@ export default function MerchQuantumApp() {
           });
 
           const data = await parseResponsePayload(response);
-          if (!response.ok) {
-            throw new Error(data?.error || `Draft request failed with status ${response.status}.`);
-          }
+          if (!response.ok) throw new Error(data?.error || `Draft request failed with status ${response.status}.`);
 
           const result = Array.isArray(data?.results) && data.results[0]
             ? (data.results[0] as BatchResult)
-            : {
-                fileName: img.name,
-                title: titleForUpload,
-                message: data?.message || "Created draft product.",
-              };
+            : { fileName: img.name, title: titleForUpload, message: data?.message || "Created draft product." };
 
           nextResults.push(result);
           setBatchResults([...nextResults]);
         } catch (error) {
           const rawMessage = error instanceof Error ? error.message : "Draft create failed.";
-          const message = formatApiError(rawMessage);
-          nextResults.push({
-            fileName: img.name,
-            title: titleForUpload,
-            message,
-          });
+          const errorMessage = formatApiError(rawMessage);
+          nextResults.push({ fileName: img.name, title: titleForUpload, message: errorMessage });
           setBatchResults([...nextResults]);
         }
       }
@@ -1705,713 +1696,412 @@ export default function MerchQuantumApp() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 text-slate-900 transition-colors dark:bg-black dark:text-slate-100 md:p-8">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-4">
-            <BrandMark />
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight">
-                <span className="text-violet-600">Merch</span>
-                <span className="text-slate-900 dark:text-white">Quantum</span>
-              </h1>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                {APP_TAGLINE}
-              </p>
+      <div className="mx-auto max-w-6xl space-y-6">
+        <div className="flex flex-wrap items-center gap-4">
+          <BrandMark />
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight">
+              <span className="text-violet-600">Merch</span>
+              <span className="text-slate-900 dark:text-white">Quantum</span>
+            </h1>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{APP_TAGLINE}</p>
+          </div>
+        </div>
+
+        <Box
+          title={
+            <span>
+              <span className="text-violet-600">Quantum </span>
+              <span className={`${connected ? `text-emerald-600 dark:text-emerald-400 ${pulseConnected ? "animate-pulse" : ""}` : "text-slate-900 dark:text-slate-100"}`}>
+                {connected ? "Connected" : "Connection"}
+              </span>
+            </span>
+          }
+        >
+          {connected ? (
+            <div className="mb-3 text-sm font-medium text-rose-600 dark:text-rose-400">
+              <button type="button" onClick={() => { void disconnectPrintify(); }} className="transition-opacity hover:opacity-80">
+                Disconnect
+              </button>
+            </div>
+          ) : null}
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <Select
+              value={provider}
+              onChange={(e) => {
+                const nextProvider = e.target.value as ProviderId | "";
+                setProvider(nextProvider);
+                setToken("");
+                resetProviderState(false);
+                setTemplateStatus("");
+                const nextMeta = PROVIDERS.find((entry) => entry.id === nextProvider);
+                setApiStatus(nextMeta && !nextMeta.isLive ? `${nextMeta.label} is coming soon.` : "");
+              }}
+            >
+              <option value="">Choose Provider</option>
+              {PROVIDERS.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.label}
+                </option>
+              ))}
+            </Select>
+
+            <div className="relative">
+              <Input
+                type={connected ? "text" : "password"}
+                value={connected ? maskToken(token) : token}
+                readOnly={connected}
+                placeholder="Provider Personal Access Token (API)"
+                onChange={(e) => setToken(e.target.value)}
+                className="pr-32"
+              />
+              <button
+                type="button"
+                onClick={() => { void connectPrintify(); }}
+                disabled={!provider || !isLiveProvider || !token.trim() || loadingApi || connected}
+                className={`absolute right-1.5 top-1.5 min-h-[32px] rounded-lg px-3 text-sm font-medium transition-colors ${connected ? "bg-emerald-600 text-white" : "bg-violet-600 text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"}`}
+              >
+                {loadingApi ? "Connecting..." : connected ? "Connected" : "Connect"}
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Badge on={connected}>
-              {connected ? "Quantum connected" : "Quantum not connected"}
-            </Badge>
-            {connected ? (
-              <Button variant="secondary" onClick={() => { void disconnectPrintify(); }}>
-                Disconnect
-              </Button>
-            ) : null}
-          </div>
-        </div>
+          {apiStatus ? <p className="mt-3 text-sm text-amber-700 dark:text-amber-400">{apiStatus}</p> : null}
+        </Box>
 
-        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="space-y-6">
-            <Box title="Quantum Connection">
-              <div className="grid gap-4 md:grid-cols-3">
-                <Field label="Choose Provider">
-                  <Select
-                    value={provider}
-                    onChange={(e) => {
-                      const nextProvider = e.target.value as ProviderId;
-                      setProvider(nextProvider);
-                      resetProviderState(false);
-                      setTemplateStatus("");
-                      const nextMeta = PROVIDERS.find((entry) => entry.id === nextProvider);
-                      setApiStatus(nextMeta?.isLive ? "" : `${nextMeta?.label || "This provider"} is coming soon. Live API connection is currently available for Printify.`);
-                    }}
-                  >
-                    {PROVIDERS.map((entry) => (
-                      <option key={entry.id} value={entry.id}>
-                        {entry.label}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-
-                <Field label="Provider API Token">
-                  <div className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
-                    Personal Access Token
-                  </div>
-                </Field>
-
-                <Field label="Masked Preview">
-                  <div className="max-w-[260px] overflow-hidden rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-sm whitespace-nowrap text-ellipsis dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
-                    {maskToken(token) || "No token entered"}
-                  </div>
-                  <FieldNote>Showing last 10 characters</FieldNote>
-                </Field>
-              </div>
-
-              <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto]">
-                <Field label="Personal Access Token">
-                  <Input
-                    type="password"
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
-                    placeholder="Paste API key once"
-                    disabled={!isLiveProvider}
-                  />
-                </Field>
-
-                <div className="flex items-end">
-                  <Button
-                    onClick={() => {
-                      void connectPrintify();
-                    }}
-                    disabled={!token.trim() || connected || loadingApi || !isLiveProvider}
-                  >
-                    {loadingApi ? "Connecting..." : "Connect"}
-                  </Button>
-                </div>
-              </div>
-
-              {apiStatus ? (
-                <p className={`mt-3 text-sm ${connected ? "text-green-700 dark:text-green-400" : "text-amber-700 dark:text-amber-400"}`}>
-                  {apiStatus}
-                </p>
-              ) : null}
-            </Box>
-
-            <Box title="Batch Setup">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Shop">
-                  <Select
-                    value={shopId}
-                    onChange={(e) => {
-                      const nextShopId = e.target.value;
-                      setShopId(nextShopId);
-                      setProductId("");
-                      void loadProductsForShop(nextShopId);
-                    }}
-                    disabled={!connected || loadingApi}
-                  >
-                    <option value="">Select a shop</option>
-                    {availableShops.map((shop) => (
-                      <option key={shop.id} value={shop.id}>
-                        {shop.title}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-
-                <Field label="Template Source">
-                  <div className="space-y-2">
-                    <Select
-                      value={source}
-                      onChange={(e) => {
-                        const nextSource = e.target.value as "product" | "manual";
-                        setSource(nextSource);
-                        if (nextSource === "product" && shopId) {
-                          void loadProductsForShop(shopId);
-                        }
-                      }}
-                      disabled={!isLiveProvider}
-                    >
-                      <option value="product">Choose From My Products</option>
-                      <option value="manual">Paste Product Reference</option>
-                    </Select>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      My Products loads by default so saved provider products are ready as soon as you connect and choose a shop.
-                    </p>
-                  </div>
-                </Field>
-              </div>
-
-              <div className="mt-4">
-                <Field label="Template Nickname">
-                  <Input
-                    value={nickname}
-                    onChange={(e) => setNickname(e.target.value)}
-                    placeholder="Example: Unisex Tee Front Print"
-                    disabled={!isLiveProvider}
-                  />
-                </Field>
-              </div>
-
-              {source === "product" ? (
-                <div className="mt-4 space-y-4">
-                  <Field label="Search My Products">
-                    <Input
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search by title or type"
-                      disabled={!connected || !shopId}
-                    />
-                  </Field>
-
-                  <div className="max-h-52 overflow-auto rounded-xl border border-slate-200 dark:border-slate-800">
-                    <table className="min-w-full border-collapse text-sm">
-                      <thead className="bg-slate-100 dark:bg-slate-900">
-                        <tr>
-                          <th className="px-3 py-2 text-left">Use</th>
-                          <th className="px-3 py-2 text-left">Example</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {!connected || !shopId ? (
-                          <tr>
-                            <td colSpan={2} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
-                              Connect and select a shop first.
-                            </td>
-                          </tr>
-                        ) : loadingProducts ? (
-                          <tr>
-                            <td colSpan={2} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
-                              Loading your provider products...
-                            </td>
-                          </tr>
-                        ) : visibleProducts.length === 0 ? (
-                          <tr>
-                            <td colSpan={2} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
-                              No products found for this shop yet.
-                            </td>
-                          </tr>
-                        ) : (
-                          visibleProducts.map((product) => (
-                            <tr key={product.id} className="border-t border-slate-200 dark:border-slate-800">
-                              <td className="px-3 py-2">
-                                <input
-                                  type="radio"
-                                  name="template-product"
-                                  checked={productId === product.id}
-                                  onChange={() => setProductId(product.id)}
-                                />
-                              </td>
-                              <td className="px-3 py-2">{product.title}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        if (shopId) {
-                          void loadProductsForShop(shopId);
-                        }
-                      }}
-                      disabled={!connected || !shopId || loadingProducts}
-                    >
-                      {loadingProducts ? "Refreshing..." : "Refresh My Products"}
-                    </Button>
-                    <Button onClick={loadProductTemplate} disabled={!productId || !shopId}>
-                      Load Template Description
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                    Paste Product Reference
-                  </div>
-                  <Field label="Template Product Reference">
-                    <Input
-                      value={manualRef}
-                      onChange={(e) => setManualRef(e.target.value)}
-                      placeholder="Paste a Printify product ID or URL"
-                      disabled={!isLiveProvider}
-                    />
-                  </Field>
-                  <Button onClick={loadManualTemplate} disabled={!manualRef.trim() || !shopId}>
-                    Load Manual Template
-                  </Button>
-                </div>
-              )}
-
-              <div className="mt-4">
-                <Field label="Template Description Source">
-                  <Textarea
-                    rows={8}
-                    value={templateDescription}
-                    onChange={(e) => setTemplateDescription(e.target.value)}
-                    placeholder="This is where the loaded template description will appear after the selected product template is loaded."
-                    disabled={!isLiveProvider}
-                  />
-                </Field>
-              </div>
-
-              {templateStatus ? (
-                <p className={`mt-3 text-sm ${templateStatus.toLowerCase().includes("successfully") || templateStatus.toLowerCase().includes("saved") || templateStatus.toLowerCase().includes("manual") ? "text-green-700 dark:text-green-400" : "text-amber-700 dark:text-amber-400"}`}>
-                  {templateStatus}
-                </p>
-              ) : null}
-
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-800 dark:bg-slate-900">
-                <div>
-                  <b>Loaded Template:</b> {template ? template.nickname : "None loaded"}
-                </div>
-                {template ? (
-                  <>
-                    <div className="mt-1 break-all text-slate-600 dark:text-slate-400">
-                      {template.reference} • {template.source} • Shop {template.shopId}
-                    </div>
-                    <div className="mt-2 text-slate-600 dark:text-slate-400">
-                      Front print guide: {template.placementGuide?.width || DEFAULT_PLACEMENT_GUIDE.width} × {template.placementGuide?.height || DEFAULT_PLACEMENT_GUIDE.height}px • {template.placementGuide?.source === "live" ? "Live template boundary" : "General fallback boundary"}
-                    </div>
-                  </>
-                ) : null}
-              </div>
-
-              <div className="mt-4 grid gap-4 md:grid-cols-3">
-                <Field label="Title Signal">
-                  <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950">
-                    Filename / Final Title
-                  </div>
-                </Field>
-
-                <Field label="Description Mode">
-                  <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950">
-                    Title + Template Matched
-                  </div>
-                </Field>
-
-                <Field label="Tags">
-                  <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950">
-                    13 from Title + Description
-                  </div>
-                </Field>
-              </div>
-
-              <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
-                Clear product titles improve category matching, short-description accuracy, and alignment with the imported template description.
-              </p>
-            </Box>
-
-            <Box title="AI Listing Writing">
-              <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
-                <div className="space-y-4">
-                  <Field label="AI Mode">
-                    <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950">
-                      Standard · {AI_MODEL_LABEL}
-                    </div>
-                  </Field>
-
-                  <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-                    <input
-                      type="checkbox"
-                      className="mt-1 h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
-                      checked={useAiRewrite}
-                      onChange={(e) => setUseAiRewrite(e.target.checked)}
-                    />
-                    <span>
-                      Rewrite titles and write only the lead intro with AI during upload. Template product features and care instructions stay intact.
-                    </span>
-                  </label>
-                </div>
-
-                <Button
-                  variant="secondary"
-                  disabled={!selectedImage || !templateDescription.trim() || isGeneratingAi || !useAiRewrite}
-                  onClick={() => {
-                    void generateSelectedAiPreview();
-                  }}
-                >
-                  {isGeneratingAi ? "Generating AI Preview..." : "Preview AI Rewrite"}
-                </Button>
-              </div>
-
-              <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
-                AI rewrites the title every time, adds a tight custom intro, and leaves the loaded template structure exactly as provided.
-              </p>
-
-              {aiStatus ? (
-                <p className={`mt-3 text-sm ${aiStatus.toLowerCase().includes("ready") ? "text-green-700 dark:text-green-400" : "text-amber-700 dark:text-amber-400"}`}>
-                  {aiStatus}
-                </p>
-              ) : null}
-            </Box>
-
-            <Box title="Image Upload">
-              <div
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  void addFiles(e.dataTransfer.files);
-                }}
-                onClick={() => fileRef.current?.click()}
-                className="cursor-pointer rounded-2xl border-2 border-dashed border-slate-300 bg-white p-10 text-center hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-900"
-              >
-                <input
-                  ref={fileRef}
-                  type="file"
-                  multiple
-                  accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg"
-                  className="hidden"
+        <Box title="Batch Setup">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Shop">
+                <Select
+                  value={shopId}
+                  disabled={!availableShops.length}
                   onChange={(e) => {
-                    void addFiles(e.target.files);
-                    e.currentTarget.value = "";
+                    const nextShopId = e.target.value;
+                    setShopId(nextShopId);
+                    setProductId("");
+                    setTemplate(null);
+                    setTemplateStatus("");
+                    if (connected && isLiveProvider && nextShopId) void loadProductsForShop(nextShopId);
                   }}
-                />
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-2xl dark:bg-slate-900">
-                  🖼️
-                </div>
-                <p className="mt-4 font-medium">Drop images here or click to upload</p>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  File titles drive the listing title. Current prototype cap: {MAX_BATCH_FILES} images per batch.
-                </p>
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <Button onClick={() => fileRef.current?.click()}>Add Images</Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setImages([]);
-                    setSelectedId("");
-                    setMessage("");
-                  }}
-                  disabled={!images.length}
                 >
-                  Clear All
-                </Button>
-                <Badge>{images.length}/{MAX_BATCH_FILES}</Badge>
-              </div>
+                  <option value="">Select shop</option>
+                  {availableShops.map((shop) => (
+                    <option key={shop.id} value={shop.id}>
+                      {shop.title}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
 
-              {message ? (
-                <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{message}</p>
-              ) : null}
-            </Box>
+              <Field label="Template Source">
+                <Select value={source} onChange={(e) => setSource(e.target.value as "product" | "manual")}>
+                  <option value="product">Choose From My Products</option>
+                  <option value="manual">Paste Product Reference</option>
+                </Select>
+              </Field>
+            </div>
 
-            <Box title="Batch Preview">
-              <div className="max-h-[24rem] overflow-auto rounded-xl border border-slate-200 dark:border-slate-800">
-                <table className="min-w-full border-collapse text-sm">
-                  <thead className="sticky top-0 bg-slate-100 dark:bg-slate-900">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Preview</th>
-                      <th className="px-3 py-2 text-left">Filename</th>
-                      <th className="px-3 py-2 text-left">Suggested Title</th>
-                      <th className="px-3 py-2 text-left">Final Title</th>
-                      <th className="px-3 py-2 text-left">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {images.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="px-3 py-10 text-center text-slate-500 dark:text-slate-400">
-                          No images loaded yet.
-                        </td>
-                      </tr>
-                    ) : (
-                      images.map((img) => (
-                        <tr
-                          key={img.id}
-                          className={`border-t border-slate-200 dark:border-slate-800 ${selectedImage?.id === img.id ? "bg-slate-50 dark:bg-slate-900" : ""}`}
-                          onClick={() => setSelectedId(img.id)}
-                        >
-                          <td className="px-3 py-2">
-                            {img.preview ? (
-                              <img
-                                src={img.preview}
-                                alt={safeTitle(img.final, img.cleaned)}
-                                className="h-16 w-16 rounded-lg border border-slate-200 bg-white object-contain dark:border-slate-800 dark:bg-slate-950"
-                              />
-                            ) : (
-                              <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-xs dark:border-slate-800 dark:bg-slate-900">
-                                No Preview
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-xs text-slate-600 dark:text-slate-400">
-                            {img.name}
-                          </td>
-                          <td className="px-3 py-2 font-medium">{img.cleaned}</td>
-                          <td className="px-3 py-2">
-                            <div className="space-y-2">
-                              <Input
-                                value={img.final}
-                                onChange={(e) =>
-                                  setImages((current) =>
-                                    current.map((x) =>
-                                      x.id === img.id
-                                        ? { ...x, final: e.target.value, aiDraft: undefined }
-                                        : x
-                                    )
-                                  )
-                                }
-                                onBlur={() =>
-                                  setImages((current) =>
-                                    current.map((x) =>
-                                      x.id === img.id
-                                        ? { ...x, final: safeTitle(x.final, x.cleaned), aiDraft: undefined }
-                                        : x
-                                    )
-                                  )
-                                }
-                              />
-                              <Button
-                                variant="ghost"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setImages((current) =>
-                                    current.map((x) =>
-                                      x.id === img.id ? { ...x, final: x.cleaned, aiDraft: undefined } : x
-                                    )
-                                  );
-                                }}
-                              >
-                                Use Suggested
-                              </Button>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2">
-                            <Button
-                              variant="ghost"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setImages((current) => {
-                                  const next = current.filter((x) => x.id !== img.id);
-                                  if (selectedId === img.id) {
-                                    setSelectedId(next[0]?.id || "");
-                                  }
-                                  return next;
-                                });
-                              }}
-                            >
-                              Remove
-                            </Button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+            {source === "product" ? (
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
+                <Field label="Search My Products">
+                  <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search titles or types" />
+                </Field>
+                <Field label="Choose Product">
+                  <Select value={productId} disabled={!shopId || loadingProducts} onChange={(e) => setProductId(e.target.value)}>
+                    <option value="">{loadingProducts ? "Loading products..." : "Choose product"}</option>
+                    {visibleProducts.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.title}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <div className="flex items-end">
+                  <Button variant="secondary" onClick={() => { void loadProductsForShop(shopId); }} disabled={!shopId || loadingProducts}>
+                    {loadingProducts ? "Refreshing..." : "Refresh"}
+                  </Button>
+                </div>
               </div>
-            </Box>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
+                <Field label="Template Nickname">
+                  <Input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Template nickname" />
+                </Field>
+                <Field label="Product Reference">
+                  <Input value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Paste product reference or URL" />
+                </Field>
+                <div className="flex items-end">
+                  <Button variant="secondary" onClick={loadManualTemplate} disabled={!manualRef.trim() || !shopId}>
+                    Load Template Description
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="space-y-6">
-            <Box title="Listing Content Preview">
-              {!selectedImage ? (
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Select or upload an image to preview title, description, and tags.
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-                    <div className="mb-3 flex items-center gap-6">
-                      <span className="block bg-transparent p-0 m-0 text-sm font-medium tracking-tight text-slate-700 shadow-none ring-0 dark:text-slate-300">
-                        Uploaded Artwork
-                      </span>
-                      <span className="block bg-transparent p-0 m-0 text-sm font-medium tracking-tight text-slate-700 shadow-none ring-0 dark:text-slate-300">
-                        Safe Defaults
-                      </span>
-                    </div>
-                    <div className="flex h-64 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-                      {selectedImage.preview ? (
-                        <img
-                          src={selectedImage.preview}
-                          alt={safeTitle(selectedImage.final, selectedImage.cleaned)}
-                          className="max-h-full max-w-full object-contain"
-                        />
-                      ) : null}
-                    </div>
-                  </div>
+          {source === "product" ? (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button variant="secondary" onClick={() => { void loadProductTemplate(); }} disabled={!productId || !shopId}>
+                Load Template Description
+              </Button>
+              {template ? <span className="text-sm text-slate-500 dark:text-slate-400">Loaded: {template.nickname}</span> : null}
+            </div>
+          ) : null}
 
-                  <Field label="Title">
-                    <Input
-                      value={selectedImage.final}
-                      onChange={(e) =>
-                        setImages((current) =>
-                          current.map((x) =>
-                            x.id === selectedImage.id
-                              ? { ...x, final: e.target.value, aiDraft: undefined }
-                              : x
-                          )
-                        )
-                      }
-                    />
-                    <FieldNote>
-                      Strong titles help the app match the right short description and keep the imported template copy aligned with the actual product.
-                    </FieldNote>
-                  </Field>
+          {templateStatus ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{templateStatus}</p> : null}
+        </Box>
 
-                  <Field label="Description">
-                    <div className="rounded-xl border border-slate-300 bg-white px-4 py-4 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
-                      <div
-                        className="space-y-3 leading-6 [&_h3]:mt-5 [&_h3]:text-sm [&_h3]:font-semibold [&_p]:mb-3 [&_ul]:mb-3 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5"
-                        dangerouslySetInnerHTML={{ __html: previewDescription }}
-                      />
-                    </div>
-                    <FieldNote>Formatted as Printify-ready HTML paragraphs and lists so the converted description stays easier to read after export.</FieldNote>
-                  </Field>
+        <Box
+          title="Batch Preview"
+          actions={
+            <>
+              <Badge>{images.length}/{MAX_BATCH_FILES}</Badge>
+              <Button onClick={() => fileRef.current?.click()}>Add Images</Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setImages([]);
+                  setSelectedId("");
+                  setMessage("");
+                  setBatchResults([]);
+                  setRunStatus("");
+                }}
+                disabled={!images.length}
+              >
+                Clear All
+              </Button>
+            </>
+          }
+        >
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg"
+            className="hidden"
+            onChange={(e) => {
+              void addFiles(e.target.files);
+              e.currentTarget.value = "";
+            }}
+          />
 
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Tags
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {previewTags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 dark:bg-slate-900 dark:text-slate-300"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </Box>
-
-            <Box title="Run Summary">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-                  <div className="text-xs uppercase text-slate-500 dark:text-slate-400">
-                    Shop
-                  </div>
-                  <div className="mt-1 font-medium">
-                    {availableShops.find((s) => s.id === shopId)?.title ||
-                      "None selected"}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-                  <div className="text-xs uppercase text-slate-500 dark:text-slate-400">
-                    Loaded Template
-                  </div>
-                  <div className="mt-1 font-medium">
-                    {template?.nickname || "None loaded"}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-                  <div className="text-xs uppercase text-slate-500 dark:text-slate-400">
-                    Description
-                  </div>
-                  <div className="mt-1 font-medium">Title + Template Matched</div>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-                  <div className="text-xs uppercase text-slate-500 dark:text-slate-400">
-                    Tags
-                  </div>
-                  <div className="mt-1 font-medium">
-                    From Title + Description (13)
-                  </div>
-                </div>
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              void addFiles(e.dataTransfer.files);
+            }}
+            onClick={() => fileRef.current?.click()}
+            className="cursor-pointer rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-900"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click Add Images</div>
+                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. The app builds final titles and lead copy automatically, then flags anything that needs a quick review.</div>
               </div>
-
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                Products are uploaded in bulk as drafts to your selected provider. Artwork is automatically placed top centered in the front print area with built-in safeguards, so you can review everything first and publish when ready.
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                {readyCount} ready · {reviewCount} needs review · {errorCount} errors
               </div>
+            </div>
+          </div>
 
-              <div className="mt-4">
-                <Button
-                  className="w-full"
-                  disabled={!connected || !template || images.length === 0 || isRunningBatch}
-                  onClick={() => {
-                    void runDraftBatch();
-                  }}
-                >
-                  {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
-                </Button>
+          {message ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{message}</p> : null}
+
+          <div className="mt-4 max-h-[33rem] overflow-y-auto pr-1">
+            {sortedImages.length === 0 ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-12 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                No images loaded yet.
               </div>
-
-              {runStatus ? (
-                <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{runStatus}</p>
-              ) : null}
-
-              {batchResults.length > 0 ? (
-                <div className="mt-4 max-h-[24rem] overflow-auto rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
-                  <div className="space-y-2">
-                    {batchResults.map((result) => (
-                      <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                        <div className="font-medium">{result.title}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400">{result.fileName}</div>
-                        <div className="mt-1 text-sm">{result.message}</div>
-                        {result.productId ? (
-                          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                            Product ID: {result.productId}
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </Box>
-
-            <Box title="Saved Templates">
-              {saved.length === 0 ? (
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  No saved templates yet.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {saved.map((t) => (
+            ) : (
+              <div className="space-y-3">
+                {sortedImages.map((img) => {
+                  const meta = getStatusMeta(img.status);
+                  return (
                     <div
-                      key={`${t.shopId}:${t.reference}`}
-                      className="flex items-center justify-between rounded-xl border border-slate-200 p-4 dark:border-slate-800"
+                      key={img.id}
+                      onClick={() => setSelectedId(img.id)}
+                      className={`rounded-2xl border p-3 transition-colors ${selectedImage?.id === img.id ? "border-violet-500 bg-violet-50/50 dark:border-violet-500 dark:bg-violet-950/20" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"}`}
                     >
-                      <div className="min-w-0">
-                        <div className="font-medium">{t.nickname}</div>
-                        <div className="truncate text-xs text-slate-500 dark:text-slate-400">
-                          {t.reference}
+                      <div className="grid gap-3 lg:grid-cols-[90px_minmax(0,0.9fr)_minmax(0,1.15fr)_auto]">
+                        <div className="relative">
+                          <div className="group relative flex h-24 w-24 items-center justify-center overflow-visible rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-900">
+                            {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
+                            {img.preview ? (
+                              <div className="pointer-events-none absolute left-0 top-0 z-20 hidden w-48 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950">
+                                <img src={img.preview} alt={img.final} className="max-h-56 w-full object-contain" />
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="min-w-0 space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${meta.text} ${meta.ring}`}>
+                              <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
+                              {meta.label}
+                            </span>
+                            <span className="truncate text-xs text-slate-500 dark:text-slate-400">{img.name}</span>
+                          </div>
+                          <Input
+                            value={img.final}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) =>
+                              setImages((current) =>
+                                current.map((entry) =>
+                                  entry.id === img.id ? { ...entry, final: e.target.value } : entry
+                                )
+                              )
+                            }
+                            onBlur={() =>
+                              setImages((current) =>
+                                current.map((entry) =>
+                                  entry.id === img.id ? { ...entry, final: safeTitle(entry.final, entry.cleaned) } : entry
+                                )
+                              )
+                            }
+                          />
+                        </div>
+
+                        <div className="min-w-0">
+                          <Textarea
+                            rows={3}
+                            value={htmlToEditableText(img.finalDescription)}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) =>
+                              setImages((current) =>
+                                current.map((entry) =>
+                                  entry.id === img.id
+                                    ? { ...entry, finalDescription: editableTextToHtml(e.target.value), tags: buildTags(entry.final, editableTextToHtml(e.target.value), FIXED_TAG_COUNT) }
+                                    : entry
+                                )
+                              )
+                            }
+                          />
+                          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{img.statusReason}</p>
+                        </div>
+
+                        <div className="flex items-start justify-end">
+                          <Button
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setImages((current) => {
+                                const next = current.filter((entry) => entry.id !== img.id);
+                                if (selectedId === img.id) setSelectedId(next[0]?.id || "");
+                                return next;
+                              });
+                            }}
+                          >
+                            Remove
+                          </Button>
                         </div>
                       </div>
-                      <Button
-                        variant="secondary"
-                        onClick={() => {
-                          setTemplate(t);
-                          setShopId(t.shopId);
-                          setNickname(t.nickname);
-                          setManualRef(t.reference);
-                          setSource(t.source);
-                          setTemplateDescription(t.description);
-                        }}
-                      >
-                        Use
-                      </Button>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="mt-4">
-                <Button
-                  variant="secondary"
-                  onClick={saveTemplate}
-                  disabled={!template}
-                >
-                  Save Loaded Template
-                </Button>
+                  );
+                })}
               </div>
-            </Box>
+            )}
           </div>
-        </div>
+        </Box>
+
+        <Box title="Listing Detail">
+          {!selectedImage ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400">Select a batch item to review the larger artwork preview, final title, final description, and tags.</p>
+          ) : (
+            <div className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                <div className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">Uploaded Artwork</div>
+                <div className="flex h-72 items-center justify-center rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+                  {selectedImage.preview ? (
+                    <img src={selectedImage.preview} alt={selectedImage.final} className="max-h-full max-w-full object-contain" />
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <Field label="Final Title">
+                  <Input
+                    value={selectedImage.final}
+                    onChange={(e) =>
+                      setImages((current) =>
+                        current.map((entry) =>
+                          entry.id === selectedImage.id ? { ...entry, final: e.target.value } : entry
+                        )
+                      )
+                    }
+                  />
+                </Field>
+
+                <Field label="Final Description">
+                  <Textarea
+                    rows={12}
+                    value={htmlToEditableText(selectedImage.finalDescription)}
+                    onChange={(e) => {
+                      const html = editableTextToHtml(e.target.value);
+                      setImages((current) =>
+                        current.map((entry) =>
+                          entry.id === selectedImage.id
+                            ? { ...entry, finalDescription: html, tags: buildTags(entry.final, html, FIXED_TAG_COUNT) }
+                            : entry
+                        )
+                      );
+                    }}
+                  />
+                </Field>
+
+                <div>
+                  <div className="mb-2 text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">Tags</div>
+                  <div className="flex flex-wrap gap-2">
+                    {visibleDetailTags.map((tag) => (
+                      <span key={tag} className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                  {selectedImage.tags.length > 8 ? (
+                    <button
+                      type="button"
+                      className="mt-3 text-sm font-medium text-violet-600 hover:text-violet-500 dark:text-violet-400"
+                      onClick={() => setShowAllTags((current) => !current)}
+                    >
+                      {showAllTags ? "Hide Tags" : `Show All Tags (${selectedImage.tags.length})`}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          )}
+        </Box>
+
+        <Box title="Upload Draft Products">
+          <p className="text-sm text-slate-600 dark:text-slate-400">Products are uploaded in bulk as drafts to your selected provider. Artwork is automatically placed top centered in the front print area with fixed safeguards built in, so you can review everything first and publish when ready.</p>
+
+          <div className="mt-4">
+            <Button className="w-full" disabled={uploadDisabled} onClick={() => { void runDraftBatch(); }}>
+              {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
+            </Button>
+          </div>
+
+          {processingCount > 0 ? <p className="mt-3 text-sm text-amber-700 dark:text-amber-400">Quantum AI is still finishing {processingCount} item{processingCount === 1 ? "" : "s"}.</p> : null}
+          {runStatus ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{runStatus}</p> : null}
+
+          {batchResults.length > 0 ? (
+            <div className="mt-4 max-h-[16rem] overflow-auto rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
+              <div className="space-y-2">
+                {batchResults.map((result) => (
+                  <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                    <div className="font-medium">{result.title}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">{result.fileName}</div>
+                    <div className="mt-1 text-sm">{result.message}</div>
+                    {result.productId ? <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Product ID: {result.productId}</div> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </Box>
       </div>
     </div>
   );
