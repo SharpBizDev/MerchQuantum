@@ -1710,17 +1710,21 @@ export default function MerchQuantumApp() {
 
         <Box
           title={
-            <span>
-              <span className="text-violet-600">Quantum </span>
-              <span className={`${connected ? `text-emerald-600 dark:text-emerald-400 ${pulseConnected ? "animate-pulse" : ""}` : "text-slate-900 dark:text-slate-100"}`}>
+            <span className="inline-flex items-center gap-0 font-semibold tracking-tight">
+              <span className="font-semibold text-violet-600">Quantum </span>
+              <span className={`font-semibold ${connected ? `text-emerald-600 dark:text-emerald-400 ${pulseConnected ? "animate-pulse" : ""}` : "text-slate-900 dark:text-slate-100"}`}>
                 {connected ? "Connected" : "Connection"}
               </span>
             </span>
           }
         >
           {connected ? (
-            <div className="mb-3 text-sm font-medium text-rose-600 dark:text-rose-400">
-              <button type="button" onClick={() => { void disconnectPrintify(); }} className="transition-opacity hover:opacity-80">
+            <div className="mb-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => { void disconnectPrintify(); }}
+                className="text-sm font-medium text-slate-700 transition-opacity hover:opacity-80 dark:text-white"
+              >
                 Disconnect
               </button>
             </div>
@@ -1833,7 +1837,7 @@ export default function MerchQuantumApp() {
                   <Input value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Paste product reference or URL" />
                 </Field>
                 <div className="flex items-end">
-                  <Button variant="secondary" onClick={loadManualTemplate} disabled={!manualRef.trim() || !shopId}>
+                  <Button onClick={loadManualTemplate} disabled={!manualRef.trim() || !shopId}>
                     Load Template Description
                   </Button>
                 </div>
@@ -1843,7 +1847,7 @@ export default function MerchQuantumApp() {
 
           {source === "product" ? (
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <Button variant="secondary" onClick={() => { void loadProductTemplate(); }} disabled={!productId || !shopId}>
+              <Button onClick={() => { void loadProductTemplate(); }} disabled={!productId || !shopId}>
                 Load Template Description
               </Button>
               {template ? <span className="text-sm text-slate-500 dark:text-slate-400">Loaded: {template.nickname}</span> : null}
