@@ -1092,7 +1092,7 @@ function Button(
   const variant = props.variant || "primary";
   const classes =
     variant === "primary"
-      ? "bg-slate-900 text-white hover:bg-slate-800 dark:bg-violet-600 dark:hover:bg-violet-500"
+      ? "bg-slate-900 text-white hover:bg-slate-800 dark:bg-[#7c3aed] dark:hover:bg-[#7c3aed]/90"
       : variant === "secondary"
         ? "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
         : "bg-transparent text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900";
@@ -1108,7 +1108,7 @@ function Button(
 function Badge({ on, children }: { on?: boolean; children: React.ReactNode }) {
   return (
     <span
-      className={`rounded-full px-3 py-1 text-xs font-medium ${on ? "bg-slate-900 text-white dark:bg-violet-600" : "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300"}`}
+      className={`rounded-full px-3 py-1 text-xs font-medium ${on ? "bg-slate-900 text-white dark:bg-[#7c3aed]" : "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300"}`}
     >
       {children}
     </span>
@@ -1118,7 +1118,7 @@ function Badge({ on, children }: { on?: boolean; children: React.ReactNode }) {
 function BrandMark() {
   return (
     <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-slate-200 dark:ring-slate-800">
-      <span className="absolute left-[10px] top-[13px] z-10 text-[2rem] font-semibold leading-none text-violet-500">
+      <span className="absolute left-[10px] top-[13px] z-10 text-[2rem] font-semibold leading-none text-[#7c3aed]">
         M
       </span>
       <span className="absolute right-[8px] top-[8px] text-[2.45rem] font-semibold leading-none text-white">
@@ -1701,7 +1701,7 @@ export default function MerchQuantumApp() {
           <BrandMark />
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">
-              <span className="text-violet-600">Merch</span>
+              <span className="text-[#7c3aed]">Merch</span>
               <span className="text-slate-900 dark:text-white">Quantum</span>
             </h1>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{APP_TAGLINE}</p>
@@ -1710,25 +1710,14 @@ export default function MerchQuantumApp() {
 
         <Box
           title={
-            <span className="inline-flex items-center gap-0 font-semibold tracking-tight">
-              <span className="font-semibold text-violet-600">Quantum </span>
-              <span className={`font-semibold ${connected ? `text-emerald-600 dark:text-emerald-400 ${pulseConnected ? "animate-pulse" : ""}` : "text-slate-900 dark:text-slate-100"}`}>
+            <span className="inline-flex items-center gap-1 font-semibold tracking-tight">
+              <span className="font-semibold text-[#7c3aed]">Quantum</span>
+              <span className={`font-semibold ${connected ? "text-[#059669]" : "text-slate-900 dark:text-slate-100"}`}>
                 {connected ? "Connected" : "Connection"}
               </span>
             </span>
           }
         >
-          {connected ? (
-            <div className="mb-2 flex justify-end">
-              <button
-                type="button"
-                onClick={() => { void disconnectPrintify(); }}
-                className="text-sm font-medium text-slate-700 transition-opacity hover:opacity-80 dark:text-white"
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : null}
 
           <div className="grid gap-3 md:grid-cols-2">
             <Select
@@ -1758,16 +1747,31 @@ export default function MerchQuantumApp() {
                 readOnly={connected}
                 placeholder="Provider Personal Access Token (API)"
                 onChange={(e) => setToken(e.target.value)}
-                className="pr-32"
+                className={connected ? "pr-48" : "pr-32"}
               />
-              <button
-                type="button"
-                onClick={() => { void connectPrintify(); }}
-                disabled={!provider || !isLiveProvider || !token.trim() || loadingApi || connected}
-                className={`absolute right-1.5 top-1.5 min-h-[32px] rounded-lg px-3 text-sm font-medium transition-colors ${connected ? "bg-emerald-600 text-white" : "bg-violet-600 text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"}`}
-              >
-                {loadingApi ? "Connecting..." : connected ? "Connected" : "Connect"}
-              </button>
+              {connected ? (
+                <div className="absolute right-1.5 top-1.5 flex min-h-[32px] items-center gap-2">
+                  <span className="inline-flex min-h-[32px] items-center rounded-lg bg-[#059669] px-3 text-sm font-medium text-white">
+                    Connected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { void disconnectPrintify(); }}
+                    className="text-sm font-medium text-slate-700 transition-opacity hover:opacity-80 dark:text-white"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { void connectPrintify(); }}
+                  disabled={!provider || !isLiveProvider || !token.trim() || loadingApi}
+                  className="absolute right-1.5 top-1.5 min-h-[32px] rounded-lg bg-[#7c3aed] px-3 text-sm font-medium text-white transition-colors hover:bg-[#7c3aed]/90 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+                >
+                  {loadingApi ? "Connecting..." : "Connect"}
+                </button>
+              )}
             </div>
           </div>
 
@@ -1788,7 +1792,7 @@ export default function MerchQuantumApp() {
                   }
                 }}
                 disabled={source === "product" ? !productId || !shopId : !manualRef.trim() || !shopId}
-                className="text-violet-400 transition-colors hover:text-violet-300 disabled:cursor-not-allowed disabled:opacity-40"
+                className="font-semibold text-[#7c3aed] transition-colors hover:text-[#7c3aed]/90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Load Template Description
               </button>
@@ -1797,7 +1801,7 @@ export default function MerchQuantumApp() {
                   type="button"
                   onClick={() => { void loadProductsForShop(shopId); }}
                   disabled={!shopId || loadingProducts}
-                  className="text-slate-900 transition-colors hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-100 dark:hover:text-white"
+                  className="font-semibold text-white transition-colors hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {loadingProducts ? "Refreshing..." : "Refresh"}
                 </button>
@@ -1805,7 +1809,7 @@ export default function MerchQuantumApp() {
             </div>
           }
         >
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-4">
             <Select
               value={shopId}
               disabled={!availableShops.length}
@@ -1830,26 +1834,26 @@ export default function MerchQuantumApp() {
               <option value="product">Choose From My Products</option>
               <option value="manual">Paste Product Reference</option>
             </Select>
-          </div>
 
-          {source === "product" ? (
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <Select value={productId} disabled={!shopId || loadingProducts} onChange={(e) => setProductId(e.target.value)}>
-                <option value="">{loadingProducts ? "Loading products..." : "Choose product"}</option>
-                {visibleProducts.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.title}
-                  </option>
-                ))}
-              </Select>
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search my products" />
-            </div>
-          ) : (
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <Input value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Product reference" />
-              <Input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Template nickname" />
-            </div>
-          )}
+            {source === "product" ? (
+              <>
+                <Select value={productId} disabled={!shopId || loadingProducts} onChange={(e) => setProductId(e.target.value)}>
+                  <option value="">{loadingProducts ? "Loading products..." : "Choose product"}</option>
+                  {visibleProducts.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.title}
+                    </option>
+                  ))}
+                </Select>
+                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search my products" />
+              </>
+            ) : (
+              <>
+                <Input value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Product reference" />
+                <Input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Template nickname" />
+              </>
+            )}
+          </div>
 
           {template ? <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Loaded: {template.nickname}</p> : null}
           {templateStatus ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{templateStatus}</p> : null}
@@ -1924,7 +1928,7 @@ export default function MerchQuantumApp() {
                     <div
                       key={img.id}
                       onClick={() => setSelectedId(img.id)}
-                      className={`rounded-2xl border p-3 transition-colors ${selectedImage?.id === img.id ? "border-violet-500 bg-violet-50/50 dark:border-violet-500 dark:bg-violet-950/20" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"}`}
+                      className={`rounded-2xl border p-3 transition-colors ${selectedImage?.id === img.id ? "border-[#7c3aed] bg-violet-50/50 dark:border-[#7c3aed] dark:bg-violet-950/20" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"}`}
                     >
                       <div className="grid gap-3 lg:grid-cols-[90px_minmax(0,0.9fr)_minmax(0,1.15fr)_auto]">
                         <div className="relative">
@@ -2065,7 +2069,7 @@ export default function MerchQuantumApp() {
                   {selectedImage.tags.length > 8 ? (
                     <button
                       type="button"
-                      className="mt-3 text-sm font-medium text-violet-600 hover:text-violet-500 dark:text-violet-400"
+                      className="mt-3 text-sm font-medium text-[#7c3aed] hover:text-[#7c3aed]/90 dark:text-[#7c3aed]"
                       onClick={() => setShowAllTags((current) => !current)}
                     >
                       {showAllTags ? "Hide Tags" : `Show All Tags (${selectedImage.tags.length})`}
