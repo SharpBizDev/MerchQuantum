@@ -1179,8 +1179,6 @@ export default function MerchQuantumApp() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const previousPreviewUrlsRef = useRef<string[]>([]);
   const aiLoopBusyRef = useRef(false);
-  const autoLoadedProductKeyRef = useRef("");
-  const autoLoadedManualKeyRef = useRef("");
 
   const [provider, setProvider] = useState<ProviderId | "">("");
   const [token, setToken] = useState("");
@@ -1192,7 +1190,7 @@ export default function MerchQuantumApp() {
   const [apiProducts, setApiProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [shopId, setShopId] = useState("");
-  const [source, setSource] = useState<"" | "product" | "manual">("");
+  const [source, setSource] = useState<"product" | "manual">("product");
   const [productId, setProductId] = useState("");
   const [search, setSearch] = useState("");
   const [manualRef, setManualRef] = useState("");
@@ -1631,42 +1629,6 @@ export default function MerchQuantumApp() {
     setTemplateStatus("Manual template description loaded.");
   }
 
-  function refreshBatchSetup() {
-    autoLoadedProductKeyRef.current = "";
-    autoLoadedManualKeyRef.current = "";
-    setTemplate(null);
-    setTemplateDescription("");
-    setTemplateStatus("");
-    setSource("");
-    setProductId("");
-    setManualRef("");
-    setNickname("");
-    setSearch("");
-  }
-
-  useEffect(() => {
-    if (source !== "product" || !shopId || !productId) return;
-    const key = `${shopId}::${productId}`;
-    if (autoLoadedProductKeyRef.current === key) return;
-    autoLoadedProductKeyRef.current = key;
-    void loadProductTemplate();
-  }, [source, shopId, productId]);
-
-  useEffect(() => {
-    if (source !== "manual" || !shopId) return;
-    const ref = normalizeRef(manualRef);
-    if (!ref) return;
-    const key = `${shopId}::${ref}`;
-    if (autoLoadedManualKeyRef.current === key) return;
-
-    const timeoutId = window.setTimeout(() => {
-      autoLoadedManualKeyRef.current = key;
-      loadManualTemplate();
-    }, 250);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [source, shopId, manualRef]);
-
   async function runDraftBatch() {
     if (!template || !shopId || images.length === 0 || !isLiveProvider) return;
 
@@ -1748,26 +1710,14 @@ export default function MerchQuantumApp() {
 
         <Box
           title={
-            <span className="inline-flex items-center gap-0 font-semibold tracking-tight">
+            <span className="inline-flex items-center font-semibold tracking-tight">
               <span className="font-semibold text-violet-600">Quantum </span>
-              <span className={`font-semibold ${connected ? `text-emerald-600 dark:text-emerald-400 ${pulseConnected ? "animate-pulse" : ""}` : "text-slate-900 dark:text-slate-100"}`}>
-                {connected ? "Connected" : "Connection"}
+              <span className={`font-semibold ${connected ? `text-emerald-500 ${pulseConnected ? "animate-pulse" : ""}` : "text-slate-900 dark:text-slate-100"}`}>
+                {connected ? "Connection" : "Connection"}
               </span>
             </span>
           }
         >
-          {connected ? (
-            <div className="mb-2 flex justify-end">
-              <button
-                type="button"
-                onClick={() => { void disconnectPrintify(); }}
-                className="text-sm font-medium text-slate-700 transition-opacity hover:opacity-80 dark:text-white"
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : null}
-
           <div className="grid gap-3 md:grid-cols-2">
             <Select
               value={provider}
@@ -1796,130 +1746,110 @@ export default function MerchQuantumApp() {
                 readOnly={connected}
                 placeholder="Provider Personal Access Token (API)"
                 onChange={(e) => setToken(e.target.value)}
-                className="pr-32"
+                className={`pr-32 ${connected ? "pr-52" : ""}`}
               />
               <button
                 type="button"
                 onClick={() => { void connectPrintify(); }}
                 disabled={!provider || !isLiveProvider || !token.trim() || loadingApi || connected}
-                className={`absolute right-1.5 top-1.5 min-h-[32px] rounded-lg px-3 text-sm font-medium transition-colors ${connected ? "bg-emerald-600 text-white" : "bg-violet-600 text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"}`}
+                className={`absolute top-1.5 min-h-[32px] rounded-lg px-3 text-sm font-medium transition-colors ${connected ? "right-24 bg-emerald-500 text-white" : "right-1.5 bg-violet-600 text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"}`}
               >
                 {loadingApi ? "Connecting..." : connected ? "Connected" : "Connect"}
               </button>
+              {connected ? (
+                <button
+                  type="button"
+                  onClick={() => { void disconnectPrintify(); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-white transition-opacity hover:opacity-80 dark:text-white"
+                >
+                  Disconnect
+                </button>
+              ) : null}
             </div>
           </div>
 
           {apiStatus ? <p className="mt-3 text-sm text-amber-700 dark:text-amber-400">{apiStatus}</p> : null}
         </Box>
 
-        <Box
-          title="Batch Setup"
-          actions={template ? (
-            <button
-              type="button"
-              onClick={refreshBatchSetup}
-              className="text-sm font-medium text-white transition-opacity hover:opacity-80"
-            >
-              Refresh
-            </button>
-          ) : null}
-        >
-          <div className="grid gap-4 xl:grid-cols-4">
-            <Select
-              value={shopId}
-              disabled={!availableShops.length}
-              onChange={(e) => {
-                const nextShopId = e.target.value;
-                autoLoadedProductKeyRef.current = "";
-                autoLoadedManualKeyRef.current = "";
-                setShopId(nextShopId);
-                setProductId("");
-                setTemplate(null);
-                setTemplateStatus("");
-                setSearch("");
-                if (connected && isLiveProvider && nextShopId) void loadProductsForShop(nextShopId);
-              }}
-            >
-              <option value="">Select shop</option>
-              {availableShops.map((shop) => (
-                <option key={shop.id} value={shop.id}>
-                  {shop.title}
-                </option>
-              ))}
-            </Select>
-
-            <Select
-              value={source}
-              onChange={(e) => {
-                autoLoadedProductKeyRef.current = "";
-                autoLoadedManualKeyRef.current = "";
-                const nextSource = e.target.value as "" | "product" | "manual";
-                setSource(nextSource);
-                setTemplate(null);
-                setTemplateStatus("");
-                setProductId("");
-                setManualRef("");
-                setNickname("");
-                setSearch("");
-              }}
-            >
-              <option value="">Template Source</option>
-              <option value="product">Choose From My Products</option>
-              <option value="manual">Paste Product Reference</option>
-            </Select>
-
-            {source === "product" ? (
-              <>
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search product titles"
-                />
+        <Box title="Batch Setup">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Shop">
                 <Select
-                  value={productId}
-                  disabled={!shopId || loadingProducts}
+                  value={shopId}
+                  disabled={!availableShops.length}
                   onChange={(e) => {
-                    autoLoadedProductKeyRef.current = "";
-                    setProductId(e.target.value);
+                    const nextShopId = e.target.value;
+                    setShopId(nextShopId);
+                    setProductId("");
                     setTemplate(null);
                     setTemplateStatus("");
+                    if (connected && isLiveProvider && nextShopId) void loadProductsForShop(nextShopId);
                   }}
                 >
-                  <option value="">{loadingProducts ? "Loading products..." : "Choose product"}</option>
-                  {visibleProducts.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.title}
+                  <option value="">Select shop</option>
+                  {availableShops.map((shop) => (
+                    <option key={shop.id} value={shop.id}>
+                      {shop.title}
                     </option>
                   ))}
                 </Select>
-              </>
-            ) : source === "manual" ? (
-              <>
-                <Input
-                  value={manualRef}
-                  onChange={(e) => {
-                    autoLoadedManualKeyRef.current = "";
-                    setManualRef(e.target.value);
-                    setTemplate(null);
-                    setTemplateStatus("");
-                  }}
-                  placeholder="Product reference"
-                />
-                <Input
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
-                  placeholder="Template nickname"
-                />
-              </>
-            ) : (
-              <>
-                <Input value="" disabled placeholder="Search product titles" />
-                <Select value="" disabled onChange={() => undefined}>
-                  <option value="">Choose product</option>
+              </Field>
+
+              <Field label="Template Source">
+                <Select value={source} onChange={(e) => setSource(e.target.value as "product" | "manual")}>
+                  <option value="product">Choose From My Products</option>
+                  <option value="manual">Paste Product Reference</option>
                 </Select>
-              </>
+              </Field>
+            </div>
+
+            {source === "product" ? (
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
+                <Field label="Search My Products">
+                  <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search titles or types" />
+                </Field>
+                <Field label="Choose Product">
+                  <Select value={productId} disabled={!shopId || loadingProducts} onChange={(e) => setProductId(e.target.value)}>
+                    <option value="">{loadingProducts ? "Loading products..." : "Choose product"}</option>
+                    {visibleProducts.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.title}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <div className="flex items-end">
+                  <Button variant="secondary" onClick={() => { void loadProductsForShop(shopId); }} disabled={!shopId || loadingProducts}>
+                    {loadingProducts ? "Refreshing..." : "Refresh"}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
+                <Field label="Template Nickname">
+                  <Input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Template nickname" />
+                </Field>
+                <Field label="Product Reference">
+                  <Input value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Paste product reference or URL" />
+                </Field>
+                <div className="flex items-end">
+                  <Button onClick={loadManualTemplate} disabled={!manualRef.trim() || !shopId}>
+                    Load Template Description
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
+
+          {source === "product" ? (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button onClick={() => { void loadProductTemplate(); }} disabled={!productId || !shopId}>
+                Load Template Description
+              </Button>
+              {template ? <span className="text-sm text-slate-500 dark:text-slate-400">Loaded: {template.nickname}</span> : null}
+            </div>
+          ) : null}
 
           {templateStatus ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{templateStatus}</p> : null}
         </Box>
