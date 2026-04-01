@@ -1067,7 +1067,7 @@ function InsetShell({
   className?: string;
 }) {
   return (
-    <div className={`rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 shadow-sm shadow-slate-950/20 ${className || ""}`.trim()}>
+    <div className={`min-h-[76px] rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 shadow-sm shadow-slate-950/20 ${className || ""}`.trim()}>
       <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-white/85">{label}</div>
       {children}
     </div>
@@ -1754,26 +1754,14 @@ export default function MerchQuantumApp() {
 
         <Box
           title={
-            <span className="inline-flex items-center gap-0 font-semibold tracking-tight">
-              <span className="font-semibold text-violet-600">Quantum </span>
-              <span className={`font-semibold ${connected ? `text-emerald-600 dark:text-emerald-400 ${pulseConnected ? "animate-pulse" : ""}` : "text-slate-900 dark:text-slate-100"}`}>
+            <span className="inline-flex items-center gap-1.5 font-semibold tracking-tight">
+              <span className="font-semibold text-violet-600">Quantum</span>
+              <span className={`font-semibold ${connected ? `text-emerald-600 dark:text-emerald-500 ${pulseConnected ? "animate-pulse" : ""}` : "text-slate-900 dark:text-slate-100"}`}>
                 {connected ? "Connected" : "Connection"}
               </span>
             </span>
           }
         >
-          {connected ? (
-            <div className="mb-2 flex justify-end">
-              <button
-                type="button"
-                onClick={() => { void disconnectPrintify(); }}
-                className="text-sm font-medium text-slate-700 transition-opacity hover:opacity-80 dark:text-white"
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : null}
-
           <div className="grid gap-3 md:grid-cols-2">
             <Select
               value={provider}
@@ -1802,60 +1790,88 @@ export default function MerchQuantumApp() {
                 readOnly={connected}
                 placeholder="Provider Personal Access Token (API)"
                 onChange={(e) => setToken(e.target.value)}
-                className="pr-32"
+                className={connected ? "pr-48" : "pr-32"}
               />
-              <button
-                type="button"
-                onClick={() => { void connectPrintify(); }}
-                disabled={!provider || !isLiveProvider || !token.trim() || loadingApi || connected}
-                className={`absolute right-1.5 top-1.5 min-h-[32px] rounded-lg px-3 text-sm font-medium transition-colors ${connected ? "bg-emerald-600 text-white" : "bg-violet-600 text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"}`}
-              >
-                {loadingApi ? "Connecting..." : connected ? "Connected" : "Connect"}
-              </button>
+              <div className="absolute inset-y-1.5 right-1.5 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => { void connectPrintify(); }}
+                  disabled={!provider || !isLiveProvider || !token.trim() || loadingApi || connected}
+                  className={`min-h-[32px] rounded-lg px-3 text-sm font-semibold transition-colors ${connected ? "bg-emerald-600 text-white" : "bg-violet-600 text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"}`}
+                >
+                  {loadingApi ? "Connecting..." : connected ? "Connected" : "Connect"}
+                </button>
+                {connected ? (
+                  <button
+                    type="button"
+                    onClick={() => { void disconnectPrintify(); }}
+                    className="text-sm font-semibold text-slate-700 transition-opacity hover:opacity-80 dark:text-white"
+                  >
+                    Disconnect
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
 
           {apiStatus ? <p className="mt-3 text-sm text-amber-700 dark:text-amber-400">{apiStatus}</p> : null}
         </Box>
 
-        <Box title="Batch Setup">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <InsetShell label="Select Shop">
-                <InsetSelect
-                  value={shopId}
-                  disabled={!availableShops.length}
-                  onChange={(e) => {
-                    const nextShopId = e.target.value;
-                    setShopId(nextShopId);
-                    setProductId("");
-                    setTemplate(null);
-                    setTemplateStatus("");
-                    if (connected && isLiveProvider && nextShopId) void loadProductsForShop(nextShopId);
-                  }}
-                >
-                  <option value="">Select shop</option>
-                  {availableShops.map((shop) => (
-                    <option key={shop.id} value={shop.id}>
-                      {shop.title}
-                    </option>
-                  ))}
-                </InsetSelect>
-              </InsetShell>
+        <Box
+          title="Batch Setup"
+          actions={
+            <button
+              type="button"
+              onClick={() => {
+                if (source === "product") {
+                  void loadProductTemplate();
+                } else {
+                  loadManualTemplate();
+                }
+              }}
+              disabled={source === "product" ? !productId || !shopId : !manualRef.trim() || !shopId}
+              className="bg-transparent p-0 text-[1.05rem] font-semibold tracking-tight text-violet-600 transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-35 dark:text-violet-400"
+            >
+              Load Template Description
+            </button>
+          }
+        >
+          <div className="grid gap-4 xl:grid-cols-4">
+            <InsetShell label="Select Shop">
+              <InsetSelect
+                value={shopId}
+                disabled={!availableShops.length}
+                onChange={(e) => {
+                  const nextShopId = e.target.value;
+                  setShopId(nextShopId);
+                  setProductId("");
+                  setTemplate(null);
+                  setTemplateStatus("");
+                  if (connected && isLiveProvider && nextShopId) void loadProductsForShop(nextShopId);
+                }}
+              >
+                <option value="">Select shop</option>
+                {availableShops.map((shop) => (
+                  <option key={shop.id} value={shop.id}>
+                    {shop.title}
+                  </option>
+                ))}
+              </InsetSelect>
+            </InsetShell>
 
-              <InsetShell label="Template Source">
-                <InsetSelect value={source} onChange={(e) => setSource(e.target.value as "product" | "manual")}>
-                  <option value="product">Choose From My Products</option>
-                  <option value="manual">Paste Product Reference</option>
-                </InsetSelect>
-              </InsetShell>
-            </div>
+            <InsetShell label="Template Source">
+              <InsetSelect value={source} onChange={(e) => setSource(e.target.value as "product" | "manual")}>
+                <option value="product">Choose From My Products</option>
+                <option value="manual">Paste Product Reference</option>
+              </InsetSelect>
+            </InsetShell>
 
             {source === "product" ? (
-              <div className="grid gap-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
+              <>
                 <InsetShell label="Search My Products">
                   <InsetInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search for titles or types" />
                 </InsetShell>
+
                 <InsetShell label="Choose Product">
                   <InsetSelect value={productId} disabled={!shopId || loadingProducts} onChange={(e) => setProductId(e.target.value)}>
                     <option value="">{loadingProducts ? "Loading products..." : "Choose product"}</option>
@@ -1866,35 +1882,32 @@ export default function MerchQuantumApp() {
                     ))}
                   </InsetSelect>
                 </InsetShell>
-                <div className="flex items-stretch sm:items-end">
-                  <Button variant="secondary" onClick={() => { void loadProductsForShop(shopId); }} disabled={!shopId || loadingProducts} className="w-full sm:w-auto">
-                    {loadingProducts ? "Refreshing..." : "Refresh"}
-                  </Button>
-                </div>
-              </div>
+              </>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
+              <>
                 <InsetShell label="Template Nickname">
                   <InsetInput value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Template nickname" />
                 </InsetShell>
+
                 <InsetShell label="Product Reference">
                   <InsetInput value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Paste product reference or URL" />
                 </InsetShell>
-                <div className="flex items-stretch sm:items-end">
-                  <Button onClick={loadManualTemplate} disabled={!manualRef.trim() || !shopId} className="w-full bg-violet-600 text-white hover:bg-violet-500 dark:bg-violet-600 dark:hover:bg-violet-500 sm:w-auto">
-                    Load Template Description
-                  </Button>
-                </div>
-              </div>
+              </>
             )}
           </div>
 
           {source === "product" ? (
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <Button onClick={() => { void loadProductTemplate(); }} disabled={!productId || !shopId} className="bg-violet-600 text-white hover:bg-violet-500 dark:bg-violet-600 dark:hover:bg-violet-500">
-                Load Template Description
-              </Button>
-              {template ? <span className="text-sm text-slate-500 dark:text-slate-400">Loaded: {template.nickname}</span> : null}
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  void loadProductsForShop(shopId);
+                }}
+                disabled={!shopId || loadingProducts}
+                className="text-sm font-medium text-slate-500 transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-400"
+              >
+                {loadingProducts ? "Refreshing..." : "Refresh Products"}
+              </button>
             </div>
           ) : null}
 
