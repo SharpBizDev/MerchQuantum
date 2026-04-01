@@ -1092,7 +1092,7 @@ function Button(
   const variant = props.variant || "primary";
   const classes =
     variant === "primary"
-      ? "bg-slate-900 text-white hover:bg-slate-800 dark:bg-[#7c3aed] dark:hover:bg-[#7c3aed]/90"
+      ? "bg-slate-900 text-white hover:bg-slate-800 dark:bg-violet-600 dark:hover:bg-violet-500"
       : variant === "secondary"
         ? "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
         : "bg-transparent text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900";
@@ -1108,7 +1108,7 @@ function Button(
 function Badge({ on, children }: { on?: boolean; children: React.ReactNode }) {
   return (
     <span
-      className={`rounded-full px-3 py-1 text-xs font-medium ${on ? "bg-slate-900 text-white dark:bg-[#7c3aed]" : "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300"}`}
+      className={`rounded-full px-3 py-1 text-xs font-medium ${on ? "bg-slate-900 text-white dark:bg-violet-600" : "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300"}`}
     >
       {children}
     </span>
@@ -1118,7 +1118,7 @@ function Badge({ on, children }: { on?: boolean; children: React.ReactNode }) {
 function BrandMark() {
   return (
     <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-slate-200 dark:ring-slate-800">
-      <span className="absolute left-[10px] top-[13px] z-10 text-[2rem] font-semibold leading-none text-[#7c3aed]">
+      <span className="absolute left-[10px] top-[13px] z-10 text-[2rem] font-semibold leading-none text-violet-500">
         M
       </span>
       <span className="absolute right-[8px] top-[8px] text-[2.45rem] font-semibold leading-none text-white">
@@ -1136,7 +1136,7 @@ function getStatusMeta(status: ReviewStatus) {
     case "review":
       return { label: "Needs Review", dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400", ring: "ring-amber-200 dark:ring-amber-900/60" };
     case "error":
-      return { label: "Error", dot: "bg-rose-500", text: "text-rose-700 dark:text-rose-400", ring: "ring-rose-200 dark:ring-rose-900/60" };
+      return { label: "Rejected", dot: "bg-rose-500", text: "text-rose-700 dark:text-rose-400", ring: "ring-rose-200 dark:ring-rose-900/60" };
     default:
       return { label: "Processing", dot: "bg-slate-400", text: "text-slate-600 dark:text-slate-400", ring: "ring-slate-200 dark:ring-slate-800" };
   }
@@ -1204,7 +1204,6 @@ export default function MerchQuantumApp() {
   const [runStatus, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
-  const [showAllTags, setShowAllTags] = useState(false);
 
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
   const isLiveProvider = selectedProvider?.isLive || false;
@@ -1239,7 +1238,7 @@ export default function MerchQuantumApp() {
   const errorCount = images.filter((img) => img.status === "error").length;
   const processingCount = images.filter((img) => img.status === "pending" || img.aiProcessing).length;
   const uploadDisabled = !connected || !template || images.length === 0 || isRunningBatch || processingCount > 0;
-  const visibleDetailTags = selectedImage ? (showAllTags ? selectedImage.tags : selectedImage.tags.slice(0, 8)) : [];
+  const visibleDetailTags = selectedImage ? selectedImage.tags : [];
 
   useEffect(() => {
     const previous = previousPreviewUrlsRef.current;
@@ -1262,9 +1261,6 @@ export default function MerchQuantumApp() {
     };
   }, []);
 
-  useEffect(() => {
-    setShowAllTags(false);
-  }, [selectedId]);
 
   useEffect(() => {
     if (!selectedImage || selectedImage.artworkBounds) return;
@@ -1701,7 +1697,7 @@ export default function MerchQuantumApp() {
           <BrandMark />
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">
-              <span className="text-[#7c3aed]">Merch</span>
+              <span className="text-violet-600">Merch</span>
               <span className="text-slate-900 dark:text-white">Quantum</span>
             </h1>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{APP_TAGLINE}</p>
@@ -1710,14 +1706,25 @@ export default function MerchQuantumApp() {
 
         <Box
           title={
-            <span className="inline-flex items-center gap-1 font-semibold tracking-tight">
-              <span className="font-semibold text-[#7c3aed]">Quantum</span>
-              <span className={`font-semibold ${connected ? "text-[#059669]" : "text-slate-900 dark:text-slate-100"}`}>
+            <span className="inline-flex items-center gap-0 font-semibold tracking-tight">
+              <span className="font-semibold text-violet-600">Quantum </span>
+              <span className={`font-semibold ${connected ? `text-emerald-600 dark:text-emerald-400 ${pulseConnected ? "animate-pulse" : ""}` : "text-slate-900 dark:text-slate-100"}`}>
                 {connected ? "Connected" : "Connection"}
               </span>
             </span>
           }
         >
+          {connected ? (
+            <div className="mb-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => { void disconnectPrintify(); }}
+                className="text-sm font-medium text-slate-700 transition-opacity hover:opacity-80 dark:text-white"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : null}
 
           <div className="grid gap-3 md:grid-cols-2">
             <Select
@@ -1747,140 +1754,106 @@ export default function MerchQuantumApp() {
                 readOnly={connected}
                 placeholder="Provider Personal Access Token (API)"
                 onChange={(e) => setToken(e.target.value)}
-                className={connected ? "pr-48" : "pr-32"}
+                className="pr-32"
               />
-              {connected ? (
-                <div className="absolute right-1.5 top-1.5 flex min-h-[32px] items-center gap-2">
-                  <span className="inline-flex min-h-[32px] items-center rounded-lg bg-[#059669] px-3 text-sm font-medium text-white">
-                    Connected
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => { void disconnectPrintify(); }}
-                    className="text-sm font-medium text-slate-700 transition-opacity hover:opacity-80 dark:text-white"
-                  >
-                    Disconnect
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => { void connectPrintify(); }}
-                  disabled={!provider || !isLiveProvider || !token.trim() || loadingApi}
-                  className="absolute right-1.5 top-1.5 min-h-[32px] rounded-lg bg-[#7c3aed] px-3 text-sm font-medium text-white transition-colors hover:bg-[#7c3aed]/90 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
-                >
-                  {loadingApi ? "Connecting..." : "Connect"}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => { void connectPrintify(); }}
+                disabled={!provider || !isLiveProvider || !token.trim() || loadingApi || connected}
+                className={`absolute right-1.5 top-1.5 min-h-[32px] rounded-lg px-3 text-sm font-medium transition-colors ${connected ? "bg-emerald-600 text-white" : "bg-violet-600 text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"}`}
+              >
+                {loadingApi ? "Connecting..." : connected ? "Connected" : "Connect"}
+              </button>
             </div>
           </div>
 
           {apiStatus ? <p className="mt-3 text-sm text-amber-700 dark:text-amber-400">{apiStatus}</p> : null}
         </Box>
 
-        <Box
-          title="Batch Setup"
-          actions={
-            <div className="flex flex-wrap items-center gap-3 text-sm font-semibold tracking-tight">
-              <button
-                type="button"
-                onClick={() => {
-                  if (source === "product") {
-                    void loadProductTemplate();
-                  } else {
-                    void loadManualTemplate();
-                  }
-                }}
-                disabled={source === "product" ? !productId || !shopId : !manualRef.trim() || !shopId}
-                className="font-semibold text-[#7c3aed] transition-colors hover:text-[#7c3aed]/90 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Load Template Description
-              </button>
-              {source === "product" ? (
-                <button
-                  type="button"
-                  onClick={() => { void loadProductsForShop(shopId); }}
-                  disabled={!shopId || loadingProducts}
-                  className="font-semibold text-white transition-colors hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+        <Box title="Batch Setup">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Shop">
+                <Select
+                  value={shopId}
+                  disabled={!availableShops.length}
+                  onChange={(e) => {
+                    const nextShopId = e.target.value;
+                    setShopId(nextShopId);
+                    setProductId("");
+                    setTemplate(null);
+                    setTemplateStatus("");
+                    if (connected && isLiveProvider && nextShopId) void loadProductsForShop(nextShopId);
+                  }}
                 >
-                  {loadingProducts ? "Refreshing..." : "Refresh"}
-                </button>
-              ) : null}
-            </div>
-          }
-        >
-          <div className="grid gap-4 lg:grid-cols-4">
-            <Select
-              value={shopId}
-              disabled={!availableShops.length}
-              onChange={(e) => {
-                const nextShopId = e.target.value;
-                setShopId(nextShopId);
-                setProductId("");
-                setTemplate(null);
-                setTemplateStatus("");
-                if (connected && isLiveProvider && nextShopId) void loadProductsForShop(nextShopId);
-              }}
-            >
-              <option value="">Select shop</option>
-              {availableShops.map((shop) => (
-                <option key={shop.id} value={shop.id}>
-                  {shop.title}
-                </option>
-              ))}
-            </Select>
-
-            <Select value={source} onChange={(e) => setSource(e.target.value as "product" | "manual")}>
-              <option value="product">Choose From My Products</option>
-              <option value="manual">Paste Product Reference</option>
-            </Select>
-
-            {source === "product" ? (
-              <>
-                <Select value={productId} disabled={!shopId || loadingProducts} onChange={(e) => setProductId(e.target.value)}>
-                  <option value="">{loadingProducts ? "Loading products..." : "Choose product"}</option>
-                  {visibleProducts.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.title}
+                  <option value="">Select shop</option>
+                  {availableShops.map((shop) => (
+                    <option key={shop.id} value={shop.id}>
+                      {shop.title}
                     </option>
                   ))}
                 </Select>
-                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search my products" />
-              </>
+              </Field>
+
+              <Field label="Template Source">
+                <Select value={source} onChange={(e) => setSource(e.target.value as "product" | "manual")}>
+                  <option value="product">Choose From My Products</option>
+                  <option value="manual">Paste Product Reference</option>
+                </Select>
+              </Field>
+            </div>
+
+            {source === "product" ? (
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
+                <Field label="Search My Products">
+                  <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search titles or types" />
+                </Field>
+                <Field label="Choose Product">
+                  <Select value={productId} disabled={!shopId || loadingProducts} onChange={(e) => setProductId(e.target.value)}>
+                    <option value="">{loadingProducts ? "Loading products..." : "Choose product"}</option>
+                    {visibleProducts.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.title}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <div className="flex items-end">
+                  <Button variant="secondary" onClick={() => { void loadProductsForShop(shopId); }} disabled={!shopId || loadingProducts}>
+                    {loadingProducts ? "Refreshing..." : "Refresh"}
+                  </Button>
+                </div>
+              </div>
             ) : (
-              <>
-                <Input value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Product reference" />
-                <Input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Template nickname" />
-              </>
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
+                <Field label="Template Nickname">
+                  <Input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Template nickname" />
+                </Field>
+                <Field label="Product Reference">
+                  <Input value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Paste product reference or URL" />
+                </Field>
+                <div className="flex items-end">
+                  <Button onClick={loadManualTemplate} disabled={!manualRef.trim() || !shopId}>
+                    Load Template Description
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
 
-          {template ? <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Loaded: {template.nickname}</p> : null}
+          {source === "product" ? (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button onClick={() => { void loadProductTemplate(); }} disabled={!productId || !shopId}>
+                Load Template Description
+              </Button>
+              {template ? <span className="text-sm text-slate-500 dark:text-slate-400">Loaded: {template.nickname}</span> : null}
+            </div>
+          ) : null}
+
           {templateStatus ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{templateStatus}</p> : null}
         </Box>
 
-        <Box
-          title="Batch Preview"
-          actions={
-            <>
-              <Badge>{images.length}/{MAX_BATCH_FILES}</Badge>
-              <Button onClick={() => fileRef.current?.click()}>Add Images</Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setImages([]);
-                  setSelectedId("");
-                  setMessage("");
-                  setBatchResults([]);
-                  setRunStatus("");
-                }}
-                disabled={!images.length}
-              >
-                Clear All
-              </Button>
-            </>
-          }
-        >
+        <Box title="Batch Preview">
           <input
             ref={fileRef}
             type="file"
@@ -1900,110 +1873,95 @@ export default function MerchQuantumApp() {
               void addFiles(e.dataTransfer.files);
             }}
             onClick={() => fileRef.current?.click()}
-            className="cursor-pointer rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-900"
+            className="cursor-pointer rounded-2xl border border-dashed border-violet-500/40 bg-slate-950 px-4 py-5 text-sm text-white transition-colors hover:border-violet-400 hover:bg-slate-900"
           >
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click Add Images</div>
-                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. The app builds final titles and lead copy automatically, then flags anything that needs a quick review.</div>
+                <div className="font-medium tracking-tight">
+                  <span className="text-white">Drag images here or </span>
+                  <span className="text-violet-400">click to add images</span>
+                </div>
+                <div className="mt-1 text-xs text-slate-300">
+                  {images.length}/{MAX_BATCH_FILES} loaded · {readyCount} ready · {reviewCount} needs review · {errorCount} rejected
+                </div>
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                {readyCount} ready · {reviewCount} needs review · {errorCount} errors
-              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setImages([]);
+                  setSelectedId("");
+                  setMessage("");
+                  setBatchResults([]);
+                  setRunStatus("");
+                }}
+                disabled={!images.length}
+                className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Clear All
+              </button>
             </div>
           </div>
 
           {message ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{message}</p> : null}
 
-          <div className="mt-4 max-h-[33rem] overflow-y-auto pr-1">
+          <div className="mt-4 max-h-[20rem] overflow-y-auto pr-1">
             {sortedImages.length === 0 ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-12 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
                 No images loaded yet.
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                 {sortedImages.map((img) => {
                   const meta = getStatusMeta(img.status);
+                  const showReason = (img.status === "review" || img.status === "error") && img.statusReason;
                   return (
                     <div
                       key={img.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => setSelectedId(img.id)}
-                      className={`rounded-2xl border p-3 transition-colors ${selectedImage?.id === img.id ? "border-[#7c3aed] bg-violet-50/50 dark:border-[#7c3aed] dark:bg-violet-950/20" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"}`}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedId(img.id);
+                        }
+                      }}
+                      className={`group relative flex cursor-pointer flex-col rounded-2xl border p-2.5 text-left transition-colors ${selectedImage?.id === img.id ? "border-violet-500 bg-violet-50/60 dark:border-violet-500 dark:bg-violet-950/20" : "border-slate-200 bg-white hover:border-violet-300 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-violet-700"}`}
                     >
-                      <div className="grid gap-3 lg:grid-cols-[90px_minmax(0,0.9fr)_minmax(0,1.15fr)_auto]">
-                        <div className="relative">
-                          <div className="group relative flex h-24 w-24 items-center justify-center overflow-visible rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-900">
-                            {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
-                            {img.preview ? (
-                              <div className="pointer-events-none absolute left-0 top-0 z-20 hidden w-48 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950">
-                                <img src={img.preview} alt={img.final} className="max-h-56 w-full object-contain" />
-                              </div>
-                            ) : null}
+                      <div className="relative">
+                        <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-900">
+                          {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
+                        </div>
+                        {img.preview ? (
+                          <div className="pointer-events-none absolute left-1/2 top-1/2 z-30 hidden w-52 -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950">
+                            <img src={img.preview} alt={img.final} className="max-h-56 w-full object-contain" />
                           </div>
-                        </div>
-
-                        <div className="min-w-0 space-y-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${meta.text} ${meta.ring}`}>
-                              <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
-                              {meta.label}
-                            </span>
-                            <span className="truncate text-xs text-slate-500 dark:text-slate-400">{img.name}</span>
-                          </div>
-                          <Input
-                            value={img.final}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) =>
-                              setImages((current) =>
-                                current.map((entry) =>
-                                  entry.id === img.id ? { ...entry, final: e.target.value } : entry
-                                )
-                              )
-                            }
-                            onBlur={() =>
-                              setImages((current) =>
-                                current.map((entry) =>
-                                  entry.id === img.id ? { ...entry, final: safeTitle(entry.final, entry.cleaned) } : entry
-                                )
-                              )
-                            }
-                          />
-                        </div>
-
-                        <div className="min-w-0">
-                          <Textarea
-                            rows={3}
-                            value={htmlToEditableText(img.finalDescription)}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) =>
-                              setImages((current) =>
-                                current.map((entry) =>
-                                  entry.id === img.id
-                                    ? { ...entry, finalDescription: editableTextToHtml(e.target.value), tags: buildTags(entry.final, editableTextToHtml(e.target.value), FIXED_TAG_COUNT) }
-                                    : entry
-                                )
-                              )
-                            }
-                          />
-                          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{img.statusReason}</p>
-                        </div>
-
-                        <div className="flex items-start justify-end">
-                          <Button
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setImages((current) => {
-                                const next = current.filter((entry) => entry.id !== img.id);
-                                if (selectedId === img.id) setSelectedId(next[0]?.id || "");
-                                return next;
-                              });
-                            }}
-                          >
-                            Remove
-                          </Button>
-                        </div>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setImages((current) => {
+                              const next = current.filter((entry) => entry.id !== img.id);
+                              if (selectedId === img.id) setSelectedId(next[0]?.id || "");
+                              return next;
+                            });
+                          }}
+                          className="absolute right-1.5 top-1.5 rounded-full bg-black/65 px-2 py-1 text-[10px] font-medium text-white opacity-0 transition hover:bg-black/80 group-hover:opacity-100"
+                        >
+                          Remove
+                        </button>
                       </div>
+
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium ring-1 ${meta.text} ${meta.ring}`}>
+                          <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+                          {meta.label}
+                        </span>
+                      </div>
+                      <div className="mt-1 truncate text-[11px] text-slate-500 dark:text-slate-400">{img.name}</div>
+                      {showReason ? <div className="mt-1 min-h-[2rem] text-[11px] leading-4 text-slate-500 dark:text-slate-400">{trimToSentence(img.statusReason, 42)}</div> : null}
                     </div>
                   );
                 })}
@@ -2058,7 +2016,7 @@ export default function MerchQuantumApp() {
                 </Field>
 
                 <div>
-                  <div className="mb-2 text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">Tags</div>
+                  <div className="mb-2 text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">Final Tags</div>
                   <div className="flex flex-wrap gap-2">
                     {visibleDetailTags.map((tag) => (
                       <span key={tag} className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 dark:bg-slate-900 dark:text-slate-300">
@@ -2066,15 +2024,6 @@ export default function MerchQuantumApp() {
                       </span>
                     ))}
                   </div>
-                  {selectedImage.tags.length > 8 ? (
-                    <button
-                      type="button"
-                      className="mt-3 text-sm font-medium text-[#7c3aed] hover:text-[#7c3aed]/90 dark:text-[#7c3aed]"
-                      onClick={() => setShowAllTags((current) => !current)}
-                    >
-                      {showAllTags ? "Hide Tags" : `Show All Tags (${selectedImage.tags.length})`}
-                    </button>
-                  ) : null}
                 </div>
               </div>
             </div>
