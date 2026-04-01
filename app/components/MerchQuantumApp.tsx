@@ -1875,8 +1875,8 @@ export default function MerchQuantumApp() {
 
             <InsetShell>
               <InsetSelect value={source} onChange={(e) => setSource(e.target.value as "product" | "manual")}>
-                <option value="product">Template Source · Choose From My Products</option>
-                <option value="manual">Template Source · Paste Product Reference</option>
+                <option value="product">Choose From My Products</option>
+                <option value="manual">Paste Product Reference</option>
               </InsetSelect>
             </InsetShell>
 
