@@ -84,6 +84,42 @@ Always separate these three realities before editing:
 - Listing Detail: detailed editing area for selected artwork, final title, final description, and all 13 tags.
 - Upload Draft Products: preserve draft-first behavior unless explicitly requested.
 
+## Accepted UI baseline from April 1, 2026
+- App work patched only: `app/components/MerchQuantumApp.tsx`
+- Sections changed: Batch Setup, Batch Preview, Listing Detail, Upload Draft Products merged into Listing Detail, and a final compactness / spacing / polish pass across those touched UI sections.
+
+## Locked behavior from the accepted baseline
+- Batch Setup no longer uses redundant top labels above controls that already explain themselves.
+- Template Source options and order are locked to: `Template Source`, `Choose From My Products`, `Paste Product Reference`.
+- Product mode control order is locked to `Choose Product` then `Search My Products`.
+- Manual/reference mode control order is locked to `Product Reference` then `Template Nickname`.
+- Refresh and Load Template Description buttons are removed from Batch Setup.
+- Template loading is automatic from product selection or valid product reference entry.
+- The drag-and-drop image area now lives inside Batch Setup and should stay there unless explicitly requested otherwise.
+- Batch Preview is now a dense thumbnail review grid with a fixed legend/header outside the scroll area.
+- Per-thumbnail text clutter is removed from Batch Preview.
+- Per-thumbnail status is represented by compact light indicators plus remove control.
+- Listing Detail always shows all 13 tags.
+- Tags are editable in Listing Detail.
+- Save button behavior is locked: inactive when unchanged, green when edits exist, and saves selected-item title / description / tags for upload use.
+- Upload Draft Products is no longer a separate section and is merged into Listing Detail.
+- Compact spacing and polish across Batch Setup, Batch Preview, and Listing Detail is part of the accepted UI baseline.
+
+## Read-only unless explicitly requested
+- Quantum Connection remains read-only unless directly requested.
+- Batch Setup should not be re-expanded with old labels, Refresh, or Load Template Description controls.
+- Batch Preview should not regain per-item title / description clutter or the moved drag-and-drop controls.
+- Listing Detail should keep editable title, description, all tags, Save behavior, and the merged upload action unless explicitly changed.
+- Upload Draft Products should remain draft-first and merged into Listing Detail unless explicitly changed.
+- Backend routes and untargeted sections should remain untouched unless the next request clearly names them.
+
+## Restart notes for the next Codex session
+1. Read `AGENTS.md` first and this file second.
+2. Treat the accepted UI baseline above as the default no-regression state.
+3. Use `app/components/MerchQuantumApp.tsx` as the default primary target for future UI work unless inspection proves otherwise.
+4. Before any new patch, separate current deployed state, current repo state, and approved target state.
+5. Patch only the named section and treat untouched sections as read-only.
+
 ## Restart workflow for a fresh Codex session
 1. Open the MerchQuantum repo in Codex.
 2. Make sure `AGENTS.md` is at the repo root.

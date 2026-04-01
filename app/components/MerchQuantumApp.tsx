@@ -79,6 +79,13 @@ type Img = {
   aiDraft?: AiListingDraft;
 };
 
+type ListingDetailDraft = {
+  id: string;
+  final: string;
+  finalDescription: string;
+  tags: string[];
+};
+
 type Template = {
   reference: string;
   nickname: string;
@@ -1156,6 +1163,19 @@ function getStatusSortValue(status: ReviewStatus) {
   }
 }
 
+function getStatusTone(status: ReviewStatus) {
+  switch (status) {
+    case "ready":
+      return "bg-emerald-500 ring-emerald-300 dark:ring-emerald-900/70";
+    case "review":
+      return "bg-amber-500 ring-amber-300 dark:ring-amber-900/70";
+    case "error":
+      return "bg-rose-500 ring-rose-300 dark:ring-rose-900/70";
+    default:
+      return "bg-slate-300 ring-slate-200 dark:bg-slate-700 dark:ring-slate-800";
+  }
+}
+
 function htmlToEditableText(html: string) {
   return stripHtml(html)
     .replace(/\n{3,}/g, "\n\n")
@@ -1190,13 +1210,12 @@ export default function MerchQuantumApp() {
   const [apiProducts, setApiProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [shopId, setShopId] = useState("");
-  const [source, setSource] = useState<"product" | "manual">("product");
+  const [source, setSource] = useState<"" | "product" | "manual">("");
   const [productId, setProductId] = useState("");
   const [search, setSearch] = useState("");
   const [manualRef, setManualRef] = useState("");
   const [nickname, setNickname] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
-  const [templateStatus, setTemplateStatus] = useState("");
   const [template, setTemplate] = useState<Template | null>(null);
   const [images, setImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -1204,7 +1223,7 @@ export default function MerchQuantumApp() {
   const [runStatus, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
-  const [showAllTags, setShowAllTags] = useState(false);
+  const [listingDetailDraft, setListingDetailDraft] = useState<ListingDetailDraft | null>(null);
 
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
   const isLiveProvider = selectedProvider?.isLive || false;
@@ -1239,7 +1258,18 @@ export default function MerchQuantumApp() {
   const errorCount = images.filter((img) => img.status === "error").length;
   const processingCount = images.filter((img) => img.status === "pending" || img.aiProcessing).length;
   const uploadDisabled = !connected || !template || images.length === 0 || isRunningBatch || processingCount > 0;
-  const visibleDetailTags = selectedImage ? (showAllTags ? selectedImage.tags : selectedImage.tags.slice(0, 8)) : [];
+  const hasListingChanges = !!(
+    selectedImage &&
+    listingDetailDraft &&
+    (
+      selectedImage.final !== listingDetailDraft.final ||
+      selectedImage.finalDescription !== listingDetailDraft.finalDescription ||
+      selectedImage.tags.length !== listingDetailDraft.tags.length ||
+      selectedImage.tags.some((tag, index) => tag !== listingDetailDraft.tags[index])
+    )
+  );
+  const templateConfirmation = template ? `Selected template: ${template.nickname}` : "";
+  const imageConfirmation = message || (images.length ? `${images.length} image${images.length === 1 ? "" : "s"} loaded.` : "");
 
   useEffect(() => {
     const previous = previousPreviewUrlsRef.current;
@@ -1263,8 +1293,18 @@ export default function MerchQuantumApp() {
   }, []);
 
   useEffect(() => {
-    setShowAllTags(false);
-  }, [selectedId]);
+    if (!selectedImage) {
+      setListingDetailDraft(null);
+      return;
+    }
+
+    setListingDetailDraft({
+      id: selectedImage.id,
+      final: selectedImage.final,
+      finalDescription: selectedImage.finalDescription,
+      tags: [...selectedImage.tags],
+    });
+  }, [selectedImage]);
 
   useEffect(() => {
     if (!selectedImage || selectedImage.artworkBounds) return;
@@ -1307,6 +1347,23 @@ export default function MerchQuantumApp() {
     if (loadingProducts || apiProducts.some((product) => product.shopId === shopId)) return;
     void loadProductsForShop(shopId);
   }, [connected, isLiveProvider, shopId, source, loadingProducts, apiProducts]);
+
+  useEffect(() => {
+    if (source !== "product" || !shopId || !productId) return;
+    void loadProductTemplate(productId);
+  }, [source, shopId, productId]);
+
+  useEffect(() => {
+    if (source !== "manual" || !shopId) return;
+    const ref = normalizeRef(manualRef);
+    if (!ref) return;
+
+    const timeout = setTimeout(() => {
+      loadManualTemplate(ref, nickname);
+    }, 250);
+
+    return () => clearTimeout(timeout);
+  }, [source, shopId, manualRef, nickname]);
 
   useEffect(() => {
     if (aiLoopBusyRef.current) return;
@@ -1428,7 +1485,6 @@ export default function MerchQuantumApp() {
     setShopId("");
     setProductId("");
     setTemplate(null);
-    setTemplateStatus("");
     setBatchResults([]);
     setRunStatus("");
   }
@@ -1553,12 +1609,12 @@ export default function MerchQuantumApp() {
     }
   }
 
-  async function loadProductTemplate() {
-    const fallback = productSource.find((p) => p.id === productId);
+  async function loadProductTemplate(nextProductId = productId) {
+    const fallback = productSource.find((p) => p.id === nextProductId);
     if (!fallback || !shopId) return;
 
     try {
-      const response = await fetchWithTimeout(`/api/printify/product?shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(productId)}`);
+      const response = await fetchWithTimeout(`/api/printify/product?shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(nextProductId)}`);
       const data = await parseResponsePayload(response);
       if (!response.ok) throw new Error(data?.error || `Product request failed with status ${response.status}.`);
 
@@ -1584,7 +1640,6 @@ export default function MerchQuantumApp() {
       setNickname(title);
       setManualRef(chosen?.id || fallback.id);
       setTemplateDescription(base);
-      setTemplateStatus(usingFallbackDescription ? "Live template loaded with fallback description." : "Template description loaded.");
     } catch (error) {
       const title = fallback.title;
       const base = formatTemplateDescription(
@@ -1603,15 +1658,13 @@ export default function MerchQuantumApp() {
       setNickname(title);
       setManualRef(fallback.id);
       setTemplateDescription(base);
-      const msg = error instanceof Error ? error.message : "Unable to load live template description.";
-      setTemplateStatus(`Using local fallback description. ${formatApiError(msg)}`);
     }
   }
 
-  function loadManualTemplate() {
-    const ref = normalizeRef(manualRef);
+  function loadManualTemplate(nextManualRef = manualRef, nextNickname = nickname) {
+    const ref = normalizeRef(nextManualRef);
     if (!ref || !shopId) return;
-    const name = safeTitle(nickname, "Template");
+    const name = safeTitle(nextNickname, "Template");
     const base = formatTemplateDescription(templateDescription.trim()) ||
       "Base description from the user template goes here until live API wiring is added.";
 
@@ -1623,10 +1676,7 @@ export default function MerchQuantumApp() {
       description: base,
       placementGuide: template?.placementGuide || DEFAULT_PLACEMENT_GUIDE,
     });
-    setNickname(name);
-    setManualRef(ref);
     setTemplateDescription(base);
-    setTemplateStatus("Manual template description loaded.");
   }
 
   async function runDraftBatch() {
@@ -1694,6 +1744,50 @@ export default function MerchQuantumApp() {
     }
   }
 
+  function updatePreviewStatus(targetId: string, status: Exclude<ReviewStatus, "pending">) {
+    setImages((current) =>
+      current.map((entry) =>
+        entry.id === targetId
+          ? {
+              ...entry,
+              status,
+              statusReason:
+                status === "ready"
+                  ? "Approved and ready."
+                  : status === "review"
+                    ? "Needs review."
+                    : "Rejected or error.",
+            }
+          : entry
+      )
+    );
+  }
+
+  function removePreviewItem(targetId: string) {
+    setImages((current) => {
+      const next = current.filter((entry) => entry.id !== targetId);
+      if (selectedId === targetId) setSelectedId(next[0]?.id || "");
+      return next;
+    });
+  }
+
+  function saveListingDetailEdits() {
+    if (!selectedImage || !listingDetailDraft || listingDetailDraft.id !== selectedImage.id || !hasListingChanges) return;
+
+    setImages((current) =>
+      current.map((entry) =>
+        entry.id === selectedImage.id
+          ? {
+              ...entry,
+              final: safeTitle(listingDetailDraft.final, entry.cleaned),
+              finalDescription: listingDetailDraft.finalDescription,
+              tags: listingDetailDraft.tags,
+            }
+          : entry
+      )
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 p-6 text-slate-900 transition-colors dark:bg-black dark:text-slate-100 md:p-8">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -1726,7 +1820,6 @@ export default function MerchQuantumApp() {
                 setProvider(nextProvider);
                 setToken("");
                 resetProviderState(false);
-                setTemplateStatus("");
                 const nextMeta = PROVIDERS.find((entry) => entry.id === nextProvider);
                 setApiStatus(nextMeta && !nextMeta.isLive ? `${nextMeta.label} is coming soon.` : "");
               }}
@@ -1772,9 +1865,9 @@ export default function MerchQuantumApp() {
         </Box>
 
         <Box title="Batch Setup">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Shop">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
                 <Select
                   value={shopId}
                   disabled={!availableShops.length}
@@ -1783,7 +1876,6 @@ export default function MerchQuantumApp() {
                     setShopId(nextShopId);
                     setProductId("");
                     setTemplate(null);
-                    setTemplateStatus("");
                     if (connected && isLiveProvider && nextShopId) void loadProductsForShop(nextShopId);
                   }}
                 >
@@ -1794,22 +1886,23 @@ export default function MerchQuantumApp() {
                     </option>
                   ))}
                 </Select>
-              </Field>
+              </div>
 
-              <Field label="Template Source">
-                <Select value={source} onChange={(e) => setSource(e.target.value as "product" | "manual")}>
+              <div>
+                <Select value={source} onChange={(e) => {
+                  setSource(e.target.value as "" | "product" | "manual");
+                  setTemplate(null);
+                }}>
+                  <option value="">Template Source</option>
                   <option value="product">Choose From My Products</option>
                   <option value="manual">Paste Product Reference</option>
                 </Select>
-              </Field>
+              </div>
             </div>
 
             {source === "product" ? (
-              <div className="grid gap-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
-                <Field label="Search My Products">
-                  <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search titles or types" />
-                </Field>
-                <Field label="Choose Product">
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                <div>
                   <Select value={productId} disabled={!shopId || loadingProducts} onChange={(e) => setProductId(e.target.value)}>
                     <option value="">{loadingProducts ? "Loading products..." : "Choose product"}</option>
                     {visibleProducts.map((product) => (
@@ -1818,64 +1911,27 @@ export default function MerchQuantumApp() {
                       </option>
                     ))}
                   </Select>
-                </Field>
-                <div className="flex items-end">
-                  <Button variant="secondary" onClick={() => { void loadProductsForShop(shopId); }} disabled={!shopId || loadingProducts}>
-                    {loadingProducts ? "Refreshing..." : "Refresh"}
-                  </Button>
+                </div>
+                <div>
+                  <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search My Products" />
+                </div>
+              </div>
+            ) : source === "manual" ? (
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                <div>
+                  <Input value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Paste Product Reference" />
+                </div>
+                <div>
+                  <Input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Template Nickname" />
                 </div>
               </div>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
-                <Field label="Template Nickname">
-                  <Input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Template nickname" />
-                </Field>
-                <Field label="Product Reference">
-                  <Input value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Paste product reference or URL" />
-                </Field>
-                <div className="flex items-end">
-                  <Button onClick={loadManualTemplate} disabled={!manualRef.trim() || !shopId}>
-                    Load Template Description
-                  </Button>
-                </div>
-              </div>
+              <div />
             )}
           </div>
 
-          {source === "product" ? (
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <Button onClick={() => { void loadProductTemplate(); }} disabled={!productId || !shopId}>
-                Load Template Description
-              </Button>
-              {template ? <span className="text-sm text-slate-500 dark:text-slate-400">Loaded: {template.nickname}</span> : null}
-            </div>
-          ) : null}
+          {templateConfirmation ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{templateConfirmation}</p> : null}
 
-          {templateStatus ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{templateStatus}</p> : null}
-        </Box>
-
-        <Box
-          title="Batch Preview"
-          actions={
-            <>
-              <Badge>{images.length}/{MAX_BATCH_FILES}</Badge>
-              <Button onClick={() => fileRef.current?.click()}>Add Images</Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setImages([]);
-                  setSelectedId("");
-                  setMessage("");
-                  setBatchResults([]);
-                  setRunStatus("");
-                }}
-                disabled={!images.length}
-              >
-                Clear All
-              </Button>
-            </>
-          }
-        >
           <input
             ref={fileRef}
             type="file"
@@ -1895,108 +1951,141 @@ export default function MerchQuantumApp() {
               void addFiles(e.dataTransfer.files);
             }}
             onClick={() => fileRef.current?.click()}
-            className="cursor-pointer rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-900"
+            className="mt-3 cursor-pointer rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-900"
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click Add Images</div>
-                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. The app builds final titles and lead copy automatically, then flags anything that needs a quick review.</div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. The app builds final titles and lead copy automatically, then flags anything that needs a quick review.</div>
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-400">
-                {readyCount} ready · {reviewCount} needs review · {errorCount} errors
+                {images.length}/{MAX_BATCH_FILES} loaded · {readyCount} ready · {reviewCount} needs review · {errorCount} errors
               </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                className="!bg-violet-600 !text-white hover:!bg-violet-500 dark:!bg-violet-600 dark:hover:!bg-violet-500"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileRef.current?.click();
+                }}
+              >
+                Add Images
+              </Button>
+              <Button
+                type="button"
+                disabled={!images.length}
+                className="!bg-violet-600 !text-white hover:!bg-violet-500 dark:!bg-violet-600 dark:hover:!bg-violet-500"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setImages([]);
+                  setSelectedId("");
+                  setMessage("");
+                  setBatchResults([]);
+                  setRunStatus("");
+                }}
+              >
+                Clear All
+              </Button>
             </div>
           </div>
 
-          {message ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{message}</p> : null}
+          {imageConfirmation ? <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{imageConfirmation}</p> : null}
+        </Box>
 
-          <div className="mt-4 max-h-[33rem] overflow-y-auto pr-1">
+        <Box title="Batch Preview">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900/70">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-300 dark:ring-emerald-900/70" />
+                  Approved / Ready
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-amber-300 dark:ring-amber-900/70" />
+                  Needs Review
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-rose-300 dark:ring-rose-900/70" />
+                  Rejected / Error
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[11px] font-semibold text-white dark:bg-slate-200 dark:text-slate-900">X</span>
+                  X = Remove
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setImages([]);
+                  setSelectedId("");
+                  setMessage("");
+                  setBatchResults([]);
+                  setRunStatus("");
+                }}
+                disabled={!images.length}
+              >
+                Clear All
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-3 max-h-[14rem] overflow-y-auto pr-1">
             {sortedImages.length === 0 ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-12 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
                 No images loaded yet.
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
                 {sortedImages.map((img) => {
-                  const meta = getStatusMeta(img.status);
+                  const isSelected = selectedImage?.id === img.id;
                   return (
                     <div
                       key={img.id}
                       onClick={() => setSelectedId(img.id)}
-                      className={`rounded-2xl border p-3 transition-colors ${selectedImage?.id === img.id ? "border-violet-500 bg-violet-50/50 dark:border-violet-500 dark:bg-violet-950/20" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"}`}
+                      className={`rounded-xl border p-1.5 transition-colors ${isSelected ? "border-violet-500 bg-violet-50/50 dark:border-violet-500 dark:bg-violet-950/20" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"}`}
                     >
-                      <div className="grid gap-3 lg:grid-cols-[90px_minmax(0,0.9fr)_minmax(0,1.15fr)_auto]">
+                      <div className="space-y-1.5">
                         <div className="relative">
-                          <div className="group relative flex h-24 w-24 items-center justify-center overflow-visible rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-900">
+                          <div className="group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-1.5 dark:border-slate-800 dark:bg-slate-900">
                             {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
                             {img.preview ? (
-                              <div className="pointer-events-none absolute left-0 top-0 z-20 hidden w-48 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950">
-                                <img src={img.preview} alt={img.final} className="max-h-56 w-full object-contain" />
+                              <div className="pointer-events-none absolute left-0 top-0 z-20 hidden w-40 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950">
+                                <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
                               </div>
                             ) : null}
                           </div>
                         </div>
 
-                        <div className="min-w-0 space-y-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${meta.text} ${meta.ring}`}>
-                              <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
-                              {meta.label}
-                            </span>
-                            <span className="truncate text-xs text-slate-500 dark:text-slate-400">{img.name}</span>
-                          </div>
-                          <Input
-                            value={img.final}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) =>
-                              setImages((current) =>
-                                current.map((entry) =>
-                                  entry.id === img.id ? { ...entry, final: e.target.value } : entry
-                                )
-                              )
-                            }
-                            onBlur={() =>
-                              setImages((current) =>
-                                current.map((entry) =>
-                                  entry.id === img.id ? { ...entry, final: safeTitle(entry.final, entry.cleaned) } : entry
-                                )
-                              )
-                            }
-                          />
-                        </div>
-
-                        <div className="min-w-0">
-                          <Textarea
-                            rows={3}
-                            value={htmlToEditableText(img.finalDescription)}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) =>
-                              setImages((current) =>
-                                current.map((entry) =>
-                                  entry.id === img.id
-                                    ? { ...entry, finalDescription: editableTextToHtml(e.target.value), tags: buildTags(entry.final, editableTextToHtml(e.target.value), FIXED_TAG_COUNT) }
-                                    : entry
-                                )
-                              )
-                            }
-                          />
-                          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{img.statusReason}</p>
-                        </div>
-
-                        <div className="flex items-start justify-end">
-                          <Button
-                            variant="ghost"
+                        <div className="flex items-center justify-center gap-0.5">
+                          {(["ready", "review", "error"] as const).map((status) => {
+                            const isActive = img.status === status;
+                            return (
+                              <button
+                                key={status}
+                                type="button"
+                                aria-label={status}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  updatePreviewStatus(img.id, status);
+                                }}
+                                className={`h-4.5 w-4.5 rounded-full ring-2 transition-transform hover:scale-105 ${isActive ? getStatusTone(status) : getStatusTone("pending")}`}
+                              />
+                            );
+                          })}
+                          <button
+                            type="button"
+                            aria-label="remove"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setImages((current) => {
-                                const next = current.filter((entry) => entry.id !== img.id);
-                                if (selectedId === img.id) setSelectedId(next[0]?.id || "");
-                                return next;
-                              });
+                              removePreviewItem(img.id);
                             }}
+                            className="inline-flex h-4.5 w-4.5 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-700 transition-colors hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                           >
-                            Remove
-                          </Button>
+                            X
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -2011,26 +2100,46 @@ export default function MerchQuantumApp() {
           {!selectedImage ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">Select a batch item to review the larger artwork preview, final title, final description, and tags.</p>
           ) : (
-            <div className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                <div className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">Uploaded Artwork</div>
+            <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Uploaded Artwork</div>
                 <div className="flex h-72 items-center justify-center rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
                   {selectedImage.preview ? (
                     <img src={selectedImage.preview} alt={selectedImage.final} className="max-h-full max-w-full object-contain" />
                   ) : null}
                 </div>
+                <Button
+                  className="w-full !bg-violet-600 !text-white hover:!bg-violet-500 dark:!bg-violet-600 dark:hover:!bg-violet-500"
+                  disabled={uploadDisabled}
+                  onClick={() => { void runDraftBatch(); }}
+                >
+                  {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
+                </Button>
+                <p className="text-sm text-slate-600 dark:text-slate-400">Products upload as drafts so you can review everything before publishing.</p>
+                {processingCount > 0 ? <p className="text-sm text-amber-700 dark:text-amber-400">Quantum AI is still finishing {processingCount} item{processingCount === 1 ? "" : "s"}.</p> : null}
+                {runStatus ? <p className="text-sm text-slate-600 dark:text-slate-400">{runStatus}</p> : null}
+                {batchResults.length > 0 ? (
+                  <div className="max-h-[14rem] overflow-auto rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-950">
+                    <div className="space-y-1.5">
+                      {batchResults.map((result) => (
+                        <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-200 p-2.5 dark:border-slate-800">
+                          <div className="font-medium">{result.title}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400">{result.fileName}</div>
+                          <div className="mt-1 text-sm">{result.message}</div>
+                          {result.productId ? <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Product ID: {result.productId}</div> : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <Field label="Final Title">
                   <Input
-                    value={selectedImage.final}
+                    value={listingDetailDraft?.final || ""}
                     onChange={(e) =>
-                      setImages((current) =>
-                        current.map((entry) =>
-                          entry.id === selectedImage.id ? { ...entry, final: e.target.value } : entry
-                        )
-                      )
+                      setListingDetailDraft((current) => current ? { ...current, final: e.target.value } : current)
                     }
                   />
                 </Field>
@@ -2038,70 +2147,44 @@ export default function MerchQuantumApp() {
                 <Field label="Final Description">
                   <Textarea
                     rows={12}
-                    value={htmlToEditableText(selectedImage.finalDescription)}
+                    value={htmlToEditableText(listingDetailDraft?.finalDescription || "")}
                     onChange={(e) => {
                       const html = editableTextToHtml(e.target.value);
-                      setImages((current) =>
-                        current.map((entry) =>
-                          entry.id === selectedImage.id
-                            ? { ...entry, finalDescription: html, tags: buildTags(entry.final, html, FIXED_TAG_COUNT) }
-                            : entry
-                        )
-                      );
+                      setListingDetailDraft((current) => current ? { ...current, finalDescription: html } : current);
                     }}
                   />
                 </Field>
 
-                <div>
-                  <div className="mb-2 text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">Tags</div>
-                  <div className="flex flex-wrap gap-2">
-                    {visibleDetailTags.map((tag) => (
-                      <span key={tag} className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                        {tag}
-                      </span>
+                <Field label="Tags">
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {(listingDetailDraft?.tags || []).map((tag, index) => (
+                      <Input
+                        key={`${selectedImage.id}-tag-${index}`}
+                        value={tag}
+                        placeholder={`Tag ${index + 1}`}
+                        onChange={(e) =>
+                          setListingDetailDraft((current) => current
+                            ? {
+                                ...current,
+                                tags: current.tags.map((entry, tagIndex) => (tagIndex === index ? e.target.value : entry)),
+                              }
+                            : current)
+                        }
+                      />
                     ))}
                   </div>
-                  {selectedImage.tags.length > 8 ? (
-                    <button
-                      type="button"
-                      className="mt-3 text-sm font-medium text-violet-600 hover:text-violet-500 dark:text-violet-400"
-                      onClick={() => setShowAllTags((current) => !current)}
-                    >
-                      {showAllTags ? "Hide Tags" : `Show All Tags (${selectedImage.tags.length})`}
-                    </button>
-                  ) : null}
-                </div>
+                </Field>
+
+                <Button
+                  disabled={!hasListingChanges}
+                  className={hasListingChanges ? "!bg-emerald-500 !text-white hover:!bg-emerald-400 dark:!bg-emerald-500 dark:hover:!bg-emerald-400" : ""}
+                  onClick={saveListingDetailEdits}
+                >
+                  Save
+                </Button>
               </div>
             </div>
           )}
-        </Box>
-
-        <Box title="Upload Draft Products">
-          <p className="text-sm text-slate-600 dark:text-slate-400">Products are uploaded in bulk as drafts to your selected provider. Artwork is automatically placed top centered in the front print area with fixed safeguards built in, so you can review everything first and publish when ready.</p>
-
-          <div className="mt-4">
-            <Button className="w-full" disabled={uploadDisabled} onClick={() => { void runDraftBatch(); }}>
-              {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
-            </Button>
-          </div>
-
-          {processingCount > 0 ? <p className="mt-3 text-sm text-amber-700 dark:text-amber-400">Quantum AI is still finishing {processingCount} item{processingCount === 1 ? "" : "s"}.</p> : null}
-          {runStatus ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{runStatus}</p> : null}
-
-          {batchResults.length > 0 ? (
-            <div className="mt-4 max-h-[16rem] overflow-auto rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
-              <div className="space-y-2">
-                {batchResults.map((result) => (
-                  <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <div className="font-medium">{result.title}</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">{result.fileName}</div>
-                    <div className="mt-1 text-sm">{result.message}</div>
-                    {result.productId ? <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Product ID: {result.productId}</div> : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
         </Box>
       </div>
     </div>
