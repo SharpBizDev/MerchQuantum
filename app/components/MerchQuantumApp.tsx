@@ -1062,13 +1062,13 @@ function InsetShell({
   children,
   className,
 }: {
-  label: string;
+  label?: string;
   children: React.ReactNode;
   className?: string;
 }) {
   return (
-    <div className={`min-h-[76px] rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 shadow-sm shadow-slate-950/20 ${className || ""}`.trim()}>
-      <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-white/85">{label}</div>
+    <div className={`${label ? "min-h-[76px]" : "min-h-[58px]"} rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 shadow-sm shadow-slate-950/20 ${className || ""}`.trim()}>
+      {label ? <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-white/85">{label}</div> : null}
       {children}
     </div>
   );
@@ -1754,7 +1754,7 @@ export default function MerchQuantumApp() {
 
         <Box
           title={
-            <span className="inline-flex items-center gap-1.5 font-semibold tracking-tight">
+            <span className="inline-flex items-center gap-2 font-semibold tracking-tight">
               <span className="font-semibold text-violet-600">Quantum</span>
               <span className={`font-semibold ${connected ? `text-emerald-600 dark:text-emerald-500 ${pulseConnected ? "animate-pulse" : ""}` : "text-slate-900 dark:text-slate-100"}`}>
                 {connected ? "Connected" : "Connection"}
@@ -1790,7 +1790,7 @@ export default function MerchQuantumApp() {
                 readOnly={connected}
                 placeholder="Provider Personal Access Token (API)"
                 onChange={(e) => setToken(e.target.value)}
-                className={connected ? "pr-48" : "pr-32"}
+                className={connected ? "pr-56" : "pr-32"}
               />
               <div className="absolute inset-y-1.5 right-1.5 flex items-center gap-3">
                 <button
@@ -1805,7 +1805,7 @@ export default function MerchQuantumApp() {
                   <button
                     type="button"
                     onClick={() => { void disconnectPrintify(); }}
-                    className="text-sm font-semibold text-slate-700 transition-opacity hover:opacity-80 dark:text-white"
+                    className="text-sm font-semibold text-white transition-opacity hover:opacity-80"
                   >
                     Disconnect
                   </button>
@@ -1820,24 +1820,38 @@ export default function MerchQuantumApp() {
         <Box
           title="Batch Setup"
           actions={
-            <button
-              type="button"
-              onClick={() => {
-                if (source === "product") {
-                  void loadProductTemplate();
-                } else {
-                  loadManualTemplate();
-                }
-              }}
-              disabled={source === "product" ? !productId || !shopId : !manualRef.trim() || !shopId}
-              className="bg-transparent p-0 text-[1.05rem] font-semibold tracking-tight text-violet-600 transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-35 dark:text-violet-400"
-            >
-              Load Template Description
-            </button>
+            <div className="flex flex-wrap items-center gap-4">
+              <button
+                type="button"
+                onClick={() => {
+                  if (source === "product") {
+                    void loadProductTemplate();
+                  } else {
+                    loadManualTemplate();
+                  }
+                }}
+                disabled={source === "product" ? !productId || !shopId : !manualRef.trim() || !shopId}
+                className="bg-transparent p-0 text-[1.05rem] font-semibold tracking-tight text-violet-400 transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                Load Template Description
+              </button>
+              {source === "product" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void loadProductsForShop(shopId);
+                  }}
+                  disabled={!shopId || loadingProducts}
+                  className="bg-transparent p-0 text-[1.05rem] font-semibold tracking-tight text-white transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  {loadingProducts ? "Refreshing..." : "Refresh"}
+                </button>
+              ) : null}
+            </div>
           }
         >
           <div className="grid gap-4 xl:grid-cols-4">
-            <InsetShell label="Select Shop">
+            <InsetShell>
               <InsetSelect
                 value={shopId}
                 disabled={!availableShops.length}
@@ -1859,20 +1873,20 @@ export default function MerchQuantumApp() {
               </InsetSelect>
             </InsetShell>
 
-            <InsetShell label="Template Source">
+            <InsetShell>
               <InsetSelect value={source} onChange={(e) => setSource(e.target.value as "product" | "manual")}>
-                <option value="product">Choose From My Products</option>
-                <option value="manual">Paste Product Reference</option>
+                <option value="product">Template Source · Choose From My Products</option>
+                <option value="manual">Template Source · Paste Product Reference</option>
               </InsetSelect>
             </InsetShell>
 
             {source === "product" ? (
               <>
-                <InsetShell label="Search My Products">
-                  <InsetInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search for titles or types" />
+                <InsetShell>
+                  <InsetInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search my products" />
                 </InsetShell>
 
-                <InsetShell label="Choose Product">
+                <InsetShell>
                   <InsetSelect value={productId} disabled={!shopId || loadingProducts} onChange={(e) => setProductId(e.target.value)}>
                     <option value="">{loadingProducts ? "Loading products..." : "Choose product"}</option>
                     {visibleProducts.map((product) => (
@@ -1885,31 +1899,16 @@ export default function MerchQuantumApp() {
               </>
             ) : (
               <>
-                <InsetShell label="Template Nickname">
+                <InsetShell>
                   <InsetInput value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Template nickname" />
                 </InsetShell>
 
-                <InsetShell label="Product Reference">
-                  <InsetInput value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Paste product reference or URL" />
+                <InsetShell>
+                  <InsetInput value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Product reference" />
                 </InsetShell>
               </>
             )}
           </div>
-
-          {source === "product" ? (
-            <div className="mt-3 flex justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  void loadProductsForShop(shopId);
-                }}
-                disabled={!shopId || loadingProducts}
-                className="text-sm font-medium text-slate-500 transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-400"
-              >
-                {loadingProducts ? "Refreshing..." : "Refresh Products"}
-              </button>
-            </div>
-          ) : null}
 
           {templateStatus ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{templateStatus}</p> : null}
         </Box>
