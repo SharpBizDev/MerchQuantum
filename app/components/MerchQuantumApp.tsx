@@ -1057,6 +1057,41 @@ function FieldNote({ children }: { children: React.ReactNode }) {
   );
 }
 
+function InsetShell({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 shadow-sm shadow-slate-950/20 ${className || ""}`.trim()}>
+      <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-white/85">{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function InsetInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      {...props}
+      className={`min-h-[28px] w-full border-0 bg-transparent p-0 text-sm text-white placeholder:text-slate-400 focus:outline-none ${props.className || ""}`.trim()}
+    />
+  );
+}
+
+function InsetSelect(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      {...props}
+      className={`min-h-[28px] w-full border-0 bg-transparent p-0 pr-6 text-sm text-white focus:outline-none ${props.className || ""}`.trim()}
+    />
+  );
+}
+
 function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
@@ -1136,7 +1171,7 @@ function getStatusMeta(status: ReviewStatus) {
     case "review":
       return { label: "Needs Review", dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400", ring: "ring-amber-200 dark:ring-amber-900/60" };
     case "error":
-      return { label: "Error", dot: "bg-rose-500", text: "text-rose-700 dark:text-rose-400", ring: "ring-rose-200 dark:ring-rose-900/60" };
+      return { label: "Rejected", dot: "bg-rose-500", text: "text-rose-700 dark:text-rose-400", ring: "ring-rose-200 dark:ring-rose-900/60" };
     default:
       return { label: "Processing", dot: "bg-slate-400", text: "text-slate-600 dark:text-slate-400", ring: "ring-slate-200 dark:ring-slate-800" };
   }
@@ -1204,7 +1239,6 @@ export default function MerchQuantumApp() {
   const [runStatus, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
-  const [showAllTags, setShowAllTags] = useState(false);
 
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
   const isLiveProvider = selectedProvider?.isLive || false;
@@ -1238,8 +1272,9 @@ export default function MerchQuantumApp() {
   const reviewCount = images.filter((img) => img.status === "review").length;
   const errorCount = images.filter((img) => img.status === "error").length;
   const processingCount = images.filter((img) => img.status === "pending" || img.aiProcessing).length;
-  const uploadDisabled = !connected || !template || images.length === 0 || isRunningBatch || processingCount > 0;
-  const visibleDetailTags = selectedImage ? (showAllTags ? selectedImage.tags : selectedImage.tags.slice(0, 8)) : [];
+  const uploadableImages = images.filter((img) => img.status !== "error");
+  const uploadDisabled = !connected || !template || uploadableImages.length === 0 || isRunningBatch || processingCount > 0;
+  const visibleDetailTags = selectedImage ? selectedImage.tags : [];
 
   useEffect(() => {
     const previous = previousPreviewUrlsRef.current;
@@ -1261,10 +1296,6 @@ export default function MerchQuantumApp() {
       }
     };
   }, []);
-
-  useEffect(() => {
-    setShowAllTags(false);
-  }, [selectedId]);
 
   useEffect(() => {
     if (!selectedImage || selectedImage.artworkBounds) return;
@@ -1359,10 +1390,14 @@ export default function MerchQuantumApp() {
         const reasonFlags = Array.isArray(data?.reasonFlags)
           ? data.reasonFlags.filter((flag: unknown) => typeof flag === "string" && flag.trim())
           : [];
-        const status: ReviewStatus = confidence >= 0.78 && reasonFlags.length === 0 ? "ready" : "review";
+        const status: ReviewStatus = confidence >= 0.78 && reasonFlags.length === 0
+          ? "ready"
+          : confidence >= 0.46
+            ? "review"
+            : "error";
         const statusReason = status === "ready"
-          ? "Quantum AI is confident in this listing."
-          : reasonFlags[0] || "This item may need a quick review before upload.";
+          ? "Ready for upload."
+          : reasonFlags[0] || (status === "error" ? "Low image clarity" : "Needs a quick review");
 
         setImages((current) =>
           current.map((img) =>
@@ -1405,7 +1440,7 @@ export default function MerchQuantumApp() {
                   tags: buildTags(fallbackTitle, fallbackDescription, FIXED_TAG_COUNT),
                   aiProcessing: false,
                   status: "review",
-                  statusReason: message,
+                  statusReason: message.toLowerCase().includes("timed out") ? "Needs review" : message,
                   processedTemplateKey: templateKey,
                 }
               : img
@@ -1507,7 +1542,8 @@ export default function MerchQuantumApp() {
   }
 
   async function connectPrintify() {
-    if (!provider || !token.trim() || !isLiveProvider) return;
+    const normalizedToken = token.trim();
+    if (!provider || !normalizedToken || !isLiveProvider) return;
     setLoadingApi(true);
     setApiStatus("");
 
@@ -1515,7 +1551,7 @@ export default function MerchQuantumApp() {
       const response = await fetchWithTimeout("/api/printify/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ token: normalizedToken }),
       });
 
       const data = await parseResponsePayload(response);
@@ -1525,6 +1561,7 @@ export default function MerchQuantumApp() {
         ? data.shops.map((shop: ApiShop) => ({ id: String(shop.id), title: shop.title || `Shop ${shop.id}` }))
         : [];
 
+      setToken(normalizedToken);
       setApiShops(shopsFromApi);
       setConnected(true);
       const firstShopId = shopsFromApi[0]?.id || FALLBACK_SHOPS[0].id;
@@ -1630,21 +1667,27 @@ export default function MerchQuantumApp() {
   }
 
   async function runDraftBatch() {
-    if (!template || !shopId || images.length === 0 || !isLiveProvider) return;
+    if (!template || !shopId || uploadableImages.length === 0 || !isLiveProvider) return;
+
+    const rejectedImages = images.filter((img) => img.status === "error");
 
     setIsRunningBatch(true);
     setRunStatus("");
-    setBatchResults([]);
-    const nextResults: BatchResult[] = [];
+    const nextResults: BatchResult[] = rejectedImages.map((img) => ({
+      fileName: img.name,
+      title: safeTitle(img.final, img.cleaned),
+      message: "Skipped: item is currently rejected.",
+    }));
+    setBatchResults(nextResults);
 
     try {
-      for (let index = 0; index < images.length; index += 1) {
-        const img = images[index];
+      for (let index = 0; index < uploadableImages.length; index += 1) {
+        const img = uploadableImages[index];
         const titleForUpload = safeTitle(img.final, img.cleaned);
         const description = img.finalDescription || buildDescription(titleForUpload, templateDescription, img.aiDraft?.leadParagraphs);
         const tags = img.tags.length ? img.tags : buildTags(titleForUpload, description, FIXED_TAG_COUNT);
 
-        setRunStatus(`Uploading draft ${index + 1} of ${images.length}...`);
+        setRunStatus(`Uploading draft ${index + 1} of ${uploadableImages.length}...`);
 
         try {
           const imageDataUrl = await readDataUrl(img.file);
@@ -1688,7 +1731,8 @@ export default function MerchQuantumApp() {
       }
 
       const createdCount = nextResults.filter((result) => !!result.productId).length;
-      setRunStatus(`Uploaded ${createdCount} draft product${createdCount === 1 ? "" : "s"} out of ${images.length}.`);
+      const skippedRejected = rejectedImages.length;
+      setRunStatus(`Uploaded ${createdCount} draft product${createdCount === 1 ? "" : "s"} out of ${uploadableImages.length}.${skippedRejected ? ` Skipped ${skippedRejected} rejected item${skippedRejected === 1 ? "" : "s"}.` : ""}`);
     } finally {
       setIsRunningBatch(false);
     }
@@ -1777,8 +1821,8 @@ export default function MerchQuantumApp() {
         <Box title="Batch Setup">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Shop">
-                <Select
+              <InsetShell label="Select Shop">
+                <InsetSelect
                   value={shopId}
                   disabled={!availableShops.length}
                   onChange={(e) => {
@@ -1796,48 +1840,48 @@ export default function MerchQuantumApp() {
                       {shop.title}
                     </option>
                   ))}
-                </Select>
-              </Field>
+                </InsetSelect>
+              </InsetShell>
 
-              <Field label="Template Source">
-                <Select value={source} onChange={(e) => setSource(e.target.value as "product" | "manual")}>
+              <InsetShell label="Template Source">
+                <InsetSelect value={source} onChange={(e) => setSource(e.target.value as "product" | "manual")}>
                   <option value="product">Choose From My Products</option>
                   <option value="manual">Paste Product Reference</option>
-                </Select>
-              </Field>
+                </InsetSelect>
+              </InsetShell>
             </div>
 
             {source === "product" ? (
               <div className="grid gap-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
-                <Field label="Search My Products">
-                  <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search titles or types" />
-                </Field>
-                <Field label="Choose Product">
-                  <Select value={productId} disabled={!shopId || loadingProducts} onChange={(e) => setProductId(e.target.value)}>
+                <InsetShell label="Search My Products">
+                  <InsetInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search for titles or types" />
+                </InsetShell>
+                <InsetShell label="Choose Product">
+                  <InsetSelect value={productId} disabled={!shopId || loadingProducts} onChange={(e) => setProductId(e.target.value)}>
                     <option value="">{loadingProducts ? "Loading products..." : "Choose product"}</option>
                     {visibleProducts.map((product) => (
                       <option key={product.id} value={product.id}>
                         {product.title}
                       </option>
                     ))}
-                  </Select>
-                </Field>
-                <div className="flex items-end">
-                  <Button variant="secondary" onClick={() => { void loadProductsForShop(shopId); }} disabled={!shopId || loadingProducts}>
+                  </InsetSelect>
+                </InsetShell>
+                <div className="flex items-stretch sm:items-end">
+                  <Button variant="secondary" onClick={() => { void loadProductsForShop(shopId); }} disabled={!shopId || loadingProducts} className="w-full sm:w-auto">
                     {loadingProducts ? "Refreshing..." : "Refresh"}
                   </Button>
                 </div>
               </div>
             ) : (
               <div className="grid gap-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
-                <Field label="Template Nickname">
-                  <Input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Template nickname" />
-                </Field>
-                <Field label="Product Reference">
-                  <Input value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Paste product reference or URL" />
-                </Field>
-                <div className="flex items-end">
-                  <Button onClick={loadManualTemplate} disabled={!manualRef.trim() || !shopId}>
+                <InsetShell label="Template Nickname">
+                  <InsetInput value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Template nickname" />
+                </InsetShell>
+                <InsetShell label="Product Reference">
+                  <InsetInput value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Paste product reference or URL" />
+                </InsetShell>
+                <div className="flex items-stretch sm:items-end">
+                  <Button onClick={loadManualTemplate} disabled={!manualRef.trim() || !shopId} className="w-full bg-violet-600 text-white hover:bg-violet-500 dark:bg-violet-600 dark:hover:bg-violet-500 sm:w-auto">
                     Load Template Description
                   </Button>
                 </div>
@@ -1847,7 +1891,7 @@ export default function MerchQuantumApp() {
 
           {source === "product" ? (
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <Button onClick={() => { void loadProductTemplate(); }} disabled={!productId || !shopId}>
+              <Button onClick={() => { void loadProductTemplate(); }} disabled={!productId || !shopId} className="bg-violet-600 text-white hover:bg-violet-500 dark:bg-violet-600 dark:hover:bg-violet-500">
                 Load Template Description
               </Button>
               {template ? <span className="text-sm text-slate-500 dark:text-slate-400">Loaded: {template.nickname}</span> : null}
@@ -1857,28 +1901,7 @@ export default function MerchQuantumApp() {
           {templateStatus ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{templateStatus}</p> : null}
         </Box>
 
-        <Box
-          title="Batch Preview"
-          actions={
-            <>
-              <Badge>{images.length}/{MAX_BATCH_FILES}</Badge>
-              <Button onClick={() => fileRef.current?.click()}>Add Images</Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setImages([]);
-                  setSelectedId("");
-                  setMessage("");
-                  setBatchResults([]);
-                  setRunStatus("");
-                }}
-                disabled={!images.length}
-              >
-                Clear All
-              </Button>
-            </>
-          }
-        >
+        <Box title="Batch Preview">
           <input
             ref={fileRef}
             type="file"
@@ -1898,16 +1921,33 @@ export default function MerchQuantumApp() {
               void addFiles(e.dataTransfer.files);
             }}
             onClick={() => fileRef.current?.click()}
-            className="cursor-pointer rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-900"
+            className="cursor-pointer rounded-2xl border border-dashed border-violet-500/40 bg-slate-950 px-4 py-5 text-sm text-white transition-colors hover:border-violet-400 hover:bg-slate-900"
           >
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click Add Images</div>
-                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. The app builds final titles and lead copy automatically, then flags anything that needs a quick review.</div>
+                <div className="font-medium tracking-tight">
+                  <span className="text-white">Drag images here or </span>
+                  <span className="text-violet-400">click to add images</span>
+                </div>
+                <div className="mt-1 text-xs text-slate-300">
+                  {images.length}/{MAX_BATCH_FILES} loaded · {readyCount} ready · {reviewCount} needs review · {errorCount} rejected
+                </div>
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                {readyCount} ready · {reviewCount} needs review · {errorCount} errors
-              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setImages([]);
+                  setSelectedId("");
+                  setMessage("");
+                  setBatchResults([]);
+                  setRunStatus("");
+                }}
+                disabled={!images.length}
+                className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Clear All
+              </button>
             </div>
           </div>
 
@@ -1919,89 +1959,57 @@ export default function MerchQuantumApp() {
                 No images loaded yet.
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7">
                 {sortedImages.map((img) => {
                   const meta = getStatusMeta(img.status);
+                  const showReason = (img.status === "review" || img.status === "error") && img.statusReason;
                   return (
                     <div
                       key={img.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => setSelectedId(img.id)}
-                      className={`rounded-2xl border p-3 transition-colors ${selectedImage?.id === img.id ? "border-violet-500 bg-violet-50/50 dark:border-violet-500 dark:bg-violet-950/20" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"}`}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedId(img.id);
+                        }
+                      }}
+                      className={`group relative flex cursor-pointer flex-col rounded-2xl border p-2.5 text-left transition-colors ${selectedImage?.id === img.id ? "border-violet-500 bg-violet-50/60 dark:border-violet-500 dark:bg-violet-950/20" : "border-slate-200 bg-white hover:border-violet-300 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-violet-700"}`}
                     >
-                      <div className="grid gap-3 lg:grid-cols-[90px_minmax(0,0.9fr)_minmax(0,1.15fr)_auto]">
-                        <div className="relative">
-                          <div className="group relative flex h-24 w-24 items-center justify-center overflow-visible rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-900">
-                            {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
-                            {img.preview ? (
-                              <div className="pointer-events-none absolute left-0 top-0 z-20 hidden w-48 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950">
-                                <img src={img.preview} alt={img.final} className="max-h-56 w-full object-contain" />
-                              </div>
-                            ) : null}
+                      <div className="relative">
+                        <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-900">
+                          {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
+                        </div>
+                        {img.preview ? (
+                          <div className="pointer-events-none absolute left-1/2 top-1/2 z-30 hidden w-52 -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950">
+                            <img src={img.preview} alt={img.final} className="max-h-56 w-full object-contain" />
                           </div>
-                        </div>
-
-                        <div className="min-w-0 space-y-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${meta.text} ${meta.ring}`}>
-                              <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
-                              {meta.label}
-                            </span>
-                            <span className="truncate text-xs text-slate-500 dark:text-slate-400">{img.name}</span>
-                          </div>
-                          <Input
-                            value={img.final}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) =>
-                              setImages((current) =>
-                                current.map((entry) =>
-                                  entry.id === img.id ? { ...entry, final: e.target.value } : entry
-                                )
-                              )
-                            }
-                            onBlur={() =>
-                              setImages((current) =>
-                                current.map((entry) =>
-                                  entry.id === img.id ? { ...entry, final: safeTitle(entry.final, entry.cleaned) } : entry
-                                )
-                              )
-                            }
-                          />
-                        </div>
-
-                        <div className="min-w-0">
-                          <Textarea
-                            rows={3}
-                            value={htmlToEditableText(img.finalDescription)}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) =>
-                              setImages((current) =>
-                                current.map((entry) =>
-                                  entry.id === img.id
-                                    ? { ...entry, finalDescription: editableTextToHtml(e.target.value), tags: buildTags(entry.final, editableTextToHtml(e.target.value), FIXED_TAG_COUNT) }
-                                    : entry
-                                )
-                              )
-                            }
-                          />
-                          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{img.statusReason}</p>
-                        </div>
-
-                        <div className="flex items-start justify-end">
-                          <Button
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setImages((current) => {
-                                const next = current.filter((entry) => entry.id !== img.id);
-                                if (selectedId === img.id) setSelectedId(next[0]?.id || "");
-                                return next;
-                              });
-                            }}
-                          >
-                            Remove
-                          </Button>
-                        </div>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setImages((current) => {
+                              const next = current.filter((entry) => entry.id !== img.id);
+                              if (selectedId === img.id) setSelectedId(next[0]?.id || "");
+                              return next;
+                            });
+                          }}
+                          className="absolute right-1.5 top-1.5 rounded-full bg-black/65 px-2 py-1 text-[10px] font-medium text-white opacity-0 transition hover:bg-black/80 group-hover:opacity-100"
+                        >
+                          Remove
+                        </button>
                       </div>
+
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium ring-1 ${meta.text} ${meta.ring}`}>
+                          <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+                          {meta.label}
+                        </span>
+                      </div>
+                      <div className="mt-1 truncate text-[11px] text-slate-500 dark:text-slate-400">{img.name}</div>
+                      {showReason ? <div className="mt-1 min-h-[2rem] text-[11px] leading-4 text-slate-500 dark:text-slate-400">{trimToSentence(img.statusReason, 42)}</div> : null}
                     </div>
                   );
                 })}
@@ -2015,13 +2023,33 @@ export default function MerchQuantumApp() {
             <p className="text-sm text-slate-500 dark:text-slate-400">Select a batch item to review the larger artwork preview, final title, final description, and tags.</p>
           ) : (
             <div className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                <div className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">Uploaded Artwork</div>
+              <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Uploaded Artwork</div>
                 <div className="flex h-72 items-center justify-center rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
                   {selectedImage.preview ? (
                     <img src={selectedImage.preview} alt={selectedImage.final} className="max-h-full max-w-full object-contain" />
                   ) : null}
                 </div>
+                <p className="text-sm leading-6 text-slate-600 dark:text-slate-400">Products are uploaded in bulk as drafts to your selected provider. Artwork is automatically placed top centered in the front print area with fixed safeguards built in, so you can review everything first and publish when ready.</p>
+                <Button className="w-full bg-violet-600 text-white hover:bg-violet-500 dark:bg-violet-600 dark:hover:bg-violet-500" disabled={uploadDisabled} onClick={() => { void runDraftBatch(); }}>
+                  {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
+                </Button>
+                {processingCount > 0 ? <p className="text-sm text-amber-700 dark:text-amber-400">Quantum AI is still finishing {processingCount} item{processingCount === 1 ? "" : "s"}.</p> : null}
+                {runStatus ? <p className="text-sm text-slate-600 dark:text-slate-400">{runStatus}</p> : null}
+                {batchResults.length > 0 ? (
+                  <div className="max-h-[16rem] overflow-auto rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
+                    <div className="space-y-2">
+                      {batchResults.map((result) => (
+                        <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                          <div className="font-medium">{result.title}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400">{result.fileName}</div>
+                          <div className="mt-1 text-sm">{result.message}</div>
+                          {result.productId ? <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Product ID: {result.productId}</div> : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className="space-y-4">
@@ -2056,7 +2084,7 @@ export default function MerchQuantumApp() {
                 </Field>
 
                 <div>
-                  <div className="mb-2 text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">Tags</div>
+                  <div className="mb-2 text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">Final Tags</div>
                   <div className="flex flex-wrap gap-2">
                     {visibleDetailTags.map((tag) => (
                       <span key={tag} className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 dark:bg-slate-900 dark:text-slate-300">
@@ -2064,47 +2092,10 @@ export default function MerchQuantumApp() {
                       </span>
                     ))}
                   </div>
-                  {selectedImage.tags.length > 8 ? (
-                    <button
-                      type="button"
-                      className="mt-3 text-sm font-medium text-violet-600 hover:text-violet-500 dark:text-violet-400"
-                      onClick={() => setShowAllTags((current) => !current)}
-                    >
-                      {showAllTags ? "Hide Tags" : `Show All Tags (${selectedImage.tags.length})`}
-                    </button>
-                  ) : null}
                 </div>
               </div>
             </div>
           )}
-        </Box>
-
-        <Box title="Upload Draft Products">
-          <p className="text-sm text-slate-600 dark:text-slate-400">Products are uploaded in bulk as drafts to your selected provider. Artwork is automatically placed top centered in the front print area with fixed safeguards built in, so you can review everything first and publish when ready.</p>
-
-          <div className="mt-4">
-            <Button className="w-full" disabled={uploadDisabled} onClick={() => { void runDraftBatch(); }}>
-              {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
-            </Button>
-          </div>
-
-          {processingCount > 0 ? <p className="mt-3 text-sm text-amber-700 dark:text-amber-400">Quantum AI is still finishing {processingCount} item{processingCount === 1 ? "" : "s"}.</p> : null}
-          {runStatus ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{runStatus}</p> : null}
-
-          {batchResults.length > 0 ? (
-            <div className="mt-4 max-h-[16rem] overflow-auto rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
-              <div className="space-y-2">
-                {batchResults.map((result) => (
-                  <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <div className="font-medium">{result.title}</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">{result.fileName}</div>
-                    <div className="mt-1 text-sm">{result.message}</div>
-                    {result.productId ? <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Product ID: {result.productId}</div> : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
         </Box>
       </div>
     </div>
