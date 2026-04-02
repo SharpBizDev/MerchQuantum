@@ -1919,7 +1919,8 @@ export default function MerchQuantumApp() {
                 <div className="text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. It generates listing copy automatically and flags anything that needs review.</div>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                <span>{images.length}/{MAX_BATCH_FILES} loaded</span>
+                <span className="text-violet-600 dark:text-violet-400">{images.length}/{MAX_BATCH_FILES} loaded</span>
+                {processingCount ? <span>{processingCount} processing</span> : null}
                 <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-emerald-300/80 dark:ring-emerald-900/70" />{readyCount}</span>
                 <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500 ring-2 ring-amber-300/80 dark:ring-amber-900/70" />{reviewCount}</span>
                 <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-rose-300/80 dark:ring-rose-900/70" />{errorCount}</span>
@@ -1944,10 +1945,7 @@ export default function MerchQuantumApp() {
                   <span className="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-rose-300/80 dark:ring-rose-900/70" />
                   Rejected / Error
                 </div>
-                <div className="inline-flex items-center gap-1.5">
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">X</span>
-                  X = Remove
-                </div>
+                <div className="inline-flex items-center gap-1.5">X = Remove</div>
               </div>
               <span
                 role="button"
@@ -2019,7 +2017,7 @@ export default function MerchQuantumApp() {
                                   e.stopPropagation();
                                   updatePreviewStatus(img.id, status);
                                 }}
-                                className={`h-4 w-4 rounded-full ring-2 transition-transform hover:scale-105 ${isActive ? getStatusTone(status) : getStatusTone("pending")}`}
+                                className={`h-3 w-3 rounded-full ring-2 shadow-sm transition-transform hover:scale-105 ${isActive ? getStatusTone(status) : getStatusTone("pending")}`}
                               />
                             );
                           })}
@@ -2030,7 +2028,7 @@ export default function MerchQuantumApp() {
                               e.stopPropagation();
                               removePreviewItem(img.id);
                             }}
-                            className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[9px] font-semibold text-slate-700 transition-colors hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                            className="inline-flex h-3.5 w-3.5 items-center justify-center text-[9px] font-semibold text-slate-500 transition-colors hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400"
                           >
                             X
                           </button>
@@ -2121,10 +2119,13 @@ export default function MerchQuantumApp() {
               <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
               <div className="space-y-3">
                 <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Uploaded Artwork</div>
-                <div className="flex h-72 items-center justify-center rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+                <div className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
                   {selectedImage.preview ? (
                     <img src={selectedImage.preview} alt={selectedImage.final} className="max-h-full max-w-full object-contain" />
                   ) : null}
+                  <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg bg-white/92 px-2.5 py-1 text-[11px] font-medium text-slate-500 shadow-sm dark:bg-slate-950/90 dark:text-slate-400">
+                    Draft upload only. Review before publishing.
+                  </div>
                 </div>
                 <Button
                   className="w-full !bg-violet-600 !text-white hover:!bg-violet-500 dark:!bg-violet-600 dark:hover:!bg-violet-500"
@@ -2133,8 +2134,6 @@ export default function MerchQuantumApp() {
                 >
                   {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
                 </Button>
-                <p className="text-sm text-slate-600 dark:text-slate-400">Products upload as drafts so you can review everything before publishing.</p>
-                {processingCount > 0 ? <p className="text-sm text-amber-700 dark:text-amber-400">Quantum AI is still finishing {processingCount} item{processingCount === 1 ? "" : "s"}.</p> : null}
                 {runStatus ? <p className="text-sm text-slate-600 dark:text-slate-400">{runStatus}</p> : null}
                 {batchResults.length > 0 ? (
                   <div className="max-h-[14rem] overflow-auto rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-950">
