@@ -1811,9 +1811,10 @@ export default function MerchQuantumApp() {
         <Box
           title={
             <span className="inline-flex items-center font-semibold tracking-tight">
-              <span className="font-semibold text-violet-600">Quantum </span>
-              <span className={`font-semibold ${connected ? `text-emerald-400 ${pulseConnected ? "animate-pulse" : ""}` : "text-slate-900 dark:text-slate-100"}`}>
-                {connected ? "Connection" : "Connection"}
+              <span className="font-semibold text-violet-600">Quantum</span>
+              <span className="ml-1 font-semibold text-slate-900 dark:text-white">AI</span>
+              <span className={`ml-1 font-semibold ${connected ? `text-emerald-400 ${pulseConnected ? "animate-pulse" : ""}` : "text-slate-900 dark:text-white"}`}>
+                {connected ? "Connection" : "Connect"}
               </span>
             </span>
           }
@@ -1871,6 +1872,157 @@ export default function MerchQuantumApp() {
         </Box>
 
         <Box>
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg"
+            className="hidden"
+            onChange={(e) => {
+              void addFiles(e.target.files);
+              e.currentTarget.value = "";
+            }}
+          />
+
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              void addFiles(e.dataTransfer.files);
+            }}
+            onClick={() => fileRef.current?.click()}
+            className="mt-3 cursor-pointer rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-900"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click <span className="text-violet-600 dark:text-violet-400">Add Images</span></div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. The app builds final titles and lead copy automatically, then flags anything that needs a quick review.</div>
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                {images.length}/{MAX_BATCH_FILES} loaded · {readyCount} ready · {reviewCount} needs review · {errorCount} errors
+              </div>
+            </div>
+          </div>
+
+          {imageConfirmation ? <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{imageConfirmation}</p> : null}
+          
+          <div className="mt-4">
+          <div className="px-0.5 py-1">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-300 dark:ring-emerald-900/70" />
+                  Approved / Ready
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-amber-300 dark:ring-amber-900/70" />
+                  Needs Review
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-rose-300 dark:ring-rose-900/70" />
+                  Rejected / Error
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[11px] font-semibold text-white dark:bg-slate-200 dark:text-slate-900">X</span>
+                  X = Remove
+                </div>
+              </div>
+              <span
+                role="button"
+                tabIndex={images.length ? 0 : -1}
+                onClick={() => {
+                  if (!images.length) return;
+                  setImages([]);
+                  setSelectedId("");
+                  setMessage("");
+                  setBatchResults([]);
+                  setRunStatus("");
+                }}
+                onKeyDown={(e) => {
+                  if (!images.length) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setImages([]);
+                    setSelectedId("");
+                    setMessage("");
+                    setBatchResults([]);
+                    setRunStatus("");
+                  }
+                }}
+                className={`text-sm font-medium transition-colors ${images.length ? "cursor-pointer text-slate-500 hover:text-violet-600 dark:text-slate-400 dark:hover:text-violet-400" : "cursor-default text-slate-400 opacity-40 dark:text-slate-600"}`}
+              >
+                Clear All
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-3">
+            {sortedImages.length === 0 ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-12 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                No images loaded yet.
+              </div>
+            ) : (
+              <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
+                {sortedImages.map((img, index) => {
+                  const isSelected = selectedImage?.id === img.id;
+                  const previewAlignRight = (index + 1) % 10 === 0 || (index + 1) % 10 === 9;
+                  const previewOpenUp = sortedImages.length - index <= 10;
+                  return (
+                    <div
+                      key={img.id}
+                      onClick={() => setSelectedId(img.id)}
+                      className={`rounded-xl border p-1.5 transition-colors ${isSelected ? "border-violet-500 bg-violet-50/50 dark:border-violet-500 dark:bg-violet-950/20" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"}`}
+                    >
+                      <div className="space-y-1.5">
+                        <div className="relative">
+                          <div className="group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-1.5 dark:border-slate-800 dark:bg-slate-900">
+                            {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
+                            {img.preview ? (
+                              <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950 ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
+                                <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-center gap-0.5">
+                          {(["ready", "review", "error"] as const).map((status) => {
+                            const isActive = img.status === status;
+                            return (
+                              <button
+                                key={status}
+                                type="button"
+                                aria-label={status}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  updatePreviewStatus(img.id, status);
+                                }}
+                                className={`h-4.5 w-4.5 rounded-full ring-2 transition-transform hover:scale-105 ${isActive ? getStatusTone(status) : getStatusTone("pending")}`}
+                              />
+                            );
+                          })}
+                          <button
+                            type="button"
+                            aria-label="remove"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removePreviewItem(img.id);
+                            }}
+                            className="inline-flex h-4.5 w-4.5 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-700 transition-colors hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                          >
+                            X
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          </div>
+
+          <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-slate-800">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -1937,155 +2089,6 @@ export default function MerchQuantumApp() {
           </div>
 
           {templateConfirmation ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{templateConfirmation}</p> : null}
-
-          <input
-            ref={fileRef}
-            type="file"
-            multiple
-            accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg"
-            className="hidden"
-            onChange={(e) => {
-              void addFiles(e.target.files);
-              e.currentTarget.value = "";
-            }}
-          />
-
-          <div
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              void addFiles(e.dataTransfer.files);
-            }}
-            onClick={() => fileRef.current?.click()}
-            className="mt-3 cursor-pointer rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-900"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click <span className="text-violet-600 dark:text-violet-400">Add Images</span></div>
-                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. The app builds final titles and lead copy automatically, then flags anything that needs a quick review.</div>
-              </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                {images.length}/{MAX_BATCH_FILES} loaded · {readyCount} ready · {reviewCount} needs review · {errorCount} errors
-              </div>
-            </div>
-          </div>
-
-          {imageConfirmation ? <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{imageConfirmation}</p> : null}
-          
-          <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-slate-800">
-          <div className="px-0.5 py-1">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-300 dark:ring-emerald-900/70" />
-                  Approved / Ready
-                </div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-amber-300 dark:ring-amber-900/70" />
-                  Needs Review
-                </div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
-                  <span className="h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-rose-300 dark:ring-rose-900/70" />
-                  Rejected / Error
-                </div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[11px] font-semibold text-white dark:bg-slate-200 dark:text-slate-900">X</span>
-                  X = Remove
-                </div>
-              </div>
-              <span
-                role="button"
-                tabIndex={images.length ? 0 : -1}
-                onClick={() => {
-                  if (!images.length) return;
-                  setImages([]);
-                  setSelectedId("");
-                  setMessage("");
-                  setBatchResults([]);
-                  setRunStatus("");
-                }}
-                onKeyDown={(e) => {
-                  if (!images.length) return;
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setImages([]);
-                    setSelectedId("");
-                    setMessage("");
-                    setBatchResults([]);
-                    setRunStatus("");
-                  }
-                }}
-                className={`text-sm font-medium transition-colors ${images.length ? "cursor-pointer text-slate-500 hover:text-violet-600 dark:text-slate-400 dark:hover:text-violet-400" : "cursor-default text-slate-400 opacity-40 dark:text-slate-600"}`}
-              >
-                Clear All
-              </span>
-            </div>
-          </div>
-
-          <div className="mt-3 max-h-[14rem] overflow-y-auto pr-1">
-            {sortedImages.length === 0 ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-12 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                No images loaded yet.
-              </div>
-            ) : (
-              <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
-                {sortedImages.map((img, index) => {
-                  const isSelected = selectedImage?.id === img.id;
-                  const previewAlignRight = (index + 1) % 10 === 0 || (index + 1) % 10 === 9;
-                  const previewOpenUp = sortedImages.length - index <= 10;
-                  return (
-                    <div
-                      key={img.id}
-                      onClick={() => setSelectedId(img.id)}
-                      className={`rounded-xl border p-1.5 transition-colors ${isSelected ? "border-violet-500 bg-violet-50/50 dark:border-violet-500 dark:bg-violet-950/20" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"}`}
-                    >
-                      <div className="space-y-1.5">
-                        <div className="relative">
-                          <div className="group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-1.5 dark:border-slate-800 dark:bg-slate-900">
-                            {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
-                            {img.preview ? (
-                              <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950 ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
-                                <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-center gap-0.5">
-                          {(["ready", "review", "error"] as const).map((status) => {
-                            const isActive = img.status === status;
-                            return (
-                              <button
-                                key={status}
-                                type="button"
-                                aria-label={status}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  updatePreviewStatus(img.id, status);
-                                }}
-                                className={`h-4.5 w-4.5 rounded-full ring-2 transition-transform hover:scale-105 ${isActive ? getStatusTone(status) : getStatusTone("pending")}`}
-                              />
-                            );
-                          })}
-                          <button
-                            type="button"
-                            aria-label="remove"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removePreviewItem(img.id);
-                            }}
-                            className="inline-flex h-4.5 w-4.5 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-700 transition-colors hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                          >
-                            X
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
           </div>
 
           <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-slate-800">
