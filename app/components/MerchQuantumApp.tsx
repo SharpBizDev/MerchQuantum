@@ -1913,19 +1913,9 @@ export default function MerchQuantumApp() {
             onClick={() => fileRef.current?.click()}
             className="cursor-pointer rounded-[22px] border border-dashed border-slate-300/90 bg-slate-50/90 px-4 py-3.5 text-sm text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/55 dark:text-slate-300 dark:hover:bg-slate-900"
           >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="space-y-1">
-                <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click <span className="text-violet-600 dark:text-violet-400">Add Images</span></div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. It generates listing copy automatically and flags anything that needs review.</div>
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                <span className="text-violet-600 dark:text-violet-400">{images.length}/{MAX_BATCH_FILES} loaded</span>
-                {processingCount ? <span>{processingCount} processing</span> : null}
-                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-emerald-300/80 dark:ring-emerald-900/70" />{readyCount}</span>
-                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500 ring-2 ring-amber-300/80 dark:ring-amber-900/70" />{reviewCount}</span>
-                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-rose-300/80 dark:ring-rose-900/70" />{errorCount}</span>
-                {skippedCount ? <span>{skippedCount} skipped</span> : null}
-              </div>
+            <div className="space-y-1">
+              <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click <span className="text-violet-600 dark:text-violet-400">Add Images</span></div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. It generates listing copy automatically and flags anything that needs review.</div>
             </div>
           </div>
           
@@ -1935,15 +1925,22 @@ export default function MerchQuantumApp() {
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
                 <div className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-emerald-300/80 dark:ring-emerald-900/70" />
+                  <span>{readyCount}</span>
                   Approved / Ready
                 </div>
                 <div className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-amber-500 ring-2 ring-amber-300/80 dark:ring-amber-900/70" />
+                  <span>{reviewCount}</span>
                   Needs Review
                 </div>
                 <div className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-rose-300/80 dark:ring-rose-900/70" />
+                  <span>{errorCount}</span>
                   Rejected / Error
+                </div>
+                <div className="inline-flex items-center gap-1.5">
+                  <span>{skippedCount}</span>
+                  Skipped
                 </div>
                 <div className="inline-flex items-center gap-1.5">X = Remove</div>
               </div>
@@ -2177,7 +2174,7 @@ export default function MerchQuantumApp() {
                     type="button"
                     disabled={!hasListingChanges}
                     onClick={saveListingDetailEdits}
-                    className={`text-sm font-medium tracking-tight transition-colors ${hasListingChanges ? "text-violet-600 hover:text-violet-500 dark:text-violet-400 dark:hover:text-violet-300" : "cursor-default text-slate-400 dark:text-slate-600"}`}
+                    className={`text-sm font-medium transition-colors ${hasListingChanges ? "text-violet-600 hover:text-violet-500 dark:text-violet-400 dark:hover:text-violet-300" : "cursor-default text-slate-400 dark:text-slate-600"}`}
                   >
                     Save Changes
                   </button>
