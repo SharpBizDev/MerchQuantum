@@ -2133,7 +2133,7 @@ export default function MerchQuantumApp() {
             <div className="space-y-4">
               <div className="grid gap-4 lg:grid-cols-[296px_minmax(0,1fr)]">
               <div className="space-y-3">
-                <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Uploaded Artwork</div>
+                <div className="text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">Uploaded Artwork</div>
                 <div className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white p-4 lg:h-[19rem] dark:border-slate-800 dark:bg-slate-950">
                   {selectedImage.preview ? (
                     <img src={selectedImage.preview} alt={selectedImage.final} className="max-h-full max-w-full object-contain" />
@@ -2191,12 +2191,12 @@ export default function MerchQuantumApp() {
 
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Tags</div>
+                  <div className="text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">Tags</div>
                   <button
                     type="button"
-                    disabled={!hasListingChanges}
                     onClick={saveListingDetailEdits}
-                    className={`text-sm font-medium transition-colors ${hasListingChanges ? "text-violet-600 hover:text-violet-500 dark:text-violet-400 dark:hover:text-violet-300" : "cursor-default text-slate-400 dark:text-slate-600"}`}
+                    aria-disabled={!hasListingChanges}
+                    className={`text-sm font-medium tracking-tight transition-colors ${hasListingChanges ? "cursor-pointer text-violet-600 hover:text-violet-500 dark:text-violet-400 dark:hover:text-violet-300" : "cursor-pointer text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"}`}
                   >
                     Save Changes
                   </button>
