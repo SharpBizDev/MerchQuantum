@@ -1033,12 +1033,24 @@ async function parseResponsePayload(response: Response) {
   return { error: text || `Request failed with status ${response.status}.` };
 }
 
-function Box({ title, actions, children }: { title?: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode }) {
+function Box({
+  title,
+  actions,
+  children,
+  className,
+  headerClassName,
+}: {
+  title?: React.ReactNode;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  headerClassName?: string;
+}) {
   const showHeader = !!title || !!actions;
   return (
-    <div className="rounded-2xl border border-slate-200/90 bg-white/95 p-5 shadow-sm shadow-slate-200/60 transition-colors dark:border-slate-800 dark:bg-slate-950">
+    <div className={`rounded-2xl border border-slate-200/90 bg-white/95 p-5 shadow-sm shadow-slate-200/60 transition-colors dark:border-slate-800 dark:bg-slate-950 ${className || ""}`.trim()}>
       {showHeader ? (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 ${headerClassName || ""}`.trim()}>
           <h2 className="text-[1.05rem] font-semibold tracking-tight text-slate-900 dark:text-slate-100">
             {title}
           </h2>
@@ -1275,7 +1287,7 @@ export default function MerchQuantumApp() {
     )
   );
   const templateConfirmation = template ? `Selected template: ${template.nickname}` : "";
-  const imageConfirmation = message || (images.length ? `${images.length} image${images.length === 1 ? "" : "s"} loaded.` : "");
+  const skippedCount = Array.from(message.matchAll(/Skipped (\d+)/g)).reduce((total, [, count]) => total + Number(count || 0), 0);
 
   useEffect(() => {
     const previous = previousPreviewUrlsRef.current;
@@ -1809,16 +1821,24 @@ export default function MerchQuantumApp() {
         </div>
 
         <Box
+          className="relative overflow-hidden border-slate-900/90 bg-slate-950 text-white shadow-[0_28px_80px_-40px_rgba(15,23,42,0.9)] dark:border-slate-800"
+          headerClassName="mb-5"
           title={
             <span className="inline-flex items-center font-semibold tracking-tight">
               <span className="font-semibold text-violet-600">Quantum</span>
-              <span className="ml-1 font-semibold text-slate-900 dark:text-white">AI</span>
-              <span className={`ml-1 font-semibold ${connected ? `text-emerald-400 ${pulseConnected ? "animate-pulse" : ""}` : "text-slate-900 dark:text-white"}`}>
+              <span className="ml-1 font-semibold text-white">AI</span>
+              <span className={`ml-1 font-semibold ${connected ? `text-emerald-400 ${pulseConnected ? "animate-pulse" : ""}` : "text-white"}`}>
                 {connected ? "Connection" : "Connect"}
               </span>
             </span>
           }
         >
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-500/70 to-transparent" />
+          <div className="pointer-events-none absolute -right-20 top-0 h-48 w-48 rounded-full bg-violet-500/12 blur-3xl" />
+          <div className="pointer-events-none absolute -left-12 bottom-0 h-32 w-32 rounded-full bg-white/5 blur-3xl" />
+          <div
+            className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-emerald-400/90 to-transparent" : "bg-gradient-to-r from-transparent via-violet-500/70 to-transparent"} ${pulseConnected ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
+          />
           <div className="grid gap-3 md:grid-cols-2">
             <Select
               value={provider}
@@ -1868,10 +1888,10 @@ export default function MerchQuantumApp() {
             </div>
           </div>
 
-          {apiStatus ? <p className="mt-3 text-sm text-amber-700 dark:text-amber-400">{apiStatus}</p> : null}
+          {apiStatus ? <p className="mt-3 text-sm text-amber-300">{apiStatus}</p> : null}
         </Box>
 
-        <Box>
+        <Box className="border-slate-200/80 bg-white/92 shadow-[0_24px_70px_-38px_rgba(15,23,42,0.35)] dark:border-slate-800/90 dark:bg-slate-950/95">
           <input
             ref={fileRef}
             type="file"
@@ -1891,39 +1911,41 @@ export default function MerchQuantumApp() {
               void addFiles(e.dataTransfer.files);
             }}
             onClick={() => fileRef.current?.click()}
-            className="mt-3 cursor-pointer rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-900"
+            className="cursor-pointer rounded-[22px] border border-dashed border-slate-300/90 bg-slate-50/90 px-4 py-3.5 text-sm text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/55 dark:text-slate-300 dark:hover:bg-slate-900"
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
+              <div className="space-y-1">
                 <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click <span className="text-violet-600 dark:text-violet-400">Add Images</span></div>
-                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. The app builds final titles and lead copy automatically, then flags anything that needs a quick review.</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. It generates listing copy automatically and flags anything that needs review.</div>
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                {images.length}/{MAX_BATCH_FILES} loaded · {readyCount} ready · {reviewCount} needs review · {errorCount} errors
+              <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                <span>{images.length}/{MAX_BATCH_FILES} loaded</span>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-emerald-300/80 dark:ring-emerald-900/70" />{readyCount}</span>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500 ring-2 ring-amber-300/80 dark:ring-amber-900/70" />{reviewCount}</span>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-rose-300/80 dark:ring-rose-900/70" />{errorCount}</span>
+                {skippedCount ? <span>{skippedCount} skipped</span> : null}
               </div>
             </div>
           </div>
-
-          {imageConfirmation ? <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{imageConfirmation}</p> : null}
           
           <div className="mt-4">
           <div className="px-0.5 py-1">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-300 dark:ring-emerald-900/70" />
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                <div className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-emerald-300/80 dark:ring-emerald-900/70" />
                   Approved / Ready
                 </div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-amber-300 dark:ring-amber-900/70" />
+                <div className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-amber-500 ring-2 ring-amber-300/80 dark:ring-amber-900/70" />
                   Needs Review
                 </div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
-                  <span className="h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-rose-300 dark:ring-rose-900/70" />
+                <div className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-rose-300/80 dark:ring-rose-900/70" />
                   Rejected / Error
                 </div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[11px] font-semibold text-white dark:bg-slate-200 dark:text-slate-900">X</span>
+                <div className="inline-flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">X</span>
                   X = Remove
                 </div>
               </div>
@@ -1985,7 +2007,7 @@ export default function MerchQuantumApp() {
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-center gap-0.5">
+                        <div className="flex items-center justify-center gap-1">
                           {(["ready", "review", "error"] as const).map((status) => {
                             const isActive = img.status === status;
                             return (
@@ -1997,7 +2019,7 @@ export default function MerchQuantumApp() {
                                   e.stopPropagation();
                                   updatePreviewStatus(img.id, status);
                                 }}
-                                className={`h-4.5 w-4.5 rounded-full ring-2 transition-transform hover:scale-105 ${isActive ? getStatusTone(status) : getStatusTone("pending")}`}
+                                className={`h-4 w-4 rounded-full ring-2 transition-transform hover:scale-105 ${isActive ? getStatusTone(status) : getStatusTone("pending")}`}
                               />
                             );
                           })}
@@ -2008,7 +2030,7 @@ export default function MerchQuantumApp() {
                               e.stopPropagation();
                               removePreviewItem(img.id);
                             }}
-                            className="inline-flex h-4.5 w-4.5 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-700 transition-colors hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                            className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[9px] font-semibold text-slate-700 transition-colors hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                           >
                             X
                           </button>
@@ -2092,12 +2114,12 @@ export default function MerchQuantumApp() {
           </div>
 
           <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-slate-800">
-          <div className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">Listing Detail</div>
           {!selectedImage ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">Select a batch item to review the larger artwork preview, final title, final description, and tags.</p>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-              <div className="space-y-3 p-1">
+            <div className="space-y-4">
+              <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+              <div className="space-y-3">
                 <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Uploaded Artwork</div>
                 <div className="flex h-72 items-center justify-center rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
                   {selectedImage.preview ? (
@@ -2130,7 +2152,7 @@ export default function MerchQuantumApp() {
                 ) : null}
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-3 pt-px">
                 <Field label="Final Title">
                   <Input
                     value={listingDetailDraft?.final || ""}
@@ -2150,7 +2172,10 @@ export default function MerchQuantumApp() {
                     }}
                   />
                 </Field>
+              </div>
+              </div>
 
+              <div className="space-y-3">
                 <Field label="Tags">
                   <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                     {(listingDetailDraft?.tags || []).map((tag, index) => (
