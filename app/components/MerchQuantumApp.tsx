@@ -1976,12 +1976,8 @@ export default function MerchQuantumApp() {
             </div>
           </div>
 
-          <div className="mt-3">
-            {sortedImages.length === 0 ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-12 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                No images loaded yet.
-              </div>
-            ) : (
+          {sortedImages.length > 0 ? (
+            <div className="mt-3">
               <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
                 {sortedImages.map((img, index) => {
                   const isSelected = selectedImage?.id === img.id;
@@ -2038,8 +2034,8 @@ export default function MerchQuantumApp() {
                   );
                 })}
               </div>
-            )}
-          </div>
+            </div>
+          ) : null}
           </div>
 
           <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-slate-800">
@@ -2174,8 +2170,9 @@ export default function MerchQuantumApp() {
               </div>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex justify-end">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Tags</div>
                   <button
                     type="button"
                     disabled={!hasListingChanges}
@@ -2186,26 +2183,24 @@ export default function MerchQuantumApp() {
                   </button>
                 </div>
 
-                <Field label="Tags">
-                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                    {(listingDetailDraft?.tags || []).map((tag, index) => (
-                      <Input
-                        key={`${selectedImage.id}-tag-${index}`}
-                        value={tag}
-                        placeholder={`Tag ${index + 1}`}
-                        className="min-h-[38px] px-2.5 py-1.5 text-sm"
-                        onChange={(e) =>
-                          setListingDetailDraft((current) => current
-                            ? {
-                                ...current,
-                                tags: current.tags.map((entry, tagIndex) => (tagIndex === index ? e.target.value : entry)),
-                              }
-                            : current)
-                        }
-                      />
-                    ))}
-                  </div>
-                </Field>
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {(listingDetailDraft?.tags || []).map((tag, index) => (
+                    <Input
+                      key={`${selectedImage.id}-tag-${index}`}
+                      value={tag}
+                      placeholder={`Tag ${index + 1}`}
+                      className="min-h-[38px] px-2.5 py-1.5 text-sm"
+                      onChange={(e) =>
+                        setListingDetailDraft((current) => current
+                          ? {
+                              ...current,
+                              tags: current.tags.map((entry, tagIndex) => (tagIndex === index ? e.target.value : entry)),
+                            }
+                          : current)
+                      }
+                    />
+                  ))}
+                </div>
               </div>
             </div>
           )}
