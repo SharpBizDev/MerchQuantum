@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
+import { publishHostedArtwork } from "../../../../lib/providers/artwork";
 import { ProviderError } from "../../../../lib/providers/errors";
 import { getProviderAdapter, getProviderEntry, isProviderId } from "../../../../lib/providers/registry";
 import { readActiveProviderId, readProviderCredentials } from "../../../../lib/providers/session";
@@ -55,6 +56,15 @@ export async function POST(req: NextRequest) {
     }
 
     const adapter = getProviderAdapter(providerId);
+    if (!adapter.capabilities.supportsStoreTemplateDraftFlow) {
+      throw new ProviderError({
+        providerId,
+        code: "unsupported_operation",
+        status: 501,
+        message: `${getProviderEntry(providerId)?.displayName || providerId} is not available through the current store/template draft workflow yet.`,
+      });
+    }
+
     const templateDetail = await adapter.getTemplateDetail({
       credentials,
       storeId: shopId,
@@ -64,12 +74,22 @@ export async function POST(req: NextRequest) {
     const results = [];
     for (const item of items) {
       try {
+        const hostedArtwork = adapter.capabilities.requiresHostedArtwork
+          ? await publishHostedArtwork({
+              providerId,
+              fileName: item.fileName,
+              imageDataUrl: item.imageDataUrl,
+              publicBaseUrl: req.nextUrl.origin,
+            })
+          : undefined;
+
         const created = await adapter.createDraftProduct({
           credentials,
           storeId: shopId,
           templateId: templateProductId,
           templateDetail,
           item,
+          hostedArtwork,
         });
 
         results.push({

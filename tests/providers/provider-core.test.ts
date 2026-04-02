@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
+import { publishHostedArtwork, readHostedArtwork } from "../../lib/providers/artwork";
 import { ProviderError, providerErrorFromResponse } from "../../lib/providers/errors";
 import { getProviderAdapter, getProviderEntry, isProviderId, listProviderEntries } from "../../lib/providers/registry";
 import { createProviderCredentials, readProviderCredentials, setProviderSession, clearProviderSession } from "../../lib/providers/session";
@@ -90,6 +94,27 @@ await run("provider activation options keep printify and printful live while lea
   assert.equal(gelato?.statusText, "Coming soon");
 });
 
+await run("provider capability expansion keeps live providers on draft/store flow and direct upload", () => {
+  const printify = createPrintifyAdapter();
+  const printful = createPrintfulAdapter();
+  const gelato = getProviderEntry("gelato");
+
+  assert.equal(printify.capabilities.supportsStoreTemplateDraftFlow, true);
+  assert.equal(printify.capabilities.supportsDirectUpload, true);
+  assert.equal(printify.capabilities.requiresHostedArtwork, false);
+  assert.equal(printify.capabilities.supportsOrderFirst, false);
+
+  assert.equal(printful.capabilities.supportsStoreTemplateDraftFlow, true);
+  assert.equal(printful.capabilities.supportsDirectUpload, true);
+  assert.equal(printful.capabilities.requiresHostedArtwork, false);
+  assert.equal(printful.capabilities.supportsOrderFirst, false);
+
+  assert.equal(gelato?.capabilities.requiresHostedArtwork, false);
+  assert.equal(gelato?.capabilities.supportsDirectUpload, false);
+  assert.equal(gelato?.capabilities.supportsOrderFirst, false);
+  assert.equal(gelato?.capabilities.supportsStoreTemplateDraftFlow, false);
+});
+
 await run("provider session helpers preserve active provider and legacy printify token compatibility", () => {
   const cookieStore = createCookieStore();
   const credentials = createProviderCredentials("  secret-token  ");
@@ -99,6 +124,38 @@ await run("provider session helpers preserve active provider and legacy printify
 
   clearProviderSession(cookieStore);
   assert.equal(readProviderCredentials(cookieStore, "printify"), null);
+});
+
+await run("hosted artwork bridge publishes and reloads normalized hosted references", async () => {
+  const storageDir = await fs.mkdtemp(path.join(os.tmpdir(), "mq-artwork-test-"));
+
+  try {
+    const hosted = await publishHostedArtwork({
+      providerId: "printify",
+      fileName: "art.png",
+      imageDataUrl: SAMPLE_PNG_DATA_URL,
+      publicBaseUrl: "https://example.com",
+      storageDir,
+    });
+
+    assert.equal(hosted.providerId, "printify");
+    assert.equal(hosted.fileName, "art.png");
+    assert.match(hosted.publicUrl, /^https:\/\/example\.com\/api\/providers\/artwork\//);
+    assert.equal(hosted.contentType, "image/png");
+    assert.ok(hosted.byteLength > 0);
+
+    const loaded = await readHostedArtwork(hosted.id, {
+      publicBaseUrl: "https://example.com",
+      storageDir,
+    });
+
+    assert.ok(loaded);
+    assert.equal(loaded?.checksum, hosted.checksum);
+    assert.equal(loaded?.contentType, "image/png");
+    assert.equal(loaded?.buffer.toString("base64"), SAMPLE_PNG_DATA_URL.split(",")[1]);
+  } finally {
+    await fs.rm(storageDir, { recursive: true, force: true });
+  }
 });
 
 await run("provider error normalization maps upstream status codes cleanly", async () => {

@@ -18,6 +18,10 @@ export type ProviderCapabilities = {
   supportsOrderOnly: boolean;
   supportsPublishStep: boolean;
   supportsMultiplePlacements: boolean;
+  requiresHostedArtwork: boolean;
+  supportsDirectUpload: boolean;
+  supportsOrderFirst: boolean;
+  supportsStoreTemplateDraftFlow: boolean;
 };
 
 export type ProviderCredentials = {
@@ -75,6 +79,18 @@ export type NormalizedArtworkUpload = {
   providerId: ProviderId;
 };
 
+export type HostedArtworkReference = {
+  id: string;
+  providerId: ProviderId;
+  fileName: string;
+  contentType: string;
+  byteLength: number;
+  checksum: string;
+  publicUrl: string;
+  createdAt: string;
+  expiresAt: string;
+};
+
 export type DraftProductItemInput = {
   fileName: string;
   title: string;
@@ -89,6 +105,7 @@ export type DraftProductInput = {
   templateId: string;
   item: DraftProductItemInput;
   templateDetail?: NormalizedTemplateDetail;
+  hostedArtwork?: HostedArtworkReference;
 };
 
 export type DraftProductResult = {
@@ -143,4 +160,8 @@ export const EMPTY_PROVIDER_CAPABILITIES: ProviderCapabilities = {
   supportsOrderOnly: false,
   supportsPublishStep: false,
   supportsMultiplePlacements: false,
+  requiresHostedArtwork: false,
+  supportsDirectUpload: false,
+  supportsOrderFirst: false,
+  supportsStoreTemplateDraftFlow: false,
 };

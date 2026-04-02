@@ -110,6 +110,10 @@ export const PRINTFUL_CAPABILITIES: ProviderCapabilities = {
   supportsOrderOnly: false,
   supportsPublishStep: false,
   supportsMultiplePlacements: false,
+  requiresHostedArtwork: false,
+  supportsDirectUpload: true,
+  supportsOrderFirst: false,
+  supportsStoreTemplateDraftFlow: true,
 };
 
 function extractDataUrlParts(dataUrl: string) {

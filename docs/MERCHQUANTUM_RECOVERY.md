@@ -155,6 +155,17 @@ Always separate these three realities before editing:
 - The connection, product loading, template detail, and draft-create requests now route through generic provider endpoints backed by the normalized provider registry.
 - Other providers remain gated until explicitly implemented and approved.
 
+## Provider foundation after the first blocked rollout wave
+- The frozen UI remains unchanged while provider-core foundation expands behind it.
+- A backend-only hosted artwork bridge now exists so future providers can consume normalized public artwork references without changing the locked frontend artwork flow.
+- The provider capability model now explicitly tracks:
+  - `requiresHostedArtwork`
+  - `supportsDirectUpload`
+  - `supportsOrderFirst`
+  - `supportsStoreTemplateDraftFlow`
+- Printify and Printful remain on the current store/template draft flow with direct upload support.
+- Future order-first providers should be added behind the provider-core layer without forcing storefront semantics into the UI before that flow is explicitly approved.
+
 ## Restart notes for the next Codex session
 1. Read `AGENTS.md` first and this file second.
 2. Treat the accepted frozen UI baseline above as the default no-regression state.
