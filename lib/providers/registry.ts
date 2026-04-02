@@ -1,5 +1,6 @@
 import { ProviderError } from "./errors";
 import type { ProviderAdapter } from "./contracts";
+import { createPrintfulAdapter, PRINTFUL_CAPABILITIES } from "./printful/adapter";
 import { createPrintifyAdapter, PRINTIFY_CAPABILITIES } from "./printify/adapter";
 import { EMPTY_PROVIDER_CAPABILITIES, type ProviderCapabilities, type ProviderId } from "./types";
 
@@ -19,7 +20,13 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderRegistryEntry> = {
     capabilities: PRINTIFY_CAPABILITIES,
     createAdapter: () => createPrintifyAdapter(),
   },
-  printful: { id: "printful", displayName: "Printful", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
+  printful: {
+    id: "printful",
+    displayName: "Printful",
+    implemented: true,
+    capabilities: PRINTFUL_CAPABILITIES,
+    createAdapter: () => createPrintfulAdapter(),
+  },
   gelato: { id: "gelato", displayName: "Gelato", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
   gooten: { id: "gooten", displayName: "Gooten", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
   apliiq: { id: "apliiq", displayName: "Apliiq", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },

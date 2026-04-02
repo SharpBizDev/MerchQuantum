@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { ProviderError, providerErrorFromResponse } from "../../lib/providers/errors";
 import { getProviderAdapter, getProviderEntry, isProviderId, listProviderEntries } from "../../lib/providers/registry";
 import { createProviderCredentials, readProviderCredentials, setProviderSession, clearProviderSession } from "../../lib/providers/session";
+import { createPrintfulAdapter } from "../../lib/providers/printful/adapter";
 import { createPrintifyAdapter } from "../../lib/providers/printify/adapter";
 
 const SAMPLE_PNG_DATA_URL =
@@ -66,9 +67,11 @@ await run("provider registry exposes printify and guards unsupported providers",
   assert.equal(isProviderId("printify"), true);
   assert.equal(isProviderId("unknown"), false);
   assert.equal(getProviderEntry("printify")?.implemented, true);
+  assert.equal(getProviderEntry("printful")?.implemented, true);
   assert.ok(listProviderEntries().some((entry) => entry.id === "printify"));
+  assert.ok(listProviderEntries().some((entry) => entry.id === "printful"));
 
-  assert.throws(() => getProviderAdapter("printful"), (error: unknown) => {
+  assert.throws(() => getProviderAdapter("gelato"), (error: unknown) => {
     assert.ok(error instanceof ProviderError);
     assert.equal(error.code, "unsupported_operation");
     return true;
@@ -269,6 +272,180 @@ await run("printify adapter creates a normalized draft product result", async ()
   assert.equal(result.productId, "draft-1");
   assert.equal(result.placementGuide?.position, "front");
   assert.match(calls[1].input, /\/shops\/shop-1\/products\.json$/);
+});
+
+await run("printful adapter connects and lists stores through the normalized contract", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    createResponse({ code: 200, result: [{ id: 21, name: "Manual API Store", type: "api" }] }, { status: 200 }),
+  ]);
+  const adapter = createPrintfulAdapter({ fetch: fetchFn });
+
+  const result = await adapter.connect({ credentials: { apiKey: "pf-token" } });
+
+  assert.equal(result.providerId, "printful");
+  assert.deepEqual(result.stores, [{ id: "21", name: "Manual API Store", salesChannel: "api" }]);
+  assert.match(calls[0].input, /\/stores$/);
+});
+
+await run("printful adapter lists store products as normalized provider sources", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    createResponse(
+      {
+        code: 200,
+        result: [{ id: 3001, name: "Legacy Tee" }],
+      },
+      { status: 200 }
+    ),
+  ]);
+  const adapter = createPrintfulAdapter({ fetch: fetchFn });
+
+  const products = await adapter.listTemplatesOrProducts({
+    credentials: { apiKey: "pf-token" },
+    storeId: "21",
+  });
+
+  assert.deepEqual(products, [
+    {
+      id: "3001",
+      storeId: "21",
+      title: "Legacy Tee",
+      type: "sync_product",
+    },
+  ]);
+  assert.equal((calls[0].init?.headers as Record<string, string>)["X-PF-Store-Id"], "21");
+});
+
+await run("printful adapter loads template detail and derives normalized placement guidance", async () => {
+  const { fetchFn } = createQueuedFetch([
+    createResponse(
+      {
+        code: 200,
+        result: {
+          sync_product: { id: 3001, name: "Legacy Tee" },
+          sync_variants: [
+            {
+              id: 9001,
+              variant_id: 4012,
+              retail_price: "24.99",
+              files: [{ type: "front", width: 1800, height: 2400 }],
+              product: {
+                id: 71,
+                placements: [{ placement: "front", display_name: "Front print" }],
+              },
+            },
+          ],
+        },
+      },
+      { status: 200 }
+    ),
+    createResponse(
+      {
+        code: 200,
+        result: {
+          available_placements: { front: "Front print" },
+          printfiles: [{ printfile_id: 1, width: 1800, height: 2400 }],
+          variant_printfiles: [{ variant_id: 4012, placements: { front: 1 } }],
+        },
+      },
+      { status: 200 }
+    ),
+  ]);
+  const adapter = createPrintfulAdapter({ fetch: fetchFn });
+
+  const detail = await adapter.getTemplateDetail({
+    credentials: { apiKey: "pf-token" },
+    storeId: "21",
+    sourceId: "3001",
+  });
+
+  assert.equal(detail.id, "3001");
+  assert.equal(detail.placementGuide.position, "front");
+  assert.equal(detail.placementGuide.width, 1800);
+  assert.equal(detail.placementGuide.source, "live");
+  assert.deepEqual(detail.metadata.placements, ["front"]);
+});
+
+await run("printful adapter normalizes artwork upload responses", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    (_input, init) => {
+      const payload = JSON.parse(String(init?.body));
+      assert.equal(payload.filename, "art.png");
+      assert.ok(payload.data.startsWith("data:image/png;base64,"));
+      return createResponse({ code: 200, result: { id: 777, filename: "art.png", preview_url: "https://files.example/art.png" } }, { status: 200 });
+    },
+  ]);
+  const adapter = createPrintfulAdapter({ fetch: fetchFn });
+
+  const upload = await adapter.uploadArtwork({
+    credentials: { apiKey: "pf-token" },
+    fileName: "art.png",
+    imageDataUrl: SAMPLE_PNG_DATA_URL,
+  });
+
+  assert.equal(upload.id, "777");
+  assert.equal(upload.fileName, "art.png");
+  assert.equal(upload.providerId, "printful");
+  assert.match(calls[0].input, /\/files$/);
+});
+
+await run("printful adapter creates a normalized manual-api draft product result", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    createResponse({ code: 200, result: { id: 777, filename: "art.png" } }, { status: 200 }),
+    (_input, init) => {
+      const payload = JSON.parse(String(init?.body));
+      assert.equal(payload.sync_product.name, "Printful Draft");
+      assert.equal(payload.sync_variants.length, 1);
+      assert.equal(payload.sync_variants[0].variant_id, 4012);
+      assert.equal(payload.sync_variants[0].files[0].id, "777");
+      assert.equal(payload.sync_variants[0].files[0].type, "front");
+      return createResponse({ code: 200, result: { id: 9991 } }, { status: 200 });
+    },
+  ]);
+  const adapter = createPrintfulAdapter({ fetch: fetchFn });
+
+  const result = await adapter.createDraftProduct({
+    credentials: { apiKey: "pf-token" },
+    storeId: "21",
+    templateId: "3001",
+    templateDetail: {
+      id: "3001",
+      storeId: "21",
+      title: "Legacy Tee",
+      description: "Manual/API store product with 1 variant.",
+      placementGuide: {
+        position: "front",
+        width: 1800,
+        height: 2400,
+        source: "live",
+      },
+      metadata: {
+        rawTemplate: {
+          sync_product: { id: 3001, name: "Legacy Tee" },
+          sync_variants: [
+            {
+              id: 9001,
+              variant_id: 4012,
+              retail_price: "24.99",
+              options: [{ id: "stitch" }],
+              files: [{ type: "front" }],
+            },
+          ],
+        },
+      },
+    },
+    item: {
+      fileName: "art.png",
+      title: "Printful Draft",
+      description: "Ignored upstream description",
+      tags: ["one", "two"],
+      imageDataUrl: SAMPLE_PNG_DATA_URL,
+    },
+  });
+
+  assert.equal(result.providerId, "printful");
+  assert.equal(result.productId, "9991");
+  assert.equal(result.placementGuide?.position, "front");
+  assert.match(calls[1].input, /\/store\/products$/);
 });
 
   console.log("provider-core tests passed");

@@ -124,10 +124,30 @@ Always separate these three realities before editing:
   - provider error normalization
   - provider session helpers
   - provider registry
-  - Printify as the only implemented reference adapter path
+  - Printify as the first implemented reference adapter path
 - Do not redesign the UI as part of provider-core work.
 - Do not implement additional providers in Phase 0.
 - Provider differences belong behind the adapter layer, not in the locked frontend workflow.
+
+## Provider architecture Phase 0.5
+- Printful is now the second implemented provider path behind the normalized provider-core layer.
+- This pass is limited to Printful Manual/API stores only.
+- Ecommerce-platform sync store support is still a separate future integration track and is not part of the locked baseline.
+- The frontend workflow remains frozen; provider differences continue to live behind the adapter layer.
+- Current Printful adapter scope:
+  - bearer-token validation through store discovery
+  - store listing
+  - store product listing as normalized selectable provider sources
+  - single product detail normalization with placement/file/pricing hints when available
+  - file library artwork upload path
+  - Manual/API sync-product draft creation path
+- Current Printful capability choices:
+  - stores: yes
+  - templates: no dedicated product-template API wiring in the locked frontend path yet
+  - product drafts: yes
+  - mockups/preview: not implemented in this pass
+  - publish step: not implemented in this pass
+  - multiple placements: not enabled in this pass
 
 ## Restart notes for the next Codex session
 1. Read `AGENTS.md` first and this file second.
