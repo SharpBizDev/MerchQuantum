@@ -1033,15 +1033,18 @@ async function parseResponsePayload(response: Response) {
   return { error: text || `Request failed with status ${response.status}.` };
 }
 
-function Box({ title, actions, children }: { title: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode }) {
+function Box({ title, actions, children }: { title?: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode }) {
+  const showHeader = !!title || !!actions;
   return (
     <div className="rounded-2xl border border-slate-200/90 bg-white/95 p-5 shadow-sm shadow-slate-200/60 transition-colors dark:border-slate-800 dark:bg-slate-950">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-[1.05rem] font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-          {title}
-        </h2>
-        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
-      </div>
+      {showHeader ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-[1.05rem] font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+            {title}
+          </h2>
+          {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+        </div>
+      ) : null}
       {children}
     </div>
   );
@@ -1178,6 +1181,9 @@ function getStatusTone(status: ReviewStatus) {
 
 function htmlToEditableText(html: string) {
   return stripHtml(html)
+    .split("\n")
+    .map((line) => line.replace(/^[\s\u00a0]+/g, ""))
+    .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -1806,7 +1812,7 @@ export default function MerchQuantumApp() {
           title={
             <span className="inline-flex items-center font-semibold tracking-tight">
               <span className="font-semibold text-violet-600">Quantum </span>
-              <span className={`font-semibold ${connected ? `text-emerald-500 ${pulseConnected ? "animate-pulse" : ""}` : "text-slate-900 dark:text-slate-100"}`}>
+              <span className={`font-semibold ${connected ? `text-emerald-400 ${pulseConnected ? "animate-pulse" : ""}` : "text-slate-900 dark:text-slate-100"}`}>
                 {connected ? "Connection" : "Connection"}
               </span>
             </span>
@@ -1864,7 +1870,7 @@ export default function MerchQuantumApp() {
           {apiStatus ? <p className="mt-3 text-sm text-amber-700 dark:text-amber-400">{apiStatus}</p> : null}
         </Box>
 
-        <Box title="Batch Setup">
+        <Box>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -1955,48 +1961,19 @@ export default function MerchQuantumApp() {
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click Add Images</div>
+                <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click <span className="text-violet-600 dark:text-violet-400">Add Images</span></div>
                 <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. The app builds final titles and lead copy automatically, then flags anything that needs a quick review.</div>
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-400">
                 {images.length}/{MAX_BATCH_FILES} loaded · {readyCount} ready · {reviewCount} needs review · {errorCount} errors
               </div>
             </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                className="!bg-violet-600 !text-white hover:!bg-violet-500 dark:!bg-violet-600 dark:hover:!bg-violet-500"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  fileRef.current?.click();
-                }}
-              >
-                Add Images
-              </Button>
-              <Button
-                type="button"
-                disabled={!images.length}
-                className="!bg-violet-600 !text-white hover:!bg-violet-500 dark:!bg-violet-600 dark:hover:!bg-violet-500"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setImages([]);
-                  setSelectedId("");
-                  setMessage("");
-                  setBatchResults([]);
-                  setRunStatus("");
-                }}
-              >
-                Clear All
-              </Button>
-            </div>
           </div>
 
           {imageConfirmation ? <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{imageConfirmation}</p> : null}
-        </Box>
-
-        <Box title="Batch Preview">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900/70">
+          
+          <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-slate-800">
+          <div className="px-0.5 py-1">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
                 <div className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
@@ -2016,19 +1993,32 @@ export default function MerchQuantumApp() {
                   X = Remove
                 </div>
               </div>
-              <Button
-                variant="secondary"
+              <span
+                role="button"
+                tabIndex={images.length ? 0 : -1}
                 onClick={() => {
+                  if (!images.length) return;
                   setImages([]);
                   setSelectedId("");
                   setMessage("");
                   setBatchResults([]);
                   setRunStatus("");
                 }}
-                disabled={!images.length}
+                onKeyDown={(e) => {
+                  if (!images.length) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setImages([]);
+                    setSelectedId("");
+                    setMessage("");
+                    setBatchResults([]);
+                    setRunStatus("");
+                  }
+                }}
+                className={`text-sm font-medium transition-colors ${images.length ? "cursor-pointer text-slate-500 hover:text-violet-600 dark:text-slate-400 dark:hover:text-violet-400" : "cursor-default text-slate-400 opacity-40 dark:text-slate-600"}`}
               >
                 Clear All
-              </Button>
+              </span>
             </div>
           </div>
 
@@ -2039,8 +2029,10 @@ export default function MerchQuantumApp() {
               </div>
             ) : (
               <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
-                {sortedImages.map((img) => {
+                {sortedImages.map((img, index) => {
                   const isSelected = selectedImage?.id === img.id;
+                  const previewAlignRight = (index + 1) % 10 === 0 || (index + 1) % 10 === 9;
+                  const previewOpenUp = sortedImages.length - index <= 10;
                   return (
                     <div
                       key={img.id}
@@ -2052,7 +2044,7 @@ export default function MerchQuantumApp() {
                           <div className="group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-1.5 dark:border-slate-800 dark:bg-slate-900">
                             {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
                             {img.preview ? (
-                              <div className="pointer-events-none absolute left-0 top-0 z-20 hidden w-40 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950">
+                              <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950 ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
                                 <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
                               </div>
                             ) : null}
@@ -2094,14 +2086,15 @@ export default function MerchQuantumApp() {
               </div>
             )}
           </div>
-        </Box>
+          </div>
 
-        <Box title="Listing Detail">
+          <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-slate-800">
+          <div className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">Listing Detail</div>
           {!selectedImage ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">Select a batch item to review the larger artwork preview, final title, final description, and tags.</p>
           ) : (
             <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+              <div className="space-y-3 p-1">
                 <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Uploaded Artwork</div>
                 <div className="flex h-72 items-center justify-center rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
                   {selectedImage.preview ? (
@@ -2162,6 +2155,7 @@ export default function MerchQuantumApp() {
                         key={`${selectedImage.id}-tag-${index}`}
                         value={tag}
                         placeholder={`Tag ${index + 1}`}
+                        className="min-h-[38px] px-2.5 py-1.5 text-sm"
                         onChange={(e) =>
                           setListingDetailDraft((current) => current
                             ? {
@@ -2185,6 +2179,7 @@ export default function MerchQuantumApp() {
               </div>
             </div>
           )}
+          </div>
         </Box>
       </div>
     </div>
