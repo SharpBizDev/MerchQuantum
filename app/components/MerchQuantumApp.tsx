@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 const APP_TAGLINE = "Bulk product creation, simplified";
 const MAX_BATCH_FILES = 50;
 const FIXED_TAG_COUNT = 13;
+const OPTIONAL_TAG_COUNT = 2;
 
 type ProviderId =
   | "printify"
@@ -71,6 +72,7 @@ type Img = {
   final: string;
   finalDescription: string;
   tags: string[];
+  customTags: string[];
   status: ReviewStatus;
   statusReason: string;
   aiProcessing?: boolean;
@@ -84,6 +86,7 @@ type ListingDetailDraft = {
   final: string;
   finalDescription: string;
   tags: string[];
+  customTags: string[];
 };
 
 type Template = {
@@ -1270,12 +1273,22 @@ export default function MerchQuantumApp() {
     () => images.find((img) => img.id === selectedId) || sortedImages[0] || null,
     [images, selectedId, sortedImages]
   );
+  const selectedCustomTags = selectedImage?.customTags?.length
+    ? [...selectedImage.customTags, ...Array(OPTIONAL_TAG_COUNT).fill("")].slice(0, OPTIONAL_TAG_COUNT)
+    : Array(OPTIONAL_TAG_COUNT).fill("");
 
   const readyCount = images.filter((img) => img.status === "ready").length;
   const reviewCount = images.filter((img) => img.status === "review").length;
   const errorCount = images.filter((img) => img.status === "error").length;
   const processingCount = images.filter((img) => img.status === "pending" || img.aiProcessing).length;
   const uploadDisabled = !connected || !template || images.length === 0 || isRunningBatch || processingCount > 0;
+  const guidanceStep = !connected
+    ? "connect"
+    : images.length === 0
+      ? "import"
+      : !shopId || !source || !template
+        ? "template"
+        : "settled";
   const hasListingChanges = !!(
     selectedImage &&
     listingDetailDraft &&
@@ -1283,7 +1296,9 @@ export default function MerchQuantumApp() {
       selectedImage.final !== listingDetailDraft.final ||
       selectedImage.finalDescription !== listingDetailDraft.finalDescription ||
       selectedImage.tags.length !== listingDetailDraft.tags.length ||
-      selectedImage.tags.some((tag, index) => tag !== listingDetailDraft.tags[index])
+      selectedImage.tags.some((tag, index) => tag !== listingDetailDraft.tags[index]) ||
+      selectedCustomTags.length !== listingDetailDraft.customTags.length ||
+      listingDetailDraft.customTags.some((tag, index) => tag !== selectedCustomTags[index])
     )
   );
   const templateConfirmation = template ? `Selected template: ${template.nickname}` : "";
@@ -1321,8 +1336,9 @@ export default function MerchQuantumApp() {
       final: selectedImage.final,
       finalDescription: selectedImage.finalDescription,
       tags: [...selectedImage.tags],
+      customTags: [...selectedCustomTags],
     });
-  }, [selectedImage]);
+  }, [selectedCustomTags, selectedImage]);
 
   useEffect(() => {
     if (!selectedImage || selectedImage.artworkBounds) return;
@@ -1447,6 +1463,7 @@ export default function MerchQuantumApp() {
                   final: finalTitle,
                   finalDescription,
                   tags,
+                  customTags: img.customTags || Array(OPTIONAL_TAG_COUNT).fill(""),
                   aiProcessing: false,
                   status,
                   statusReason,
@@ -1478,6 +1495,7 @@ export default function MerchQuantumApp() {
                   final: fallbackTitle,
                   finalDescription: fallbackDescription,
                   tags: buildTags(fallbackTitle, fallbackDescription, FIXED_TAG_COUNT),
+                  customTags: img.customTags || Array(OPTIONAL_TAG_COUNT).fill(""),
                   aiProcessing: false,
                   status: "review",
                   statusReason: message,
@@ -1528,6 +1546,7 @@ export default function MerchQuantumApp() {
         final: cleaned,
         finalDescription: leadDescription,
         tags: buildTags(cleaned, leadDescription, FIXED_TAG_COUNT),
+        customTags: Array(OPTIONAL_TAG_COUNT).fill(""),
         status: "pending" as ReviewStatus,
         statusReason: "Quantum AI is preparing listing copy.",
       } satisfies Img;
@@ -1800,6 +1819,7 @@ export default function MerchQuantumApp() {
               final: safeTitle(listingDetailDraft.final, entry.cleaned),
               finalDescription: listingDetailDraft.finalDescription,
               tags: listingDetailDraft.tags,
+              customTags: listingDetailDraft.customTags,
             }
           : entry
       )
@@ -1821,7 +1841,7 @@ export default function MerchQuantumApp() {
         </div>
 
         <Box
-          className="relative overflow-hidden border-slate-900/90 bg-slate-950 text-white shadow-[0_28px_80px_-40px_rgba(15,23,42,0.9)] dark:border-slate-800"
+          className={`relative overflow-hidden border-slate-900/90 bg-slate-950 text-white shadow-[0_28px_80px_-40px_rgba(15,23,42,0.9)] dark:border-slate-800 ${guidanceStep === "connect" ? "ring-1 ring-violet-500/40 shadow-[0_28px_90px_-40px_rgba(124,58,237,0.45)]" : connected ? "ring-1 ring-emerald-500/30" : ""}`}
           headerClassName="mb-5"
           title={
             <span className="inline-flex items-center font-semibold tracking-tight">
@@ -1834,10 +1854,10 @@ export default function MerchQuantumApp() {
           }
         >
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-500/70 to-transparent" />
-          <div className="pointer-events-none absolute -right-20 top-0 h-48 w-48 rounded-full bg-violet-500/12 blur-3xl" />
+          <div className={`pointer-events-none absolute -right-20 top-0 h-48 w-48 rounded-full blur-3xl transition-all duration-700 ${connected ? "bg-emerald-500/12" : "bg-violet-500/12"} ${guidanceStep === "connect" ? "animate-pulse" : ""}`} />
           <div className="pointer-events-none absolute -left-12 bottom-0 h-32 w-32 rounded-full bg-white/5 blur-3xl" />
           <div
-            className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-emerald-400/90 to-transparent" : "bg-gradient-to-r from-transparent via-violet-500/70 to-transparent"} ${pulseConnected ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
+            className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-emerald-400/90 to-transparent" : "bg-gradient-to-r from-transparent via-violet-500/70 to-transparent"} ${pulseConnected || guidanceStep === "connect" ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
           />
           <div className="grid gap-3 md:grid-cols-2">
             <Select
@@ -1911,8 +1931,9 @@ export default function MerchQuantumApp() {
               void addFiles(e.dataTransfer.files);
             }}
             onClick={() => fileRef.current?.click()}
-            className="cursor-pointer rounded-[22px] border border-dashed border-slate-300/90 bg-slate-50/90 px-4 py-3.5 text-sm text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/55 dark:text-slate-300 dark:hover:bg-slate-900"
+            className={`cursor-pointer rounded-[22px] border border-dashed px-4 py-3.5 text-sm text-slate-600 transition-all duration-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900 ${guidanceStep === "import" ? "border-violet-400/80 bg-violet-50/70 shadow-[0_0_0_1px_rgba(124,58,237,0.16),0_18px_50px_-30px_rgba(124,58,237,0.45)] dark:border-violet-500/60 dark:bg-violet-950/20" : "border-slate-300/90 bg-slate-50/90 dark:border-slate-700 dark:bg-slate-900/55"} ${connected && images.length > 0 ? "ring-1 ring-emerald-400/20" : ""}`}
           >
+            {guidanceStep === "import" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
             <div className="space-y-1">
               <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click <span className="text-violet-600 dark:text-violet-400">Add Images</span></div>
               <div className="text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. It generates listing copy automatically and flags anything that needs review.</div>
@@ -2036,7 +2057,8 @@ export default function MerchQuantumApp() {
           </div>
 
           <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-slate-800">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+          <div className={`relative grid gap-3 rounded-xl transition-all duration-500 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] ${guidanceStep === "template" ? "border border-violet-200/80 bg-violet-50/50 p-3 shadow-[0_18px_50px_-32px_rgba(124,58,237,0.35)] dark:border-violet-500/30 dark:bg-violet-950/15" : ""}`}>
+            {guidanceStep === "template" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <Select
@@ -2109,10 +2131,10 @@ export default function MerchQuantumApp() {
             <p className="text-sm text-slate-500 dark:text-slate-400">Select a batch item to review the larger artwork preview, final title, final description, and tags.</p>
           ) : (
             <div className="space-y-4">
-              <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+              <div className="grid gap-4 lg:grid-cols-[296px_minmax(0,1fr)]">
               <div className="space-y-3">
                 <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Uploaded Artwork</div>
-                <div className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+                <div className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white p-4 lg:h-[19rem] dark:border-slate-800 dark:bg-slate-950">
                   {selectedImage.preview ? (
                     <img src={selectedImage.preview} alt={selectedImage.final} className="max-h-full max-w-full object-contain" />
                   ) : null}
@@ -2156,7 +2178,7 @@ export default function MerchQuantumApp() {
 
                 <Field label="Final Description">
                   <Textarea
-                    rows={12}
+                    rows={11}
                     value={htmlToEditableText(listingDetailDraft?.finalDescription || "")}
                     onChange={(e) => {
                       const html = editableTextToHtml(e.target.value);
@@ -2192,6 +2214,22 @@ export default function MerchQuantumApp() {
                           ? {
                               ...current,
                               tags: current.tags.map((entry, tagIndex) => (tagIndex === index ? e.target.value : entry)),
+                            }
+                          : current)
+                      }
+                    />
+                  ))}
+                  {(listingDetailDraft?.customTags || Array(OPTIONAL_TAG_COUNT).fill("")).map((tag, index) => (
+                    <Input
+                      key={`${selectedImage.id}-custom-tag-${index}`}
+                      value={tag}
+                      placeholder="Custom Tag"
+                      className="min-h-[38px] px-2.5 py-1.5 text-sm"
+                      onChange={(e) =>
+                        setListingDetailDraft((current) => current
+                          ? {
+                              ...current,
+                              customTags: current.customTags.map((entry, tagIndex) => (tagIndex === index ? e.target.value : entry)),
                             }
                           : current)
                       }
