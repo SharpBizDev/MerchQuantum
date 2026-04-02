@@ -2111,7 +2111,7 @@ export default function MerchQuantumApp() {
                 </Field>
 
                 <Field label="Final Description">
-                  <div className="min-h-[260px] whitespace-pre-wrap rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                  <div className="min-h-[316px] whitespace-pre-wrap rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
                     {htmlToEditableText(selectedImage.finalDescription || "")}
                   </div>
                 </Field>
