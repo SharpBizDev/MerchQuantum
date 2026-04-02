@@ -5,7 +5,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 const APP_TAGLINE = "Bulk product creation, simplified";
 const MAX_BATCH_FILES = 50;
 const FIXED_TAG_COUNT = 13;
-const OPTIONAL_TAG_COUNT = 2;
 
 type ProviderId =
   | "printify"
@@ -72,21 +71,12 @@ type Img = {
   final: string;
   finalDescription: string;
   tags: string[];
-  customTags: string[];
   status: ReviewStatus;
   statusReason: string;
   aiProcessing?: boolean;
   processedTemplateKey?: string;
   artworkBounds?: ArtworkBounds;
   aiDraft?: AiListingDraft;
-};
-
-type ListingDetailDraft = {
-  id: string;
-  final: string;
-  finalDescription: string;
-  tags: string[];
-  customTags: string[];
 };
 
 type Template = {
@@ -1244,7 +1234,6 @@ export default function MerchQuantumApp() {
   const [runStatus, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
-  const [listingDetailDraft, setListingDetailDraft] = useState<ListingDetailDraft | null>(null);
 
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
   const isLiveProvider = selectedProvider?.isLive || false;
@@ -1273,10 +1262,6 @@ export default function MerchQuantumApp() {
     () => images.find((img) => img.id === selectedId) || sortedImages[0] || null,
     [images, selectedId, sortedImages]
   );
-  const selectedCustomTags = selectedImage?.customTags?.length
-    ? [...selectedImage.customTags, ...Array(OPTIONAL_TAG_COUNT).fill("")].slice(0, OPTIONAL_TAG_COUNT)
-    : Array(OPTIONAL_TAG_COUNT).fill("");
-
   const readyCount = images.filter((img) => img.status === "ready").length;
   const reviewCount = images.filter((img) => img.status === "review").length;
   const errorCount = images.filter((img) => img.status === "error").length;
@@ -1289,18 +1274,6 @@ export default function MerchQuantumApp() {
       : !shopId || !source || !template
         ? "template"
         : "settled";
-  const hasListingChanges = !!(
-    selectedImage &&
-    listingDetailDraft &&
-    (
-      selectedImage.final !== listingDetailDraft.final ||
-      selectedImage.finalDescription !== listingDetailDraft.finalDescription ||
-      selectedImage.tags.length !== listingDetailDraft.tags.length ||
-      selectedImage.tags.some((tag, index) => tag !== listingDetailDraft.tags[index]) ||
-      selectedCustomTags.length !== listingDetailDraft.customTags.length ||
-      listingDetailDraft.customTags.some((tag, index) => tag !== selectedCustomTags[index])
-    )
-  );
   const templateConfirmation = template ? `Selected template: ${template.nickname}` : "";
   const skippedCount = Array.from(message.matchAll(/Skipped (\d+)/g)).reduce((total, [, count]) => total + Number(count || 0), 0);
 
@@ -1324,21 +1297,6 @@ export default function MerchQuantumApp() {
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (!selectedImage) {
-      setListingDetailDraft(null);
-      return;
-    }
-
-    setListingDetailDraft({
-      id: selectedImage.id,
-      final: selectedImage.final,
-      finalDescription: selectedImage.finalDescription,
-      tags: [...selectedImage.tags],
-      customTags: [...selectedCustomTags],
-    });
-  }, [selectedCustomTags, selectedImage]);
 
   useEffect(() => {
     if (!selectedImage || selectedImage.artworkBounds) return;
@@ -1463,7 +1421,6 @@ export default function MerchQuantumApp() {
                   final: finalTitle,
                   finalDescription,
                   tags,
-                  customTags: img.customTags || Array(OPTIONAL_TAG_COUNT).fill(""),
                   aiProcessing: false,
                   status,
                   statusReason,
@@ -1495,7 +1452,6 @@ export default function MerchQuantumApp() {
                   final: fallbackTitle,
                   finalDescription: fallbackDescription,
                   tags: buildTags(fallbackTitle, fallbackDescription, FIXED_TAG_COUNT),
-                  customTags: img.customTags || Array(OPTIONAL_TAG_COUNT).fill(""),
                   aiProcessing: false,
                   status: "review",
                   statusReason: message,
@@ -1546,7 +1502,6 @@ export default function MerchQuantumApp() {
         final: cleaned,
         finalDescription: leadDescription,
         tags: buildTags(cleaned, leadDescription, FIXED_TAG_COUNT),
-        customTags: Array(OPTIONAL_TAG_COUNT).fill(""),
         status: "pending" as ReviewStatus,
         statusReason: "Quantum AI is preparing listing copy.",
       } satisfies Img;
@@ -1806,24 +1761,6 @@ export default function MerchQuantumApp() {
       if (selectedId === targetId) setSelectedId(next[0]?.id || "");
       return next;
     });
-  }
-
-  function saveListingDetailEdits() {
-    if (!selectedImage || !listingDetailDraft || listingDetailDraft.id !== selectedImage.id || !hasListingChanges) return;
-
-    setImages((current) =>
-      current.map((entry) =>
-        entry.id === selectedImage.id
-          ? {
-              ...entry,
-              final: safeTitle(listingDetailDraft.final, entry.cleaned),
-              finalDescription: listingDetailDraft.finalDescription,
-              tags: listingDetailDraft.tags,
-              customTags: listingDetailDraft.customTags,
-            }
-          : entry
-      )
-    );
   }
 
   return (
@@ -2168,72 +2105,30 @@ export default function MerchQuantumApp() {
 
               <div className="space-y-3 pt-px">
                 <Field label="Final Title">
-                  <Input
-                    value={listingDetailDraft?.final || ""}
-                    onChange={(e) =>
-                      setListingDetailDraft((current) => current ? { ...current, final: e.target.value } : current)
-                    }
-                  />
+                  <div className="min-h-[44px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                    {selectedImage.final}
+                  </div>
                 </Field>
 
                 <Field label="Final Description">
-                  <Textarea
-                    rows={11}
-                    value={htmlToEditableText(listingDetailDraft?.finalDescription || "")}
-                    onChange={(e) => {
-                      const html = editableTextToHtml(e.target.value);
-                      setListingDetailDraft((current) => current ? { ...current, finalDescription: html } : current);
-                    }}
-                  />
+                  <div className="min-h-[260px] whitespace-pre-wrap rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                    {htmlToEditableText(selectedImage.finalDescription || "")}
+                  </div>
                 </Field>
               </div>
               </div>
 
               <div className="space-y-2.5">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">Tags</div>
-                  <button
-                    type="button"
-                    onClick={saveListingDetailEdits}
-                    aria-disabled={!hasListingChanges}
-                    className={`text-sm font-medium tracking-tight transition-colors ${hasListingChanges ? "cursor-pointer text-violet-600 hover:text-violet-500 dark:text-violet-400 dark:hover:text-violet-300" : "cursor-pointer text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"}`}
-                  >
-                    Save Changes
-                  </button>
-                </div>
+                <div className="text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">Tags</div>
 
                 <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  {(listingDetailDraft?.tags || []).map((tag, index) => (
-                    <Input
+                  {(selectedImage.tags || []).map((tag, index) => (
+                    <div
                       key={`${selectedImage.id}-tag-${index}`}
-                      value={tag}
-                      placeholder={`Tag ${index + 1}`}
-                      className="min-h-[38px] px-2.5 py-1.5 text-sm"
-                      onChange={(e) =>
-                        setListingDetailDraft((current) => current
-                          ? {
-                              ...current,
-                              tags: current.tags.map((entry, tagIndex) => (tagIndex === index ? e.target.value : entry)),
-                            }
-                          : current)
-                      }
-                    />
-                  ))}
-                  {(listingDetailDraft?.customTags || Array(OPTIONAL_TAG_COUNT).fill("")).map((tag, index) => (
-                    <Input
-                      key={`${selectedImage.id}-custom-tag-${index}`}
-                      value={tag}
-                      placeholder="Custom Tag"
-                      className="min-h-[38px] px-2.5 py-1.5 text-sm"
-                      onChange={(e) =>
-                        setListingDetailDraft((current) => current
-                          ? {
-                              ...current,
-                              customTags: current.customTags.map((entry, tagIndex) => (tagIndex === index ? e.target.value : entry)),
-                            }
-                          : current)
-                      }
-                    />
+                      className="min-h-[38px] rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    >
+                      {tag}
+                    </div>
                   ))}
                 </div>
               </div>
