@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { PROVIDER_OPTIONS } from "../../lib/providers/client-options";
 
 const APP_TAGLINE = "Bulk product creation, simplified";
 const MAX_BATCH_FILES = 50;
@@ -120,24 +121,7 @@ type BatchResult = {
   message: string;
 };
 
-type ProviderOption = {
-  id: ProviderId;
-  label: string;
-  isLive: boolean;
-  statusText?: string;
-};
-
-const PROVIDERS: ProviderOption[] = [
-  { id: "printify", label: "Printify", isLive: true },
-  { id: "printful", label: "Printful", isLive: false, statusText: "Coming soon" },
-  { id: "gelato", label: "Gelato", isLive: false, statusText: "Coming soon" },
-  { id: "gooten", label: "Gooten", isLive: false, statusText: "Coming soon" },
-  { id: "apliiq", label: "Apliiq", isLive: false, statusText: "Coming soon" },
-  { id: "spod", label: "SPOD / Spreadconnect", isLive: false, statusText: "Coming soon" },
-  { id: "prodigi", label: "Prodigi", isLive: false, statusText: "Coming soon" },
-  { id: "lulu_direct", label: "Lulu Direct", isLive: false, statusText: "Coming soon" },
-  { id: "tshirtgang", label: "Tshirtgang", isLive: false, statusText: "Coming soon" },
-];
+const PROVIDERS = PROVIDER_OPTIONS;
 
 const FALLBACK_SHOPS: Shop[] = [
   { id: "451293", title: "Primary Printify Shop" },
@@ -1277,6 +1261,10 @@ export default function MerchQuantumApp() {
   const templateConfirmation = template ? `Selected template: ${template.nickname}` : "";
   const skippedCount = Array.from(message.matchAll(/Skipped (\d+)/g)).reduce((total, [, count]) => total + Number(count || 0), 0);
 
+  function getProviderRoute(path: "connect" | "disconnect" | "products" | "product" | "batch-create") {
+    return `/api/providers/${path}`;
+  }
+
   useEffect(() => {
     const previous = previousPreviewUrlsRef.current;
     const current = images.map((img) => img.preview);
@@ -1529,7 +1517,9 @@ export default function MerchQuantumApp() {
 
     setLoadingProducts(true);
     try {
-      const response = await fetchWithTimeout(`/api/printify/products?shopId=${encodeURIComponent(nextShopId)}`);
+      const response = await fetchWithTimeout(
+        `${getProviderRoute("products")}?provider=${encodeURIComponent(provider)}&shopId=${encodeURIComponent(nextShopId)}`
+      );
       const data = await parseResponsePayload(response);
       if (!response.ok) throw new Error(data?.error || `Products request failed with status ${response.status}.`);
 
@@ -1560,10 +1550,10 @@ export default function MerchQuantumApp() {
     setApiStatus("");
 
     try {
-      const response = await fetchWithTimeout("/api/printify/connect", {
+      const response = await fetchWithTimeout(getProviderRoute("connect"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ provider, token }),
       });
 
       const data = await parseResponsePayload(response);
@@ -1591,7 +1581,7 @@ export default function MerchQuantumApp() {
 
   async function disconnectPrintify() {
     try {
-      await fetchWithTimeout("/api/printify/disconnect", { method: "POST" });
+      await fetchWithTimeout(getProviderRoute("disconnect"), { method: "POST" });
     } catch {
       // local reset only
     } finally {
@@ -1606,7 +1596,9 @@ export default function MerchQuantumApp() {
     if (!fallback || !shopId) return;
 
     try {
-      const response = await fetchWithTimeout(`/api/printify/product?shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(nextProductId)}`);
+      const response = await fetchWithTimeout(
+        `${getProviderRoute("product")}?provider=${encodeURIComponent(provider)}&shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(nextProductId)}`
+      );
       const data = await parseResponsePayload(response);
       if (!response.ok) throw new Error(data?.error || `Product request failed with status ${response.status}.`);
 
@@ -1617,7 +1609,7 @@ export default function MerchQuantumApp() {
       const base = formatTemplateDescription(
         chosen?.description?.trim() ||
           fallback.description?.trim() ||
-          `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`
+          `${title}. This is the base description from your saved template. Live product descriptions from ${selectedProvider?.label || "the provider"} will replace this placeholder after API wiring.`
       );
       const nextPlacementGuide = responseData.placementGuide || template?.placementGuide || DEFAULT_PLACEMENT_GUIDE;
 
@@ -1695,10 +1687,11 @@ export default function MerchQuantumApp() {
             setImages((current) => current.map((entry) => (entry.id === img.id ? { ...entry, artworkBounds } : entry)));
           }
 
-          const response = await fetchWithTimeout("/api/printify/batch-create", {
+          const response = await fetchWithTimeout(getProviderRoute("batch-create"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              provider,
               shopId,
               templateProductId: template.reference,
               item: {

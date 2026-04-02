@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { ProviderError, providerErrorFromResponse } from "../../lib/providers/errors";
 import { getProviderAdapter, getProviderEntry, isProviderId, listProviderEntries } from "../../lib/providers/registry";
 import { createProviderCredentials, readProviderCredentials, setProviderSession, clearProviderSession } from "../../lib/providers/session";
+import { PROVIDER_OPTIONS } from "../../lib/providers/client-options";
 import { createPrintfulAdapter } from "../../lib/providers/printful/adapter";
 import { createPrintifyAdapter } from "../../lib/providers/printify/adapter";
 
@@ -76,6 +77,17 @@ await run("provider registry exposes printify and guards unsupported providers",
     assert.equal(error.code, "unsupported_operation");
     return true;
   });
+});
+
+await run("provider activation options keep printify and printful live while leaving others gated", () => {
+  const printify = PROVIDER_OPTIONS.find((provider) => provider.id === "printify");
+  const printful = PROVIDER_OPTIONS.find((provider) => provider.id === "printful");
+  const gelato = PROVIDER_OPTIONS.find((provider) => provider.id === "gelato");
+
+  assert.equal(printify?.isLive, true);
+  assert.equal(printful?.isLive, true);
+  assert.equal(gelato?.isLive, false);
+  assert.equal(gelato?.statusText, "Coming soon");
 });
 
 await run("provider session helpers preserve active provider and legacy printify token compatibility", () => {

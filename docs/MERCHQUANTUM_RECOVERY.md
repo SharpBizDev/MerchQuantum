@@ -149,6 +149,12 @@ Always separate these three realities before editing:
   - publish step: not implemented in this pass
   - multiple placements: not enabled in this pass
 
+## Provider activation state
+- Printify remains live in the locked UI.
+- Printful is now unlocked in the current frontend provider flow and should no longer present as a coming-soon provider.
+- The connection, product loading, template detail, and draft-create requests now route through generic provider endpoints backed by the normalized provider registry.
+- Other providers remain gated until explicitly implemented and approved.
+
 ## Restart notes for the next Codex session
 1. Read `AGENTS.md` first and this file second.
 2. Treat the accepted frozen UI baseline above as the default no-regression state.
