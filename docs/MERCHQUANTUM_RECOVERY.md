@@ -84,9 +84,13 @@ Always separate these three realities before editing:
 - Listing Detail: detailed editing area for selected artwork, final title, final description, and all 13 tags.
 - Upload Draft Products: preserve draft-first behavior unless explicitly requested.
 
-## Accepted UI baseline from April 1, 2026
+## Accepted UI baseline from April 2, 2026
 - App work patched only: `app/components/MerchQuantumApp.tsx`
-- Sections changed: Batch Setup, Batch Preview, Listing Detail, Upload Draft Products merged into Listing Detail, and a final compactness / spacing / polish pass across those touched UI sections.
+- The current MerchQuantum UI is now frozen as the working frontend baseline.
+- Quantum Connection remains a separate branded top section.
+- The workflow below it is image-first and unified: drag/import, thumbnail review, template/shop controls, then Listing Detail.
+- Listing Detail is now a read-only review surface with Uploaded Artwork, Upload Draft Products, Final Title, Final Description, and Tags.
+- Upload Draft Products remains the primary draft-first action.
 
 ## Locked behavior from the accepted baseline
 - Batch Setup no longer uses redundant top labels above controls that already explain themselves.
@@ -99,9 +103,7 @@ Always separate these three realities before editing:
 - Batch Preview is now a dense thumbnail review grid with a fixed legend/header outside the scroll area.
 - Per-thumbnail text clutter is removed from Batch Preview.
 - Per-thumbnail status is represented by compact light indicators plus remove control.
-- Listing Detail always shows all 13 tags.
-- Tags are editable in Listing Detail.
-- Save button behavior is locked: inactive when unchanged, green when edits exist, and saves selected-item title / description / tags for upload use.
+- Listing Detail is review-only. Final Title, Final Description, and Tags are not manually editable in the app.
 - Upload Draft Products is no longer a separate section and is merged into Listing Detail.
 - Compact spacing and polish across Batch Setup, Batch Preview, and Listing Detail is part of the accepted UI baseline.
 
@@ -109,16 +111,31 @@ Always separate these three realities before editing:
 - Quantum Connection remains read-only unless directly requested.
 - Batch Setup should not be re-expanded with old labels, Refresh, or Load Template Description controls.
 - Batch Preview should not regain per-item title / description clutter or the moved drag-and-drop controls.
-- Listing Detail should keep editable title, description, all tags, Save behavior, and the merged upload action unless explicitly changed.
+- Listing Detail should remain a read-only review area with the merged upload action unless explicitly changed.
 - Upload Draft Products should remain draft-first and merged into Listing Detail unless explicitly changed.
 - Backend routes and untargeted sections should remain untouched unless the next request clearly names them.
 
+## Provider architecture Phase 0
+- Phase 0 begins behind the frozen UI baseline.
+- Goal: preserve the current frontend promise while normalizing provider behavior behind an adapter layer.
+- Phase 0 scope is contract/core only:
+  - normalized provider types
+  - provider capabilities
+  - provider error normalization
+  - provider session helpers
+  - provider registry
+  - Printify as the only implemented reference adapter path
+- Do not redesign the UI as part of provider-core work.
+- Do not implement additional providers in Phase 0.
+- Provider differences belong behind the adapter layer, not in the locked frontend workflow.
+
 ## Restart notes for the next Codex session
 1. Read `AGENTS.md` first and this file second.
-2. Treat the accepted UI baseline above as the default no-regression state.
-3. Use `app/components/MerchQuantumApp.tsx` as the default primary target for future UI work unless inspection proves otherwise.
-4. Before any new patch, separate current deployed state, current repo state, and approved target state.
-5. Patch only the named section and treat untouched sections as read-only.
+2. Treat the accepted frozen UI baseline above as the default no-regression state.
+3. If the task is provider expansion, start in `lib/providers/*` and preserve the locked frontend.
+4. Use `app/components/MerchQuantumApp.tsx` as the default primary target only for explicitly requested UI work.
+5. Before any new patch, separate current deployed state, current repo state, and approved target state.
+6. Patch only the named section and treat untouched sections as read-only.
 
 ## Restart workflow for a fresh Codex session
 1. Open the MerchQuantum repo in Codex.
