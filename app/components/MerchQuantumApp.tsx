@@ -2175,6 +2175,17 @@ export default function MerchQuantumApp() {
               </div>
 
               <div className="space-y-3">
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={!hasListingChanges}
+                    onClick={saveListingDetailEdits}
+                    className={`text-sm font-medium tracking-tight transition-colors ${hasListingChanges ? "text-violet-600 hover:text-violet-500 dark:text-violet-400 dark:hover:text-violet-300" : "cursor-default text-slate-400 dark:text-slate-600"}`}
+                  >
+                    Save Changes
+                  </button>
+                </div>
+
                 <Field label="Tags">
                   <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                     {(listingDetailDraft?.tags || []).map((tag, index) => (
@@ -2195,14 +2206,6 @@ export default function MerchQuantumApp() {
                     ))}
                   </div>
                 </Field>
-
-                <Button
-                  disabled={!hasListingChanges}
-                  className={hasListingChanges ? "!bg-emerald-500 !text-white hover:!bg-emerald-400 dark:!bg-emerald-500 dark:hover:!bg-emerald-400" : ""}
-                  onClick={saveListingDetailEdits}
-                >
-                  Save
-                </Button>
               </div>
             </div>
           )}
