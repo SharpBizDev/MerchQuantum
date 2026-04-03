@@ -7,6 +7,7 @@ import { publishHostedArtwork, readHostedArtwork } from "../../lib/providers/art
 import { ProviderError, providerErrorFromResponse } from "../../lib/providers/errors";
 import { getProviderAdapter, getProviderEntry, isProviderId, listProviderEntries } from "../../lib/providers/registry";
 import { createProviderCredentials, readProviderCredentials, setProviderSession, clearProviderSession } from "../../lib/providers/session";
+import { createApliiqAdapter } from "../../lib/providers/apliiq/adapter";
 import { PROVIDER_OPTIONS } from "../../lib/providers/client-options";
 import { createPrintfulAdapter } from "../../lib/providers/printful/adapter";
 import { createPrintifyAdapter } from "../../lib/providers/printify/adapter";
@@ -86,10 +87,12 @@ await run("provider registry exposes printify and guards unsupported providers",
 await run("provider activation options keep printify and printful live while leaving others gated", () => {
   const printify = PROVIDER_OPTIONS.find((provider) => provider.id === "printify");
   const printful = PROVIDER_OPTIONS.find((provider) => provider.id === "printful");
+  const apliiq = PROVIDER_OPTIONS.find((provider) => provider.id === "apliiq");
   const gelato = PROVIDER_OPTIONS.find((provider) => provider.id === "gelato");
 
   assert.equal(printify?.isLive, true);
   assert.equal(printful?.isLive, true);
+  assert.equal(apliiq?.isLive, true);
   assert.equal(gelato?.isLive, false);
   assert.equal(gelato?.statusText, "Coming soon");
 });
@@ -97,6 +100,7 @@ await run("provider activation options keep printify and printful live while lea
 await run("provider capability expansion keeps live providers on draft/store flow and direct upload", () => {
   const printify = createPrintifyAdapter();
   const printful = createPrintfulAdapter();
+  const apliiq = createApliiqAdapter();
   const gelato = getProviderEntry("gelato");
 
   assert.equal(printify.capabilities.supportsStoreTemplateDraftFlow, true);
@@ -109,6 +113,11 @@ await run("provider capability expansion keeps live providers on draft/store flo
   assert.equal(printful.capabilities.requiresHostedArtwork, false);
   assert.equal(printful.capabilities.supportsOrderFirst, false);
 
+  assert.equal(apliiq.capabilities.supportsStoreTemplateDraftFlow, true);
+  assert.equal(apliiq.capabilities.supportsDirectUpload, false);
+  assert.equal(apliiq.capabilities.requiresHostedArtwork, true);
+  assert.equal(apliiq.capabilities.supportsOrderFirst, false);
+
   assert.equal(gelato?.capabilities.requiresHostedArtwork, false);
   assert.equal(gelato?.capabilities.supportsDirectUpload, false);
   assert.equal(gelato?.capabilities.supportsOrderFirst, false);
@@ -118,12 +127,16 @@ await run("provider capability expansion keeps live providers on draft/store flo
 await run("provider session helpers preserve active provider and legacy printify token compatibility", () => {
   const cookieStore = createCookieStore();
   const credentials = createProviderCredentials("  secret-token  ");
+  const pairCredentials = createProviderCredentials("  app-key:shared-secret  ");
 
   setProviderSession(cookieStore, "printify", credentials);
   assert.deepEqual(readProviderCredentials(cookieStore, "printify"), { apiKey: "secret-token" });
 
   clearProviderSession(cookieStore);
   assert.equal(readProviderCredentials(cookieStore, "printify"), null);
+
+  setProviderSession(cookieStore, "apliiq", pairCredentials);
+  assert.deepEqual(readProviderCredentials(cookieStore, "apliiq"), { apiKey: "app-key", apiSecret: "shared-secret" });
 });
 
 await run("hosted artwork bridge publishes and reloads normalized hosted references", async () => {
@@ -515,6 +528,188 @@ await run("printful adapter creates a normalized manual-api draft product result
   assert.equal(result.productId, "9991");
   assert.equal(result.placementGuide?.position, "front");
   assert.match(calls[1].input, /\/store\/products$/);
+});
+
+await run("apliiq adapter connects through product validation and exposes one synthetic store", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    createResponse({ Products: [{ Id: 162, Code: "mens_classic", DetailName: "Classic Tee" }] }, { status: 200 }),
+  ]);
+  const adapter = createApliiqAdapter({ fetch: fetchFn });
+
+  const result = await adapter.connect({ credentials: { apiKey: "app-key", apiSecret: "shared-secret" } });
+
+  assert.equal(result.providerId, "apliiq");
+  assert.equal(result.stores.length, 1);
+  assert.equal(result.stores[0].id, "custom-store");
+  assert.match(calls[0].input, /\/api\/Product\/$/);
+  const authHeader = (calls[0].init?.headers as Record<string, string>).Authorization;
+  assert.ok(authHeader.startsWith("x-apliiq-auth "));
+});
+
+await run("apliiq adapter lists products as normalized provider sources", async () => {
+  const { fetchFn } = createQueuedFetch([
+    createResponse(
+      {
+        Products: [
+          { Id: 162, Code: "mens_classic", DetailName: "Classic Tee", Description: "Heavyweight tee" },
+          { Id: 409, Code: "mens_comfort", DetailName: "Comfort Tee", Features: "<p>Comfort weight</p>" },
+        ],
+      },
+      { status: 200 }
+    ),
+  ]);
+  const adapter = createApliiqAdapter({ fetch: fetchFn });
+
+  const products = await adapter.listTemplatesOrProducts({
+    credentials: { apiKey: "app-key", apiSecret: "shared-secret" },
+    storeId: "custom-store",
+  });
+
+  assert.deepEqual(products, [
+    {
+      id: "162",
+      storeId: "custom-store",
+      title: "Classic Tee",
+      description: "Heavyweight tee",
+      type: "product",
+    },
+    {
+      id: "409",
+      storeId: "custom-store",
+      title: "Comfort Tee",
+      description: "<p>Comfort weight</p>",
+      type: "product",
+    },
+  ]);
+});
+
+await run("apliiq adapter loads template detail and normalizes placement metadata", async () => {
+  const { fetchFn } = createQueuedFetch([
+    createResponse(
+      {
+        Id: 162,
+        Code: "mens_classic",
+        DetailName: "Classic Tee",
+        Description: "<p>Heavyweight tee</p>",
+        Colors: [{ Id: 50, Name: "black" }],
+        Services: [{ Alt_Name: "dtgprint" }],
+        Locations: [{ Id: 164, Name: "Front" }, { Id: 167, Name: "Back" }],
+      },
+      { status: 200 }
+    ),
+  ]);
+  const adapter = createApliiqAdapter({ fetch: fetchFn });
+
+  const detail = await adapter.getTemplateDetail({
+    credentials: { apiKey: "app-key", apiSecret: "shared-secret" },
+    storeId: "custom-store",
+    sourceId: "162",
+  });
+
+  assert.equal(detail.id, "162");
+  assert.equal(detail.placementGuide.position, "front");
+  assert.equal(detail.placementGuide.width, 944);
+  assert.equal(detail.metadata.defaultColorId, "50");
+  assert.equal(detail.metadata.preferredService, "dtgprint");
+});
+
+await run("apliiq adapter uploads hosted artwork references instead of base64 payloads", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    (_input, init) => {
+      const payload = JSON.parse(String(init?.body));
+      assert.equal(payload.Name, "art.png");
+      assert.equal(payload.ImagePath, "https://assets.example/art.png");
+      return createResponse({ Id: 5623808, Name: "art.png" }, { status: 200 });
+    },
+  ]);
+  const adapter = createApliiqAdapter({ fetch: fetchFn });
+
+  const upload = await adapter.uploadArtwork({
+    credentials: { apiKey: "app-key", apiSecret: "shared-secret" },
+    fileName: "art.png",
+    imageDataUrl: SAMPLE_PNG_DATA_URL,
+    hostedArtwork: {
+      id: "hosted-1",
+      providerId: "apliiq",
+      fileName: "art.png",
+      contentType: "image/png",
+      byteLength: 128,
+      checksum: "abc123",
+      publicUrl: "https://assets.example/art.png",
+      createdAt: "2026-04-02T00:00:00.000Z",
+      expiresAt: "2026-04-03T00:00:00.000Z",
+    },
+  });
+
+  assert.equal(upload.id, "5623808");
+  assert.match(calls[0].input, /\/v1\/Artwork$/);
+});
+
+await run("apliiq adapter creates a normalized design result using hosted artwork", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    createResponse({ Id: 5623808, Name: "art.png" }, { status: 200 }),
+    (_input, init) => {
+      const payload = JSON.parse(String(init?.body));
+      assert.equal(payload.ProductId, 162);
+      assert.equal(payload.ProductCode, "mens_classic");
+      assert.equal(payload.ColorId, 50);
+      assert.equal(payload.Locations[0].Id, 164);
+      assert.equal(payload.Locations[0].ImagePath, "https://assets.example/art.png");
+      assert.equal(payload.Locations[0].Artworks[0].Service, "dtgprint");
+      assert.equal(payload.Locations[0].Artworks[0].Id, 5623808);
+      return createResponse({ Id: 3110428, Name: "API Design" }, { status: 200 });
+    },
+  ]);
+  const adapter = createApliiqAdapter({ fetch: fetchFn });
+
+  const result = await adapter.createDraftProduct({
+    credentials: { apiKey: "app-key", apiSecret: "shared-secret" },
+    storeId: "custom-store",
+    templateId: "162",
+    templateDetail: {
+      id: "162",
+      storeId: "custom-store",
+      title: "Classic Tee",
+      description: "Heavyweight tee",
+      placementGuide: {
+        position: "front",
+        width: 944,
+        height: 1440,
+        source: "fallback",
+      },
+      metadata: {
+        rawTemplate: {
+          Id: 162,
+          Code: "mens_classic",
+        },
+        defaultColorId: "50",
+        preferredLocation: { id: "164", name: "Front" },
+        preferredService: "dtgprint",
+      },
+    },
+    hostedArtwork: {
+      id: "hosted-1",
+      providerId: "apliiq",
+      fileName: "art.png",
+      contentType: "image/png",
+      byteLength: 128,
+      checksum: "abc123",
+      publicUrl: "https://assets.example/art.png",
+      createdAt: "2026-04-02T00:00:00.000Z",
+      expiresAt: "2026-04-03T00:00:00.000Z",
+    },
+    item: {
+      fileName: "art.png",
+      title: "Apliiq Draft",
+      description: "Draft description",
+      tags: ["one", "two"],
+      imageDataUrl: SAMPLE_PNG_DATA_URL,
+    },
+  });
+
+  assert.equal(result.providerId, "apliiq");
+  assert.equal(result.productId, "3110428");
+  assert.match(calls[1].input, /\/v1\/Design$/);
 });
 
   console.log("provider-core tests passed");

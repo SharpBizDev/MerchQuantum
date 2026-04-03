@@ -152,6 +152,7 @@ Always separate these three realities before editing:
 ## Provider activation state
 - Printify remains live in the locked UI.
 - Printful is now unlocked in the current frontend provider flow and should no longer present as a coming-soon provider.
+- Apliiq is now the third live provider path in the locked frontend flow, using backend-only HMAC auth and the hosted-artwork bridge.
 - The connection, product loading, template detail, and draft-create requests now route through generic provider endpoints backed by the normalized provider registry.
 - Other providers remain gated until explicitly implemented and approved.
 
@@ -165,6 +166,12 @@ Always separate these three realities before editing:
   - `supportsStoreTemplateDraftFlow`
 - Printify and Printful remain on the current store/template draft flow with direct upload support.
 - Future order-first providers should be added behind the provider-core layer without forcing storefront semantics into the UI before that flow is explicitly approved.
+- Apliiq now uses that hosted artwork foundation as the first live provider that requires public HTTPS artwork:
+  - credentials are backend-only `appKey:sharedSecret`
+  - provider auth is HMAC-based and should never expose the shared secret client-side
+  - the adapter normalizes one custom-store context from the supplied credentials
+  - product catalog items are used as the selectable source path
+  - create-design is the provider-equivalent draft output behind the current locked upload flow
 
 ## Restart notes for the next Codex session
 1. Read `AGENTS.md` first and this file second.

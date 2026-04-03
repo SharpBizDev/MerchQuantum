@@ -26,6 +26,7 @@ export type ProviderCapabilities = {
 
 export type ProviderCredentials = {
   apiKey: string;
+  apiSecret?: string;
 };
 
 export type ProviderSession = {

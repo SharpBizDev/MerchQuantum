@@ -1,3 +1,4 @@
+import { createApliiqAdapter, APLIIQ_CAPABILITIES } from "./apliiq/adapter";
 import { ProviderError } from "./errors";
 import type { ProviderAdapter } from "./contracts";
 import { createPrintfulAdapter, PRINTFUL_CAPABILITIES } from "./printful/adapter";
@@ -29,7 +30,13 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderRegistryEntry> = {
   },
   gelato: { id: "gelato", displayName: "Gelato", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
   gooten: { id: "gooten", displayName: "Gooten", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
-  apliiq: { id: "apliiq", displayName: "Apliiq", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
+  apliiq: {
+    id: "apliiq",
+    displayName: "Apliiq",
+    implemented: true,
+    capabilities: APLIIQ_CAPABILITIES,
+    createAdapter: () => createApliiqAdapter(),
+  },
   prodigi: { id: "prodigi", displayName: "Prodigi", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
   lulu_direct: { id: "lulu_direct", displayName: "Lulu Direct", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
   spod: { id: "spod", displayName: "SPOD", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },

@@ -1,6 +1,7 @@
 import type {
   DraftProductInput,
   DraftProductResult,
+  HostedArtworkReference,
   NormalizedArtworkUpload,
   NormalizedOrderDetail,
   NormalizedOrderSummary,
@@ -16,6 +17,12 @@ import type {
 
 export type ProviderAdapterContext = {
   credentials: ProviderCredentials;
+};
+
+export type ProviderArtworkContext = ProviderAdapterContext & {
+  fileName: string;
+  imageDataUrl: string;
+  hostedArtwork?: HostedArtworkReference;
 };
 
 export type ProviderPreviewContext = ProviderAdapterContext & {
@@ -49,7 +56,7 @@ export interface ProviderAdapter {
   listStores(context: ProviderAdapterContext): Promise<NormalizedStore[]>;
   listTemplatesOrProducts(context: ProviderAdapterContext & { storeId: string }): Promise<NormalizedTemplateSummary[]>;
   getTemplateDetail(context: ProviderAdapterContext & { storeId: string; sourceId: string }): Promise<NormalizedTemplateDetail>;
-  uploadArtwork(context: ProviderAdapterContext & { fileName: string; imageDataUrl: string }): Promise<NormalizedArtworkUpload>;
+  uploadArtwork(context: ProviderArtworkContext): Promise<NormalizedArtworkUpload>;
   createDraftProduct(context: ProviderAdapterContext & DraftProductInput): Promise<DraftProductResult>;
   createPreview?(context: ProviderPreviewContext): Promise<NormalizedPreviewResult>;
   publishProduct?(context: ProviderPublishContext): Promise<unknown>;

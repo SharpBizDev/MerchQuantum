@@ -33,9 +33,26 @@ function clearCookie(cookieStore: CookieStoreLike, name: string) {
   });
 }
 
-export function createProviderCredentials(apiKey: string): ProviderCredentials {
+function serializeProviderCredentials(credentials: ProviderCredentials) {
+  return credentials.apiSecret ? `${credentials.apiKey}:${credentials.apiSecret}` : credentials.apiKey;
+}
+
+export function createProviderCredentials(token: string): ProviderCredentials {
+  const trimmed = token.trim();
+  const separatorIndex = trimmed.indexOf(":");
+
+  if (separatorIndex <= 0) {
+    return {
+      apiKey: trimmed,
+    };
+  }
+
+  const apiKey = trimmed.slice(0, separatorIndex).trim();
+  const apiSecret = trimmed.slice(separatorIndex + 1).trim();
+
   return {
-    apiKey: apiKey.trim(),
+    apiKey,
+    ...(apiSecret ? { apiSecret } : {}),
   };
 }
 
@@ -46,7 +63,7 @@ export function readActiveProviderId(cookieStore: CookieStoreLike): ProviderId |
 
 export function setProviderSession(cookieStore: CookieStoreLike, providerId: ProviderId, credentials: ProviderCredentials) {
   setCookie(cookieStore, ACTIVE_PROVIDER_COOKIE, providerId, 60 * 60 * 24 * 7);
-  setCookie(cookieStore, ACTIVE_PROVIDER_TOKEN_COOKIE, credentials.apiKey, 60 * 60 * 24 * 7);
+  setCookie(cookieStore, ACTIVE_PROVIDER_TOKEN_COOKIE, serializeProviderCredentials(credentials), 60 * 60 * 24 * 7);
 
   if (providerId === "printify") {
     setCookie(cookieStore, LEGACY_PRINTIFY_TOKEN_COOKIE, credentials.apiKey, 60 * 60 * 24 * 7);
