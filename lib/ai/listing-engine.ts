@@ -125,6 +125,14 @@ type LocaleProfile = {
   discoveryTermLabel: string;
 };
 
+type TemplateSignal = {
+  shortLabel: string;
+  detailSummary: string;
+  buyerBenefit: string;
+  useCase: string;
+  keywords: string[];
+};
+
 const DEFAULT_MODEL = process.env.GEMINI_LISTING_MODEL || "gemini-2.5-flash";
 const GEMINI_ENDPOINT_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const MAX_TEMPLATE_CONTEXT = 1400;
@@ -178,6 +186,15 @@ const STOPWORDS = new Set([
   "more",
 ]);
 
+const LOW_SIGNAL_TITLE_TOKENS = new Set([
+  ...WEAK_FILENAME_TOKENS,
+  "product",
+  "placeholder",
+  "sample",
+  "untitled",
+  "item",
+]);
+
 const LOCALE_PROFILES: Record<string, LocaleProfile> = {
   "en-us": {
     locale: "en-US",
@@ -190,6 +207,33 @@ const LOCALE_PROFILES: Record<string, LocaleProfile> = {
     discoveryTermLabel: "discovery terms",
   },
 };
+
+const TEMPLATE_HIGHLIGHT_RULES = [
+  { pattern: /\bheavyweight\b/i, label: "heavyweight structure", keyword: "heavyweight" },
+  { pattern: /\bmidweight\b/i, label: "midweight warmth", keyword: "midweight" },
+  { pattern: /\bgarment-dyed\b/i, label: "garment-dyed softness", keyword: "garment dyed" },
+  { pattern: /\bring-spun cotton\b/i, label: "ring-spun cotton comfort", keyword: "ring spun cotton" },
+  { pattern: /\b100%\s+ring-spun cotton\b/i, label: "100% ring-spun cotton comfort", keyword: "100% ring spun cotton" },
+  { pattern: /\bcotton\/poly fleece blend\b/i, label: "soft fleece-blend warmth", keyword: "cotton poly fleece blend" },
+  { pattern: /\brelaxed fit\b/i, label: "a relaxed fit", keyword: "relaxed fit" },
+  { pattern: /\bdouble-needle stitching\b/i, label: "reinforced stitching", keyword: "double needle stitching" },
+  {
+    pattern: /\bshoulder-to-shoulder twill tape\b/i,
+    label: "shoulder reinforcement",
+    keyword: "shoulder to shoulder twill tape",
+  },
+  { pattern: /\bjersey-lined hood\b/i, label: "a jersey-lined hood", keyword: "jersey lined hood" },
+  { pattern: /\bpouch pocket\b/i, label: "a classic pouch pocket", keyword: "pouch pocket" },
+  { pattern: /\btear-away label\b/i, label: "easy rebranding flexibility", keyword: "tear away label" },
+] as const;
+
+const TEMPLATE_USE_CASE_RULES = [
+  { pattern: /\beveryday casual wear\b/i, label: "everyday casual wear", keyword: "everyday casual wear" },
+  { pattern: /\bcool-weather comfort\b/i, label: "cool-weather comfort", keyword: "cool weather comfort" },
+  { pattern: /\blayering\b/i, label: "easy layering", keyword: "layering" },
+  { pattern: /\bgiftable\b/i, label: "gift-friendly merchandising", keyword: "giftable" },
+  { pattern: /\bboutique apparel\b/i, label: "boutique-ready merchandising", keyword: "boutique apparel" },
+] as const;
 
 const COMPLIANCE_RULE_PACKS = [
   {
@@ -457,6 +501,18 @@ function unique(items: string[]) {
   return result;
 }
 
+function joinReadableList(items: string[]) {
+  if (items.length === 0) return "";
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+function capitalizeFirst(value: string) {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 function trimSentence(value: string, maxChars: number) {
   const clean = cleanSpaces(value);
   if (!clean || clean.length <= maxChars) return clean;
@@ -522,6 +578,16 @@ function detectTheme(text: string) {
 
 function normalizeArray(input: unknown) {
   return Array.isArray(input) ? unique(input.map((value) => String(value || ""))) : [];
+}
+
+function isLowSignalTitle(title: string) {
+  const rawTokens = cleanSpaces(stripExtension(title))
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const usefulTokens = rawTokens.filter((token) => !LOW_SIGNAL_TITLE_TOKENS.has(token) && !/^\d+$/.test(token));
+  return usefulTokens.length === 0 || (usefulTokens.length === 1 && rawTokens.length <= 2);
 }
 
 function getLocaleProfile(locale?: string) {
@@ -714,7 +780,7 @@ export function assessFilenameRelevance(fileName: string, visibleTextHints: stri
   const ignoredTokens = tokens.filter((token) => !usefulTokens.includes(token));
   const visibleTokens = new Set(visibleTextHints.flatMap((entry) => toKeywordTokens(entry)));
   const overlap = usefulTokens.filter((token) => visibleTokens.has(token));
-  const conflictTokenCount = usefulTokens.filter((token) => !visibleTokens.has(token)).length;
+  const visibleSignal = visibleTokens.size > 0;
 
   if (usefulTokens.length >= 3 && overlap.length >= 1) {
     return {
@@ -734,34 +800,34 @@ export function assessFilenameRelevance(fileName: string, visibleTextHints: stri
       usefulness: 0.68,
       usefulTokens,
       ignoredTokens,
-      conflictSeverity: conflictTokenCount >= 2 ? "low" : "none",
+      conflictSeverity: "low",
       shouldIgnore: false,
       reason: "Filename offers limited but useful support for the visible artwork.",
     } satisfies FilenameAssessment;
   }
 
-  if (visibleTokens.size === 0 && usefulTokens.length >= 2) {
+  if (usefulTokens.length >= 2 && overlap.length === 0 && visibleSignal) {
+    const conflictSeverity = usefulTokens.length >= 3 ? "high" : "medium";
+    return {
+      classification: "conflicting",
+      usefulness: conflictSeverity === "high" ? 0.18 : 0.25,
+      usefulTokens,
+      ignoredTokens,
+      conflictSeverity,
+      shouldIgnore: true,
+      reason: "Filename tokens conflict with the visible image signal and should be de-prioritized.",
+    } satisfies FilenameAssessment;
+  }
+
+  if (usefulTokens.length >= 2 && !visibleSignal) {
     return {
       classification: "partial_support",
-      usefulness: 0.55,
+      usefulness: 0.52,
       usefulTokens,
       ignoredTokens,
       conflictSeverity: "none",
       shouldIgnore: false,
-      reason: "Filename offers soft support because the image signal is weak or text-light.",
-    } satisfies FilenameAssessment;
-  }
-
-  if (usefulTokens.length >= 2 && overlap.length === 0 && visibleTokens.size > 0) {
-    const conflictSeverity = usefulTokens.length >= 4 ? "high" : usefulTokens.length >= 2 ? "medium" : "low";
-    return {
-      classification: "conflicting",
-      usefulness: conflictSeverity === "high" ? 0.08 : conflictSeverity === "medium" ? 0.18 : 0.28,
-      usefulTokens,
-      ignoredTokens,
-      conflictSeverity,
-      shouldIgnore: conflictSeverity !== "low",
-      reason: "Filename tokens conflict with the visible image signal and should be de-prioritized.",
+      reason: "Filename offers soft support while visible text signal remains weak.",
     } satisfies FilenameAssessment;
   }
 
@@ -771,32 +837,49 @@ export function assessFilenameRelevance(fileName: string, visibleTextHints: stri
     usefulTokens,
     ignoredTokens,
     conflictSeverity: "none",
-    shouldIgnore: visibleTokens.size > 0,
+    shouldIgnore: true,
     reason: "Filename is generic, weak, or not trustworthy enough for primary listing logic.",
   } satisfies FilenameAssessment;
 }
 
 function buildSemanticRecord(input: ListingRequest, imageTruth: ImageTruthRecord, filenameAssessment: FilenameAssessment) {
   const productNoun = getProductNoun(input.productFamily || "");
-  const titleCore = chooseTitleSeed(input, imageTruth, filenameAssessment);
+  const explicitTitle = normalizeTitle(input.title || "", input.fileName || "");
+  const titleCore = (() => {
+    if (explicitTitle && !isLowSignalTitle(explicitTitle)) return explicitTitle;
+    const visibleSeed = getVisibleTextSeed(imageTruth);
+    if (visibleSeed) return visibleSeed;
+    if (input.templateContext) {
+      const templateSignal = extractTemplateSignal(input.templateContext, productNoun);
+      if (templateSignal?.shortLabel) return templateSignal.shortLabel;
+    }
+    return normalizeTitle(input.fileName || "Product", productNoun);
+  })();
   const styleOccasion = imageTruth.likelyOccasion || detectTheme(`${titleCore} ${input.templateContext || ""}`);
-  const benefitCore = `Clear ${productNoun} messaging for ${imageTruth.likelyAudience || "gift-ready"} discovery and merchandising.`;
+  const templateSignal = extractTemplateSignal(input.templateContext || "", productNoun);
+  const benefitCore = templateSignal
+    ? `${capitalizeFirst(templateSignal.detailSummary)} supports buyer-facing copy without turning the opener into raw template specs.`
+    : `Clear ${productNoun} messaging for ${imageTruth.likelyAudience || "gift-ready"} discovery and merchandising.`;
   const visibleKeywords = unique([
     ...imageTruth.visibleText,
     ...imageTruth.visibleFacts,
-    ...(filenameAssessment.classification.startsWith("strong") ? filenameAssessment.usefulTokens : []),
+    ...(filenameAssessment.classification === "strong_support" || filenameAssessment.classification === "partial_support"
+      ? filenameAssessment.usefulTokens
+      : []),
   ]).slice(0, 18);
   const inferredKeywords = unique([
     ...imageTruth.inferredMeaning,
     ...toKeywordTokens(styleOccasion),
     ...toKeywordTokens(titleCore),
+    ...(templateSignal?.keywords || []),
   ]).slice(0, 20);
+
   const forbiddenClaims = findComplianceMatches([
-    ...visibleKeywords,
-    ...inferredKeywords,
     titleCore,
-    benefitCore,
-  ]).slice(0, 6);
+    ...imageTruth.visibleText,
+    ...imageTruth.inferredMeaning,
+    ...(templateSignal ? [templateSignal.detailSummary, templateSignal.buyerBenefit] : []),
+  ]);
 
   return {
     productNoun,
@@ -824,8 +907,8 @@ function buildDiscoveryTerms(semantic: SemanticRecord, maxTerms: number) {
 
 function buildDefaultLead(semantic: SemanticRecord, localeProfile: LocaleProfile) {
   return [
-    `${semantic.titleCore} brings ${semantic.styleOccasion} style to a ${semantic.productNoun} built for clean, high-intent ${localeProfile.discoveryTermLabel}.`,
-    `${semantic.benefitCore} Pair it with the imported product details below for a complete ${localeProfile.leadTone} listing.`,
+    `This ${semantic.productNoun} translates ${semantic.styleOccasion} styling into buyer-facing copy that feels clear and merch-ready for ${localeProfile.leadTone} listings.`,
+    `${semantic.benefitCore} Keep the richer factual template details in the specification area below instead of repeating them in the opener.`,
   ];
 }
 
@@ -833,7 +916,7 @@ export function normalizeLeadParagraphs(
   title: string,
   paragraphs: string[],
   semantic: SemanticRecord,
-  localeProfile: LocaleProfile = getLocaleProfile()
+  localeProfile = getLocaleProfile()
 ) {
   const raw = paragraphs.map((paragraph) => cleanSpaces(paragraph)).filter(Boolean);
   const normalized = raw.map((paragraph, index) =>
@@ -844,15 +927,15 @@ export function normalizeLeadParagraphs(
   const merged = [normalized[0] || fallback[0], normalized[1] || fallback[1]];
   const finalParagraphs = merged.map((paragraph) => cleanSpaces(paragraph)).filter(Boolean).slice(0, 2);
 
-  if (
-    finalParagraphs.length === 2 &&
-    normalizeComparableText(finalParagraphs[0]) === normalizeComparableText(finalParagraphs[1])
-  ) {
-    finalParagraphs[1] = fallback[1];
-  }
-
   while (finalParagraphs.length < 2) {
     finalParagraphs.push(fallback[finalParagraphs.length]);
+  }
+
+  if (finalParagraphs[1] && finalParagraphs[0] && finalParagraphs[1].toLowerCase() === finalParagraphs[0].toLowerCase()) {
+    finalParagraphs[1] = trimSentence(
+      `Use this opening copy to frame the design clearly, then let the factual product details and discovery metadata carry the rest of the listing structure.`,
+      MAX_LEAD_CHARS
+    );
   }
 
   return finalParagraphs;
@@ -887,12 +970,7 @@ function buildChannelDraft(
 
   return {
     title: normalizedTitle || semantic.titleCore || "Product",
-    leadParagraphs: normalizeLeadParagraphs(
-      normalizedTitle || semantic.titleCore || "Product",
-      leadParagraphs,
-      semantic,
-      localeProfile
-    ),
+    leadParagraphs: normalizeLeadParagraphs(normalizedTitle || semantic.titleCore || "Product", leadParagraphs, semantic, localeProfile),
     discoveryTerms: terms,
   } satisfies ChannelDraft;
 }
@@ -1024,7 +1102,86 @@ function summarizeTemplateContext(templateContext: string) {
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => cleanSpaces(sentence))
     .filter(Boolean);
-  return (sentences.slice(0, 2).join(" ") || cleaned).slice(0, 340);
+  return (sentences.slice(0, 4).join(" ") || cleaned).slice(0, 520);
+}
+
+function extractTemplateSignal(templateContext: string, productNoun: string): TemplateSignal | null {
+  const summary = summarizeTemplateContext(templateContext);
+  if (!summary || summary === "No template context supplied.") return null;
+
+  const highlights = TEMPLATE_HIGHLIGHT_RULES.filter((rule) => rule.pattern.test(summary));
+  const useCase = TEMPLATE_USE_CASE_RULES.find((rule) => rule.pattern.test(summary));
+
+  if (highlights.length === 0 && !useCase) {
+    return {
+      shortLabel: normalizeTitle(productNoun, productNoun),
+      detailSummary: `${productNoun} context is available but should stay below the buyer-facing opener as factual support.`,
+      buyerBenefit: `Template context is present and should shape downstream product understanding without leaking into repetitive lead copy.`,
+      useCase: /hoodie|sweatshirt/i.test(productNoun) ? "cool-weather comfort" : "everyday wear",
+      keywords: unique(toKeywordTokens(summary)).slice(0, 10),
+    };
+  }
+
+  const labelParts: string[] = [];
+  if (/heavyweight/i.test(summary)) {
+    labelParts.push("Heavyweight");
+  } else if (/midweight/i.test(summary)) {
+    labelParts.push("Midweight");
+  }
+  if (/garment-dyed/i.test(summary)) {
+    labelParts.push("Garment Dyed");
+  }
+  if (/ring-spun cotton/i.test(summary)) {
+    labelParts.push("Cotton");
+  }
+  if (/fleece/i.test(summary)) {
+    labelParts.push("Fleece");
+  }
+
+  const shortLabel = normalizeTitle(`${labelParts.join(" ")} ${productNoun}`, productNoun);
+  const detailSummary =
+    joinReadableList(highlights.slice(0, 3).map((entry) => entry.label)) ||
+    `a ${productNoun} base shaped for buyer-friendly product storytelling`;
+  const resolvedUseCase =
+    useCase?.label ||
+    (/hoodie|sweatshirt/i.test(productNoun)
+      ? "cool-weather comfort and easy layering"
+      : "everyday wear and gift-friendly merchandising");
+  const buyerBenefit = highlights.length
+    ? `That template combination gives the ${productNoun} a more believable foundation for buyer-facing copy without turning the opener into a spec sheet.`
+    : `Template details give the ${productNoun} enough factual grounding to avoid placeholder copy.`;
+  const keywords = unique([
+    ...highlights.map((entry) => entry.keyword),
+    useCase?.keyword || "",
+    ...toKeywordTokens(summary).slice(0, 10),
+  ]).slice(0, 12);
+
+  return {
+    shortLabel,
+    detailSummary,
+    buyerBenefit,
+    useCase: resolvedUseCase,
+    keywords,
+  };
+}
+
+function buildTemplateAwareLead(
+  templateContext: string,
+  semantic: SemanticRecord,
+  localeProfile: LocaleProfile
+) {
+  const templateSignal = extractTemplateSignal(templateContext, semantic.productNoun);
+  if (!templateSignal) return buildDefaultLead(semantic, localeProfile);
+
+  return [
+    `This ${semantic.productNoun} is positioned for ${templateSignal.useCase}, with ${templateSignal.detailSummary} helping the product base feel more grounded and merch-ready.`,
+    `${templateSignal.buyerBenefit} Keep the opening copy buyer-facing, then let the factual product details carry the full spec language below.`,
+  ];
+}
+
+function resolveApiKey(explicitApiKey?: string) {
+  if (typeof explicitApiKey === "string") return explicitApiKey;
+  return process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || "";
 }
 
 function parseImageData(imageDataUrl: string) {
@@ -1174,6 +1331,8 @@ function buildMasterPrompt(
     "- Do not hallucinate unsupported claims or official licensing.",
     "- Do not begin buyer-facing lead copy by repeating the full title.",
     "- Keep discovery terms relevant and non-redundant.",
+    "- Treat templateContext as factual product/spec context, not as buyer-facing lead copy.",
+    "- Use templateContext to understand the blank product, fit, materials, and merchandising angle without dumping raw spec language into the opener.",
     "",
     "STEP 1 IMAGE TRUTH EXTRACTION",
     "- Extract visible text, visible facts, inferred meaning, dominant theme, likely audience, likely occasion, uncertainty, and OCR weakness.",
@@ -1263,7 +1422,12 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
   };
 
   const semantic = buildSemanticRecord(input, imageTruth, filenameAssessment);
-  const leadParagraphs = normalizeLeadParagraphs(semantic.titleCore, [], semantic, localeProfile);
+  const leadParagraphs = normalizeLeadParagraphs(
+    semantic.titleCore,
+    buildTemplateAwareLead(input.templateContext || "", semantic, localeProfile),
+    semantic,
+    localeProfile
+  );
   const marketplaceDrafts = buildMarketplaceDrafts(semantic, leadParagraphs, localeProfile);
   const validator = gradeListing(
     imageTruth,
@@ -1360,7 +1524,12 @@ async function callGeminiRecord(
 
   const canonicalLeads = normalizeLeadParagraphs(
     canonicalTitle,
-    normalizeArray(parsedObj.canonicalLeadParagraphs || parsedObj.leadParagraphs),
+    (() => {
+      const suppliedLeads = normalizeArray(parsedObj.canonicalLeadParagraphs || parsedObj.leadParagraphs);
+      return suppliedLeads.length
+        ? suppliedLeads
+        : buildTemplateAwareLead(input.templateContext || "", semantic, options.localeProfile);
+    })(),
     semantic,
     options.localeProfile
   );
@@ -1425,7 +1594,7 @@ function mapRecordToUiResponse(record: EngineRecord, model: string, localeProfil
 export async function generateListingResponse(input: ListingRequest, options: GenerateOptions = {}): Promise<ListingUiResponse> {
   const fetchFn = options.fetchFn || fetch;
   const model = options.model || DEFAULT_MODEL;
-  const apiKey = typeof options.apiKey === "string" ? options.apiKey : process.env.GEMINI_API_KEY || "";
+  const apiKey = resolveApiKey(options.apiKey);
   const localeProfile = getLocaleProfile(options.locale);
 
   if (!input?.imageDataUrl) {

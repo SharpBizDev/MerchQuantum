@@ -304,6 +304,32 @@ async function main() {
     assert.equal(response.source, "fallback");
   });
 
+  await run("fallback uses template context to improve weak filename outputs", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "IMG_9384_final_design.png",
+        productFamily: "t-shirt",
+        templateContext:
+          "Comfort Colors 1717 heavyweight garment-dyed t-shirt. 100% ring-spun cotton. Relaxed fit with double-needle stitching and shoulder-to-shoulder twill tape. Great for everyday casual wear and giftable boutique apparel.",
+      },
+      { apiKey: "" }
+    );
+
+    assert.equal(response.source, "fallback");
+    assert.equal(response.title.toLowerCase().includes("img 9384"), false);
+    assert.equal(response.title.toLowerCase().includes("garment"), true);
+    assert.equal(
+      response.leadParagraphs.some((paragraph) => /ring-spun cotton|relaxed fit|everyday casual wear/i.test(paragraph)),
+      true
+    );
+    assert.equal(
+      response.marketplaceDrafts.etsy.discoveryTerms.some((term) => /heavyweight|ring spun cotton|relaxed fit/i.test(term)),
+      true
+    );
+  });
+
   await run("image-backed golden corpus preserves grade, title, lead, and filename handling behavior", async () => {
     const seenBase64 = new Set<string>();
 
@@ -418,6 +444,47 @@ async function main() {
     assert.ok(Array.isArray(response.reasonFlags));
     assert.ok(response.marketplaceDrafts.etsy.title.length > 0);
     assert.equal(response.leadParagraphs[0].toLowerCase().startsWith(response.title.toLowerCase()), false);
+  });
+
+  await run("runtime resolves GOOGLE_GENERATIVE_AI_API_KEY for Gemini calls", async () => {
+    const previousGemini = process.env.GEMINI_API_KEY;
+    const previousGoogle = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+
+    delete process.env.GEMINI_API_KEY;
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY = "google-env-key";
+
+    try {
+      const response = await generateListingResponse(
+        {
+          imageDataUrl: SAMPLE_PNG_DATA_URL,
+          title: "seed title",
+          fileName: "faith_over_fear.png",
+          productFamily: "t-shirt",
+          templateContext: "Heavyweight ring-spun cotton tee built for everyday wear.",
+        },
+        {
+          model: "gemini-test",
+          fetchFn: async (_url, init) => {
+            assert.equal(String(init?.headers?.["x-goog-api-key"] || ""), "google-env-key");
+            return createGeminiResponse(createGeminiPayload());
+          },
+        }
+      );
+
+      assert.equal(response.source, "gemini");
+    } finally {
+      if (typeof previousGemini === "string") {
+        process.env.GEMINI_API_KEY = previousGemini;
+      } else {
+        delete process.env.GEMINI_API_KEY;
+      }
+
+      if (typeof previousGoogle === "string") {
+        process.env.GOOGLE_GENERATIVE_AI_API_KEY = previousGoogle;
+      } else {
+        delete process.env.GOOOGLE_GENERATIVE_AI_API_KEY;
+      }
+    }
   });
 
   await run("Gemini retry ladder succeeds on second structured attempt", async () => {
