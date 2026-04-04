@@ -1,5 +1,6 @@
 import { createApliiqAdapter, APLIIQ_CAPABILITIES } from "./apliiq/adapter";
 import { ProviderError } from "./errors";
+import { createGootenAdapter, GOOTEN_CAPABILITIES } from "./gooten/adapter";
 import type { ProviderAdapter } from "./contracts";
 import { createPrintfulAdapter, PRINTFUL_CAPABILITIES } from "./printful/adapter";
 import { createPrintifyAdapter, PRINTIFY_CAPABILITIES } from "./printify/adapter";
@@ -31,7 +32,13 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderRegistryEntry> = {
     createAdapter: () => createPrintfulAdapter(),
   },
   gelato: { id: "gelato", displayName: "Gelato", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
-  gooten: { id: "gooten", displayName: "Gooten", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
+  gooten: {
+    id: "gooten",
+    displayName: "Gooten",
+    implemented: true,
+    capabilities: GOOTEN_CAPABILITIES,
+    createAdapter: () => createGootenAdapter(),
+  },
   apliiq: {
     id: "apliiq",
     displayName: "Apliiq",

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { publishHostedArtwork, readHostedArtwork } from "../../lib/providers/artwork";
+import { createGootenAdapter } from "../../lib/providers/gooten/adapter";
 import { ProviderError, providerErrorFromResponse } from "../../lib/providers/errors";
 import { getProviderAdapter, getProviderEntry, isProviderId, listProviderEntries } from "../../lib/providers/registry";
 import { createProviderCredentials, readProviderCredentials, setProviderSession, clearProviderSession } from "../../lib/providers/session";
@@ -89,12 +90,14 @@ await run("provider registry exposes printify and guards unsupported providers",
 await run("provider activation options keep printify and printful live while leaving others gated", () => {
   const printify = PROVIDER_OPTIONS.find((provider) => provider.id === "printify");
   const printful = PROVIDER_OPTIONS.find((provider) => provider.id === "printful");
+  const gooten = PROVIDER_OPTIONS.find((provider) => provider.id === "gooten");
   const apliiq = PROVIDER_OPTIONS.find((provider) => provider.id === "apliiq");
   const gelato = PROVIDER_OPTIONS.find((provider) => provider.id === "gelato");
   const spod = PROVIDER_OPTIONS.find((provider) => provider.id === "spod");
 
   assert.equal(printify?.isLive, true);
   assert.equal(printful?.isLive, true);
+  assert.equal(gooten?.isLive, true);
   assert.equal(apliiq?.isLive, true);
   assert.equal(spod?.isLive, true);
   assert.equal(gelato?.isLive, false);
@@ -104,6 +107,7 @@ await run("provider activation options keep printify and printful live while lea
 await run("provider capability expansion keeps live providers on draft/store flow and direct upload", () => {
   const printify = createPrintifyAdapter();
   const printful = createPrintfulAdapter();
+  const gooten = createGootenAdapter();
   const apliiq = createApliiqAdapter();
   const prodigi = createProdigiAdapter();
   const spod = createSpodAdapter();
@@ -118,6 +122,11 @@ await run("provider capability expansion keeps live providers on draft/store flo
   assert.equal(printful.capabilities.supportsDirectUpload, true);
   assert.equal(printful.capabilities.requiresHostedArtwork, false);
   assert.equal(printful.capabilities.supportsOrderFirst, false);
+
+  assert.equal(gooten.capabilities.supportsStoreTemplateDraftFlow, true);
+  assert.equal(gooten.capabilities.supportsDirectUpload, false);
+  assert.equal(gooten.capabilities.requiresHostedArtwork, true);
+  assert.equal(gooten.capabilities.supportsOrderFirst, false);
 
   assert.equal(apliiq.capabilities.supportsStoreTemplateDraftFlow, true);
   assert.equal(apliiq.capabilities.supportsDirectUpload, false);
@@ -544,6 +553,216 @@ await run("printful adapter creates a normalized manual-api draft product result
   assert.equal(result.productId, "9991");
   assert.equal(result.placementGuide?.position, "front");
   assert.match(calls[1].input, /\/store\/products$/);
+});
+
+await run("gooten adapter connects with recipe and partner billing credentials", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    createResponse({ templates: [{ name: "Template 1" }], error: false }, { status: 200 }),
+  ]);
+  const adapter = createGootenAdapter({ fetch: fetchFn });
+
+  const result = await adapter.connect({
+    credentials: { apiKey: "recipe-id", apiSecret: "billing-key" },
+  });
+
+  assert.equal(result.providerId, "gooten");
+  assert.equal(result.stores[0]?.id, "gooten-catalog");
+  assert.match(calls[0].input, /partnerBillingKey=billing-key/);
+});
+
+await run("gooten adapter lists catalog products as normalized sources", async () => {
+  const { fetchFn } = createQueuedFetch([
+    createResponse(
+      {
+        "product-catalog": [
+          {
+            items: [
+              {
+                product_id: 186,
+                name: "Accent Mugs",
+                meta_description: "<p>Accent mug copy</p>",
+                type: "product",
+              },
+            ],
+          },
+        ],
+      },
+      { status: 200 }
+    ),
+  ]);
+  const adapter = createGootenAdapter({ fetch: fetchFn });
+
+  const products = await adapter.listTemplatesOrProducts({
+    credentials: { apiKey: "recipe-id", apiSecret: "billing-key" },
+    storeId: "gooten-catalog",
+  });
+
+  assert.deepEqual(products, [
+    {
+      id: "186",
+      storeId: "gooten-catalog",
+      title: "Accent Mugs",
+      description: "Accent mug copy",
+      type: "catalog_product",
+    },
+  ]);
+});
+
+await run("gooten adapter loads product detail and normalizes template metadata", async () => {
+  const { fetchFn } = createQueuedFetch([
+    createResponse(
+      {
+        "product-catalog": [
+          {
+            items: [
+              {
+                product_id: 186,
+                name: "Accent Mugs",
+                meta_description: "<p>Accent mug copy</p>",
+                type: "product",
+              },
+            ],
+          },
+        ],
+      },
+      { status: 200 }
+    ),
+    createResponse(
+      {
+        ProductVariants: [
+          {
+            Sku: "Mug11oz-White-BlackAccent",
+            HasTemplates: true,
+            PriceInfo: { Price: 7.9, CurrencyCode: "USD" },
+          },
+        ],
+      },
+      { status: 200 }
+    ),
+    createResponse(
+      {
+        Options: [
+          {
+            Name: "Single",
+            IsDefault: true,
+            Spaces: [
+              {
+                Id: "AADC6",
+                Description: "Default",
+                FinalX1: 548,
+                FinalX2: 3086,
+                FinalY1: 102,
+                FinalY2: 1047,
+                Layers: [{ Id: "6C9AC", Type: "Image" }],
+              },
+            ],
+          },
+        ],
+      },
+      { status: 200 }
+    ),
+    createResponse(
+      {
+        templates: [
+          {
+            areas: [{ width: 2538, height: 945, spaceId: "AADC6" }],
+          },
+        ],
+        error: false,
+      },
+      { status: 200 }
+    ),
+  ]);
+  const adapter = createGootenAdapter({ fetch: fetchFn });
+
+  const detail = await adapter.getTemplateDetail({
+    credentials: { apiKey: "recipe-id", apiSecret: "billing-key" },
+    storeId: "gooten-catalog",
+    sourceId: "186",
+  });
+
+  assert.equal(detail.id, "186");
+  assert.equal(detail.placementGuide.width, 2538);
+  assert.equal(detail.metadata.sku, "Mug11oz-White-BlackAccent");
+  assert.equal(detail.metadata.spaceId, "AADC6");
+});
+
+await run("gooten adapter normalizes hosted artwork for print-ready creation", async () => {
+  const adapter = createGootenAdapter();
+
+  const upload = await adapter.uploadArtwork({
+    credentials: { apiKey: "recipe-id", apiSecret: "billing-key" },
+    fileName: "art.png",
+    imageDataUrl: SAMPLE_PNG_DATA_URL,
+    hostedArtwork: {
+      id: "hosted-1",
+      providerId: "gooten",
+      fileName: "art.png",
+      contentType: "image/png",
+      byteLength: 10,
+      checksum: "abc",
+      publicUrl: "https://example.com/art.png",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: "2026-01-02T00:00:00.000Z",
+    },
+  });
+
+  assert.equal(upload.id, "hosted-1");
+  assert.equal(upload.providerId, "gooten");
+});
+
+await run("gooten adapter creates a normalized print-ready product result", async () => {
+  const { fetchFn } = createQueuedFetch([
+    (_input, init) => {
+      const payload = JSON.parse(String(init?.body));
+      assert.match(payload.Sku, /^MQ_/);
+      assert.equal(payload.Items[0].ProductVariantSku, "Mug11oz-White-BlackAccent");
+      return createResponse({ HadError: false }, { status: 200 });
+    },
+  ]);
+  const adapter = createGootenAdapter({ fetch: fetchFn });
+
+  const result = await adapter.createDraftProduct({
+    credentials: { apiKey: "recipe-id", apiSecret: "billing-key" },
+    storeId: "gooten-catalog",
+    templateId: "186",
+    templateDetail: {
+      id: "186",
+      storeId: "gooten-catalog",
+      title: "Accent Mugs",
+      description: "Accent mug copy",
+      placementGuide: { position: "Default", width: 2538, height: 945, source: "live" },
+      metadata: {
+        productId: 186,
+        sku: "Mug11oz-White-BlackAccent",
+        templateName: "Single",
+        spaceId: "AADC6",
+        spaceDescription: "Default",
+      },
+    },
+    hostedArtwork: {
+      id: "hosted-1",
+      providerId: "gooten",
+      fileName: "art.png",
+      contentType: "image/png",
+      byteLength: 10,
+      checksum: "abc",
+      publicUrl: "https://example.com/art.png",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: "2026-01-02T00:00:00.000Z",
+    },
+    item: {
+      fileName: "art.png",
+      title: "Draft Title",
+      description: "Draft description",
+      tags: Array.from({ length: 13 }, (_, index) => `tag-${index + 1}`),
+      imageDataUrl: SAMPLE_PNG_DATA_URL,
+    },
+  });
+
+  assert.equal(result.providerId, "gooten");
+  assert.match(String(result.productId), /^MQ_/);
+  assert.match(result.message, /print-ready product/i);
 });
 
 await run("apliiq adapter connects through product validation and exposes one synthetic store", async () => {
