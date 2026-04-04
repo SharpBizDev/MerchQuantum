@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./out",
+    "rootDir": "..",
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": false,
+    "module": "CommonJS",
+    "moduleResolution": "Node"
+  },
+  "include": [
+    "../tests/providers/provider-core.test.ts",
+    "../lib/providers/**/*.ts"
+  ]
+}

@@ -29,16 +29,13 @@ Future sessions must treat the GitHub repo plus the live app as the baseline rea
 
 ## Core file map
 - `app/components/MerchQuantumApp.tsx` — main client UI and workflow logic
-- `app/api/printify/connect/route.ts` — validate Printify token and populate shops
-- `app/api/printify/disconnect/route.ts` — clear stored Printify token cookie
-- `app/api/printify/products/route.ts` — list shop products
-- `app/api/printify/product/route.ts` — load one product and derive placement guidance
-- `app/api/printify/batch-create/route.ts` — upload artwork, apply placement, create drafts
+- `app/api/providers/*` — generic provider routes for connect, listing, detail, draft-create, and order-first operations through the normalized provider registry
+- `app/api/printify/*` — legacy Printify route surface retained for compatibility
 - `app/api/ai/listing/route.ts` — AI rewrite endpoint with Gemini / fallback behavior
 
 ## Printify integration truths
 - The live backend is Printify-first.
-- UI labels may mention Printful, Gelato, and others, but server routes are currently Printify-scoped.
+- UI labels may mention Printful, Gelato, and others, but provider requests now run through generic `app/api/providers/*` routes backed by the provider-core registry.
 - Authentication model in the app is Personal Access Token, not multi-merchant OAuth.
 - Shop discovery uses `GET /v1/shops.json`.
 - Product listing uses `GET /v1/shops/{shop_id}/products.json`.
