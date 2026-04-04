@@ -153,6 +153,7 @@ Always separate these three realities before editing:
 - Printify remains live in the locked UI.
 - Printful is now unlocked in the current frontend provider flow and should no longer present as a coming-soon provider.
 - Apliiq is now the third live provider path in the locked frontend flow, using backend-only HMAC auth and the hosted-artwork bridge.
+- Prodigi now has a backend-only order-first foundation in the provider-core layer, but remains gated in the locked UI because it does not fit the current store/template draft workflow.
 - The connection, product loading, template detail, and draft-create requests now route through generic provider endpoints backed by the normalized provider registry.
 - Other providers remain gated until explicitly implemented and approved.
 
@@ -172,6 +173,12 @@ Always separate these three realities before editing:
   - the adapter normalizes one custom-store context from the supplied credentials
   - product catalog items are used as the selectable source path
   - create-design is the provider-equivalent draft output behind the current locked upload flow
+- Prodigi now anchors the first order-first provider path:
+  - the adapter validates credentials through safe order listing
+  - product detail uses explicit SKU lookup instead of storefront-style listing
+  - hosted artwork stays as public HTTPS references
+  - order submission, order listing, and order-detail lookup live behind dedicated generic provider order routes
+  - the UI stays gated until an order-first user flow is explicitly approved
 
 ## Restart notes for the next Codex session
 1. Read `AGENTS.md` first and this file second.

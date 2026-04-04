@@ -3,6 +3,7 @@ import { ProviderError } from "./errors";
 import type { ProviderAdapter } from "./contracts";
 import { createPrintfulAdapter, PRINTFUL_CAPABILITIES } from "./printful/adapter";
 import { createPrintifyAdapter, PRINTIFY_CAPABILITIES } from "./printify/adapter";
+import { createProdigiAdapter, PRODIGI_CAPABILITIES } from "./prodigi/adapter";
 import { EMPTY_PROVIDER_CAPABILITIES, type ProviderCapabilities, type ProviderId } from "./types";
 
 export type ProviderRegistryEntry = {
@@ -37,7 +38,13 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderRegistryEntry> = {
     capabilities: APLIIQ_CAPABILITIES,
     createAdapter: () => createApliiqAdapter(),
   },
-  prodigi: { id: "prodigi", displayName: "Prodigi", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
+  prodigi: {
+    id: "prodigi",
+    displayName: "Prodigi",
+    implemented: true,
+    capabilities: PRODIGI_CAPABILITIES,
+    createAdapter: () => createProdigiAdapter(),
+  },
   lulu_direct: { id: "lulu_direct", displayName: "Lulu Direct", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
   spod: { id: "spod", displayName: "SPOD", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
   tshirtgang: { id: "tshirtgang", displayName: "Tshirtgang", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },

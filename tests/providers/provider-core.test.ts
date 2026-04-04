@@ -9,6 +9,7 @@ import { getProviderAdapter, getProviderEntry, isProviderId, listProviderEntries
 import { createProviderCredentials, readProviderCredentials, setProviderSession, clearProviderSession } from "../../lib/providers/session";
 import { createApliiqAdapter } from "../../lib/providers/apliiq/adapter";
 import { PROVIDER_OPTIONS } from "../../lib/providers/client-options";
+import { createProdigiAdapter } from "../../lib/providers/prodigi/adapter";
 import { createPrintfulAdapter } from "../../lib/providers/printful/adapter";
 import { createPrintifyAdapter } from "../../lib/providers/printify/adapter";
 
@@ -101,6 +102,7 @@ await run("provider capability expansion keeps live providers on draft/store flo
   const printify = createPrintifyAdapter();
   const printful = createPrintfulAdapter();
   const apliiq = createApliiqAdapter();
+  const prodigi = createProdigiAdapter();
   const gelato = getProviderEntry("gelato");
 
   assert.equal(printify.capabilities.supportsStoreTemplateDraftFlow, true);
@@ -117,6 +119,11 @@ await run("provider capability expansion keeps live providers on draft/store flo
   assert.equal(apliiq.capabilities.supportsDirectUpload, false);
   assert.equal(apliiq.capabilities.requiresHostedArtwork, true);
   assert.equal(apliiq.capabilities.supportsOrderFirst, false);
+
+  assert.equal(prodigi.capabilities.supportsOrderFirst, true);
+  assert.equal(prodigi.capabilities.supportsOrderOnly, true);
+  assert.equal(prodigi.capabilities.supportsStoreTemplateDraftFlow, false);
+  assert.equal(prodigi.capabilities.requiresHostedArtwork, true);
 
   assert.equal(gelato?.capabilities.requiresHostedArtwork, false);
   assert.equal(gelato?.capabilities.supportsDirectUpload, false);
@@ -710,6 +717,125 @@ await run("apliiq adapter creates a normalized design result using hosted artwor
   assert.equal(result.providerId, "apliiq");
   assert.equal(result.productId, "3110428");
   assert.match(calls[1].input, /\/v1\/Design$/);
+});
+
+await run("prodigi adapter connects through safe order listing and returns a synthetic order-first store", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    createResponse({ outcome: "Ok", orders: [] }, { status: 200 }),
+  ]);
+  const adapter = createProdigiAdapter({ fetch: fetchFn });
+
+  const result = await adapter.connect({ credentials: { apiKey: "prodigi-token" } });
+
+  assert.equal(result.providerId, "prodigi");
+  assert.equal(result.stores.length, 1);
+  assert.equal(result.stores[0].id, "order-first");
+  assert.match(calls[0].input, /\/orders\?top=25$/);
+});
+
+await run("prodigi adapter keeps storefront listing unsupported in the locked flow", async () => {
+  const adapter = createProdigiAdapter();
+
+  await assert.rejects(
+    () =>
+      adapter.listTemplatesOrProducts({
+        credentials: { apiKey: "prodigi-token" },
+        storeId: "order-first",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof ProviderError);
+      assert.equal(error.code, "unsupported_operation");
+      return true;
+    }
+  );
+});
+
+await run("prodigi adapter loads product detail by SKU for order-first use", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    createResponse(
+      {
+        outcome: "Ok",
+        product: {
+          sku: "GLOBAL-CAN-10X10",
+          description: "Canvas print",
+          productDimensions: { width: 10, height: 10, units: "in" },
+          printAreas: { default: { required: true } },
+          variants: [{ sku: "GLOBAL-CAN-10X10" }],
+        },
+      },
+      { status: 200 }
+    ),
+  ]);
+  const adapter = createProdigiAdapter({ fetch: fetchFn });
+
+  const detail = await adapter.getTemplateDetail({
+    credentials: { apiKey: "prodigi-token" },
+    storeId: "order-first",
+    sourceId: "GLOBAL-CAN-10X10",
+  });
+
+  assert.equal(detail.id, "GLOBAL-CAN-10X10");
+  assert.equal(detail.placementGuide.position, "default");
+  assert.equal(detail.placementGuide.width, 10);
+  assert.match(calls[0].input, /\/products\/GLOBAL-CAN-10X10$/);
+});
+
+await run("prodigi adapter passes hosted artwork through for order-first payloads", async () => {
+  const adapter = createProdigiAdapter();
+
+  const upload = await adapter.uploadArtwork({
+    credentials: { apiKey: "prodigi-token" },
+    fileName: "poster.png",
+    imageDataUrl: SAMPLE_PNG_DATA_URL,
+    hostedArtwork: {
+      id: "hosted-1",
+      providerId: "prodigi",
+      fileName: "poster.png",
+      contentType: "image/png",
+      byteLength: 128,
+      checksum: "abc123",
+      publicUrl: "https://assets.example/poster.png",
+      createdAt: "2026-04-03T00:00:00.000Z",
+      expiresAt: "2026-04-04T00:00:00.000Z",
+    },
+  });
+
+  assert.equal(upload.id, "https://assets.example/poster.png");
+  assert.equal(upload.providerId, "prodigi");
+});
+
+await run("prodigi adapter submits and normalizes order-first operations", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    (_input, init) => {
+      const payload = JSON.parse(String(init?.body));
+      assert.equal(payload.recipient.name, "Order Tester");
+      return createResponse({ outcome: "Ok", id: "ord_123", status: { stage: "Received" } }, { status: 200 });
+    },
+    createResponse({ outcome: "Ok", orders: [{ id: "ord_123", status: { stage: "Received" }, created: "2026-04-03T00:00:00Z" }] }, { status: 200 }),
+    createResponse({ outcome: "Ok", id: "ord_123", status: { stage: "Received" }, items: [{ sku: "GLOBAL-CAN-10X10" }] }, { status: 200 }),
+  ]);
+  const adapter = createProdigiAdapter({ fetch: fetchFn });
+
+  const created = await adapter.submitOrder?.({
+    credentials: { apiKey: "prodigi-token" },
+    orderInput: {
+      recipient: { name: "Order Tester" },
+    },
+  });
+  const orders = await adapter.listOrders?.({
+    credentials: { apiKey: "prodigi-token" },
+  });
+  const order = await adapter.getOrder?.({
+    credentials: { apiKey: "prodigi-token" },
+    orderId: "ord_123",
+  });
+
+  assert.equal((created as { id?: string }).id, "ord_123");
+  assert.equal(orders?.[0].id, "ord_123");
+  assert.equal(order?.id, "ord_123");
+  assert.match(calls[0].input, /\/orders$/);
+  assert.match(calls[1].input, /\/orders\?top=25$/);
+  assert.match(calls[2].input, /\/orders\/ord_123$/);
 });
 
   console.log("provider-core tests passed");
