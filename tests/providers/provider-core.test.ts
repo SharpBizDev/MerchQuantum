@@ -12,6 +12,7 @@ import { PROVIDER_OPTIONS } from "../../lib/providers/client-options";
 import { createProdigiAdapter } from "../../lib/providers/prodigi/adapter";
 import { createPrintfulAdapter } from "../../lib/providers/printful/adapter";
 import { createPrintifyAdapter } from "../../lib/providers/printify/adapter";
+import { createSpodAdapter } from "../../lib/providers/spod/adapter";
 
 const SAMPLE_PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9d8AAAAASUVORK5CYII=";
@@ -90,10 +91,12 @@ await run("provider activation options keep printify and printful live while lea
   const printful = PROVIDER_OPTIONS.find((provider) => provider.id === "printful");
   const apliiq = PROVIDER_OPTIONS.find((provider) => provider.id === "apliiq");
   const gelato = PROVIDER_OPTIONS.find((provider) => provider.id === "gelato");
+  const spod = PROVIDER_OPTIONS.find((provider) => provider.id === "spod");
 
   assert.equal(printify?.isLive, true);
   assert.equal(printful?.isLive, true);
   assert.equal(apliiq?.isLive, true);
+  assert.equal(spod?.isLive, true);
   assert.equal(gelato?.isLive, false);
   assert.equal(gelato?.statusText, "Coming soon");
 });
@@ -103,6 +106,7 @@ await run("provider capability expansion keeps live providers on draft/store flo
   const printful = createPrintfulAdapter();
   const apliiq = createApliiqAdapter();
   const prodigi = createProdigiAdapter();
+  const spod = createSpodAdapter();
   const gelato = getProviderEntry("gelato");
 
   assert.equal(printify.capabilities.supportsStoreTemplateDraftFlow, true);
@@ -124,6 +128,11 @@ await run("provider capability expansion keeps live providers on draft/store flo
   assert.equal(prodigi.capabilities.supportsOrderOnly, true);
   assert.equal(prodigi.capabilities.supportsStoreTemplateDraftFlow, false);
   assert.equal(prodigi.capabilities.requiresHostedArtwork, true);
+
+  assert.equal(spod.capabilities.supportsStoreTemplateDraftFlow, true);
+  assert.equal(spod.capabilities.supportsDirectUpload, true);
+  assert.equal(spod.capabilities.requiresHostedArtwork, false);
+  assert.equal(spod.capabilities.supportsOrderFirst, false);
 
   assert.equal(gelato?.capabilities.requiresHostedArtwork, false);
   assert.equal(gelato?.capabilities.supportsDirectUpload, false);
@@ -836,6 +845,179 @@ await run("prodigi adapter submits and normalizes order-first operations", async
   assert.match(calls[0].input, /\/orders$/);
   assert.match(calls[1].input, /\/orders\?top=25$/);
   assert.match(calls[2].input, /\/orders\/ord_123$/);
+});
+
+await run("spod adapter connects and exposes one normalized point-of-sale store", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    createResponse(
+      { merchantId: 1, pointOfSaleId: 99, pointOfSaleName: "Spread Shop", pointOfSaleType: "spreadshop" },
+      { status: 200 }
+    ),
+  ]);
+  const adapter = createSpodAdapter({ fetch: fetchFn });
+
+  const result = await adapter.connect({ credentials: { apiKey: "spod-key" } });
+
+  assert.equal(result.providerId, "spod");
+  assert.deepEqual(result.stores, [{ id: "99", name: "Spread Shop", salesChannel: "spreadshop" }]);
+  assert.match(calls[0].input, /\/authentication$/);
+});
+
+await run("spod adapter lists product types as normalized provider sources", async () => {
+  const { fetchFn } = createQueuedFetch([
+    createResponse(
+      [
+        {
+          id: "210",
+          customerName: "Men's Tee",
+          customerDescription: "<p>Soft tee</p>",
+        },
+      ],
+      { status: 200 }
+    ),
+  ]);
+  const adapter = createSpodAdapter({ fetch: fetchFn });
+
+  const products = await adapter.listTemplatesOrProducts({
+    credentials: { apiKey: "spod-key" },
+    storeId: "99",
+  });
+
+  assert.deepEqual(products, [
+    {
+      id: "210",
+      storeId: "99",
+      title: "Men's Tee",
+      description: "Soft tee",
+      type: "product_type",
+    },
+  ]);
+});
+
+await run("spod adapter loads template detail and derives placement metadata", async () => {
+  const { fetchFn } = createQueuedFetch([
+    createResponse(
+      {
+        id: "210",
+        customerName: "Men's Tee",
+        customerDescription: "<p>Soft tee</p>",
+        appearances: [{ id: "1", name: "black" }],
+        sizes: [{ id: "3", name: "M" }],
+        price: 10,
+        currency: "USD",
+      },
+      { status: 200 }
+    ),
+    createResponse(
+      {
+        views: [
+          {
+            name: "Front",
+            hotspots: [{ name: "FULL_FRONT" }, { name: "LEFT_CHEST" }],
+          },
+        ],
+      },
+      { status: 200 }
+    ),
+    createResponse(
+      {
+        variants: [{ appearanceId: "1", sizeId: "3", stock: 5 }],
+      },
+      { status: 200 }
+    ),
+  ]);
+  const adapter = createSpodAdapter({ fetch: fetchFn });
+
+  const detail = await adapter.getTemplateDetail({
+    credentials: { apiKey: "spod-key" },
+    storeId: "99",
+    sourceId: "210",
+  });
+
+  assert.equal(detail.id, "210");
+  assert.equal(detail.placementGuide.position, "FULL_FRONT");
+  assert.equal(detail.metadata.preferredAppearanceId, "1");
+  assert.equal(detail.metadata.preferredSizeId, "3");
+});
+
+await run("spod adapter uploads hosted artwork as a reusable design", async () => {
+  const { fetchFn } = createQueuedFetch([
+    async (_input, init) => {
+      assert.ok(init?.body instanceof FormData);
+      const url = await (init.body as FormData).get("url");
+      assert.equal(url, "https://example.com/art.png");
+      return createResponse({ designId: "design-1" }, { status: 200 });
+    },
+  ]);
+  const adapter = createSpodAdapter({ fetch: fetchFn });
+
+  const upload = await adapter.uploadArtwork({
+    credentials: { apiKey: "spod-key" },
+    fileName: "art.png",
+    imageDataUrl: SAMPLE_PNG_DATA_URL,
+    hostedArtwork: {
+      id: "hosted-1",
+      providerId: "spod",
+      fileName: "art.png",
+      contentType: "image/png",
+      byteLength: 10,
+      checksum: "abc",
+      publicUrl: "https://example.com/art.png",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: "2026-01-02T00:00:00.000Z",
+    },
+  });
+
+  assert.equal(upload.id, "design-1");
+  assert.equal(upload.providerId, "spod");
+});
+
+await run("spod adapter creates a normalized draft article result", async () => {
+  const { fetchFn } = createQueuedFetch([
+    createResponse({ designId: "design-1" }, { status: 200 }),
+    createResponse({ hotspots: [{ name: "FULL_FRONT" }] }, { status: 200 }),
+    (_input, init) => {
+      const payload = JSON.parse(String(init?.body));
+      assert.equal(payload.title, "Draft Title");
+      assert.equal(payload.variants[0].productTypeId, 210);
+      assert.equal(payload.configurations[0].image.designId, "design-1");
+      assert.equal(payload.configurations[0].hotspot, "FULL_FRONT");
+      return createResponse(123456, { status: 200 });
+    },
+  ]);
+  const adapter = createSpodAdapter({ fetch: fetchFn });
+
+  const result = await adapter.createDraftProduct({
+    credentials: { apiKey: "spod-key" },
+    storeId: "99",
+    templateId: "210",
+    templateDetail: {
+      id: "210",
+      storeId: "99",
+      title: "Template Tee",
+      description: "Soft tee",
+      placementGuide: { position: "FULL_FRONT", width: 1800, height: 2400, source: "fallback" },
+      metadata: {
+        productTypeId: "210",
+        preferredAppearanceId: "1",
+        preferredSizeId: "3",
+        preferredView: "FRONT",
+        preferredHotspot: "FULL_FRONT",
+        price: 10,
+      },
+    },
+    item: {
+      fileName: "art.png",
+      title: "Draft Title",
+      description: "Draft description",
+      tags: Array.from({ length: 13 }, (_, index) => `tag-${index + 1}`),
+      imageDataUrl: SAMPLE_PNG_DATA_URL,
+    },
+  });
+
+  assert.equal(result.providerId, "spod");
+  assert.equal(result.productId, "123456");
+  assert.match(result.message, /Spreadconnect draft article/i);
 });
 
   console.log("provider-core tests passed");

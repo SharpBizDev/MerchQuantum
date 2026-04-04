@@ -4,6 +4,7 @@ import type { ProviderAdapter } from "./contracts";
 import { createPrintfulAdapter, PRINTFUL_CAPABILITIES } from "./printful/adapter";
 import { createPrintifyAdapter, PRINTIFY_CAPABILITIES } from "./printify/adapter";
 import { createProdigiAdapter, PRODIGI_CAPABILITIES } from "./prodigi/adapter";
+import { createSpodAdapter, SPOD_CAPABILITIES } from "./spod/adapter";
 import { EMPTY_PROVIDER_CAPABILITIES, type ProviderCapabilities, type ProviderId } from "./types";
 
 export type ProviderRegistryEntry = {
@@ -46,7 +47,13 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderRegistryEntry> = {
     createAdapter: () => createProdigiAdapter(),
   },
   lulu_direct: { id: "lulu_direct", displayName: "Lulu Direct", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
-  spod: { id: "spod", displayName: "SPOD", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
+  spod: {
+    id: "spod",
+    displayName: "SPOD / Spreadconnect",
+    implemented: true,
+    capabilities: SPOD_CAPABILITIES,
+    createAdapter: () => createSpodAdapter(),
+  },
 };
 
 export function isProviderId(value: string): value is ProviderId {

@@ -13,7 +13,7 @@ export const PROVIDER_OPTIONS: ProviderOption[] = [
   { id: "gelato", label: "Gelato", isLive: false, statusText: "Coming soon" },
   { id: "gooten", label: "Gooten", isLive: false, statusText: "Coming soon" },
   { id: "apliiq", label: "Apliiq", isLive: true },
-  { id: "spod", label: "SPOD / Spreadconnect", isLive: false, statusText: "Coming soon" },
+  { id: "spod", label: "SPOD / Spreadconnect", isLive: true },
   { id: "prodigi", label: "Prodigi", isLive: false, statusText: "Coming soon" },
   { id: "lulu_direct", label: "Lulu Direct", isLive: false, statusText: "Coming soon" },
 ];
