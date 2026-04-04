@@ -34,11 +34,12 @@ Future sessions must treat the GitHub repo plus the live app as the baseline rea
 - `app/api/printify/products/route.ts` — list shop products
 - `app/api/printify/product/route.ts` — load one product and derive placement guidance
 - `app/api/printify/batch-create/route.ts` — upload artwork, apply placement, create drafts
+- `app/api/providers/*` — generic provider-core routes for connect, disconnect, product loading, and batch draft creation
 - `app/api/ai/listing/route.ts` — AI rewrite endpoint with Gemini / fallback behavior
 
 ## Printify integration truths
 - The live backend is Printify-first.
-- UI labels may mention Printful, Gelato, and others, but server routes are currently Printify-scoped.
+- UI labels may mention Printful, Gelato, and others, but provider execution now routes through the generic provider-core backend under `app/api/providers/*`.
 - Authentication model in the app is Personal Access Token, not multi-merchant OAuth.
 - Shop discovery uses `GET /v1/shops.json`.
 - Product listing uses `GET /v1/shops/{shop_id}/products.json`.
@@ -152,11 +153,7 @@ Always separate these three realities before editing:
 ## Provider activation state
 - Printify remains live in the locked UI.
 - Printful is now unlocked in the current frontend provider flow and should no longer present as a coming-soon provider.
-- Gooten is now live in the locked frontend provider flow using backend-only `recipeId:partnerBillingKey` credentials in the existing provider field.
 - Apliiq is now the third live provider path in the locked frontend flow, using backend-only HMAC auth and the hosted-artwork bridge.
-- SPOD / Spreadconnect is now live in the locked frontend provider flow using the normalized provider-core adapter layer.
-- Prodigi now has a backend-only order-first foundation in the provider-core layer, but remains gated in the locked UI because it does not fit the current store/template draft workflow.
-- Tshirtgang has been removed from active provider scope due to insufficient official technical documentation and access.
 - The connection, product loading, template detail, and draft-create requests now route through generic provider endpoints backed by the normalized provider registry.
 - Other providers remain gated until explicitly implemented and approved.
 
@@ -176,12 +173,49 @@ Always separate these three realities before editing:
   - the adapter normalizes one custom-store context from the supplied credentials
   - product catalog items are used as the selectable source path
   - create-design is the provider-equivalent draft output behind the current locked upload flow
-- Prodigi now anchors the first order-first provider path:
-  - the adapter validates credentials through safe order listing
-  - product detail uses explicit SKU lookup instead of storefront-style listing
-  - hosted artwork stays as public HTTPS references
-  - order submission, order listing, and order-detail lookup live behind dedicated generic provider order routes
-  - the UI stays gated until an order-first user flow is explicitly approved
+
+## AI listing engine state on main
+- The rebuilt AI listing engine now lives on `main` behind the preserved UI route contract at `app/api/ai/listing/route.ts`.
+- The current route wrapper still accepts the existing frontend payload:
+  - `imageDataUrl`
+  - `title`
+  - `fileName`
+  - `productFamily`
+  - `templateContext`
+- The current route wrapper still returns the UI-safe response shape centered on:
+  - `title`
+  - `leadParagraphs`
+  - `confidence`
+  - `reasonFlags`
+  - `model`
+- Internal AI behavior is now image-first and marketplace-aware rather than filename-first or prompt-fragile.
+- Current internal AI engine responsibilities on `main` include:
+  - image-first extraction of visible text, visible facts, inferred meaning, audience, occasion, OCR weakness, and uncertainty
+  - filename relevance scoring with explicit weak/generic handling, soft-support handling, and conflict severity / ignore behavior
+  - semantic record generation for product noun, title core, benefit core, visible keywords, inferred keywords, and forbidden claim candidates
+  - internal marketplace channel drafts for Etsy, Amazon, eBay, and TikTok Shop
+  - validator grading with green / orange / red outcomes, confidence scoring, compliance flags, and structured internal reason details
+  - deterministic fallback behavior when Gemini is unavailable or bounded structured-output retries fail
+- The current engine is hardened with:
+  - compliance rule packs for medical, licensing, certification, and guarantee-style claims
+  - repetition / low-variety detection in titles, leads, and discovery terms
+  - bounded Gemini retry behavior before fallback
+  - locale-aware groundwork for later international output without changing the locked UI
+
+## AI golden corpus regression state
+- A small image-backed golden corpus now exists under `tests/ai/fixtures/golden-corpus/`.
+- The corpus is intentionally small and high-signal, using real fixture images instead of only synthetic text cases.
+- Current golden-corpus coverage includes representative ugly real-world cases such as:
+  - readable design plus useless filename
+  - useful filename plus weak image
+  - transparent PNG weak contrast
+  - partial / cropped slogan
+  - filename conflict with visible text
+  - text-only design
+  - image-only design
+  - minimal design
+  - visually weak / low-information design
+- AI tests now include real fixture-image regression coverage that asserts grade behavior, title behavior, lead behavior, filename handling, and route-contract-safe outputs without overfitting to one exact wording.
 
 ## Restart notes for the next Codex session
 1. Read `AGENTS.md` first and this file second.
