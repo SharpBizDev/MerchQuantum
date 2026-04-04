@@ -154,6 +154,7 @@ Always separate these three realities before editing:
 - Printful is now unlocked in the current frontend provider flow and should no longer present as a coming-soon provider.
 - Apliiq is now the third live provider path in the locked frontend flow, using backend-only HMAC auth and the hosted-artwork bridge.
 - Prodigi now has a backend-only order-first foundation in the provider-core layer, but remains gated in the locked UI because it does not fit the current store/template draft workflow.
+- Tshirtgang has been removed from active provider scope due to insufficient official technical documentation and access.
 - The connection, product loading, template detail, and draft-create requests now route through generic provider endpoints backed by the normalized provider registry.
 - Other providers remain gated until explicitly implemented and approved.
 

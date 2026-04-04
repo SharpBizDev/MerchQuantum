@@ -47,7 +47,6 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderRegistryEntry> = {
   },
   lulu_direct: { id: "lulu_direct", displayName: "Lulu Direct", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
   spod: { id: "spod", displayName: "SPOD", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
-  tshirtgang: { id: "tshirtgang", displayName: "Tshirtgang", implemented: false, capabilities: EMPTY_PROVIDER_CAPABILITIES },
 };
 
 export function isProviderId(value: string): value is ProviderId {

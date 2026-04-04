@@ -15,8 +15,7 @@ type ProviderId =
   | "apliiq"
   | "spod"
   | "prodigi"
-  | "lulu_direct"
-  | "tshirtgang";
+  | "lulu_direct";
 
 type ProductFamily =
   | "t-shirt"

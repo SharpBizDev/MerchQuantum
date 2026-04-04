@@ -6,8 +6,7 @@ export type ProviderId =
   | "apliiq"
   | "prodigi"
   | "lulu_direct"
-  | "spod"
-  | "tshirtgang";
+  | "spod";
 
 export type ProviderCapabilities = {
   supportsStores: boolean;

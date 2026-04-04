@@ -16,5 +16,4 @@ export const PROVIDER_OPTIONS: ProviderOption[] = [
   { id: "spod", label: "SPOD / Spreadconnect", isLive: false, statusText: "Coming soon" },
   { id: "prodigi", label: "Prodigi", isLive: false, statusText: "Coming soon" },
   { id: "lulu_direct", label: "Lulu Direct", isLive: false, statusText: "Coming soon" },
-  { id: "tshirtgang", label: "Tshirtgang", isLive: false, statusText: "Coming soon" },
 ];
