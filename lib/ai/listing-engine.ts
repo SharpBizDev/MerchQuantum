@@ -20,11 +20,31 @@ export type ListingUiResponse = {
   semanticRecord: SemanticRecord;
 };
 
+export type ListingReasonSeverity = "info" | "warning" | "critical";
+
+export type ListingReasonStage =
+  | "image_truth"
+  | "filename"
+  | "semantic"
+  | "render"
+  | "validator"
+  | "compliance"
+  | "fallback";
+
+export type ListingReason = {
+  code: string;
+  severity: ListingReasonSeverity;
+  stage: ListingReasonStage;
+  summary: string;
+};
+
 export type FilenameAssessment = {
   classification: "strong_support" | "partial_support" | "weak_or_generic" | "conflicting";
   usefulness: number;
   usefulTokens: string[];
   ignoredTokens: string[];
+  conflictSeverity: "none" | "low" | "medium" | "high";
+  shouldIgnore: boolean;
   reason: string;
 };
 
@@ -70,6 +90,7 @@ export type ValidatorResult = {
   confidence: number;
   reasonFlags: string[];
   complianceFlags: string[];
+  reasonDetails: ListingReason[];
 };
 
 type GeminiRecord = {
@@ -90,6 +111,18 @@ type GenerateOptions = {
   fetchFn?: typeof fetch;
   apiKey?: string;
   model?: string;
+  locale?: string;
+};
+
+type RetryContext = {
+  attempt: number;
+  retryInstruction?: string;
+};
+
+type LocaleProfile = {
+  locale: string;
+  leadTone: string;
+  discoveryTermLabel: string;
 };
 
 const DEFAULT_MODEL = process.env.GEMINI_LISTING_MODEL || "gemini-2.5-flash";
@@ -97,6 +130,7 @@ const GEMINI_ENDPOINT_BASE = "https://generativelanguage.googleapis.com/v1beta/m
 const MAX_TEMPLATE_CONTEXT = 1400;
 const MAX_TITLE_CHARS = 120;
 const MAX_LEAD_CHARS = 260;
+const MAX_GEMINI_ATTEMPTS = 2;
 
 const WEAK_FILENAME_TOKENS = new Set([
   "img",
@@ -144,6 +178,69 @@ const STOPWORDS = new Set([
   "more",
 ]);
 
+const LOCALE_PROFILES: Record<string, LocaleProfile> = {
+  "en-us": {
+    locale: "en-US",
+    leadTone: "marketplace-ready",
+    discoveryTermLabel: "discovery terms",
+  },
+  "en-gb": {
+    locale: "en-GB",
+    leadTone: "marketplace-ready",
+    discoveryTermLabel: "discovery terms",
+  },
+};
+
+const COMPLIANCE_RULE_PACKS = [
+  {
+    code: "medical_claim",
+    severity: "critical",
+    summary: "Potential unsupported medical claim detected.",
+    patterns: [
+      /\bcures?\b/i,
+      /\bheals?(?:ing)?\b/i,
+      /\bdoctor[- ]recommended\b/i,
+      /\bclinically proven\b/i,
+      /\bpain relief\b/i,
+    ],
+  },
+  {
+    code: "licensing_claim",
+    severity: "critical",
+    summary: "Potential official, licensed, or trademark-style claim detected.",
+    patterns: [
+      /\bofficial\b/i,
+      /\blicensed\b/i,
+      /\btrademark(?:ed)?\b/i,
+      /\bauthorized\b/i,
+      /\bbrand[- ]approved\b/i,
+    ],
+  },
+  {
+    code: "certification_claim",
+    severity: "warning",
+    summary: "Potential certification-style language detected.",
+    patterns: [
+      /\bcertified\b/i,
+      /\bFDA[- ]approved\b/i,
+      /\bUSDA[- ]certified\b/i,
+      /\bapproved by experts\b/i,
+    ],
+  },
+  {
+    code: "guarantee_claim",
+    severity: "warning",
+    summary: "Potential guarantee or exaggerated performance claim detected.",
+    patterns: [
+      /\bguaranteed\b/i,
+      /\b100%\s+guaranteed\b/i,
+      /\bresults guaranteed\b/i,
+      /\bmiracle\b/i,
+      /\bworks every time\b/i,
+    ],
+  },
+] as const;
+
 const GEMINI_RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
@@ -181,6 +278,8 @@ const GEMINI_RESPONSE_SCHEMA = {
         usefulness: { type: "NUMBER" },
         usefulTokens: { type: "ARRAY", items: { type: "STRING" } },
         ignoredTokens: { type: "ARRAY", items: { type: "STRING" } },
+        conflictSeverity: { type: "STRING" },
+        shouldIgnore: { type: "BOOLEAN" },
         reason: { type: "STRING" },
       },
       required: ["classification", "usefulness", "usefulTokens", "ignoredTokens", "reason"],
@@ -257,6 +356,19 @@ const GEMINI_RESPONSE_SCHEMA = {
         confidence: { type: "NUMBER" },
         reasonFlags: { type: "ARRAY", items: { type: "STRING" } },
         complianceFlags: { type: "ARRAY", items: { type: "STRING" } },
+        reasonDetails: {
+          type: "ARRAY",
+          items: {
+            type: "OBJECT",
+            properties: {
+              code: { type: "STRING" },
+              severity: { type: "STRING" },
+              stage: { type: "STRING" },
+              summary: { type: "STRING" },
+            },
+            required: ["code", "severity", "stage", "summary"],
+          },
+        },
       },
       required: ["grade", "confidence", "reasonFlags", "complianceFlags"],
     },
@@ -412,12 +524,197 @@ function normalizeArray(input: unknown) {
   return Array.isArray(input) ? unique(input.map((value) => String(value || ""))) : [];
 }
 
+function getLocaleProfile(locale?: string) {
+  const key = cleanSpaces(locale || "en-US").toLowerCase();
+  return LOCALE_PROFILES[key] || LOCALE_PROFILES["en-us"];
+}
+
+function makeReason(
+  code: string,
+  severity: ListingReasonSeverity,
+  stage: ListingReasonStage,
+  summary: string
+): ListingReason {
+  return {
+    code,
+    severity,
+    stage,
+    summary: cleanSpaces(summary),
+  };
+}
+
+function mergeReasonDetails(...groups: ListingReason[][]) {
+  const seen = new Set<string>();
+  const merged: ListingReason[] = [];
+
+  for (const group of groups) {
+    for (const item of group) {
+      const key = `${item.stage}:${item.code}:${item.summary.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(item);
+    }
+  }
+
+  return merged;
+}
+
+function reasonFlagsFromDetails(reasonDetails: ListingReason[], complianceFlags: string[]) {
+  const fromDetails = reasonDetails
+    .filter((detail) => detail.severity !== "info")
+    .map((detail) => detail.summary);
+  return unique([...fromDetails, ...complianceFlags]).slice(0, 6);
+}
+
+function getVisibleTextSeed(imageTruth: ImageTruthRecord) {
+  const visibleSeed = normalizeTitle(imageTruth.visibleText.slice(0, 2).join(" "), "");
+  return visibleSeed || normalizeTitle(imageTruth.visibleFacts.slice(0, 1).join(" "), "");
+}
+
+function chooseTitleSeed(input: ListingRequest, imageTruth: ImageTruthRecord, filenameAssessment: FilenameAssessment) {
+  const explicitTitle = normalizeTitle(input.title || "", input.fileName || "");
+  if (explicitTitle) return explicitTitle;
+
+  const visibleSeed = getVisibleTextSeed(imageTruth);
+  if (visibleSeed && (filenameAssessment.shouldIgnore || filenameAssessment.classification === "weak_or_generic")) {
+    return visibleSeed;
+  }
+
+  return normalizeTitle(input.fileName || visibleSeed || "Product", visibleSeed || "");
+}
+
+function normalizeComparableText(value: string) {
+  return cleanSpaces(value).toLowerCase().replace(/[^a-z0-9 ]+/g, " ");
+}
+
+function tokenizeForVariety(value: string) {
+  return normalizeComparableText(value)
+    .split(/\s+/)
+    .filter((token) => token.length > 2 && !STOPWORDS.has(token));
+}
+
+function analyzeRepetition(title: string, leadParagraphs: string[], discoveryTerms: string[]) {
+  const reasons: ListingReason[] = [];
+  const [firstLead = "", secondLead = ""] = leadParagraphs;
+  const firstTokens = tokenizeForVariety(firstLead);
+  const secondTokens = tokenizeForVariety(secondLead);
+  const titleTokens = tokenizeForVariety(title);
+  const sharedLeadTokens = firstTokens.filter((token) => secondTokens.includes(token));
+  const sharedTitleTokens = firstTokens.filter((token) => titleTokens.includes(token));
+
+  if (
+    firstTokens.length >= 4 &&
+    secondTokens.length >= 4 &&
+    firstTokens.slice(0, 4).join(" ") === secondTokens.slice(0, 4).join(" ")
+  ) {
+    reasons.push(
+      makeReason(
+        "repeated_lead_opener",
+        "warning",
+        "render",
+        "Lead paragraphs repeat the same opener and should vary more."
+      )
+    );
+  }
+
+  if (sharedLeadTokens.length >= Math.min(firstTokens.length, secondTokens.length, 6) && secondTokens.length > 0) {
+    reasons.push(
+      makeReason(
+        "lead_phrase_overlap",
+        "warning",
+        "render",
+        "Lead copy is too repetitive across the two buyer-facing paragraphs."
+      )
+    );
+  }
+
+  if (titleTokens.length >= 3 && sharedTitleTokens.length >= Math.min(titleTokens.length, 4)) {
+    reasons.push(
+      makeReason(
+        "lead_title_overlap",
+        "warning",
+        "render",
+        "Lead copy leans too heavily on title phrasing instead of adding new value."
+      )
+    );
+  }
+
+  if (unique(discoveryTerms).length > 0 && unique(discoveryTerms).length < 5) {
+    reasons.push(
+      makeReason(
+        "low_term_variety",
+        "warning",
+        "render",
+        "Discovery terms are too repetitive to justify a green-ready listing."
+      )
+    );
+  }
+
+  return reasons;
+}
+
+function findComplianceMatches(values: string[]) {
+  const matches: string[] = [];
+
+  for (const value of values.map((entry) => cleanSpaces(entry)).filter(Boolean)) {
+    for (const pack of COMPLIANCE_RULE_PACKS) {
+      for (const pattern of pack.patterns) {
+        const match = value.match(pattern);
+        if (match) {
+          matches.push(match[0]);
+        }
+      }
+    }
+  }
+
+  return unique(matches).slice(0, 10);
+}
+
+function evaluateComplianceReasons(values: string[]) {
+  const reasons: ListingReason[] = [];
+  const normalizedValues = values.map((value) => cleanSpaces(value)).filter(Boolean);
+
+  for (const pack of COMPLIANCE_RULE_PACKS) {
+    if (normalizedValues.some((value) => pack.patterns.some((pattern) => pattern.test(value)))) {
+      reasons.push(makeReason(pack.code, pack.severity, "compliance", pack.summary));
+    }
+  }
+
+  return reasons;
+}
+
+function normalizeReasonDetails(input: unknown) {
+  if (!Array.isArray(input)) return [];
+
+  return input
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const obj = entry as Record<string, unknown>;
+      const severity = String(obj.severity || "").toLowerCase();
+      const stage = String(obj.stage || "").toLowerCase();
+
+      if (!["info", "warning", "critical"].includes(severity)) return null;
+      if (!["image_truth", "filename", "semantic", "render", "validator", "compliance", "fallback"].includes(stage)) {
+        return null;
+      }
+
+      return makeReason(
+        cleanSpaces(String(obj.code || "unknown_reason")) || "unknown_reason",
+        severity as ListingReasonSeverity,
+        stage as ListingReasonStage,
+        String(obj.summary || "")
+      );
+    })
+    .filter((entry): entry is ListingReason => Boolean(entry));
+}
+
 export function assessFilenameRelevance(fileName: string, visibleTextHints: string[]) {
   const tokens = toKeywordTokens(fileName);
   const usefulTokens = tokens.filter((token) => !WEAK_FILENAME_TOKENS.has(token) && !/^\d+$/.test(token));
   const ignoredTokens = tokens.filter((token) => !usefulTokens.includes(token));
   const visibleTokens = new Set(visibleTextHints.flatMap((entry) => toKeywordTokens(entry)));
   const overlap = usefulTokens.filter((token) => visibleTokens.has(token));
+  const conflictTokenCount = usefulTokens.filter((token) => !visibleTokens.has(token)).length;
 
   if (usefulTokens.length >= 3 && overlap.length >= 1) {
     return {
@@ -425,6 +722,8 @@ export function assessFilenameRelevance(fileName: string, visibleTextHints: stri
       usefulness: 0.9,
       usefulTokens,
       ignoredTokens,
+      conflictSeverity: "none",
+      shouldIgnore: false,
       reason: "Filename provides specific terms that support visible artwork content.",
     } satisfies FilenameAssessment;
   }
@@ -435,16 +734,33 @@ export function assessFilenameRelevance(fileName: string, visibleTextHints: stri
       usefulness: 0.68,
       usefulTokens,
       ignoredTokens,
+      conflictSeverity: conflictTokenCount >= 2 ? "low" : "none",
+      shouldIgnore: false,
       reason: "Filename offers limited but useful support for the visible artwork.",
     } satisfies FilenameAssessment;
   }
 
-  if (usefulTokens.length >= 2 && overlap.length === 0 && visibleTokens.size > 0) {
+  if (visibleTokens.size === 0 && usefulTokens.length >= 2) {
     return {
-      classification: "conflicting",
-      usefulness: 0.25,
+      classification: "partial_support",
+      usefulness: 0.55,
       usefulTokens,
       ignoredTokens,
+      conflictSeverity: "none",
+      shouldIgnore: false,
+      reason: "Filename offers soft support because the image signal is weak or text-light.",
+    } satisfies FilenameAssessment;
+  }
+
+  if (usefulTokens.length >= 2 && overlap.length === 0 && visibleTokens.size > 0) {
+    const conflictSeverity = usefulTokens.length >= 4 ? "high" : usefulTokens.length >= 2 ? "medium" : "low";
+    return {
+      classification: "conflicting",
+      usefulness: conflictSeverity === "high" ? 0.08 : conflictSeverity === "medium" ? 0.18 : 0.28,
+      usefulTokens,
+      ignoredTokens,
+      conflictSeverity,
+      shouldIgnore: conflictSeverity !== "low",
       reason: "Filename tokens conflict with the visible image signal and should be de-prioritized.",
     } satisfies FilenameAssessment;
   }
@@ -454,13 +770,15 @@ export function assessFilenameRelevance(fileName: string, visibleTextHints: stri
     usefulness: usefulTokens.length ? 0.42 : 0.15,
     usefulTokens,
     ignoredTokens,
+    conflictSeverity: "none",
+    shouldIgnore: visibleTokens.size > 0,
     reason: "Filename is generic, weak, or not trustworthy enough for primary listing logic.",
   } satisfies FilenameAssessment;
 }
 
 function buildSemanticRecord(input: ListingRequest, imageTruth: ImageTruthRecord, filenameAssessment: FilenameAssessment) {
   const productNoun = getProductNoun(input.productFamily || "");
-  const titleCore = normalizeTitle(input.title || input.fileName || "Product", input.fileName || "");
+  const titleCore = chooseTitleSeed(input, imageTruth, filenameAssessment);
   const styleOccasion = imageTruth.likelyOccasion || detectTheme(`${titleCore} ${input.templateContext || ""}`);
   const benefitCore = `Clear ${productNoun} messaging for ${imageTruth.likelyAudience || "gift-ready"} discovery and merchandising.`;
   const visibleKeywords = unique([
@@ -473,10 +791,12 @@ function buildSemanticRecord(input: ListingRequest, imageTruth: ImageTruthRecord
     ...toKeywordTokens(styleOccasion),
     ...toKeywordTokens(titleCore),
   ]).slice(0, 20);
-
-  const forbiddenClaims = inferredKeywords
-    .filter((keyword) => /(official|licensed|medical|guaranteed|cure|doctor)/i.test(keyword))
-    .slice(0, 6);
+  const forbiddenClaims = findComplianceMatches([
+    ...visibleKeywords,
+    ...inferredKeywords,
+    titleCore,
+    benefitCore,
+  ]).slice(0, 6);
 
   return {
     productNoun,
@@ -502,22 +822,34 @@ function buildDiscoveryTerms(semantic: SemanticRecord, maxTerms: number) {
     .slice(0, maxTerms);
 }
 
-function buildDefaultLead(semantic: SemanticRecord) {
+function buildDefaultLead(semantic: SemanticRecord, localeProfile: LocaleProfile) {
   return [
-    `${semantic.titleCore} brings ${semantic.styleOccasion} style to a ${semantic.productNoun} built for clean, high-intent discovery.`,
-    `${semantic.benefitCore} Pair it with the imported product details below for a complete marketplace-ready listing.`,
+    `${semantic.titleCore} brings ${semantic.styleOccasion} style to a ${semantic.productNoun} built for clean, high-intent ${localeProfile.discoveryTermLabel}.`,
+    `${semantic.benefitCore} Pair it with the imported product details below for a complete ${localeProfile.leadTone} listing.`,
   ];
 }
 
-export function normalizeLeadParagraphs(title: string, paragraphs: string[], semantic: SemanticRecord) {
+export function normalizeLeadParagraphs(
+  title: string,
+  paragraphs: string[],
+  semantic: SemanticRecord,
+  localeProfile: LocaleProfile = getLocaleProfile()
+) {
   const raw = paragraphs.map((paragraph) => cleanSpaces(paragraph)).filter(Boolean);
   const normalized = raw.map((paragraph, index) =>
     index === 0 ? stripTitlePrefix(trimSentence(paragraph, MAX_LEAD_CHARS), title) : trimSentence(paragraph, MAX_LEAD_CHARS)
   );
 
-  const fallback = buildDefaultLead(semantic);
+  const fallback = buildDefaultLead(semantic, localeProfile);
   const merged = [normalized[0] || fallback[0], normalized[1] || fallback[1]];
   const finalParagraphs = merged.map((paragraph) => cleanSpaces(paragraph)).filter(Boolean).slice(0, 2);
+
+  if (
+    finalParagraphs.length === 2 &&
+    normalizeComparableText(finalParagraphs[0]) === normalizeComparableText(finalParagraphs[1])
+  ) {
+    finalParagraphs[1] = fallback[1];
+  }
 
   while (finalParagraphs.length < 2) {
     finalParagraphs.push(fallback[finalParagraphs.length]);
@@ -529,7 +861,8 @@ export function normalizeLeadParagraphs(title: string, paragraphs: string[], sem
 function buildChannelDraft(
   channel: "etsy" | "amazon" | "ebay" | "tiktokShop",
   semantic: SemanticRecord,
-  leadParagraphs: string[]
+  leadParagraphs: string[],
+  localeProfile: LocaleProfile
 ) {
   const titleSeed = semantic.titleCore || `${semantic.styleOccasion} ${semantic.productNoun}`;
   let title = titleSeed;
@@ -554,22 +887,34 @@ function buildChannelDraft(
 
   return {
     title: normalizedTitle || semantic.titleCore || "Product",
-    leadParagraphs: normalizeLeadParagraphs(normalizedTitle || semantic.titleCore || "Product", leadParagraphs, semantic),
+    leadParagraphs: normalizeLeadParagraphs(
+      normalizedTitle || semantic.titleCore || "Product",
+      leadParagraphs,
+      semantic,
+      localeProfile
+    ),
     discoveryTerms: terms,
   } satisfies ChannelDraft;
 }
 
-function buildMarketplaceDrafts(semantic: SemanticRecord, canonicalLead: string[]) {
+function buildMarketplaceDrafts(semantic: SemanticRecord, canonicalLead: string[], localeProfile: LocaleProfile) {
   return {
-    etsy: buildChannelDraft("etsy", semantic, canonicalLead),
-    amazon: buildChannelDraft("amazon", semantic, canonicalLead),
-    ebay: buildChannelDraft("ebay", semantic, canonicalLead),
-    tiktokShop: buildChannelDraft("tiktokShop", semantic, canonicalLead),
+    etsy: buildChannelDraft("etsy", semantic, canonicalLead, localeProfile),
+    amazon: buildChannelDraft("amazon", semantic, canonicalLead, localeProfile),
+    ebay: buildChannelDraft("ebay", semantic, canonicalLead, localeProfile),
+    tiktokShop: buildChannelDraft("tiktokShop", semantic, canonicalLead, localeProfile),
   } satisfies MarketplaceDrafts;
 }
 
-export function gradeListing(imageTruth: ImageTruthRecord, semantic: SemanticRecord, filenameAssessment: FilenameAssessment) {
-  const reasonFlags: string[] = [];
+export function gradeListing(
+  imageTruth: ImageTruthRecord,
+  semantic: SemanticRecord,
+  filenameAssessment: FilenameAssessment,
+  title = semantic.titleCore,
+  leadParagraphs: string[] = [],
+  discoveryTerms: string[] = []
+) {
+  const reasonDetails: ListingReason[] = [];
   const complianceFlags: string[] = [];
   let confidence = 0.56;
 
@@ -577,36 +922,69 @@ export function gradeListing(imageTruth: ImageTruthRecord, semantic: SemanticRec
   confidence += imageTruth.hasReadableText ? 0.05 : -0.04;
 
   if (filenameAssessment.classification === "conflicting") {
-    confidence -= 0.08;
-    reasonFlags.push("Filename conflicts with visible image signal.");
+    confidence -= filenameAssessment.conflictSeverity === "high" ? 0.18 : filenameAssessment.conflictSeverity === "medium" ? 0.12 : 0.08;
+    reasonDetails.push(
+      makeReason(
+        `filename_conflict_${filenameAssessment.conflictSeverity}`,
+        filenameAssessment.conflictSeverity === "high" ? "critical" : "warning",
+        "filename",
+        filenameAssessment.conflictSeverity === "high"
+          ? "Filename strongly conflicts with visible image meaning and should be ignored."
+          : "Filename conflicts with visible image signal."
+      )
+    );
   } else if (filenameAssessment.classification === "weak_or_generic") {
-    reasonFlags.push("Filename provides weak listing support.");
+    reasonDetails.push(
+      makeReason("filename_weak", "info", "filename", "Filename provides weak listing support.")
+    );
   }
 
   if (imageTruth.ocrWeakness && !/none|clear/i.test(imageTruth.ocrWeakness)) {
     confidence -= 0.1;
-    reasonFlags.push("OCR/text legibility is weak or partial.");
+    reasonDetails.push(
+      makeReason("ocr_weakness", "warning", "image_truth", "OCR/text legibility is weak or partial.")
+    );
   }
 
   if (imageTruth.uncertainty.length > 0) {
     confidence -= 0.06;
-    reasonFlags.push(...imageTruth.uncertainty.slice(0, 2));
+    reasonDetails.push(
+      ...imageTruth.uncertainty
+        .slice(0, 2)
+        .map((summary, index) => makeReason(`image_uncertainty_${index + 1}`, "warning", "image_truth", summary))
+    );
   }
 
-  if (semantic.forbiddenClaims.length) {
+  const complianceReasons = evaluateComplianceReasons([
+    title,
+    ...leadParagraphs,
+    ...semantic.visibleKeywords,
+    ...semantic.inferredKeywords,
+    ...semantic.forbiddenClaims,
+  ]);
+  if (complianceReasons.length) {
     confidence -= 0.16;
+    reasonDetails.push(...complianceReasons);
     complianceFlags.push(...semantic.forbiddenClaims.map((claim) => `Potential unsupported claim: ${claim}`));
-    reasonFlags.push("Potential compliance-sensitive wording detected.");
   }
 
   if (!semantic.titleCore || semantic.titleCore.length < 12) {
     confidence -= 0.1;
-    reasonFlags.push("Generated title core is too weak and needs review.");
+    reasonDetails.push(
+      makeReason("weak_title_core", "warning", "semantic", "Generated title core is too weak and needs review.")
+    );
+  }
+
+  const repetitionReasons = analyzeRepetition(title, leadParagraphs, discoveryTerms);
+  if (repetitionReasons.length) {
+    confidence -= 0.1;
+    reasonDetails.push(...repetitionReasons);
   }
 
   confidence = clamp(Number(confidence.toFixed(2)), 0, 1);
-  const dedupedReasons = unique(reasonFlags).slice(0, 6);
   const dedupedCompliance = unique(complianceFlags).slice(0, 4);
+  const mergedReasonDetails = mergeReasonDetails(reasonDetails);
+  const dedupedReasons = reasonFlagsFromDetails(mergedReasonDetails, dedupedCompliance);
 
   if (confidence < 0.38 || imageTruth.meaningClarity < 0.35) {
     return {
@@ -614,6 +992,9 @@ export function gradeListing(imageTruth: ImageTruthRecord, semantic: SemanticRec
       confidence,
       reasonFlags: dedupedReasons.length ? dedupedReasons : ["Image meaning is too unclear for safe listing generation."],
       complianceFlags: dedupedCompliance,
+      reasonDetails: mergedReasonDetails.length
+        ? mergedReasonDetails
+        : [makeReason("image_unclear", "critical", "validator", "Image meaning is too unclear for safe listing generation.")],
     } satisfies ValidatorResult;
   }
 
@@ -623,6 +1004,7 @@ export function gradeListing(imageTruth: ImageTruthRecord, semantic: SemanticRec
       confidence,
       reasonFlags: [],
       complianceFlags: [],
+      reasonDetails: [],
     } satisfies ValidatorResult;
   }
 
@@ -631,6 +1013,7 @@ export function gradeListing(imageTruth: ImageTruthRecord, semantic: SemanticRec
     confidence,
     reasonFlags: dedupedReasons.length ? dedupedReasons : ["Usable draft detected but manual review is recommended."],
     complianceFlags: dedupedCompliance,
+    reasonDetails: mergedReasonDetails,
   } satisfies ValidatorResult;
 }
 
@@ -716,10 +1099,15 @@ function normalizeSemantic(input: unknown, fallback: SemanticRecord): SemanticRe
   };
 }
 
-function normalizeChannelDraft(input: unknown, semantic: SemanticRecord, fallbackLead: string[]) {
+function normalizeChannelDraft(
+  input: unknown,
+  semantic: SemanticRecord,
+  fallbackLead: string[],
+  localeProfile: LocaleProfile
+) {
   const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const title = normalizeTitle(String(obj.title || semantic.titleCore), semantic.titleCore);
-  const leadParagraphs = normalizeLeadParagraphs(title, normalizeArray(obj.leadParagraphs), semantic);
+  const leadParagraphs = normalizeLeadParagraphs(title, normalizeArray(obj.leadParagraphs), semantic, localeProfile);
   const discoveryTerms = unique(normalizeArray(obj.discoveryTerms)).slice(0, 20);
 
   return {
@@ -729,14 +1117,19 @@ function normalizeChannelDraft(input: unknown, semantic: SemanticRecord, fallbac
   } satisfies ChannelDraft;
 }
 
-function normalizeMarketplaceDrafts(input: unknown, semantic: SemanticRecord, fallbackLead: string[]) {
+function normalizeMarketplaceDrafts(
+  input: unknown,
+  semantic: SemanticRecord,
+  fallbackLead: string[],
+  localeProfile: LocaleProfile
+) {
   const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
 
   return {
-    etsy: normalizeChannelDraft(obj.etsy, semantic, fallbackLead),
-    amazon: normalizeChannelDraft(obj.amazon, semantic, fallbackLead),
-    ebay: normalizeChannelDraft(obj.ebay, semantic, fallbackLead),
-    tiktokShop: normalizeChannelDraft(obj.tiktokShop, semantic, fallbackLead),
+    etsy: normalizeChannelDraft(obj.etsy, semantic, fallbackLead, localeProfile),
+    amazon: normalizeChannelDraft(obj.amazon, semantic, fallbackLead, localeProfile),
+    ebay: normalizeChannelDraft(obj.ebay, semantic, fallbackLead, localeProfile),
+    tiktokShop: normalizeChannelDraft(obj.tiktokShop, semantic, fallbackLead, localeProfile),
   } satisfies MarketplaceDrafts;
 }
 
@@ -744,16 +1137,27 @@ function normalizeValidator(input: unknown, fallback: ValidatorResult): Validato
   const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const gradeRaw = String(obj.grade || fallback.grade).toLowerCase();
   const grade = gradeRaw === "green" || gradeRaw === "orange" || gradeRaw === "red" ? gradeRaw : fallback.grade;
+  const reasonDetails = mergeReasonDetails(normalizeReasonDetails(obj.reasonDetails), fallback.reasonDetails);
+  const complianceFlags = normalizeArray(obj.complianceFlags).slice(0, 8);
+  const reasonFlags = normalizeArray(obj.reasonFlags).slice(0, 8);
+  const effectiveComplianceFlags = complianceFlags.length ? complianceFlags : fallback.complianceFlags;
 
   return {
     grade,
     confidence: clamp(Number(obj.confidence ?? fallback.confidence) || fallback.confidence, 0, 1),
-    reasonFlags: normalizeArray(obj.reasonFlags).slice(0, 8),
-    complianceFlags: normalizeArray(obj.complianceFlags).slice(0, 8),
+    reasonFlags: reasonFlags.length ? reasonFlags : reasonFlagsFromDetails(reasonDetails, effectiveComplianceFlags),
+    complianceFlags: effectiveComplianceFlags,
+    reasonDetails,
   };
 }
 
-function buildMasterPrompt(input: ListingRequest, filenameAssessment: FilenameAssessment, normalizedTitleSeed: string) {
+function buildMasterPrompt(
+  input: ListingRequest,
+  filenameAssessment: FilenameAssessment,
+  normalizedTitleSeed: string,
+  retryContext: RetryContext,
+  localeProfile: LocaleProfile
+) {
   const templateContext = summarizeTemplateContext(input.templateContext || "");
   const productFamily = cleanSpaces(input.productFamily || "product");
 
@@ -778,6 +1182,7 @@ function buildMasterPrompt(input: ListingRequest, filenameAssessment: FilenameAs
     "- Evaluate filename usefulness independently.",
     "- Keep only supportive filename clues; ignore weak/generic terms.",
     `- Current local filename assessment hint: ${filenameAssessment.classification} (${filenameAssessment.reason})`,
+    `- Conflict severity hint: ${filenameAssessment.conflictSeverity}; ignore filename: ${filenameAssessment.shouldIgnore ? "yes" : "no"}`,
     "- Few-shot examples:",
     "  1) clear image text + useless filename -> trust image text, ignore filename",
     "  2) useful filename + weak image text -> use filename only as soft support, lower confidence",
@@ -803,7 +1208,8 @@ function buildMasterPrompt(input: ListingRequest, filenameAssessment: FilenameAs
     "- Keep each channel output structured with title, leadParagraphs, discoveryTerms.",
     "",
     "STEP 7 VALIDATION",
-    "- Validate relevance, readability, compliance, and review risk.",
+    "- Validate relevance, readability, compliance, review risk, and repetition.",
+    "- Return validator.reasonDetails objects with code, severity, stage, and summary when possible.",
     "",
     "STEP 8 FINAL GREEN / ORANGE / RED GRADING",
     "- Green: clear image meaning + usable title + non-repetitive lead + relevant discovery terms + no compliance concerns.",
@@ -818,12 +1224,27 @@ function buildMasterPrompt(input: ListingRequest, filenameAssessment: FilenameAs
     `titleSeed: ${normalizedTitleSeed}`,
     `fileName: ${input.fileName || "none"}`,
     `templateContext: ${templateContext}`,
+    `locale: ${localeProfile.locale}`,
+    `retryAttempt: ${retryContext.attempt}`,
+    retryContext.retryInstruction ? `retryInstruction: ${retryContext.retryInstruction}` : "",
   ].join("\n");
 }
 
-function buildFallbackRecord(input: ListingRequest) {
-  const normalizedTitleSeed = normalizeTitle(input.title || "", input.fileName || "");
+function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile, retryCount = 0) {
+  const emptyImageTruth: ImageTruthRecord = {
+    visibleText: [],
+    visibleFacts: [],
+    inferredMeaning: [],
+    dominantTheme: detectTheme(`${input.title || ""} ${input.templateContext || ""}`),
+    likelyAudience: "general audience",
+    likelyOccasion: detectTheme(`${input.title || ""} ${input.templateContext || ""}`),
+    uncertainty: [],
+    ocrWeakness: "local-fallback-no-multimodal-ocr",
+    meaningClarity: input.title || input.fileName ? 0.58 : 0.34,
+    hasReadableText: false,
+  };
   const filenameAssessment = assessFilenameRelevance(input.fileName || "", []);
+  const normalizedTitleSeed = chooseTitleSeed(input, emptyImageTruth, filenameAssessment);
   const imageTruth: ImageTruthRecord = {
     visibleText: [],
     visibleFacts: [],
@@ -831,16 +1252,27 @@ function buildFallbackRecord(input: ListingRequest) {
     dominantTheme: detectTheme(`${normalizedTitleSeed} ${input.templateContext || ""}`),
     likelyAudience: "general audience",
     likelyOccasion: detectTheme(`${normalizedTitleSeed} ${input.templateContext || ""}`),
-    uncertainty: ["Local fallback used because Gemini output was unavailable or unparseable."],
+    uncertainty: [
+      retryCount > 0
+        ? `Deterministic fallback used after ${retryCount} bounded Gemini attempt${retryCount === 1 ? "" : "s"} failed or returned unusable structured output.`
+        : "Local fallback used because Gemini output was unavailable or unparseable.",
+    ],
     ocrWeakness: "local-fallback-no-multimodal-ocr",
     meaningClarity: normalizedTitleSeed ? 0.58 : 0.34,
     hasReadableText: false,
   };
 
   const semantic = buildSemanticRecord(input, imageTruth, filenameAssessment);
-  const leadParagraphs = normalizeLeadParagraphs(semantic.titleCore, [], semantic);
-  const marketplaceDrafts = buildMarketplaceDrafts(semantic, leadParagraphs);
-  const validator = gradeListing(imageTruth, semantic, filenameAssessment);
+  const leadParagraphs = normalizeLeadParagraphs(semantic.titleCore, [], semantic, localeProfile);
+  const marketplaceDrafts = buildMarketplaceDrafts(semantic, leadParagraphs, localeProfile);
+  const validator = gradeListing(
+    imageTruth,
+    semantic,
+    filenameAssessment,
+    semantic.titleCore,
+    leadParagraphs,
+    marketplaceDrafts.etsy.discoveryTerms
+  );
   const canonicalTitle = marketplaceDrafts.etsy.title || semantic.titleCore || "Product";
   const canonicalLeadParagraphs = marketplaceDrafts.etsy.leadParagraphs;
 
@@ -856,13 +1288,25 @@ function buildFallbackRecord(input: ListingRequest) {
   } satisfies EngineRecord;
 }
 
-async function callGeminiRecord(input: ListingRequest, options: Required<Pick<GenerateOptions, "apiKey" | "model" | "fetchFn">>) {
+async function callGeminiRecord(
+  input: ListingRequest,
+  options: Required<Pick<GenerateOptions, "apiKey" | "model" | "fetchFn">> & {
+    localeProfile: LocaleProfile;
+    retryContext: RetryContext;
+  }
+) {
   const image = parseImageData(String(input.imageDataUrl || ""));
   if (!image) return null;
 
   const normalizedTitleSeed = normalizeTitle(input.title || "", input.fileName || "");
   const filenameAssessmentSeed = assessFilenameRelevance(input.fileName || "", []);
-  const prompt = buildMasterPrompt(input, filenameAssessmentSeed, normalizedTitleSeed);
+  const prompt = buildMasterPrompt(
+    input,
+    filenameAssessmentSeed,
+    normalizedTitleSeed,
+    options.retryContext,
+    options.localeProfile
+  );
   const endpoint = `${GEMINI_ENDPOINT_BASE}/${encodeURIComponent(options.model)}:generateContent`;
 
   const response = await options.fetchFn(endpoint, {
@@ -917,13 +1361,28 @@ async function callGeminiRecord(input: ListingRequest, options: Required<Pick<Ge
   const canonicalLeads = normalizeLeadParagraphs(
     canonicalTitle,
     normalizeArray(parsedObj.canonicalLeadParagraphs || parsedObj.leadParagraphs),
-    semantic
+    semantic,
+    options.localeProfile
   );
 
-  const marketplaceDrafts = normalizeMarketplaceDrafts(parsedObj.marketplaceDrafts, semantic, canonicalLeads);
-  const gradedFallback = gradeListing(imageTruth, semantic, filenameAssessment);
+  const marketplaceDrafts = normalizeMarketplaceDrafts(
+    parsedObj.marketplaceDrafts,
+    semantic,
+    canonicalLeads,
+    options.localeProfile
+  );
+  const gradedFallback = gradeListing(
+    imageTruth,
+    semantic,
+    filenameAssessment,
+    canonicalTitle,
+    canonicalLeads,
+    marketplaceDrafts.etsy.discoveryTerms
+  );
   const validator = normalizeValidator(parsedObj.validator, gradedFallback);
-  const reasonFlags = validator.reasonFlags.length ? validator.reasonFlags : gradedFallback.reasonFlags;
+  const reasonFlags = validator.reasonFlags.length
+    ? validator.reasonFlags
+    : reasonFlagsFromDetails(validator.reasonDetails, validator.complianceFlags);
 
   return {
     source: "gemini",
@@ -940,8 +1399,13 @@ async function callGeminiRecord(input: ListingRequest, options: Required<Pick<Ge
   } satisfies EngineRecord;
 }
 
-function mapRecordToUiResponse(record: EngineRecord, model: string): ListingUiResponse {
-  const leadParagraphs = normalizeLeadParagraphs(record.canonicalTitle, record.canonicalLeadParagraphs, record.semanticRecord);
+function mapRecordToUiResponse(record: EngineRecord, model: string, localeProfile: LocaleProfile): ListingUiResponse {
+  const leadParagraphs = normalizeLeadParagraphs(
+    record.canonicalTitle,
+    record.canonicalLeadParagraphs,
+    record.semanticRecord,
+    localeProfile
+  );
 
   return {
     title: normalizeTitle(record.canonicalTitle, record.semanticRecord.titleCore || "Product"),
@@ -962,21 +1426,36 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
   const fetchFn = options.fetchFn || fetch;
   const model = options.model || DEFAULT_MODEL;
   const apiKey = typeof options.apiKey === "string" ? options.apiKey : process.env.GEMINI_API_KEY || "";
+  const localeProfile = getLocaleProfile(options.locale);
 
   if (!input?.imageDataUrl) {
     throw new Error("Image data is required.");
   }
 
   if (apiKey) {
-    try {
-      const geminiRecord = await callGeminiRecord(input, { fetchFn, apiKey, model });
-      if (geminiRecord) {
-        return mapRecordToUiResponse(geminiRecord, model);
+    for (let attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS; attempt += 1) {
+      try {
+        const geminiRecord = await callGeminiRecord(input, {
+          fetchFn,
+          apiKey,
+          model,
+          localeProfile,
+          retryContext: {
+            attempt,
+            retryInstruction:
+              attempt > 1
+                ? "Previous attempt failed schema validation or parsing. Return strict JSON only, with all required fields populated."
+                : undefined,
+          },
+        });
+        if (geminiRecord) {
+          return mapRecordToUiResponse(geminiRecord, model, localeProfile);
+        }
+      } catch {
+        if (attempt >= MAX_GEMINI_ATTEMPTS) break;
       }
-    } catch {
-      // fall through to deterministic fallback
     }
   }
 
-  return mapRecordToUiResponse(buildFallbackRecord(input), model);
+  return mapRecordToUiResponse(buildFallbackRecord(input, localeProfile, apiKey ? MAX_GEMINI_ATTEMPTS : 0), model, localeProfile);
 }
