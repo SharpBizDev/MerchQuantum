@@ -769,6 +769,17 @@ function tokenizeForVariety(value: string) {
     .filter((token) => token.length > 2 && !STOPWORDS.has(token));
 }
 
+function pickDeterministicVariant(seed: string, options: string[]) {
+  if (!options.length) return "";
+
+  let hash = 0;
+  for (const char of seed) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+
+  return options[hash % options.length];
+}
+
 function analyzeRepetition(title: string, leadParagraphs: string[], discoveryTerms: string[]) {
   const reasons: ListingReason[] = [];
   const [firstLead = "", secondLead = ""] = leadParagraphs;
@@ -804,7 +815,12 @@ function analyzeRepetition(title: string, leadParagraphs: string[], discoveryTer
     );
   }
 
-  if (titleTokens.length >= 3 && sharedTitleTokens.length >= Math.min(titleTokens.length, 4)) {
+  const titleOverlapRatio = titleTokens.length ? sharedTitleTokens.length / titleTokens.length : 0;
+  if (
+    titleTokens.length >= 4 &&
+    titleOverlapRatio >= 0.85 &&
+    normalizeComparableText(stripTitlePrefix(firstLead, title)).split(/\s+/).filter(Boolean).length < 8
+  ) {
     reasons.push(
       makeReason(
         "lead_title_overlap",
@@ -846,6 +862,20 @@ function findComplianceMatches(values: string[]) {
   return unique(matches).slice(0, 10);
 }
 
+function findComplianceCodes(values: string[]) {
+  const codes = new Set<string>();
+
+  for (const value of values.map((entry) => cleanSpaces(entry)).filter(Boolean)) {
+    for (const pack of COMPLIANCE_RULE_PACKS) {
+      if (pack.patterns.some((pattern) => pattern.test(value))) {
+        codes.add(pack.code);
+      }
+    }
+  }
+
+  return codes;
+}
+
 function evaluateComplianceReasons(values: string[]) {
   const reasons: ListingReason[] = [];
   const normalizedValues = values.map((value) => cleanSpaces(value)).filter(Boolean);
@@ -857,6 +887,88 @@ function evaluateComplianceReasons(values: string[]) {
   }
 
   return reasons;
+}
+
+function inferReasonStage(summary: string): ListingReasonStage {
+  const normalized = summary.toLowerCase();
+  if (/filename|conflict/.test(normalized)) return "filename";
+  if (/ocr|cropped|contrast|legibility|visible text|image/.test(normalized)) return "image_truth";
+  if (/fallback/.test(normalized)) return "fallback";
+  if (/lead|title|discovery|repetitive|clipped|sentence/.test(normalized)) return "render";
+  if (/medical|licensed|trademark|official|certified|guarantee|healing|miracle|claim/.test(normalized)) {
+    return "compliance";
+  }
+  return "validator";
+}
+
+function inferReasonSeverity(summary: string): ListingReasonSeverity {
+  const normalized = summary.toLowerCase();
+  if (/critical|unsafe|non-compliant|strongly conflicts/.test(normalized)) return "critical";
+  if (/warning|weak|partial|review|clipped|conflict|fallback|detected|repetitive|unclear|should be ignored/.test(normalized)) {
+    return "warning";
+  }
+  return "info";
+}
+
+function reasonDetailsFromFlags(flags: string[]) {
+  return unique(flags)
+    .map((summary, index) =>
+      makeReason(
+        `validator_flag_${index + 1}`,
+        inferReasonSeverity(summary),
+        inferReasonStage(summary),
+        summary
+      )
+    )
+    .slice(0, 8);
+}
+
+function getComplianceEvidenceValues(title: string, leadParagraphs: string[], imageTruth: ImageTruthRecord) {
+  return [
+    title,
+    ...leadParagraphs,
+    ...imageTruth.visibleText,
+    ...imageTruth.visibleFacts,
+  ].map((value) => cleanSpaces(value)).filter(Boolean);
+}
+
+function sanitizeValidatorSignals(
+  validator: ValidatorResult,
+  title: string,
+  leadParagraphs: string[],
+  imageTruth: ImageTruthRecord
+) {
+  const evidenceValues = getComplianceEvidenceValues(title, leadParagraphs, imageTruth);
+  const supportedComplianceCodes = findComplianceCodes(evidenceValues);
+  const supportedComplianceMatches = findComplianceMatches(evidenceValues);
+
+  const filteredReasonDetails = validator.reasonDetails.filter((detail) => {
+    if (detail.stage !== "compliance") return true;
+    return supportedComplianceCodes.has(detail.code);
+  });
+
+  const filteredComplianceFlags = validator.complianceFlags.filter((flag) =>
+    supportedComplianceMatches.some((match) => flag.toLowerCase().includes(match.toLowerCase()))
+  );
+
+  const rebuiltReasonFlags = reasonFlagsFromDetails(filteredReasonDetails, filteredComplianceFlags);
+  let grade = validator.grade;
+
+  if (validator.confidence < 0.38) {
+    grade = "red";
+  } else if (rebuiltReasonFlags.length === 0 && filteredComplianceFlags.length === 0 && validator.confidence >= 0.78) {
+    grade = "green";
+  } else if (grade === "green" && (rebuiltReasonFlags.length > 0 || filteredComplianceFlags.length > 0)) {
+    grade = "orange";
+  }
+
+  return {
+    ...validator,
+    grade,
+    reasonFlags: rebuiltReasonFlags,
+    complianceFlags: filteredComplianceFlags,
+    reasonDetails: filteredReasonDetails,
+  } satisfies ValidatorResult;
 }
 
 function normalizeReasonDetails(input: unknown) {
@@ -1184,20 +1296,18 @@ export function gradeListing(
     );
   }
 
-  const complianceReasons = evaluateComplianceReasons([
-    title,
-    ...leadParagraphs,
-    ...semantic.visibleKeywords,
-    ...semantic.inferredKeywords,
-    ...semantic.forbiddenClaims,
-  ]);
+  const complianceEvidence = getComplianceEvidenceValues(title, leadParagraphs, imageTruth);
+  const complianceReasons = evaluateComplianceReasons(complianceEvidence);
   if (complianceReasons.length) {
     confidence -= 0.16;
     reasonDetails.push(...complianceReasons);
-    complianceFlags.push(...semantic.forbiddenClaims.map((claim) => `Potential unsupported claim: ${claim}`));
+    complianceFlags.push(
+      ...findComplianceMatches(complianceEvidence).map((claim) => `Potential unsupported claim: ${claim}`)
+    );
   }
 
-  if (!semantic.titleCore || semantic.titleCore.length < 12) {
+  const effectiveTitle = cleanSpaces(title || semantic.titleCore);
+  if (!effectiveTitle || effectiveTitle.length < 12 || isLowSignalTitle(effectiveTitle)) {
     confidence -= 0.1;
     reasonDetails.push(
       makeReason("weak_title_core", "warning", "semantic", "Generated title core is too weak and needs review.")
@@ -1298,7 +1408,7 @@ function extractTemplateSignal(templateContext: string, productNoun: string): Te
   const shortLabel = normalizeTitle(`${labelParts.join(" ")} ${productNoun}`, productNoun);
   const detailSummary =
     joinReadableList(highlights.slice(0, 3).map((entry) => entry.label)) ||
-    `a ${productNoun} base shaped for buyer-friendly product storytelling`;
+    "practical product details that support shopper expectations";
   const resolvedUseCase =
     useCase?.label ||
     (/hoodie|sweatshirt/i.test(productNoun)
@@ -1330,9 +1440,23 @@ function buildTemplateAwareLead(
   const templateSignal = extractTemplateSignal(templateContext, semantic.productNoun);
   if (!templateSignal) return buildDefaultLead(semantic, localeProfile);
 
-  return [
+  const seed = `${semantic.titleCore}|${templateSignal.shortLabel}|${templateSignal.useCase}|${semantic.likelyAudience}`;
+  const firstParagraph = pickDeterministicVariant(seed, [
     `Built on a ${templateSignal.shortLabel.toLowerCase()} base, this ${semantic.productNoun} feels ready for ${templateSignal.useCase}, supported by ${templateSignal.detailSummary.toLowerCase()}.`,
-    `With ${templateSignal.detailSummary.toLowerCase()} doing the heavy lifting on comfort and presentation, the design feels easier to wear on repeat, gift confidently, and shop for the message instead of a wall of specs.`,
+    `${capitalizeFirst(templateSignal.detailSummary)} give this ${semantic.productNoun} a more believable foundation for ${templateSignal.useCase}, keeping the design message clear at a glance.`,
+    `This ${semantic.productNoun} uses ${templateSignal.detailSummary.toLowerCase()} to support a ${templateSignal.useCase} angle that feels grounded instead of generic.`,
+  ]);
+
+  const secondParagraph = pickDeterministicVariant(`${seed}|buyer`, [
+    `That ${templateSignal.shortLabel.toLowerCase()} foundation helps shoppers picture the design in real rotation without forcing the opener into a raw spec dump.`,
+    `Instead of leaning on stock filler, the product context gives buyers a clearer sense of how the design fits into repeat wear, gifting, and everyday styling.`,
+    `The template details give the artwork a more convincing home, so the listing can stay message-led while still sounding useful for buyers.`,
+    `Those product cues keep the copy grounded for ${templateSignal.useCase}, making the listing feel easier to trust, gift, and wear on repeat.`,
+  ]);
+
+  return [
+    firstParagraph,
+    secondParagraph,
   ];
 }
 
@@ -1455,29 +1579,48 @@ function normalizeMarketplaceDrafts(
   } satisfies MarketplaceDrafts;
 }
 
-function normalizeValidator(input: unknown, fallback: ValidatorResult): ValidatorResult {
+function normalizeValidator(
+  input: unknown,
+  fallback: ValidatorResult,
+  context?: {
+    title: string;
+    leadParagraphs: string[];
+    imageTruth: ImageTruthRecord;
+  }
+): ValidatorResult {
   const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const gradeRaw = String(obj.grade || fallback.grade).toLowerCase();
   let grade = gradeRaw === "green" || gradeRaw === "orange" || gradeRaw === "red" ? gradeRaw : fallback.grade;
-  const reasonDetails = mergeReasonDetails(normalizeReasonDetails(obj.reasonDetails), fallback.reasonDetails);
-  const complianceFlags = normalizeArray(obj.complianceFlags).slice(0, 8);
   const reasonFlags = normalizeArray(obj.reasonFlags).slice(0, 8);
+  const reasonDetails = mergeReasonDetails(
+    normalizeReasonDetails(obj.reasonDetails),
+    reasonDetailsFromFlags(reasonFlags),
+    fallback.reasonDetails
+  );
+  const complianceFlags = normalizeArray(obj.complianceFlags).slice(0, 8);
   const effectiveComplianceFlags = complianceFlags.length ? complianceFlags : fallback.complianceFlags;
-  const effectiveReasonFlags = reasonFlags.length
-    ? reasonFlags
-    : reasonFlagsFromDetails(reasonDetails, effectiveComplianceFlags);
+  const effectiveReasonFlags = reasonFlagsFromDetails(reasonDetails, effectiveComplianceFlags);
 
   if (grade === "green" && (effectiveReasonFlags.length > 0 || effectiveComplianceFlags.length > 0)) {
     grade = "orange";
   }
 
-  return {
+  const normalizedValidator = {
     grade,
     confidence: clamp(Number(obj.confidence ?? fallback.confidence) || fallback.confidence, 0, 1),
     reasonFlags: effectiveReasonFlags,
     complianceFlags: effectiveComplianceFlags,
     reasonDetails,
-  };
+  } satisfies ValidatorResult;
+
+  if (!context) return normalizedValidator;
+
+  return sanitizeValidatorSignals(
+    normalizedValidator,
+    context.title,
+    context.leadParagraphs,
+    context.imageTruth
+  );
 }
 
 function buildMasterPrompt(
@@ -1723,7 +1866,11 @@ async function callGeminiRecord(
     canonicalLeads,
     marketplaceDrafts.etsy.discoveryTerms
   );
-  const validator = normalizeValidator(parsedObj.validator, gradedFallback);
+  const validator = normalizeValidator(parsedObj.validator, gradedFallback, {
+    title: canonicalTitle,
+    leadParagraphs: canonicalLeads,
+    imageTruth,
+  });
   const reasonFlags = validator.reasonFlags.length
     ? validator.reasonFlags
     : reasonFlagsFromDetails(validator.reasonDetails, validator.complianceFlags);

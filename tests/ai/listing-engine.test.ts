@@ -555,7 +555,8 @@ async function main() {
 
     assert.equal(response.source, "gemini");
     assert.equal(/crafted for comfort and style/i.test(response.leadParagraphs[1]), false);
-    assert.equal(/garment-dyed|ring-spun cotton|relaxed fit/i.test(response.leadParagraphs[1]), true);
+    assert.equal(/doing the heavy lifting on comfort and presentation/i.test(response.leadParagraphs[1]), false);
+    assert.equal(/wear|gift|buyer|listing|trust/i.test(response.leadParagraphs[1]), true);
   });
 
   await run("Gemini lead shaping returns finished sentences instead of clipped ellipsis endings", async () => {
@@ -588,6 +589,40 @@ async function main() {
       assert.equal(/(?:\.\.\.|…)\s*$/.test(lead), false);
       assert.equal(/[.!?]["')\]]*$/.test(lead), true);
     }
+  });
+
+  await run("template-aware second paragraph varies across different listing contexts", async () => {
+    const heavyResponse = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "faith_over_fear.png",
+        productFamily: "t-shirt",
+        templateContext:
+          "Comfort Colors 1717 heavyweight garment-dyed t-shirt. 100% ring-spun cotton. Relaxed fit with double-needle stitching.",
+      },
+      {
+        apiKey: "",
+      }
+    );
+
+    const summerResponse = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "sunset-palm-beach-art.png",
+        productFamily: "t-shirt",
+        templateContext:
+          "Lightweight cotton tee with a breathable feel, easy summer styling, and a gift-friendly beachwear angle.",
+      },
+      {
+        apiKey: "",
+      }
+    );
+
+    assert.notEqual(heavyResponse.leadParagraphs[1], summerResponse.leadParagraphs[1]);
+    assert.equal(/doing the heavy lifting on comfort and presentation/i.test(heavyResponse.leadParagraphs[1]), false);
+    assert.equal(/doing the heavy lifting on comfort and presentation/i.test(summerResponse.leadParagraphs[1]), false);
   });
 
   await run("runtime resolves GOOGLE_GENERATIVE_AI_API_KEY for Gemini calls", async () => {
@@ -664,6 +699,81 @@ async function main() {
       response.reasonFlags.some((flag) => flag.toLowerCase().includes("filename strongly conflicts")),
       true
     );
+  });
+
+  await run("Gemini validator filters unsupported compliance flags on faith conflict cases", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "cat_mom_gift_meow_love.png",
+        productFamily: "t-shirt",
+        templateContext: "Classic unisex cotton tee with everyday comfort and simple faith-forward gifting potential.",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async () =>
+          createGeminiResponse(
+            createGeminiPayload({
+              imageTruth: {
+                visibleText: ["jesus saves"],
+                visibleFacts: ["bold faith slogan"],
+                inferredMeaning: ["faith-forward"],
+                dominantTheme: "faith-forward",
+                likelyAudience: "faith-based buyers",
+                likelyOccasion: "daily wear",
+                uncertainty: [],
+                ocrWeakness: "none",
+                meaningClarity: 0.88,
+                hasReadableText: true,
+              },
+              semanticRecord: {
+                titleCore: "Jesus Saves Christian Faith T Shirt",
+                benefitCore: "Readable faith slogan for gift-ready apparel listings.",
+                likelyAudience: "faith-based buyers",
+                styleOccasion: "faith-forward",
+                visibleKeywords: ["jesus saves"],
+                inferredKeywords: ["faith shirt", "christian tee"],
+                forbiddenClaims: ["Claims of healing, miracles, or specific religious dogma that could be seen as exclusive or judgmental."],
+              },
+              canonicalTitle: "Jesus Saves Christian Faith T Shirt",
+              canonicalLeadParagraphs: [
+                "Share your faith with conviction in this Jesus Saves t-shirt. The bold visible message keeps the artwork easy to read for buyers.",
+                "The product details give the artwork a more convincing home, so the listing can stay message-led while still sounding useful for buyers.",
+              ],
+              validator: {
+                grade: "orange",
+                confidence: 0.84,
+                reasonFlags: [
+                  "Filename strongly conflicts with visible image meaning and should be ignored.",
+                  "Potential unsupported medical claim detected.",
+                  "Potential unsupported claim: Claims of healing, miracles, or specific religious dogma that could be seen as exclusive or judgmental.",
+                ],
+                complianceFlags: [
+                  "Potential unsupported claim: Claims of healing, miracles, or specific religious dogma that could be seen as exclusive or judgmental.",
+                ],
+                reasonDetails: [],
+              },
+            })
+          ),
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    assert.equal(
+      response.reasonFlags.some((flag) => flag.toLowerCase().includes("filename strongly conflicts")),
+      true
+    );
+    assert.equal(
+      response.reasonFlags.some((flag) => flag.toLowerCase().includes("medical claim")),
+      false
+    );
+    assert.equal(
+      response.reasonFlags.some((flag) => flag.toLowerCase().includes("healing")),
+      false
+    );
+    assert.equal(response.grade, "orange");
   });
 
   await run("Gemini retry ladder succeeds on second structured attempt", async () => {
