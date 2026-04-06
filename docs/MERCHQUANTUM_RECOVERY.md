@@ -41,6 +41,7 @@ Future sessions must treat GitHub `main` as the source of truth, use the live ap
 - `START_HERE.md` — short repo entrypoint for future sessions and handoffs
 - `AGENTS.md` — repo operating rules, path discipline, explicit staging rules, validation rules, and publication hygiene
 - `docs/MERCHQUANTUM_RECOVERY.md` — this recovery/control file
+- `docs/CONTROL_LAYER_MAP.md` — canonical map of the control layer, reading order, and legacy-handling rules
 - `docs/ARCHITECTURE.md` — practical repo architecture and layer map
 - `docs/PROVIDER_RULES.md` — provider philosophy and no-drift rules
 - `docs/PROMPT_PLAYBOOK.md` — prompt patterns for narrow, provider-safe, AI-only, diagnostics-only, and publication-safe work
@@ -49,22 +50,25 @@ Future sessions must treat GitHub `main` as the source of truth, use the live ap
 ## Control-layer authority chain
 1. `AGENTS.md` — operating rules and validation discipline
 2. `docs/MERCHQUANTUM_RECOVERY.md` — strongest restart/control document
-3. `START_HERE.md` — short entrypoint that points future sessions into the higher-authority docs
-4. `docs/ARCHITECTURE.md` — current app structure
-5. `docs/PROVIDER_RULES.md` — provider guardrails
-6. `docs/PROMPT_PLAYBOOK.md` — safe prompting patterns
+3. `docs/CONTROL_LAYER_MAP.md` — canonical control index, reading order, and legacy/archive guidance
+4. `START_HERE.md` — short entrypoint that points future sessions into the higher-authority docs
+5. `docs/ARCHITECTURE.md` — current app structure
+6. `docs/PROVIDER_RULES.md` — provider guardrails
+7. `docs/PROMPT_PLAYBOOK.md` — safe prompting patterns
+8. `docs/HOSTINGER_CLOUD_STARTUP.md` — future managed deployment planning only
 
 ## Current restart priority order
 1. Read `AGENTS.md`.
 2. Read `docs/MERCHQUANTUM_RECOVERY.md`.
-3. Trust GitHub `main` as the primary repo truth.
-4. Use only the clean working repo path:
+3. Read `docs/CONTROL_LAYER_MAP.md`.
+4. Trust GitHub `main` as the primary repo truth.
+5. Use only the clean working repo path:
    - `C:\Users\prog\OneDrive\Documents\New Project`
-5. Do not use the polluted old local folder:
+6. Do not use the polluted old local folder:
    - `C:\Users\prog\OneDrive\Documents\New project`
-6. Do not create `.codex-*` folders in the repo root.
-7. Stage explicit files only. Never use `git add -A`.
-8. Read `docs/HOSTINGER_CLOUD_STARTUP.md` only when future deployment planning is relevant.
+7. Do not create `.codex-*` folders in the repo root.
+8. Stage explicit files only. Never use `git add -A`.
+9. Read `docs/HOSTINGER_CLOUD_STARTUP.md` only when future deployment planning is relevant.
 
 ## Core file map
 - `app/components/MerchQuantumApp.tsx` — main client UI and workflow logic
@@ -304,6 +308,11 @@ Always separate these three realities before editing:
 - Future infrastructure direction after those layers:
   - Hostinger Cloud Startup migration validation when the app is ready
 - Keep these as coherent infrastructure passes. Do not mix them casually with UI, provider, or AI behavior work.
+
+## Legacy control-doc handling
+- If a control or recovery document is superseded later, move it to `docs/legacy/` rather than leaving it in active locations with unclear status.
+- Do not create placeholder legacy files.
+- Keep active control docs short, current, and authoritative.
 
 ## Restart notes for the next Codex session
 1. Read `AGENTS.md` first and this file second.

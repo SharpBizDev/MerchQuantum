@@ -8,10 +8,11 @@ MerchQuantum reusable baseline repo.
 ## Read these files first
 1. `AGENTS.md`
 2. `docs/MERCHQUANTUM_RECOVERY.md`
-3. `docs/ARCHITECTURE.md`
-4. `docs/PROVIDER_RULES.md`
-5. `docs/PROMPT_PLAYBOOK.md`
-6. `docs/HOSTINGER_CLOUD_STARTUP.md` for future deployment direction
+3. `docs/CONTROL_LAYER_MAP.md`
+4. `docs/ARCHITECTURE.md`
+5. `docs/PROVIDER_RULES.md`
+6. `docs/PROMPT_PLAYBOOK.md`
+7. `docs/HOSTINGER_CLOUD_STARTUP.md` for future deployment direction
 
 ## Source of truth
 - GitHub `main` is the source of truth.
@@ -32,6 +33,7 @@ MerchQuantum reusable baseline repo.
 ## Control-document authority chain
 - `AGENTS.md` sets operating rules and validation discipline.
 - `docs/MERCHQUANTUM_RECOVERY.md` is the strongest restart/control document.
+- `docs/CONTROL_LAYER_MAP.md` is the canonical map of the control layer and reading order.
 - `docs/ARCHITECTURE.md` explains the current app structure.
 - `docs/PROVIDER_RULES.md` defines provider philosophy and no-drift rules.
 - `docs/PROMPT_PLAYBOOK.md` defines safe prompt patterns for future work.

@@ -79,5 +79,6 @@ Do not silently refactor untargeted sections.
 
 ## Additional guidance
 - If a more detailed recovery note exists in `docs/MERCHQUANTUM_RECOVERY.md`, treat it as the fuller control document for this repository.
+- Use `docs/CONTROL_LAYER_MAP.md` as the canonical index for where control, recovery, workflow, and future-planning files live.
 - `START_HERE.md` should remain a short entrypoint, not the place for deep repo detail.
 - For durable repo guidance beyond this file, keep `docs/ARCHITECTURE.md`, `docs/PROVIDER_RULES.md`, and `docs/PROMPT_PLAYBOOK.md` current as the repo truth evolves.
