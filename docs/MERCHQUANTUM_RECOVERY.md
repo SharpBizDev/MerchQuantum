@@ -24,8 +24,47 @@ Use this file to rebuild working rules, app map, no-regression protocol, and res
 - Primary UI file: `app/components/MerchQuantumApp.tsx`
 - Primary backend routes under `app/api`
 
+## Current operating model
+- GitHub `main` is the source of truth for the current accepted repo state.
+- The clean working repo path for active local work is:
+  - `C:\Users\prog\OneDrive\Documents\New Project`
+- Do not use the older polluted local repo folder after this point:
+  - `C:\Users\prog\OneDrive\Documents\New project`
+- Vercel is the temporary live/test deployment layer for now.
+- Hostinger Cloud Startup is the likely future managed production target, but migration is intentionally deferred.
+- Hostinger / VPS migration work is not part of the current baseline.
+
 ## Mission-critical operating rule
-Future sessions must treat the GitHub repo plus the live app as the baseline reality, inspect the latest repo state first, patch only the section explicitly requested, test locally before delivery, and avoid broad cleanup passes that reintroduce regressions.
+Future sessions must treat GitHub `main` as the source of truth, use the live app as a comparison point rather than the primary baseline, inspect the latest repo state first, patch only the section explicitly requested, test locally before delivery, and avoid broad cleanup passes that reintroduce regressions.
+
+## Repo control and memory files now present on repo truth
+- `START_HERE.md` — short repo entrypoint for future sessions and handoffs
+- `AGENTS.md` — repo operating rules, path discipline, explicit staging rules, validation rules, and publication hygiene
+- `docs/MERCHQUANTUM_RECOVERY.md` — this recovery/control file
+- `docs/ARCHITECTURE.md` — practical repo architecture and layer map
+- `docs/PROVIDER_RULES.md` — provider philosophy and no-drift rules
+- `docs/PROMPT_PLAYBOOK.md` — prompt patterns for narrow, provider-safe, AI-only, diagnostics-only, and publication-safe work
+- `docs/HOSTINGER_CLOUD_STARTUP.md` — future managed deployment planning notes for Hostinger Cloud Startup / Web Apps Hosting
+
+## Control-layer authority chain
+1. `AGENTS.md` — operating rules and validation discipline
+2. `docs/MERCHQUANTUM_RECOVERY.md` — strongest restart/control document
+3. `START_HERE.md` — short entrypoint that points future sessions into the higher-authority docs
+4. `docs/ARCHITECTURE.md` — current app structure
+5. `docs/PROVIDER_RULES.md` — provider guardrails
+6. `docs/PROMPT_PLAYBOOK.md` — safe prompting patterns
+
+## Current restart priority order
+1. Read `AGENTS.md`.
+2. Read `docs/MERCHQUANTUM_RECOVERY.md`.
+3. Trust GitHub `main` as the primary repo truth.
+4. Use only the clean working repo path:
+   - `C:\Users\prog\OneDrive\Documents\New Project`
+5. Do not use the polluted old local folder:
+   - `C:\Users\prog\OneDrive\Documents\New project`
+6. Do not create `.codex-*` folders in the repo root.
+7. Stage explicit files only. Never use `git add -A`.
+8. Read `docs/HOSTINGER_CLOUD_STARTUP.md` only when future deployment planning is relevant.
 
 ## Core file map
 - `app/components/MerchQuantumApp.tsx` — main client UI and workflow logic
@@ -77,6 +116,13 @@ Always separate these three realities before editing:
 - Run production build.
 - Confirm the named section changed as requested.
 - Confirm untargeted sections did not drift.
+
+## Local workspace hygiene rules now in force
+- Work only in the currently declared clean repo path.
+- Do not create `.codex-*` folders inside the repo root.
+- Do not create nested repo copies or nested worktrees inside this repo.
+- Stage only explicit files.
+- If local Git staging or push is unreliable, stop looping on broken publication methods and switch to the next safest publication path.
 
 ## Section lock map
 - Quantum Connection: provider selection, token input, connect / connected / disconnect behavior, one green, one purple, one white, no unexpected container expansion.
@@ -217,6 +263,48 @@ Always separate these three realities before editing:
   - visually weak / low-information design
 - AI tests now include real fixture-image regression coverage that asserts grade behavior, title behavior, lead behavior, filename handling, and route-contract-safe outputs without overfitting to one exact wording.
 
+## Automation and smoke-test state
+- A durable GitHub Actions smoke workflow now exists at:
+  - `.github/workflows/merchquantum-smoke.yml`
+- The smoke workflow currently supports:
+  - scheduled twice-daily runs
+  - manual dispatch
+  - `npm ci`
+  - `npx tsc --noEmit`
+  - `npm run build`
+  - focused provider smoke coverage through:
+    - `npx --yes tsx tests/providers/provider-core.test.ts`
+  - focused AI golden-corpus smoke coverage through:
+    - `npx --yes tsx tests/ai/listing-engine.test.ts`
+- A dedicated smoke-report generator now exists at:
+  - `scripts/generate-smoke-report.mjs`
+- Current smoke-report artifact behavior:
+  - workflow captures provider and AI smoke logs
+  - workflow generates a structured JSON current-run report
+  - workflow uploads the `smoke-report/` artifact directory
+  - the report includes workflow metadata, test outcomes, notable coverage notes, regression-oriented notes, and an honest non-historical delta scaffold
+- Current limitation:
+  - true run-to-run delta comparison is not wired yet because historical storage/comparison has not been added
+
+## Future deployment direction
+- Hostinger Cloud Startup / Web Apps Hosting is the current likely future managed production target.
+- Vercel remains the temporary live/test layer until migration time.
+- The Hostinger move should happen only after the app is mostly complete/stable and should be re-validated at migration time.
+- Use `docs/HOSTINGER_CLOUD_STARTUP.md` as the planning note for that future move.
+
+## Branch and automation direction
+- Current durable supervision direction is:
+  - repo-native memory and operating docs
+  - twice-daily smoke workflow
+  - structured smoke-report artifact generation
+- Next likely durable supervision layers:
+  - smoke-summary / run-to-run comparison layer
+  - PR gate workflow on protected branches
+  - task/reporting layer for daily summaries and flagged regressions
+- Future infrastructure direction after those layers:
+  - Hostinger Cloud Startup migration validation when the app is ready
+- Keep these as coherent infrastructure passes. Do not mix them casually with UI, provider, or AI behavior work.
+
 ## Restart notes for the next Codex session
 1. Read `AGENTS.md` first and this file second.
 2. Treat the accepted frozen UI baseline above as the default no-regression state.
@@ -229,9 +317,12 @@ Always separate these three realities before editing:
 1. Open the MerchQuantum repo in Codex.
 2. Make sure `AGENTS.md` is at the repo root.
 3. Make sure this file exists at `docs/MERCHQUANTUM_RECOVERY.md`.
-4. In the prompt, name the exact section to patch.
-5. Require file-minimal delivery only.
-6. Require install, typecheck, and production build before handoff.
+4. Use the clean repo path only:
+   - `C:\Users\prog\OneDrive\Documents\New Project`
+5. Do not use the older polluted local repo folder.
+6. In the prompt, name the exact section to patch.
+7. Require file-minimal delivery only.
+8. Require install, typecheck, and production build before handoff.
 
 ## Practical truth
 This file does not guarantee perfection. It provides the strongest repo-native restart path so future work can re-anchor to the same baseline and the same no-regression rules without relying on PDF or chat memory.
