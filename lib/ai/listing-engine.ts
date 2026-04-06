@@ -735,6 +735,136 @@ function mergeReasonDetails(...groups: ListingReason[][]) {
   return merged;
 }
 
+function isCodeLikeReasonSummary(summary: string) {
+  return /^[a-z0-9_]+$/.test(cleanSpaces(summary));
+}
+
+function getReasonBucket(detail: ListingReason) {
+  const normalized = detail.summary.toLowerCase();
+
+  if (detail.stage === "filename" || /filename/.test(normalized)) {
+    if (/conflict/.test(normalized)) return "filename_conflict";
+    if (/weak listing support|weak filename/.test(normalized)) return "filename_weak";
+  }
+
+  if (/cropped/.test(normalized)) {
+    return "cropped_text";
+  }
+
+  if (/ocr|legibility|weak contrast|difficult to read/.test(normalized)) {
+    return "ocr_legibility";
+  }
+
+  if (
+    /specific symbolic meaning|exact interpretation|open to interpretation|highly ambiguous|exact number|specific features|title seed|not explicitly depicted|stylized/.test(
+      normalized
+    )
+  ) {
+    return "image_ambiguity";
+  }
+
+  if (/fallback/.test(normalized)) return "fallback";
+  if (/repetitive|repeat|overlap|variety/.test(normalized)) return "repetition";
+  if (/clipped|sentence finish|ellipsis|mid-sentence/.test(normalized)) return "lead_finish";
+  if (/medical|licensed|trademark|official|certified|guarantee|healing|miracle|claim/.test(normalized)) {
+    return "compliance";
+  }
+
+  return `${detail.stage}:${detail.code}`;
+}
+
+function getReasonStrength(detail: ListingReason) {
+  const normalized = detail.summary.toLowerCase();
+  let score = detail.severity === "critical" ? 30 : detail.severity === "warning" ? 20 : 10;
+
+  if (/strongly conflicts|should be ignored/.test(normalized)) score += 8;
+  if (/cropped/.test(normalized)) score += 7;
+  if (/ocr\/text legibility is weak or partial/.test(normalized)) score += 7;
+  if (/highly ambiguous|low contrast/.test(normalized)) score += 6;
+  if (/filename and title seed|not explicitly depicted/.test(normalized)) score += 5;
+  if (/specific symbolic meaning|exact interpretation|exact number|specific features/.test(normalized)) score += 1;
+  if (!isCodeLikeReasonSummary(detail.summary)) score += 2;
+  if (detail.summary.length > 80) score += 1;
+
+  return score;
+}
+
+function shouldSuppressWeakReason(detail: ListingReason, imageTruth: ImageTruthRecord, bucketSize: number) {
+  const normalized = detail.summary.toLowerCase();
+  const strongGrounding =
+    imageTruth.meaningClarity >= 0.72 ||
+    imageTruth.hasReadableText ||
+    imageTruth.visibleText.length > 0 ||
+    imageTruth.visibleFacts.length > 0;
+
+  if (
+    /specific symbolic meaning.*not explicitly stated/.test(normalized) &&
+    strongGrounding &&
+    imageTruth.visibleText.length > 0
+  ) {
+    return true;
+  }
+
+  if (
+    bucketSize > 1 &&
+    /exact interpretation|exact number|specific features/.test(normalized) &&
+    strongGrounding
+  ) {
+    return true;
+  }
+
+  if (
+    bucketSize > 1 &&
+    /filename and title seed|not explicitly depicted/.test(normalized) &&
+    imageTruth.meaningClarity >= 0.7 &&
+    imageTruth.visibleText.length > 0
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function polishReasonDetails(reasonDetails: ListingReason[], imageTruth: ImageTruthRecord) {
+  const bucketed = new Map<string, ListingReason[]>();
+
+  for (const detail of reasonDetails) {
+    const bucket = getReasonBucket(detail);
+    const existing = bucketed.get(bucket) || [];
+    existing.push(detail);
+    bucketed.set(bucket, existing);
+  }
+
+  const polished: ListingReason[] = [];
+
+  for (const detail of reasonDetails) {
+    const bucket = getReasonBucket(detail);
+    const candidates = bucketed.get(bucket) || [detail];
+
+    if (shouldSuppressWeakReason(detail, imageTruth, candidates.length)) {
+      continue;
+    }
+
+    const hasReadableVariant = candidates.some(
+      (candidate) => !isCodeLikeReasonSummary(candidate.summary) && !shouldSuppressWeakReason(candidate, imageTruth, candidates.length)
+    );
+
+    if (hasReadableVariant && isCodeLikeReasonSummary(detail.summary)) {
+      continue;
+    }
+
+    const preferred = candidates
+      .filter((candidate) => !shouldSuppressWeakReason(candidate, imageTruth, candidates.length))
+      .sort((a, b) => getReasonStrength(b) - getReasonStrength(a))[0];
+
+    if (!preferred) continue;
+    if (preferred !== detail) continue;
+    polished.push(detail);
+  }
+
+  return mergeReasonDetails(polished);
+}
+
 function reasonFlagsFromDetails(reasonDetails: ListingReason[], complianceFlags: string[]) {
   const fromDetails = reasonDetails
     .filter((detail) => detail.severity !== "info")
@@ -951,7 +1081,8 @@ function sanitizeValidatorSignals(
     supportedComplianceMatches.some((match) => flag.toLowerCase().includes(match.toLowerCase()))
   );
 
-  const rebuiltReasonFlags = reasonFlagsFromDetails(filteredReasonDetails, filteredComplianceFlags);
+  const polishedReasonDetails = polishReasonDetails(filteredReasonDetails, imageTruth);
+  const rebuiltReasonFlags = reasonFlagsFromDetails(polishedReasonDetails, filteredComplianceFlags);
   let grade = validator.grade;
 
   if (validator.confidence < 0.38) {
@@ -967,7 +1098,7 @@ function sanitizeValidatorSignals(
     grade,
     reasonFlags: rebuiltReasonFlags,
     complianceFlags: filteredComplianceFlags,
-    reasonDetails: filteredReasonDetails,
+    reasonDetails: polishedReasonDetails,
   } satisfies ValidatorResult;
 }
 
@@ -1340,7 +1471,8 @@ export function gradeListing(
   confidence = clamp(Number(confidence.toFixed(2)), 0, 1);
   const dedupedCompliance = unique(complianceFlags).slice(0, 4);
   const mergedReasonDetails = mergeReasonDetails(reasonDetails);
-  const dedupedReasons = reasonFlagsFromDetails(mergedReasonDetails, dedupedCompliance);
+  const polishedReasonDetails = polishReasonDetails(mergedReasonDetails, imageTruth);
+  const dedupedReasons = reasonFlagsFromDetails(polishedReasonDetails, dedupedCompliance);
 
   if (confidence < 0.38 || imageTruth.meaningClarity < 0.35) {
     return {
@@ -1348,8 +1480,8 @@ export function gradeListing(
       confidence,
       reasonFlags: dedupedReasons.length ? dedupedReasons : ["Image meaning is too unclear for safe listing generation."],
       complianceFlags: dedupedCompliance,
-      reasonDetails: mergedReasonDetails.length
-        ? mergedReasonDetails
+      reasonDetails: polishedReasonDetails.length
+        ? polishedReasonDetails
         : [makeReason("image_unclear", "critical", "validator", "Image meaning is too unclear for safe listing generation.")],
     } satisfies ValidatorResult;
   }
@@ -1369,7 +1501,7 @@ export function gradeListing(
     confidence,
     reasonFlags: dedupedReasons.length ? dedupedReasons : ["Usable draft detected but manual review is recommended."],
     complianceFlags: dedupedCompliance,
-    reasonDetails: mergedReasonDetails,
+    reasonDetails: polishedReasonDetails,
   } satisfies ValidatorResult;
 }
 
