@@ -362,6 +362,66 @@ async function main() {
     );
   });
 
+  await run("validator keeps the strongest ambiguity warning while preserving real OCR clarity concerns", () => {
+    const semantic: SemanticRecord = {
+      productNoun: "graphic tee",
+      titleCore: "Minimalist Mountain Adventure Hiking T Shirt",
+      benefitCore: "Outdoor-themed discovery copy for buyers who like clean art.",
+      likelyAudience: "outdoor lifestyle buyers",
+      styleOccasion: "minimal adventure aesthetic",
+      visibleKeywords: [],
+      inferredKeywords: ["mountain shirt", "hiking tee"],
+      forbiddenClaims: [],
+    };
+
+    const result = gradeListing(
+      {
+        visibleText: [],
+        visibleFacts: ["low-contrast mountain-like line art"],
+        inferredMeaning: ["stylized outdoor scene"],
+        dominantTheme: "outdoor",
+        likelyAudience: "outdoor lifestyle buyers",
+        likelyOccasion: "casual wear",
+        uncertainty: [
+          "The extreme low contrast and minimal detail make the visual content highly ambiguous and open to interpretation.",
+          "The exact number or specific features of the mountains are unclear.",
+        ],
+        ocrWeakness: "weak contrast",
+        meaningClarity: 0.58,
+        hasReadableText: false,
+      },
+      semantic,
+      {
+        classification: "partial_support",
+        usefulness: 0.42,
+        usefulTokens: ["mountain", "adventure"],
+        ignoredTokens: [],
+        conflictSeverity: "none",
+        shouldIgnore: false,
+        reason: "soft support from filename clues",
+      },
+      semantic.titleCore,
+      [
+        "Minimal mountain line art keeps the listing visually calm while still pointing toward an outdoor adventure mood.",
+        "The clean tee framing makes the artwork usable for shoppers who like subtle hiking and nature-inspired graphics.",
+      ],
+      ["mountain tee", "hiking shirt", "outdoor graphic", "nature art", "adventure style"]
+    );
+
+    assert.equal(
+      result.reasonFlags.some((flag) => flag.toLowerCase().includes("ocr/text legibility is weak or partial")),
+      true
+    );
+    assert.equal(
+      result.reasonFlags.some((flag) => flag.toLowerCase().includes("highly ambiguous")),
+      true
+    );
+    assert.equal(
+      result.reasonFlags.some((flag) => flag.toLowerCase().includes("specific features of the mountains are unclear")),
+      false
+    );
+  });
+
   await run("fallback response remains backward compatible when Gemini is unavailable", async () => {
     const response = await generateListingResponse(
       {
@@ -746,7 +806,9 @@ async function main() {
                 grade: "orange",
                 confidence: 0.84,
                 reasonFlags: [
+                  "filename_conflict_ignored",
                   "Filename strongly conflicts with visible image meaning and should be ignored.",
+                  "The specific symbolic meaning of the purple circle is not explicitly stated.",
                   "Potential unsupported medical claim detected.",
                   "Potential unsupported claim: Claims of healing, miracles, or specific religious dogma that could be seen as exclusive or judgmental.",
                 ],
@@ -764,6 +826,11 @@ async function main() {
     assert.equal(
       response.reasonFlags.some((flag) => flag.toLowerCase().includes("filename strongly conflicts")),
       true
+    );
+    assert.equal(response.reasonFlags.some((flag) => flag.toLowerCase().includes("filename_conflict_ignored")), false);
+    assert.equal(
+      response.reasonFlags.some((flag) => flag.toLowerCase().includes("specific symbolic meaning")),
+      false
     );
     assert.equal(
       response.reasonFlags.some((flag) => flag.toLowerCase().includes("medical claim")),
