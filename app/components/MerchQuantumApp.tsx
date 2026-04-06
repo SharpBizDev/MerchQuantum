@@ -812,15 +812,28 @@ function sectionsToHtml(sections: TemplateSection[]) {
     .join("");
 }
 
+function selectRelevantTemplateSections(sections: TemplateSection[]) {
+  const preferredHeadings = new Set(["Product features", "Product details", "Materials"]);
+
+  return sections
+    .filter((section) => preferredHeadings.has(section.heading))
+    .map((section) => ({
+      heading: section.heading,
+      paragraphs: section.paragraphs.slice(0, 1),
+      bullets: section.bullets.slice(0, 4),
+    }))
+    .filter((section) => section.paragraphs.length > 0 || section.bullets.length > 0);
+}
+
 function buildDescription(title: string, templateDescription: string, leadOverride?: string[]) {
   const base =
     formatTemplateDescription(templateDescription) ||
     "Template description will load here after live API wiring.";
   const parsed = parseTemplateDescription(base);
   const leadParagraphs = normalizeAiLeadParagraphs(leadOverride || buildLeadParagraphs(title, templateDescription));
-  const introParagraphs = dedupeParagraphs([...leadParagraphs, ...parsed.introParagraphs]);
+  const relevantSections = selectRelevantTemplateSections(parsed.sections);
 
-  return `${paragraphsToHtml(introParagraphs)}${sectionsToHtml(parsed.sections)}`.trim();
+  return `${paragraphsToHtml(dedupeParagraphs(leadParagraphs))}${sectionsToHtml(relevantSections)}`.trim();
 }
 
 function canonicalTagKey(value: string) {
@@ -1204,11 +1217,8 @@ export default function MerchQuantumApp() {
   const [apiProducts, setApiProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [shopId, setShopId] = useState("");
-  const [source, setSource] = useState<"" | "product" | "manual">("");
   const [productId, setProductId] = useState("");
   const [search, setSearch] = useState("");
-  const [manualRef, setManualRef] = useState("");
-  const [nickname, setNickname] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
   const [template, setTemplate] = useState<Template | null>(null);
   const [images, setImages] = useState<Img[]>([]);
@@ -1254,11 +1264,23 @@ export default function MerchQuantumApp() {
     ? "connect"
     : images.length === 0
       ? "import"
-      : !shopId || !source || !template
+      : !shopId || !template
         ? "template"
         : "settled";
   const templateConfirmation = template ? `Selected template: ${template.nickname}` : "";
   const skippedCount = Array.from(message.matchAll(/Skipped (\d+)/g)).reduce((total, [, count]) => total + Number(count || 0), 0);
+  const processingBanner = isRunningBatch
+    ? `Uploading ${images.length} draft product${images.length === 1 ? "" : "s"}.`
+    : processingCount > 0
+      ? `Quantum AI is generating listing copy for ${processingCount} image${processingCount === 1 ? "" : "s"}. Upload Draft Products will unlock automatically when processing finishes.`
+      : connected && template && images.length > 0
+        ? "Listing generation is complete. Review any flagged items, then upload draft products."
+        : "";
+  const processingBannerTone = isRunningBatch
+    ? "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-950/20 dark:text-violet-200"
+    : processingCount > 0
+      ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-200"
+      : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-950/20 dark:text-emerald-200";
 
   function getProviderRoute(path: "connect" | "disconnect" | "products" | "product" | "batch-create") {
     return `/api/providers/${path}`;
@@ -1322,27 +1344,15 @@ export default function MerchQuantumApp() {
   }, [templateKey]);
 
   useEffect(() => {
-    if (!connected || !isLiveProvider || !shopId || source !== "product") return;
+    if (!connected || !isLiveProvider || !shopId) return;
     if (loadingProducts || apiProducts.some((product) => product.shopId === shopId)) return;
     void loadProductsForShop(shopId);
-  }, [connected, isLiveProvider, shopId, source, loadingProducts, apiProducts]);
+  }, [connected, isLiveProvider, shopId, loadingProducts, apiProducts]);
 
   useEffect(() => {
-    if (source !== "product" || !shopId || !productId) return;
+    if (!shopId || !productId) return;
     void loadProductTemplate(productId);
-  }, [source, shopId, productId]);
-
-  useEffect(() => {
-    if (source !== "manual" || !shopId) return;
-    const ref = normalizeRef(manualRef);
-    if (!ref) return;
-
-    const timeout = setTimeout(() => {
-      loadManualTemplate(ref, nickname);
-    }, 250);
-
-    return () => clearTimeout(timeout);
-  }, [source, shopId, manualRef, nickname]);
+  }, [shopId, productId]);
 
   useEffect(() => {
     if (aiLoopBusyRef.current) return;
@@ -1620,8 +1630,6 @@ export default function MerchQuantumApp() {
         description: base,
         placementGuide: nextPlacementGuide,
       });
-      setNickname(title);
-      setManualRef(chosen?.id || fallback.id);
       setTemplateDescription(base);
     } catch (error) {
       const title = fallback.title;
@@ -1638,28 +1646,8 @@ export default function MerchQuantumApp() {
         description: base,
         placementGuide: template?.placementGuide || DEFAULT_PLACEMENT_GUIDE,
       });
-      setNickname(title);
-      setManualRef(fallback.id);
       setTemplateDescription(base);
     }
-  }
-
-  function loadManualTemplate(nextManualRef = manualRef, nextNickname = nickname) {
-    const ref = normalizeRef(nextManualRef);
-    if (!ref || !shopId) return;
-    const name = safeTitle(nextNickname, "Template");
-    const base = formatTemplateDescription(templateDescription.trim()) ||
-      "Base description from the user template goes here until live API wiring is added.";
-
-    setTemplate({
-      reference: ref,
-      nickname: name,
-      source: "manual",
-      shopId,
-      description: base,
-      placementGuide: template?.placementGuide || DEFAULT_PLACEMENT_GUIDE,
-    });
-    setTemplateDescription(base);
   }
 
   async function runDraftBatch() {
@@ -1988,8 +1976,9 @@ export default function MerchQuantumApp() {
           <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-slate-800">
           <div className={`relative grid gap-3 rounded-xl transition-all duration-500 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] ${guidanceStep === "template" ? "border border-violet-200/80 bg-violet-50/50 p-3 shadow-[0_18px_50px_-32px_rgba(124,58,237,0.35)] dark:border-violet-500/30 dark:bg-violet-950/15" : ""}`}>
             {guidanceStep === "template" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 lg:grid-cols-4">
               <div>
+                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Select Shop</div>
                 <Select
                   value={shopId}
                   disabled={!availableShops.length}
@@ -2001,7 +1990,7 @@ export default function MerchQuantumApp() {
                     if (connected && isLiveProvider && nextShopId) void loadProductsForShop(nextShopId);
                   }}
                 >
-                  <option value="">Select shop</option>
+                  <option value="">{loadingApi ? "Loading shops..." : "Select Shop"}</option>
                   {availableShops.map((shop) => (
                     <option key={shop.id} value={shop.id}>
                       {shop.title}
@@ -2011,45 +2000,29 @@ export default function MerchQuantumApp() {
               </div>
 
               <div>
-                <Select value={source} onChange={(e) => {
-                  setSource(e.target.value as "" | "product" | "manual");
-                  setTemplate(null);
-                }}>
-                  <option value="">Template Source</option>
-                  <option value="product">Choose From My Products</option>
-                  <option value="manual">Paste Product Reference</option>
+                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Choose From My Products</div>
+                <div className="flex min-h-[44px] items-center rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                  {shopId ? "Using saved products from the selected shop." : "Select a shop to load your saved products."}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Choose Product</div>
+                <Select value={productId} disabled={!shopId || loadingProducts} onChange={(e) => setProductId(e.target.value)}>
+                  <option value="">{loadingProducts ? "Loading products..." : "Choose Product"}</option>
+                  {visibleProducts.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.title}
+                    </option>
+                  ))}
                 </Select>
               </div>
-            </div>
 
-            {source === "product" ? (
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-                <div>
-                  <Select value={productId} disabled={!shopId || loadingProducts} onChange={(e) => setProductId(e.target.value)}>
-                    <option value="">{loadingProducts ? "Loading products..." : "Choose product"}</option>
-                    {visibleProducts.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.title}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div>
-                  <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search My Products" />
-                </div>
+              <div>
+                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Search My Products</div>
+                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search My Products" />
               </div>
-            ) : source === "manual" ? (
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-                <div>
-                  <Input value={manualRef} onChange={(e) => setManualRef(e.target.value)} placeholder="Paste Product Reference" />
-                </div>
-                <div>
-                  <Input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Template Nickname" />
-                </div>
-              </div>
-            ) : (
-              <div />
-            )}
+            </div>
           </div>
 
           {templateConfirmation ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{templateConfirmation}</p> : null}
@@ -2078,6 +2051,14 @@ export default function MerchQuantumApp() {
                 >
                   {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
                 </Button>
+                {processingBanner ? (
+                  <div className={`rounded-xl border px-3 py-2 text-sm ${processingBannerTone}`}>
+                    <div className="flex items-start gap-2">
+                      <span className={`mt-0.5 inline-flex h-2.5 w-2.5 rounded-full ${isRunningBatch ? "animate-pulse bg-violet-500" : processingCount > 0 ? "animate-pulse bg-amber-500" : "bg-emerald-500"}`} />
+                      <span>{processingBanner}</span>
+                    </div>
+                  </div>
+                ) : null}
                 {runStatus ? <p className="text-sm text-slate-600 dark:text-slate-400">{runStatus}</p> : null}
                 {batchResults.length > 0 ? (
                   <div className="max-h-[14rem] overflow-auto rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-950">
