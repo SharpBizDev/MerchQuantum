@@ -854,6 +854,27 @@ function formatProductDescriptionWithSections(leadParagraphs: string[], template
   return `${leadHtml}${detailHtml}`;
 }
 
+function buildLeadOnlyDescription(leadParagraphs: string[]) {
+  return leadToHtml(dedupeParagraphs(normalizeAiLeadParagraphs(leadParagraphs)));
+}
+
+function buildDescription(title: string, templateDescription: string, leadOverride?: string[]) {
+  return formatProductDescriptionWithSections(
+    leadOverride || buildLeadParagraphs(title, templateDescription),
+    templateDescription
+  );
+}
+
+function buildTags(title: string, description: string, count: number) {
+  return deriveTags(title, description).slice(0, count);
+}
+
+function isImage(file: File) {
+  if (file.type.startsWith("image/")) return true;
+  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+  return ["png", "jpg", "jpeg", "webp", "gif", "svg"].includes(ext);
+}
+
 function fileToDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -861,6 +882,52 @@ function fileToDataUrl(file: File) {
     reader.onload = () => resolve(String(reader.result ?? ""));
     reader.readAsDataURL(file);
   });
+}
+
+function readDataUrl(file: File) {
+  return fileToDataUrl(file);
+}
+
+const REQUEST_TIMEOUT_MS = 45000;
+
+async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function formatApiError(message: string) {
+  const raw = message.trim();
+  if (!raw) return "Live provider connection is not available in this preview.";
+  if (raw.includes("UnsupportedHttpVerb")) {
+    return "Live Printify connection is not available in this preview. The backend API route is not installed in this environment yet.";
+  }
+  if (raw.startsWith("<?xml")) {
+    return "Live Printify connection is not available in this preview. The request reached a static host instead of a backend API route.";
+  }
+  if (raw.toLowerCase().includes("abort") || raw.toLowerCase().includes("timed out")) {
+    return "The request timed out before the provider responded. Please try again.";
+  }
+  return raw.length > 220 ? `${raw.slice(0, 220)}...` : raw;
+}
+
+async function parseResponsePayload(response: Response) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  const text = await response.text();
+  return { error: text || `Request failed with status ${response.status}.` };
 }
 
 async function requestAiListingDraft({
@@ -1101,20 +1168,6 @@ export default function MerchQuantumApp() {
         : "settled";
   const templateConfirmation = template ? `Selected template: ${template.nickname}` : "";
   const skippedCount = Array.from(message.matchAll(/Skipped (\d+)/g)).reduce((total, [, count]) => total + Number(count || 0), 0);
-<<<<<<< HEAD
-  const processingBanner = isRunningBatch
-    ? `Uploading ${images.length} draft product${images.length === 1 ? "" : "s"}.`
-    : processingCount > 0
-      ? `Quantum AI is generating listing copy for ${processingCount} image${processingCount === 1 ? "" : "s"}. Upload Draft Products will unlock automatically when processing finishes.`
-      : connected && template && images.length > 0
-        ? "Listing generation is complete. Review the selected draft details, then upload when ready."
-        : "";
-  const processingBannerTone = isRunningBatch
-    ? "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-950/20 dark:text-violet-200"
-    : processingCount > 0
-      ? "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-950/20 dark:text-violet-200"
-      : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-950/20 dark:text-emerald-200";
-=======
   const processingBanner = processingCount > 0
     ? `Quantum AI is generating listing copy for ${processingCount} image${processingCount === 1 ? "" : "s"} in this batch.`
     : connected && template && images.length > 0
@@ -1123,7 +1176,6 @@ export default function MerchQuantumApp() {
   const processingBannerTone = processingCount > 0
     ? "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-950/20 dark:text-violet-200"
     : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-950/20 dark:text-emerald-200";
->>>>>>> ba46960 (Finish MerchQuantum import and thumbnail processing feedback)
 
   function getProviderRoute(path: "connect" | "disconnect" | "products" | "product" | "batch-create") {
     return `/api/providers/${path}`;
@@ -1777,8 +1829,6 @@ export default function MerchQuantumApp() {
                 {sortedImages.map((img, index) => {
                   const isSelected = selectedImage?.id === img.id;
                   const isProcessing = img.aiProcessing || img.status === "pending";
-<<<<<<< HEAD
-=======
                   const previewFrameTone = isProcessing
                     ? "border-violet-300 bg-violet-50/80 dark:border-violet-500/40 dark:bg-violet-950/20"
                     : img.status === "ready"
@@ -1788,7 +1838,6 @@ export default function MerchQuantumApp() {
                         : img.status === "error"
                           ? "border-rose-300 bg-rose-50/80 dark:border-rose-500/40 dark:bg-rose-950/20"
                           : "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900";
->>>>>>> ba46960 (Finish MerchQuantum import and thumbnail processing feedback)
                   const previewAlignRight = (index + 1) % 10 === 0 || (index + 1) % 10 === 9;
                   const previewOpenUp = sortedImages.length - index <= 10;
                   return (
@@ -1800,11 +1849,7 @@ export default function MerchQuantumApp() {
                       <div className="space-y-1.5">
                         <div className="relative">
                           {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
-<<<<<<< HEAD
-                          <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border p-1.5 transition-all duration-500 ${isProcessing ? "border-violet-300 bg-violet-50/80 dark:border-violet-500/40 dark:bg-violet-950/20" : "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900"}`}>
-=======
                           <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border p-1.5 transition-all duration-500 ${previewFrameTone}`}>
->>>>>>> ba46960 (Finish MerchQuantum import and thumbnail processing feedback)
                             {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
                             {img.preview ? (
                               <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950 ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
