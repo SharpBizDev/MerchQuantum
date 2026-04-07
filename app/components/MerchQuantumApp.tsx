@@ -1702,10 +1702,11 @@ export default function MerchQuantumApp() {
               <Input
                 type={connected ? "text" : "password"}
                 value={connected ? maskToken(token) : token}
+                disabled={!provider}
                 readOnly={connected}
                 placeholder="Provider Personal Access Token (API)"
                 onChange={(e) => setToken(e.target.value)}
-                className={`pr-32 ${connected ? "pr-52" : ""}`}
+                className={`pr-32 ${connected ? "pr-52" : ""} disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 dark:disabled:bg-slate-900 dark:disabled:text-slate-500`}
               />
               <button
                 type="button"
