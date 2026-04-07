@@ -1,13 +1,3 @@
-CHECKS:
-- HEAD: 7ea906f5c2b896999b90eab530683ba1789962d2
-- status: 
-- conflicts: none
-- old strings: none
-- tsc: passed
-- build: passed
-
-FILE: app/components/MerchQuantumApp.tsx
-```tsx
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -2037,4 +2027,3 @@ export default function MerchQuantumApp() {
     </div>
   );
 }
-```
