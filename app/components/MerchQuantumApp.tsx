@@ -1899,7 +1899,7 @@ export default function MerchQuantumApp() {
           <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-slate-800">
           <div className={`relative grid gap-3 rounded-xl transition-all duration-500 ${guidanceStep === "template" ? "border border-violet-200/80 bg-violet-50/50 p-3 shadow-[0_18px_50px_-32px_rgba(124,58,237,0.35)] dark:border-violet-500/30 dark:bg-violet-950/15" : ""}`}>
             {guidanceStep === "template" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
-            <div className="grid items-stretch gap-3 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid items-stretch gap-3 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)]">
               <div>
                 <Select
                   value={shopId}
@@ -1919,6 +1919,15 @@ export default function MerchQuantumApp() {
                     </option>
                   ))}
                 </Select>
+              </div>
+
+              <div>
+                <div
+                  className="flex min-h-[44px] items-center overflow-hidden rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                  title={shopId ? "Products from the selected shop" : "Select a shop to load products"}
+                >
+                  <span className="truncate">Choose From My Products</span>
+                </div>
               </div>
 
               <div>
