@@ -1011,382 +1011,545 @@ function BrandMark() {
 function getStatusTone(status: ReviewStatus) {
   switch (status) {
     case "ready":
-      return "bg-emerald-500 ring-emerald-300/80 dark:ring-emerald-900/70";
+      return "bg-emerald-500 ring-emerald-300 dark:ring-emerald-900/70";
     case "review":
-      return "bg-amber-500 ring-amber-300/80 dark:ring-amber-900/70";
+      return "bg-amber-500 ring-amber-300 dark:ring-amber-900/70";
     case "error":
-      return "bg-rose-500 ring-rose-300/80 dark:ring-rose-900/70";
+      return "bg-rose-500 ring-rose-300 dark:ring-rose-900/70";
     default:
       return "bg-slate-300 ring-slate-200/80 dark:bg-slate-700 dark:ring-slate-800";
   }
 }
 
+function getStatusSortValue(status: ReviewStatus) {
+  switch (status) {
+    case "ready":
+      return 0;
+    case "review":
+      return 1;
+    case "error":
+      return 2;
+    default:
+      return 3;
+  }
+}
+
 export default function MerchQuantumApp() {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const previousPreviewUrlsRef = useRef<string[]>([]);
+  const aiLoopBusyRef = useRef(false);
+
   const [provider, setProvider] = useState<ProviderId | "">("");
   const [token, setToken] = useState("");
   const [connected, setConnected] = useState(false);
-  const [availableShops, setAvailableShops] = useState<Shop[]>([]);
+  const [loadingApi, setLoadingApi] = useState(false);
+  const [apiStatus, setApiStatus] = useState("");
+  const [pulseConnected, setPulseConnected] = useState(false);
+  const [apiShops, setApiShops] = useState<Shop[]>([]);
+  const [apiProducts, setApiProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
   const [shopId, setShopId] = useState("");
-  const [products, setProducts] = useState<Product[]>([]);
   const [productId, setProductId] = useState("");
-  const [template, setTemplate] = useState<Template | null>(null);
   const [search, setSearch] = useState("");
+  const [templateDescription, setTemplateDescription] = useState("");
+  const [template, setTemplate] = useState<Template | null>(null);
   const [images, setImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
-  const [apiStatus, setApiStatus] = useState("");
   const [message, setMessage] = useState("");
-  const [loadingApi, setLoadingApi] = useState(false);
-  const [loadingProducts, setLoadingProducts] = useState(false);
-  const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
   const [runStatus, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
-  const [pulseConnected, setPulseConnected] = useState(false);
-  const [guidanceStep, setGuidanceStep] = useState<"connect" | "import" | "template" | "review" | null>("connect");
-  const [templateConfirmation, setTemplateConfirmation] = useState("");
+  const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
 
-  const fileRef = useRef<HTMLInputElement | null>(null);
-
-  const providerMeta = useMemo(
-    () => PROVIDERS.find((entry) => entry.id === provider) ?? null,
-    [provider]
-  );
-
-  const isLiveProvider = Boolean(providerMeta?.isLive);
+  const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
+  const isLiveProvider = selectedProvider?.isLive || false;
+  const availableShops = connected && isLiveProvider ? (apiShops.length ? apiShops : FALLBACK_SHOPS) : [];
+  const productSource = apiProducts.length ? apiProducts : FALLBACK_PRODUCTS;
+  const templateKey = useMemo(() => `${template?.reference || "no-template"}::${templateDescription.trim()}`, [template?.reference, templateDescription]);
 
   const visibleProducts = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const filtered = products.filter((product) => product.shopId === shopId);
-    if (!term) return filtered;
-    return filtered.filter((product) => product.title.toLowerCase().includes(term));
-  }, [products, search, shopId]);
+    const q = search.trim().toLowerCase();
+    return productSource.filter(
+      (p) =>
+        p.shopId === shopId &&
+        (!q || p.title.toLowerCase().includes(q) || p.type.toLowerCase().includes(q))
+    );
+  }, [shopId, search, productSource]);
+
+  const sortedImages = useMemo(() => {
+    return [...images].sort((a, b) => {
+      const statusDelta = getStatusSortValue(a.status) - getStatusSortValue(b.status);
+      if (statusDelta !== 0) return statusDelta;
+      return a.name.localeCompare(b.name);
+    });
+  }, [images]);
 
   const selectedImage = useMemo(
-    () => images.find((entry) => entry.id === selectedId) ?? images[0] ?? null,
-    [images, selectedId]
+    () => images.find((img) => img.id === selectedId) || sortedImages[0] || null,
+    [images, selectedId, sortedImages]
   );
+  const readyCount = images.filter((img) => img.status === "ready").length;
+  const reviewCount = images.filter((img) => img.status === "review").length;
+  const errorCount = images.filter((img) => img.status === "error").length;
+  const processingCount = images.filter((img) => img.status === "pending" || img.aiProcessing).length;
+  const uploadDisabled = !connected || !template || images.length === 0 || isRunningBatch || processingCount > 0;
+  const guidanceStep = !connected
+    ? "connect"
+    : images.length === 0
+      ? "import"
+      : !shopId || !template
+        ? "template"
+        : "settled";
+  const templateConfirmation = template ? `Selected template: ${template.nickname}` : "";
+  const skippedCount = Array.from(message.matchAll(/Skipped (\d+)/g)).reduce((total, [, count]) => total + Number(count || 0), 0);
+  const processingBanner = isRunningBatch
+    ? `Uploading ${images.length} draft product${images.length === 1 ? "" : "s"}.`
+    : processingCount > 0
+      ? `Quantum AI is generating listing copy for ${processingCount} image${processingCount === 1 ? "" : "s"}. Upload Draft Products will unlock automatically when processing finishes.`
+      : connected && template && images.length > 0
+        ? "Listing generation is complete. Review the selected draft details, then upload when ready."
+        : "";
+  const processingBannerTone = isRunningBatch
+    ? "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-950/20 dark:text-violet-200"
+    : processingCount > 0
+      ? "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-950/20 dark:text-violet-200"
+      : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-950/20 dark:text-emerald-200";
 
-  const readyCount = useMemo(() => images.filter((entry) => entry.status === "ready").length, [images]);
-  const reviewCount = useMemo(() => images.filter((entry) => entry.status === "review").length, [images]);
-  const errorCount = useMemo(() => images.filter((entry) => entry.status === "error").length, [images]);
-  const processingCount = useMemo(() => images.filter((entry) => entry.aiProcessing).length, [images]);
-  const skippedCount = Math.max(images.length - readyCount - reviewCount - errorCount, 0);
-
-  const sortedImages = useMemo(() => [...images].sort(compareByStatus), [images]);
-
-  const uploadDisabled = useMemo(() => {
-    if (!connected || !provider || !shopId || !productId || !selectedImage) return true;
-    if (isRunningBatch || loadingProducts || processingCount > 0) return true;
-    return reviewCount > 0 || errorCount > 0;
-  }, [connected, errorCount, isRunningBatch, loadingProducts, processingCount, productId, provider, reviewCount, selectedImage, shopId]);
-
-  const processingBannerTone = useMemo(() => {
-    if (isRunningBatch) return "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-950/20 dark:text-violet-200";
-    if (processingCount > 0) return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-200";
-    return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/20 dark:text-emerald-200";
-  }, [isRunningBatch, processingCount]);
-
-  const processingBanner = useMemo(() => {
-    if (isRunningBatch) {
-      return "Uploading draft products now. Keep this tab open until the current batch finishes.";
-    }
-    if (processingCount > 0) {
-      return `Quantum AI is still generating listings for ${processingCount} image${processingCount === 1 ? "" : "s"}. Upload Draft Products will unlock when processing is complete.`;
-    }
-    if (images.length > 0) {
-      return "Listing generation is complete. Review the selected draft details, then upload when ready.";
-    }
-    return "";
-  }, [images.length, isRunningBatch, processingCount]);
+  function getProviderRoute(path: "connect" | "disconnect" | "products" | "product" | "batch-create") {
+    return `/api/providers/${path}`;
+  }
 
   useEffect(() => {
-    if (!provider) {
-      setGuidanceStep("connect");
-      return;
+    const previous = previousPreviewUrlsRef.current;
+    const current = images.map((img) => img.preview);
+
+    for (const url of previous) {
+      if (url.startsWith("blob:") && !current.includes(url)) {
+        URL.revokeObjectURL(url);
+      }
     }
 
-    if (!connected) {
-      setGuidanceStep("connect");
-      return;
-    }
-
-    if (images.length === 0) {
-      setGuidanceStep("import");
-      return;
-    }
-
-    if (!productId) {
-      setGuidanceStep("template");
-      return;
-    }
-
-    setGuidanceStep("review");
-  }, [connected, images.length, productId, provider]);
+    previousPreviewUrlsRef.current = current;
+  }, [images]);
 
   useEffect(() => {
-    if (selectedImage) setSelectedId(selectedImage.id);
-  }, [selectedImage]);
+    return () => {
+      for (const url of previousPreviewUrlsRef.current) {
+        if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+      }
+    };
+  }, []);
 
-  function resetProviderState(soft = false) {
+  useEffect(() => {
+    setImages((current) =>
+      current.map((img) =>
+        img.processedTemplateKey === templateKey
+          ? img
+          : {
+              ...img,
+              processedTemplateKey: undefined,
+              aiDraft: undefined,
+              aiProcessing: false,
+              status: "pending",
+              statusReason: "Quantum AI is preparing listing copy.",
+            }
+      )
+    );
+  }, [templateKey]);
+
+  useEffect(() => {
+    if (!connected || !isLiveProvider || !shopId) {
+      setApiProducts([]);
+      setProductId("");
+      return;
+    }
+
+    void loadProductsForShop(shopId);
+  }, [shopId]);
+
+  useEffect(() => {
+    if (!shopId) {
+      setProductId("");
+      setTemplate(null);
+      setTemplateDescription("");
+      return;
+    }
+
+    if (!visibleProducts.some((product) => product.id === productId)) {
+      setProductId(visibleProducts[0]?.id || "");
+    }
+  }, [shopId, visibleProducts, productId]);
+
+  useEffect(() => {
+    if (!shopId || !productId) {
+      setTemplate(null);
+      setTemplateDescription("");
+      return;
+    }
+
+    void loadProductTemplate(productId);
+  }, [shopId, productId]);
+
+  useEffect(() => {
+    if (aiLoopBusyRef.current) return;
+    const nextImage = images.find((img) => !img.aiProcessing && img.processedTemplateKey !== templateKey);
+    if (!nextImage) return;
+
+    aiLoopBusyRef.current = true;
+    setImages((current) =>
+      current.map((img) =>
+        img.id === nextImage.id
+          ? { ...img, aiProcessing: true, status: "pending", statusReason: "Quantum AI is analyzing artwork." }
+          : img
+      )
+    );
+
+    void (async () => {
+      try {
+        const imageDataUrl = await readDataUrl(nextImage.file);
+        const response = await fetchWithTimeout(
+          "/api/ai/listing",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              imageDataUrl,
+              fileName: nextImage.name,
+              templateContext: templateDescription,
+              productFamily: resolveProductFamily(nextImage.cleaned, templateDescription),
+            }),
+          },
+          60000
+        );
+
+        const data = await parseResponsePayload(response);
+        if (!response.ok) throw new Error(data?.error || `AI request failed with status ${response.status}.`);
+
+        const leadParagraphs = normalizeAiLeadParagraphs(Array.isArray(data?.leadParagraphs) ? data.leadParagraphs : []);
+        const fallbackLead = buildLeadParagraphs(nextImage.cleaned, templateDescription);
+        const finalLead = leadParagraphs.length ? leadParagraphs : fallbackLead;
+        const fallbackTitle = safeTitle(nextImage.final, nextImage.cleaned);
+        const titleFromApi = typeof data?.title === "string" ? data.title : fallbackTitle;
+        const finalTitle = safeTitle(titleFromApi, fallbackTitle);
+        const finalDescription = templateDescription.trim()
+          ? buildDescription(finalTitle, templateDescription, finalLead)
+          : buildLeadOnlyDescription(finalLead);
+        const tags = buildTags(finalTitle, finalDescription, FIXED_TAG_COUNT);
+        const confidence = Number.isFinite(data?.confidence) ? clamp(Number(data.confidence), 0, 1) : 0;
+        const reasonFlags = Array.isArray(data?.reasonFlags)
+          ? data.reasonFlags.filter((flag: unknown) => typeof flag === "string")
+          : [];
+
+        const status: ReviewStatus = confidence >= 0.8 && reasonFlags.length === 0 ? "ready" : "review";
+        const statusReason = status === "ready"
+          ? "AI draft looks solid."
+          : reasonFlags.length
+            ? reasonFlags.join(" • ")
+            : "Review the AI draft before upload.";
+
+        setImages((current) =>
+          current.map((img) =>
+            img.id === nextImage.id
+              ? {
+                  ...img,
+                  final: finalTitle,
+                  finalDescription,
+                  tags,
+                  aiProcessing: false,
+                  status,
+                  statusReason,
+                  processedTemplateKey: templateKey,
+                  aiDraft: {
+                    title: finalTitle,
+                    leadParagraphs,
+                    model: typeof data?.model === "string" ? data.model : AI_MODEL_LABEL,
+                    confidence,
+                    templateReference: template?.reference || "",
+                    reasonFlags,
+                  },
+                }
+              : img
+          )
+        );
+      } catch (error) {
+        const leadParagraphs = normalizeAiLeadParagraphs(buildLeadParagraphs(nextImage.cleaned, templateDescription));
+        const fallbackTitle = safeTitle(nextImage.final, nextImage.cleaned);
+        const fallbackDescription = templateDescription.trim()
+          ? buildDescription(fallbackTitle, templateDescription, leadParagraphs)
+          : buildLeadOnlyDescription(leadParagraphs);
+        const message = formatApiError(error instanceof Error ? error.message : "Quantum AI could not process this item.");
+        setImages((current) =>
+          current.map((img) =>
+            img.id === nextImage.id
+              ? {
+                  ...img,
+                  final: fallbackTitle,
+                  finalDescription: fallbackDescription,
+                  tags: buildTags(fallbackTitle, fallbackDescription, FIXED_TAG_COUNT),
+                  aiProcessing: false,
+                  status: "review",
+                  statusReason: message,
+                  processedTemplateKey: templateKey,
+                }
+              : img
+          )
+        );
+      } finally {
+        aiLoopBusyRef.current = false;
+      }
+    })();
+  }, [images, templateDescription, templateKey, template?.reference]);
+
+  function resetProviderState(clearStatus = true) {
     setConnected(false);
-    setAvailableShops([]);
-    setProducts([]);
+    setLoadingApi(false);
+    setPulseConnected(false);
+    if (clearStatus) setApiStatus("");
+    setApiShops([]);
+    setApiProducts([]);
+    setLoadingProducts(false);
     setShopId("");
     setProductId("");
     setTemplate(null);
-    setTemplateConfirmation("");
-    if (!soft) setSearch("");
+    setTemplateDescription("");
+    setBatchResults([]);
+    setRunStatus("");
   }
 
-  async function connectPrintify() {
-    if (!provider || !token.trim()) return;
-    if (!isLiveProvider) {
-      setApiStatus(`${providerMeta?.label ?? "This provider"} is coming soon.`);
+  async function addFiles(list: FileList | null) {
+    if (!list) return;
+    setMessage("");
+
+    const room = Math.max(0, MAX_BATCH_FILES - images.length);
+    const valid = Array.from(list).filter(isImage).slice(0, room);
+    const skippedByType = Array.from(list).filter((f) => !isImage(f)).length;
+    const skippedByLimit = Math.max(0, Array.from(list).filter(isImage).length - valid.length);
+
+    const good = valid.map((file) => {
+      const cleaned = cleanTitle(file.name);
+      const leadDescription = templateDescription.trim() ? buildDescription(cleaned, templateDescription) : buildLeadOnlyDescription(buildLeadParagraphs(cleaned, templateDescription));
+      return {
+        id: makeId(),
+        name: file.name,
+        file,
+        preview: URL.createObjectURL(file),
+        cleaned,
+        final: cleaned,
+        finalDescription: leadDescription,
+        tags: buildTags(cleaned, leadDescription, FIXED_TAG_COUNT),
+        status: "pending" as ReviewStatus,
+        statusReason: "Quantum AI is preparing listing copy.",
+      } satisfies Img;
+    });
+
+    setImages((current) => {
+      const next = [...current, ...good];
+      if (!selectedId && next[0]) setSelectedId(next[0].id);
+      return next;
+    });
+
+    const parts: string[] = [];
+    if (good.length) parts.push(`Loaded ${good.length} image${good.length === 1 ? "" : "s"}.`);
+    if (skippedByType) parts.push(`Skipped ${skippedByType} non-image file${skippedByType === 1 ? "" : "s"}.`);
+    if (skippedByLimit) parts.push(`Skipped ${skippedByLimit} image${skippedByLimit === 1 ? "" : "s"} above the ${MAX_BATCH_FILES}-file batch cap.`);
+    setMessage(parts.join(" "));
+  }
+
+  async function loadProductsForShop(nextShopId: string) {
+    if (!connected || !isLiveProvider || !nextShopId) {
+      setApiProducts([]);
+      setLoadingProducts(false);
       return;
     }
 
+    setLoadingProducts(true);
+    try {
+      const response = await fetchWithTimeout(
+        `${getProviderRoute("products")}?provider=${encodeURIComponent(provider)}&shopId=${encodeURIComponent(nextShopId)}`
+      );
+      const data = await parseResponsePayload(response);
+      if (!response.ok) throw new Error(data?.error || `Products request failed with status ${response.status}.`);
+
+      const mapped: Product[] = Array.isArray(data?.products)
+        ? data.products.map((product: ApiProduct) => ({
+            id: product.id,
+            title: product.title || product.id,
+            type: "Template",
+            shopId: String(product.shop_id ?? nextShopId),
+            description: product.description || "",
+          }))
+        : [];
+
+      setApiProducts(mapped);
+      setApiStatus((current) => (current.startsWith("Unable to load products") ? "" : current));
+    } catch (error) {
+      setApiProducts([]);
+      const msg = error instanceof Error ? error.message : "Unable to load products.";
+      setApiStatus(formatApiError(msg));
+    } finally {
+      setLoadingProducts(false);
+    }
+  }
+
+  async function connectPrintify() {
+    if (!provider || !token.trim() || !isLiveProvider) return;
     setLoadingApi(true);
     setApiStatus("");
 
     try {
-      const response = await fetch("/api/providers/connect", {
+      const response = await fetchWithTimeout(getProviderRoute("connect"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, token: token.trim() }),
+        body: JSON.stringify({ provider, token }),
       });
 
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || "Unable to connect provider.");
-      }
+      const data = await parseResponsePayload(response);
+      if (!response.ok) throw new Error(data?.error || `${selectedProvider?.label || "Provider"} connect failed with status ${response.status}.`);
 
-      const payload = await response.json();
-      const shops = Array.isArray(payload?.shops)
-        ? payload.shops.map((shop: ApiShop) => ({ id: String(shop.id), title: shop.title }))
-        : FALLBACK_SHOPS;
+      const shopsFromApi: Shop[] = Array.isArray(data?.shops)
+        ? data.shops.map((shop: ApiShop) => ({ id: String(shop.id), title: shop.title || `Shop ${shop.id}` }))
+        : [];
 
+      setApiShops(shopsFromApi);
       setConnected(true);
-      setAvailableShops(shops);
-      setShopId("");
-      setProducts([]);
-      setProductId("");
-      setTemplate(null);
-      setTemplateConfirmation("");
-      setApiStatus(`${providerMeta?.label ?? "Provider"} connected.`);
+      const firstShopId = shopsFromApi[0]?.id || FALLBACK_SHOPS[0].id;
+      setShopId(firstShopId);
       setPulseConnected(true);
-      window.setTimeout(() => setPulseConnected(false), 1400);
+      setTimeout(() => setPulseConnected(false), 1200);
+      void loadProductsForShop(firstShopId);
     } catch (error) {
-      setApiStatus(error instanceof Error ? error.message : "Unable to connect provider.");
-      resetProviderState(true);
+      const msg = error instanceof Error ? error.message : `Unable to connect to ${selectedProvider?.label || "provider"}.`;
+      resetProviderState(false);
+      setApiStatus(formatApiError(msg));
     } finally {
       setLoadingApi(false);
     }
   }
 
   async function disconnectPrintify() {
-    if (!provider || !connected) return;
-
-    setLoadingApi(true);
     try {
-      await fetch("/api/providers/disconnect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider }),
-      }).catch(() => null);
+      await fetchWithTimeout(getProviderRoute("disconnect"), { method: "POST" });
+    } catch {
+      // local reset only
     } finally {
-      resetProviderState(true);
       setToken("");
-      setApiStatus(`${providerMeta?.label ?? "Provider"} disconnected.`);
-      setLoadingApi(false);
+      resetProviderState(true);
+      setApiStatus("");
     }
   }
 
-  async function loadProductsForShop(targetShopId: string) {
-    if (!provider || !isLiveProvider || !targetShopId) return;
-
-    setLoadingProducts(true);
-    setApiStatus("");
-    setTemplateConfirmation("");
+  async function loadProductTemplate(nextProductId = productId) {
+    const fallback = productSource.find((p) => p.id === nextProductId);
+    if (!fallback || !shopId) return;
 
     try {
-      const response = await fetch(`/api/providers/products?provider=${encodeURIComponent(provider)}&shopId=${encodeURIComponent(targetShopId)}`);
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || "Unable to load products.");
-      }
+      const response = await fetchWithTimeout(
+        `${getProviderRoute("product")}?provider=${encodeURIComponent(provider)}&shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(nextProductId)}`
+      );
+      const data = await parseResponsePayload(response);
+      if (!response.ok) throw new Error(data?.error || `Product request failed with status ${response.status}.`);
 
-      const payload = await response.json();
-      const nextProducts = Array.isArray(payload?.products)
-        ? payload.products.map((product: ApiProduct) => ({
-            id: String(product.id),
-            title: product.title,
-            type: String(product.blueprint_id ?? product.print_provider_id ?? "Product"),
-            shopId: String(product.shop_id ?? targetShopId),
-            description: product.description,
-          }))
-        : [];
-
-      setProducts(nextProducts);
-      setTemplate(null);
-      setTemplateConfirmation("");
-    } catch (error) {
-      setProducts([]);
-      setTemplate(null);
-      setTemplateConfirmation("");
-      setApiStatus(error instanceof Error ? error.message : "Unable to load products.");
-    } finally {
-      setLoadingProducts(false);
-    }
-  }
-
-  async function ensureTemplateForProduct(nextProductId: string) {
-    if (!provider || !shopId || !nextProductId || !isLiveProvider) return;
-
-    try {
-      const response = await fetch(`/api/providers/product?provider=${encodeURIComponent(provider)}&productId=${encodeURIComponent(nextProductId)}&shopId=${encodeURIComponent(shopId)}`);
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || "Unable to load selected product.");
-      }
-
-      const payload: ApiTemplateResponse = await response.json();
-      const description = payload?.product?.description || visibleProducts.find((product) => product.id === nextProductId)?.description || "";
-      const title = payload?.product?.title || visibleProducts.find((product) => product.id === nextProductId)?.title || "";
-      const reference = normalizeRef(nextProductId);
+      const responseData = (data || {}) as ApiTemplateResponse;
+      const chosen = responseData.product || fallback;
+      const title = chosen?.title || fallback.title;
+      const usingFallbackDescription = !chosen?.description?.trim();
+      const base = formatTemplateDescription(
+        chosen?.description?.trim() ||
+          fallback.description?.trim() ||
+          `${title}. This is the base description from your saved template. Live product descriptions from ${selectedProvider?.label || "the provider"} will replace this placeholder after API wiring.`
+      );
+      const nextPlacementGuide = responseData.placementGuide || template?.placementGuide || DEFAULT_PLACEMENT_GUIDE;
 
       setTemplate({
-        reference,
-        nickname: title || `Template ${reference}`,
+        reference: chosen?.id || fallback.id,
+        nickname: title,
         source: "product",
         shopId,
-        description: formatTemplateDescription(description),
-        placementGuide: payload?.placementGuide || DEFAULT_PLACEMENT_GUIDE,
+        description: base,
+        placementGuide: nextPlacementGuide,
       });
-      setTemplateConfirmation(`Using ${title || "selected product"} as the draft template source.`);
+      setTemplateDescription(base);
+      setApiStatus(usingFallbackDescription ? "Live template description is unavailable here, so MerchQuantum is using the saved product summary from this provider response." : "");
     } catch (error) {
-      setTemplate(null);
-      setTemplateConfirmation("");
-      setApiStatus(error instanceof Error ? error.message : "Unable to load selected product.");
-    }
-  }
-
-  useEffect(() => {
-    if (!productId) {
-      setTemplate(null);
-      setTemplateConfirmation("");
-      return;
-    }
-    void ensureTemplateForProduct(productId);
-  }, [productId]);
-
-  async function addFiles(fileList: FileList | null) {
-    if (!fileList?.length) return;
-
-    const nextFiles = Array.from(fileList).filter((file) => file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(file.name));
-    if (!nextFiles.length) return;
-
-    const slots = Math.max(MAX_BATCH_FILES - images.length, 0);
-    const accepted = nextFiles.slice(0, slots);
-    if (!accepted.length) {
-      setMessage(`Batch limit reached. You can add up to ${MAX_BATCH_FILES} files at once.`);
-      return;
-    }
-
-    const baseTemplateDescription = template?.description || "";
-
-    const prepared = await Promise.all(
-      accepted.map(async (file) => {
-        const preview = URL.createObjectURL(file);
-        const title = cleanTitle(file.name);
-        const artworkBounds = await analyzeArtworkBounds(file).catch(() => normalizeArtworkBounds(undefined, 1, 1));
-        const tags = deriveTags(title, baseTemplateDescription);
-        const fallbackLead = buildLeadParagraphs(title, baseTemplateDescription);
-        const finalDescription = formatProductDescriptionWithSections(fallbackLead, baseTemplateDescription);
-
-        return {
-          id: makeId(),
-          name: file.name,
-          file,
-          preview,
-          cleaned: title,
-          final: title,
-          finalDescription,
-          tags,
-          status: "pending" as ReviewStatus,
-          statusReason: "Pending review.",
-          aiProcessing: true,
-          artworkBounds,
-        } satisfies Img;
-      })
-    );
-
-    setImages((current) => [...current, ...prepared]);
-    setMessage(accepted.length < nextFiles.length ? `Added ${accepted.length} images. Extra files were skipped because the batch is capped at ${MAX_BATCH_FILES}.` : `${accepted.length} image${accepted.length === 1 ? "" : "s"} added.`);
-
-    for (const image of prepared) {
-      const aiDraft = await requestAiListingDraft({ image, templateDescription: baseTemplateDescription, provider: provider || "printify" });
-
-      setImages((current) =>
-        current.map((entry) => {
-          if (entry.id !== image.id) return entry;
-
-          const leadParagraphs = aiDraft?.leadParagraphs?.length ? aiDraft.leadParagraphs : buildLeadParagraphs(entry.final, baseTemplateDescription);
-          const nextTitle = safeTitle(aiDraft?.title || entry.final, entry.final);
-          const nextDescription = formatProductDescriptionWithSections(leadParagraphs, baseTemplateDescription);
-          const nextTags = deriveTags(nextTitle, baseTemplateDescription);
-
-          return {
-            ...entry,
-            final: nextTitle,
-            finalDescription: nextDescription,
-            tags: nextTags,
-            aiDraft: aiDraft || undefined,
-            status: aiDraft ? "ready" : "review",
-            statusReason: aiDraft ? "AI draft generated." : "Using fallback draft. Review before upload.",
-            aiProcessing: false,
-          };
-        })
+      const title = fallback.title;
+      const base = formatTemplateDescription(
+        fallback.description?.trim() ||
+          `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`
       );
+
+      setTemplate({
+        reference: fallback.id,
+        nickname: title,
+        source: "product",
+        shopId,
+        description: base,
+        placementGuide: template?.placementGuide || DEFAULT_PLACEMENT_GUIDE,
+      });
+      setTemplateDescription(base);
+      setApiStatus(formatApiError(error instanceof Error ? error.message : "Unable to load template product."));
     }
   }
 
   async function runDraftBatch() {
-    if (!provider || !shopId || !productId || !selectedImage || uploadDisabled) return;
+    if (!template || !shopId || images.length === 0 || !isLiveProvider) return;
 
     setIsRunningBatch(true);
     setRunStatus("");
     setBatchResults([]);
+    const nextResults: BatchResult[] = [];
 
     try {
-      const draftItems = images.filter((entry) => entry.status !== "error");
-      const response = await fetch("/api/providers/batch-create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          provider,
-          shopId,
-          productId,
-          templateReference: template?.reference || productId,
-          items: draftItems.map((entry) => ({
-            fileName: entry.name,
-            title: entry.final,
-            description: entry.finalDescription,
-            tags: entry.tags,
-            preview: entry.preview,
-          })),
-        }),
-      });
+      for (let index = 0; index < images.length; index += 1) {
+        const img = images[index];
+        const titleForUpload = safeTitle(img.final, img.cleaned);
+        const description = img.finalDescription || buildDescription(titleForUpload, templateDescription, img.aiDraft?.leadParagraphs);
+        const tags = img.tags.length ? img.tags : buildTags(titleForUpload, description, FIXED_TAG_COUNT);
 
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || "Unable to upload draft products.");
+        setRunStatus(`Uploading draft ${index + 1} of ${images.length}...`);
+
+        try {
+          const imageDataUrl = await readDataUrl(img.file);
+          const artworkBounds = img.artworkBounds || (await analyzeArtworkBounds(img.file));
+          if (!img.artworkBounds) {
+            setImages((current) => current.map((entry) => (entry.id === img.id ? { ...entry, artworkBounds } : entry)));
+          }
+
+          const response = await fetchWithTimeout(getProviderRoute("batch-create"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              provider,
+              shopId,
+              templateProductId: template.reference,
+              item: {
+                fileName: img.name,
+                title: titleForUpload,
+                description,
+                tags,
+                imageDataUrl,
+                artworkBounds,
+              },
+            }),
+          });
+
+          const data = await parseResponsePayload(response);
+          if (!response.ok) throw new Error(data?.error || `Draft request failed with status ${response.status}.`);
+
+          const result = Array.isArray(data?.results) && data.results[0]
+            ? (data.results[0] as BatchResult)
+            : { fileName: img.name, title: titleForUpload, message: data?.message || "Created draft product." };
+
+          nextResults.push(result);
+          setBatchResults([...nextResults]);
+        } catch (error) {
+          const rawMessage = error instanceof Error ? error.message : "Draft create failed.";
+          const errorMessage = formatApiError(rawMessage);
+          nextResults.push({ fileName: img.name, title: titleForUpload, message: errorMessage });
+          setBatchResults([...nextResults]);
+        }
       }
 
-      const payload = await response.json();
-      const results = Array.isArray(payload?.results) ? payload.results : [];
-      setBatchResults(results);
-      setRunStatus(`Draft upload complete. Uploaded ${results.length} product${results.length === 1 ? "" : "s"} out of ${images.length}.`);
-    } catch (error) {
-      setRunStatus(error instanceof Error ? error.message : "Unable to upload draft products.");
+      const createdCount = nextResults.filter((result) => !!result.productId).length;
+      setRunStatus(`Uploaded ${createdCount} draft product${createdCount === 1 ? "" : "s"} out of ${images.length}.`);
     } finally {
       setIsRunningBatch(false);
     }
@@ -1527,9 +1690,19 @@ export default function MerchQuantumApp() {
             className={`cursor-pointer rounded-[22px] border border-dashed px-4 py-3.5 text-sm text-slate-600 transition-all duration-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900 ${guidanceStep === "import" ? "border-violet-400/80 bg-violet-50/70 shadow-[0_0_0_1px_rgba(124,58,237,0.16),0_18px_50px_-30px_rgba(124,58,237,0.45)] dark:border-violet-500/60 dark:bg-violet-950/20" : "border-slate-300/90 bg-slate-50/90 dark:border-slate-700 dark:bg-slate-900/55"} ${connected && images.length > 0 ? "ring-1 ring-emerald-400/20" : ""}`}
           >
             {guidanceStep === "import" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
-            <div className="space-y-1">
-              <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click <span className="text-violet-600 dark:text-violet-400">Add Images</span></div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. It generates listing copy automatically and flags anything that needs review.</div>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-1 text-left">
+                <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click <span className="text-violet-600 dark:text-violet-400">Add Images</span></div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. It generates listing copy automatically and flags anything that needs review.</div>
+              </div>
+              {processingBanner ? (
+                <div className={`pointer-events-none w-full rounded-xl border px-3 py-2 text-sm md:max-w-sm ${processingBannerTone}`}>
+                  <div className="flex items-start gap-2">
+                    <span className={`mt-0.5 inline-flex h-2.5 w-2.5 rounded-full ${isRunningBatch || processingCount > 0 ? "animate-pulse bg-violet-500" : "bg-emerald-500"}`} />
+                    <span>{processingBanner}</span>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
           
@@ -1592,17 +1765,19 @@ export default function MerchQuantumApp() {
               <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
                 {sortedImages.map((img, index) => {
                   const isSelected = selectedImage?.id === img.id;
+                  const isProcessing = img.aiProcessing || img.status === "pending";
                   const previewAlignRight = (index + 1) % 10 === 0 || (index + 1) % 10 === 9;
                   const previewOpenUp = sortedImages.length - index <= 10;
                   return (
                     <div
                       key={img.id}
                       onClick={() => setSelectedId(img.id)}
-                      className={`rounded-xl border p-1.5 transition-colors ${isSelected ? "border-violet-500 bg-violet-50/50 dark:border-violet-500 dark:bg-violet-950/20" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"}`}
+                      className={`rounded-xl border p-1.5 transition-all duration-500 ${isProcessing ? "border-violet-300 bg-violet-50/80 shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)] dark:border-violet-500/45 dark:bg-violet-950/20" : isSelected ? "border-violet-500 bg-violet-50/50 dark:border-violet-500 dark:bg-violet-950/20" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"}`}
                     >
                       <div className="space-y-1.5">
                         <div className="relative">
-                          <div className="group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-1.5 dark:border-slate-800 dark:bg-slate-900">
+                          {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
+                          <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border p-1.5 transition-all duration-500 ${isProcessing ? "border-violet-300 bg-violet-50/80 dark:border-violet-500/40 dark:bg-violet-950/20" : "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900"}`}>
                             {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
                             {img.preview ? (
                               <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950 ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
@@ -1717,14 +1892,6 @@ export default function MerchQuantumApp() {
                 >
                   {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
                 </Button>
-                {processingBanner ? (
-                  <div className={`rounded-xl border px-3 py-2 text-sm ${processingBannerTone}`}>
-                    <div className="flex items-start gap-2">
-                      <span className={`mt-0.5 inline-flex h-2.5 w-2.5 rounded-full ${isRunningBatch ? "animate-pulse bg-violet-500" : processingCount > 0 ? "animate-pulse bg-amber-500" : "bg-emerald-500"}`} />
-                      <span>{processingBanner}</span>
-                    </div>
-                  </div>
-                ) : null}
                 {runStatus ? <p className="text-sm text-slate-600 dark:text-slate-400">{runStatus}</p> : null}
                 {batchResults.length > 0 ? (
                   <div className="max-h-[14rem] overflow-auto rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-950">
