@@ -72,6 +72,12 @@ type CatalogVariant = {
   }>;
 };
 
+type CatalogVariantResponse =
+  | CatalogVariant[]
+  | {
+      data?: CatalogVariant[];
+    };
+
 type ImageDimensions = {
   width: number;
   height: number;
@@ -286,6 +292,14 @@ function chooseVariantId(product: PrintifyProduct) {
   return enabled.find((variant) => variant.is_default)?.id || enabled[0]?.id || product.variants?.[0]?.id;
 }
 
+function normalizeCatalogVariants(payload: CatalogVariantResponse) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  return Array.isArray(payload?.data) ? payload.data : [];
+}
+
 function normalizeArtworkBounds(dimensions: ImageDimensions | null, bounds?: ArtworkBounds) {
   const canvasWidth =
     Number.isFinite(bounds?.canvasWidth) && (bounds?.canvasWidth || 0) > 0
@@ -458,11 +472,12 @@ export function createPrintifyAdapter(options: PrintifyAdapterOptions = {}): Pro
     const preferredPosition = chooseFrontPosition(product);
 
     try {
-      const variants = await requestJson<CatalogVariant[]>(
+      const variantsPayload = await requestJson<CatalogVariantResponse>(
         context,
         `/catalog/blueprints/${encodeURIComponent(String(product.blueprint_id))}/print_providers/${encodeURIComponent(String(product.print_provider_id))}/variants.json`,
         "Unable to load provider placement metadata."
       );
+      const variants = normalizeCatalogVariants(variantsPayload);
 
       const preferredVariantId = chooseVariantId(product);
       const orderedVariants = [variants.find((variant) => variant.id === preferredVariantId), ...variants].filter(Boolean) as CatalogVariant[];
