@@ -1974,11 +1974,10 @@ export default function MerchQuantumApp() {
           </div>
 
           <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-slate-800">
-          <div className={`relative grid gap-3 rounded-xl transition-all duration-500 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] ${guidanceStep === "template" ? "border border-violet-200/80 bg-violet-50/50 p-3 shadow-[0_18px_50px_-32px_rgba(124,58,237,0.35)] dark:border-violet-500/30 dark:bg-violet-950/15" : ""}`}>
+          <div className={`relative grid gap-3 rounded-xl transition-all duration-500 ${guidanceStep === "template" ? "border border-violet-200/80 bg-violet-50/50 p-3 shadow-[0_18px_50px_-32px_rgba(124,58,237,0.35)] dark:border-violet-500/30 dark:bg-violet-950/15" : ""}`}>
             {guidanceStep === "template" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
-            <div className="grid gap-3 lg:grid-cols-4">
+            <div className="grid items-stretch gap-3 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)]">
               <div>
-                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Select Shop</div>
                 <Select
                   value={shopId}
                   disabled={!availableShops.length}
@@ -2000,14 +1999,17 @@ export default function MerchQuantumApp() {
               </div>
 
               <div>
-                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Choose From My Products</div>
-                <div className="flex min-h-[44px] items-center rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
-                  {shopId ? "Using saved products from the selected shop." : "Select a shop to load your saved products."}
+                <div
+                  className="flex min-h-[44px] items-center overflow-hidden rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                  title={shopId ? "Products from the selected shop" : "Select a shop to load products"}
+                >
+                  <span className="truncate">
+                    Choose From My Products
+                  </span>
                 </div>
               </div>
 
               <div>
-                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Choose Product</div>
                 <Select value={productId} disabled={!shopId || loadingProducts} onChange={(e) => setProductId(e.target.value)}>
                   <option value="">{loadingProducts ? "Loading products..." : "Choose Product"}</option>
                   {visibleProducts.map((product) => (
@@ -2019,7 +2021,6 @@ export default function MerchQuantumApp() {
               </div>
 
               <div>
-                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Search My Products</div>
                 <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search My Products" />
               </div>
             </div>
