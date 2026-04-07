@@ -1088,6 +1088,10 @@ function getStatusTone(status: ReviewStatus) {
   }
 }
 
+function getStatusIndicatorClass(status: ReviewStatus) {
+  return `h-2 w-2 rounded-full ring-2 ${getStatusTone(status)}`;
+}
+
 function getStatusSortValue(status: ReviewStatus) {
   switch (status) {
     case "ready":
@@ -1170,12 +1174,7 @@ export default function MerchQuantumApp() {
   const skippedCount = Array.from(message.matchAll(/Skipped (\d+)/g)).reduce((total, [, count]) => total + Number(count || 0), 0);
   const processingBanner = processingCount > 0
     ? `Quantum AI is generating listing copy for ${processingCount} image${processingCount === 1 ? "" : "s"} in this batch.`
-    : connected && template && images.length > 0
-      ? "Listing generation is complete. Review any flagged items, then upload draft products."
-      : "";
-  const processingBannerTone = processingCount > 0
-    ? "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-950/20 dark:text-violet-200"
-    : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-950/20 dark:text-emerald-200";
+    : "";
 
   function getProviderRoute(path: "connect" | "disconnect" | "products" | "product" | "batch-create") {
     return `/api/providers/${path}`;
@@ -1760,10 +1759,17 @@ export default function MerchQuantumApp() {
                 <div className="text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. It generates listing copy automatically and flags anything that needs review.</div>
               </div>
               {processingBanner ? (
-                <div className={`pointer-events-none w-full rounded-xl border px-3 py-2 text-sm md:max-w-sm ${processingBannerTone}`}>
-                  <div className="flex items-start gap-2">
-                    <span className={`mt-0.5 inline-flex h-2.5 w-2.5 rounded-full ${isRunningBatch || processingCount > 0 ? "animate-pulse bg-violet-500" : "bg-emerald-500"}`} />
-                    <span>{processingBanner}</span>
+                <div className="pointer-events-none w-full rounded-xl border border-violet-200 bg-violet-50/80 px-3 py-2 text-sm text-violet-800 dark:border-violet-500/30 dark:bg-violet-950/20 dark:text-violet-200 md:max-w-sm">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-3 w-3 items-center justify-center">
+                        <span className="h-3 w-3 rounded-full border-2 border-violet-300 border-t-violet-600 animate-spin dark:border-violet-400/40 dark:border-t-violet-300" />
+                      </span>
+                      <span>{processingBanner}</span>
+                    </div>
+                    <div className="h-1 overflow-hidden rounded-full bg-violet-200/80 dark:bg-violet-900/60">
+                      <div className="h-full w-2/5 rounded-full bg-violet-500 animate-pulse" />
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -1775,17 +1781,17 @@ export default function MerchQuantumApp() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
                 <div className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-emerald-300/80 dark:ring-emerald-900/70" />
+                  <span className={getStatusIndicatorClass("ready")} />
                   <span>{readyCount}</span>
                   Approved / Ready
                 </div>
                 <div className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-amber-500 ring-2 ring-amber-300/80 dark:ring-amber-900/70" />
+                  <span className={getStatusIndicatorClass("review")} />
                   <span>{reviewCount}</span>
                   Needs Review
                 </div>
                 <div className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-rose-300/80 dark:ring-rose-900/70" />
+                  <span className={getStatusIndicatorClass("error")} />
                   <span>{errorCount}</span>
                   Rejected / Error
                 </div>
@@ -1872,7 +1878,7 @@ export default function MerchQuantumApp() {
                                   e.stopPropagation();
                                   updatePreviewStatus(img.id, status);
                                 }}
-                                className={`h-3 w-3 rounded-full ring-2 shadow-sm transition-transform hover:scale-105 ${isActive ? getStatusTone(status) : getStatusTone("pending")}`}
+                                className={`${getStatusIndicatorClass(isActive ? status : "pending")} transition-transform hover:scale-105`}
                               />
                             );
                           })}
