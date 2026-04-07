@@ -744,973 +744,649 @@ function buildLeadParagraphs(title: string, templateDescription: string) {
     case "candle":
       return [
         `${productName} brings a ${theme} feel to cozy spaces, thoughtful gifting, and décor-driven everyday use.`,
-        `It fits naturally into seasonal collections, self-care moments, and home accents that need a warm atmosphere with a polished, gift-ready presentation.`,
+        `It fits naturally into seasonal collections, self-care moments, and home-focused assortments that benefit from a polished mood and gift-ready presentation.`,
       ];
     case "bath-body":
       return [
-        `${productName} brings a ${theme} touch to self-care routines, everyday use, and giftable bath and body collections.`,
-        `It works well for practical personal care, simple pampering, and lifestyle assortments that benefit from a cleaner, more polished presentation.`,
+        `${productName} brings a ${theme} touch to routine self-care, simple gifting, and practical daily use.`,
+        `It works well for boutique-style assortments, wellness gifting, and personal care collections that need a cleaner product story and approachable presentation.`,
       ];
     case "home-kitchen":
       return [
-        `${productName} brings a ${theme} touch to the home, combining useful function with a more gift-ready presentation.`,
-        `It fits well in kitchen, décor, and household collections where buyers want something practical, visually appealing, and easy to enjoy day after day.`,
+        `${productName} adds a ${theme} element to everyday spaces, practical routines, and home-focused gifting moments.`,
+        `It fits naturally into décor-minded collections, everyday household use, and giftable assortments that benefit from a useful item with stronger personality.`,
       ];
     case "wall-art":
       return [
-        `${productName} brings a ${theme} statement to walls, workspaces, and giftable décor collections.`,
-        `It suits home styling, office setups, and design-forward spaces that need a stronger focal point with clean presentation and everyday visual appeal.`,
+        `${productName} brings a ${theme} statement to walls, shelves, and styled spaces that need visual interest.`,
+        `It works well for home refreshes, giftable décor collections, and design-led assortments that benefit from a stronger focal point and easy presentation.`,
       ];
     case "sticker":
       return [
-        `${productName} adds a ${theme} hit of personality to laptops, water bottles, notebooks, bundles, and low-ticket gift add-ons.`,
-        `It works well for casual everyday use, niche drops, and collectible-style assortments that benefit from fast, easy visual appeal.`,
+        `${productName} brings a ${theme} look to laptops, water bottles, journals, and other everyday surfaces.`,
+        `It is a strong fit for impulse-friendly gifting, low-commitment add-ons, and accessory collections that benefit from flexible use and quick visual appeal.`,
       ];
     case "bag":
       return [
-        `${productName} brings a ${theme} look to daily carry, errands, travel, and giftable accessory collections.`,
-        `It fits naturally into practical lifestyle use while still giving the design enough presence to feel intentional, polished, and easy to merchandize.`,
-      ];
-    case "accessory":
-      return [
-        `${productName} brings a ${theme} touch to everyday use, gift giving, and simple accessory styling.`,
-        `It works best in collections that need something practical, easy to wear or use, and cleanly presented without losing the personality of the design.`,
+        `${productName} adds a ${theme} touch to daily carry, errands, travel, and practical gift giving.`,
+        `It works for everyday utility, easy outfitting, and giftable accessory collections that need simple function with a more distinctive visual edge.`,
       ];
     case "footwear":
       return [
-        `${productName} brings a ${theme} look to casual footwear built for comfort, daily wear, and giftable style.`,
-        `It fits naturally into easygoing outfits, everyday routines, and apparel assortments that benefit from comfort, personality, and a more polished finish.`,
+        `${productName} brings a ${theme} look to casual footwear designed for everyday wear and easy outfit pairing.`,
+        `It fits best in comfort-focused collections, giftable lifestyle assortments, and design-led drops that benefit from familiar use with stronger personality.`,
+      ];
+    case "accessory":
+      return [
+        `${productName} adds a ${theme} touch to daily essentials, practical gifting, and easy add-on purchases.`,
+        `It works well for lifestyle collections, impulse-friendly accessories, and design-led assortments that need utility without losing visual identity.`,
       ];
     default:
       return [
-        `${productName} brings a ${theme} look to a product built for everyday use, gift appeal, and clearer presentation.`,
-        `It works well in collections that need practical value, a stronger visual identity, and a more complete product description before the template details begin.`,
+        `${productName} brings a ${theme} look to an everyday product designed for practical use, giftability, and clean presentation.`,
+        `It fits naturally into niche collections, casual gifting moments, and design-led assortments that benefit from simple utility and a stronger point of view.`,
       ];
   }
 }
 
-function paragraphsToHtml(paragraphs: string[]) {
-  return paragraphs
-    .filter(Boolean)
-    .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
-    .join("");
-}
-
-function sectionsToHtml(sections: TemplateSection[]) {
-  return sections
-    .map((section) => {
-      const heading = `<h3>${escapeHtml(section.heading)}</h3>`;
-      const paragraphs = paragraphsToHtml(section.paragraphs);
-      const bullets = section.bullets.length
-        ? `<ul>${section.bullets
-            .map((item) => `<li>${escapeHtml(item)}</li>`)
-            .join("")}</ul>`
-        : "";
-
-      return `${heading}${paragraphs}${bullets}`;
-    })
-    .join("");
-}
-
-function selectRelevantTemplateSections(sections: TemplateSection[]) {
-  const preferredHeadings = new Set(["Product features", "Product details", "Materials"]);
-
-  return sections
-    .filter((section) => preferredHeadings.has(section.heading))
-    .map((section) => ({
-      heading: section.heading,
-      paragraphs: section.paragraphs.slice(0, 1),
-      bullets: section.bullets.slice(0, 4),
-    }))
-    .filter((section) => section.paragraphs.length > 0 || section.bullets.length > 0);
-}
-
-function buildDescription(title: string, templateDescription: string, leadOverride?: string[]) {
-  const base =
-    formatTemplateDescription(templateDescription) ||
-    "Template description will load here after live API wiring.";
-  const parsed = parseTemplateDescription(base);
-  const leadParagraphs = normalizeAiLeadParagraphs(leadOverride || buildLeadParagraphs(title, templateDescription));
-  const relevantSections = selectRelevantTemplateSections(parsed.sections);
-
-  return `${paragraphsToHtml(dedupeParagraphs(leadParagraphs))}${sectionsToHtml(relevantSections)}`.trim();
-}
-
-function canonicalTagKey(value: string) {
+function titleCaseTag(value: string) {
   return value
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9 ]+/g, " ")
-    .split(/\s+/)
+    .split(" ")
     .filter(Boolean)
-    .map((word) => (word.length > 4 && word.endsWith("s") ? word.slice(0, -1) : word))
-    .join(" ")
-    .trim();
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
-function normalizeTagCandidate(value: string) {
-  const cleaned = cleanTitle(value)
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!cleaned) return "";
-  if (cleaned.length < 2 || cleaned.length > 30) return "";
-  return cleaned;
-}
-
-function buildPhraseCandidates(title: string) {
-  const words = title
-    .replace(/[^A-Za-z0-9&' ]+/g, " ")
-    .split(/\s+/)
-    .map((word) => word.trim())
-    .filter((word) => word && !STOP_WORDS.has(word.toLowerCase()))
-    .slice(0, 16);
+function deriveTags(title: string, templateDescription: string) {
+  const combined = `${title} ${stripHtml(templateDescription)}`.toLowerCase();
+  const words = combined.match(/[a-z0-9]+/g) || [];
+  const singles = Array.from(new Set(words.filter((word) => word.length >= 3 && !STOP_WORDS.has(word))));
 
   const phrases: string[] = [];
-
-  for (let size = 4; size >= 2; size -= 1) {
-    for (let index = 0; index <= words.length - size; index += 1) {
-      phrases.push(words.slice(index, index + size).join(" "));
-    }
+  for (let i = 0; i < words.length - 1; i += 1) {
+    const a = words[i];
+    const b = words[i + 1];
+    if (a.length < 3 || b.length < 3 || STOP_WORDS.has(a) || STOP_WORDS.has(b)) continue;
+    phrases.push(`${a} ${b}`);
   }
 
-  for (const word of words) {
-    phrases.push(word);
-  }
-
-  return phrases;
+  const ranked = Array.from(new Set([...phrases, ...singles])).slice(0, FIXED_TAG_COUNT);
+  while (ranked.length < FIXED_TAG_COUNT) ranked.push(`Keyword ${ranked.length + 1}`);
+  return ranked.map(titleCaseTag);
 }
 
-function buildThemeTags(title: string) {
-  const lower = title.toLowerCase();
-  if (/(christian|jesus|faith|saved|forgiven|church|bible|gospel|cross)\b/.test(lower)) {
-    return ["Faith Inspired", "Christian Gift", "Religious Graphic"];
-  }
-  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) {
-    return ["Funny Graphic", "Humor Gift", "Conversation Starter"];
-  }
-  if (/(retro|vintage|distressed)\b/.test(lower)) {
-    return ["Vintage Style", "Retro Graphic"];
-  }
-  if (/(dog|cat|pet|puppy)\b/.test(lower)) {
-    return ["Pet Lover Gift", "Animal Graphic"];
-  }
-  if (/(halloween|fall|thanksgiving|christmas|holiday)\b/.test(lower)) {
-    return ["Seasonal Gift", "Holiday Graphic"];
-  }
-  return [];
+function leadToHtml(paragraphs: string[]) {
+  return paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
 }
 
-function buildFamilyTags(family: ProductFamily) {
-  switch (family) {
-    case "t-shirt":
-      return ["Graphic Tee", "Unisex T Shirt", "Everyday Apparel"];
-    case "hoodie":
-      return ["Graphic Hoodie", "Cozy Apparel", "Layered Style"];
-    case "sweatshirt":
-      return ["Graphic Sweatshirt", "Casual Fleece", "Giftable Apparel"];
-    case "tank top":
-      return ["Graphic Tank", "Warm Weather Style", "Lightweight Apparel"];
-    case "hat":
-      return ["Graphic Hat", "Casual Accessory", "Everyday Cap"];
-    case "drinkware":
-      return ["Giftable Drinkware", "Daily Use Cup", "Desk Friendly"];
-    case "candle":
-      return ["Giftable Candle", "Home Fragrance", "Cozy Decor"];
-    case "bath-body":
-      return ["Bath And Body", "Self Care Gift", "Personal Care"];
-    case "home-kitchen":
-      return ["Home Kitchen Decor", "Gift Ready Home", "Useful Houseware"];
-    case "wall-art":
-      return ["Wall Art Decor", "Giftable Artwork", "Home Accent"];
-    case "sticker":
-      return ["Sticker Design", "Laptop Sticker", "Bottle Decal"];
-    case "bag":
-      return ["Everyday Bag", "Giftable Accessory", "Carryall Style"];
-    case "accessory":
-      return ["Graphic Accessory", "Gift Ready", "Lifestyle Item"];
-    case "footwear":
-      return ["Casual Footwear", "Graphic Slides", "Comfort Style"];
-    default:
-      return ["Gift Ready", "Everyday Use"];
-  }
+function htmlToEditableText(value: string) {
+  return stripHtml(value).replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function buildTags(title: string, description: string, count: number) {
-  if (count <= 0) return [];
+function formatProductDescriptionWithSections(leadParagraphs: string[], templateDescription: string) {
+  const paragraphs = dedupeParagraphs(normalizeAiLeadParagraphs(leadParagraphs));
+  const leadHtml = leadToHtml(paragraphs);
 
-  const searchableDescription = stripHtml(description);
-  const family = resolveProductFamily(title, searchableDescription);
-  const candidates = [
-    ...buildPhraseCandidates(title),
-    ...buildFamilyTags(family),
-    ...buildThemeTags(title),
-    ...buildPhraseCandidates(searchableDescription).slice(0, 12),
-    getFamilyLabel(family),
-  ];
+  const formattedTemplate = formatTemplateDescription(templateDescription);
+  const parsed = parseTemplateDescription(formattedTemplate);
+  const detailSectionHeadings = new Set(["Product features", "Care instructions", "Size chart"]);
 
-  const seen = new Set<string>();
-  const tags: string[] = [];
+  const detailSections = parsed.sections.filter((section) => detailSectionHeadings.has(section.heading));
 
-  for (const candidate of candidates) {
-    const formatted = normalizeTagCandidate(candidate);
-    const key = canonicalTagKey(formatted);
-    if (!formatted || !key || seen.has(key)) continue;
-    seen.add(key);
-    tags.push(formatted);
-    if (tags.length >= count) break;
+  if (detailSections.length === 0) {
+    return leadHtml;
   }
 
-  return tags.slice(0, count);
+  const detailHtml = detailSections
+    .map((section) => {
+      const pieces: string[] = [`<h3>${escapeHtml(section.heading)}</h3>`];
+      for (const paragraph of section.paragraphs) {
+        pieces.push(`<p>${escapeHtml(paragraph)}</p>`);
+      }
+      if (section.bullets.length > 0) {
+        const items = section.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join("");
+        pieces.push(`<ul>${items}</ul>`);
+      }
+      return pieces.join("");
+    })
+    .join("");
+
+  return `${leadHtml}${detailHtml}`;
 }
 
-function isImage(file: File) {
-  if (file.type.startsWith("image/")) return true;
-  const ext = file.name.split(".").pop()?.toLowerCase() || "";
-  return ["png", "jpg", "jpeg", "webp", "gif", "svg"].includes(ext);
-}
-
-function readDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () =>
-      resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.onerror = () => reject(reader.error ?? new Error("Unable to read file."));
+    reader.onload = () => resolve(String(reader.result ?? ""));
     reader.readAsDataURL(file);
   });
 }
 
-const REQUEST_TIMEOUT_MS = 45000;
-
-async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function formatApiError(message: string) {
-  const raw = message.trim();
-  if (!raw) return "Live provider connection is not available in this preview.";
-  if (raw.includes("UnsupportedHttpVerb")) {
-    return "Live Printify connection is not available in this preview. The backend API route is not installed in this environment yet.";
-  }
-  if (raw.startsWith("<?xml")) {
-    return "Live Printify connection is not available in this preview. The request reached a static host instead of a backend API route.";
-  }
-  if (raw.toLowerCase().includes("abort") || raw.toLowerCase().includes("timed out")) {
-    return "The request timed out before the provider responded. Please try again.";
-  }
-  return raw.length > 220 ? `${raw.slice(0, 220)}...` : raw;
-}
-
-async function parseResponsePayload(response: Response) {
-  const contentType = response.headers.get("content-type") || "";
-
-  if (contentType.includes("application/json")) {
-    return response.json();
-  }
-
-  const text = await response.text();
-  return { error: text || `Request failed with status ${response.status}.` };
-}
-
-function Box({
-  title,
-  actions,
-  children,
-  className,
-  headerClassName,
+async function requestAiListingDraft({
+  image,
+  templateDescription,
+  provider,
 }: {
+  image: Img;
+  templateDescription: string;
+  provider: ProviderId;
+}): Promise<AiListingDraft | null> {
+  try {
+    const imageDataUrl = await fileToDataUrl(image.file);
+    const templateContext = buildTemplateContext(templateDescription);
+    const productFamily = resolveProductFamily(image.final, templateDescription);
+
+    const response = await fetch("/api/ai/listing", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        imageDataUrl,
+        fileName: image.name,
+        provider,
+        productFamily,
+        templateContext,
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = await response.json();
+    const title = safeTitle(payload?.title || "", image.final);
+    const leadParagraphs = normalizeAiLeadParagraphs(Array.isArray(payload?.leadParagraphs) ? payload.leadParagraphs : []);
+    const reasonFlags = Array.isArray(payload?.reasonFlags)
+      ? payload.reasonFlags.filter((value: unknown): value is string => typeof value === "string")
+      : [];
+
+    return {
+      title,
+      leadParagraphs,
+      model: typeof payload?.model === "string" ? payload.model : AI_MODEL_LABEL,
+      confidence: typeof payload?.confidence === "number" ? payload.confidence : 0,
+      templateReference: typeof payload?.templateReference === "string" ? payload.templateReference : "",
+      reasonFlags,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function compareByStatus(a: Img, b: Img) {
+  const order: Record<ReviewStatus, number> = {
+    ready: 0,
+    review: 1,
+    error: 2,
+    pending: 3,
+  };
+
+  return order[a.status] - order[b.status];
+}
+
+type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  tone?: "default" | "ghost";
+};
+
+function Button({ className = "", tone = "default", type = "button", ...props }: ButtonProps) {
+  const base =
+    "inline-flex min-h-[40px] items-center justify-center rounded-xl px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60";
+  const tones =
+    tone === "ghost"
+      ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+      : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-violet-600 dark:hover:bg-violet-500";
+
+  return <button type={type} className={`${base} ${tones} ${className}`} {...props} />;
+}
+
+type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
+
+function Input({ className = "", ...props }: InputProps) {
+  return (
+    <input
+      className={`h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-violet-500 dark:focus:ring-violet-500/30 ${className}`}
+      {...props}
+    />
+  );
+}
+
+type SelectProps = React.SelectHTMLAttributes<HTMLSelectElement>;
+
+function Select({ className = "", children, ...props }: SelectProps) {
+  return (
+    <div className="relative w-full">
+      <select
+        className={`h-11 w-full appearance-none rounded-xl border border-slate-300 bg-white px-3 pr-9 text-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-violet-500 dark:focus:ring-violet-500/30 ${className}`}
+        {...props}
+      >
+        {children}
+      </select>
+      <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+      </svg>
+    </div>
+  );
+}
+
+type FieldProps = {
+  label: string;
+  children: React.ReactNode;
+};
+
+function Field({ label, children }: FieldProps) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+type BoxProps = {
   title?: React.ReactNode;
-  actions?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
   headerClassName?: string;
-}) {
-  const showHeader = !!title || !!actions;
+};
+
+function Box({ title, children, className = "", headerClassName = "" }: BoxProps) {
   return (
-    <div className={`rounded-2xl border border-slate-200/90 bg-white/95 p-5 shadow-sm shadow-slate-200/60 transition-colors dark:border-slate-800 dark:bg-slate-950 ${className || ""}`.trim()}>
-      {showHeader ? (
-        <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 ${headerClassName || ""}`.trim()}>
-          <h2 className="text-[1.05rem] font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-            {title}
-          </h2>
-          {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
-        </div>
-      ) : null}
+    <section className={`rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_60px_-38px_rgba(15,23,42,0.45)] backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/92 ${className}`}>
+      {title ? <div className={`mb-4 text-base font-semibold tracking-tight ${headerClassName}`}>{title}</div> : null}
       {children}
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="mb-2 block text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-function FieldNote({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="mt-2 text-[0.8rem] leading-5 text-slate-500 dark:text-slate-400">{children}</p>
-  );
-}
-
-function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      {...props}
-      className={`min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-violet-400 ${props.className || ""}`.trim()}
-    />
-  );
-}
-
-function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return (
-    <textarea
-      {...props}
-      className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-violet-400 ${props.className || ""}`.trim()}
-    />
-  );
-}
-
-function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select
-      {...props}
-      className={`min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 transition-colors focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-violet-400 ${props.className || ""}`.trim()}
-    />
-  );
-}
-
-function Button(
-  props: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-    variant?: "primary" | "secondary" | "ghost";
-  }
-) {
-  const variant = props.variant || "primary";
-  const classes =
-    variant === "primary"
-      ? "bg-slate-900 text-white hover:bg-slate-800 dark:bg-violet-600 dark:hover:bg-violet-500"
-      : variant === "secondary"
-        ? "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
-        : "bg-transparent text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900";
-
-  return (
-    <button
-      {...props}
-      className={`min-h-[44px] rounded-xl px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${classes} ${props.className || ""}`.trim()}
-    />
-  );
-}
-
-function Badge({ on, children }: { on?: boolean; children: React.ReactNode }) {
-  return (
-    <span
-      className={`rounded-full px-3 py-1 text-xs font-medium ${on ? "bg-slate-900 text-white dark:bg-violet-600" : "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300"}`}
-    >
-      {children}
-    </span>
+    </section>
   );
 }
 
 function BrandMark() {
   return (
-    <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-slate-200 dark:ring-slate-800">
-      <span className="absolute left-[10px] top-[13px] z-10 text-[2rem] font-semibold leading-none text-violet-500">
-        M
-      </span>
-      <span className="absolute right-[8px] top-[8px] text-[2.45rem] font-semibold leading-none text-white">
-        Q
-      </span>
+    <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-600 text-lg font-semibold text-white shadow-lg shadow-violet-500/30">
+      MQ
     </div>
   );
-}
-
-
-function getStatusMeta(status: ReviewStatus) {
-  switch (status) {
-    case "ready":
-      return { label: "Ready", dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-400", ring: "ring-emerald-200 dark:ring-emerald-900/60" };
-    case "review":
-      return { label: "Needs Review", dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400", ring: "ring-amber-200 dark:ring-amber-900/60" };
-    case "error":
-      return { label: "Error", dot: "bg-rose-500", text: "text-rose-700 dark:text-rose-400", ring: "ring-rose-200 dark:ring-rose-900/60" };
-    default:
-      return { label: "Processing", dot: "bg-slate-400", text: "text-slate-600 dark:text-slate-400", ring: "ring-slate-200 dark:ring-slate-800" };
-  }
-}
-
-function getStatusSortValue(status: ReviewStatus) {
-  switch (status) {
-    case "error":
-      return 0;
-    case "review":
-      return 1;
-    case "pending":
-      return 2;
-    case "ready":
-    default:
-      return 3;
-  }
 }
 
 function getStatusTone(status: ReviewStatus) {
   switch (status) {
     case "ready":
-      return "bg-emerald-500 ring-emerald-300 dark:ring-emerald-900/70";
+      return "bg-emerald-500 ring-emerald-300/80 dark:ring-emerald-900/70";
     case "review":
-      return "bg-amber-500 ring-amber-300 dark:ring-amber-900/70";
+      return "bg-amber-500 ring-amber-300/80 dark:ring-amber-900/70";
     case "error":
-      return "bg-rose-500 ring-rose-300 dark:ring-rose-900/70";
+      return "bg-rose-500 ring-rose-300/80 dark:ring-rose-900/70";
     default:
-      return "bg-slate-300 ring-slate-200 dark:bg-slate-700 dark:ring-slate-800";
+      return "bg-slate-300 ring-slate-200/80 dark:bg-slate-700 dark:ring-slate-800";
   }
-}
-
-function htmlToEditableText(html: string) {
-  return stripHtml(html)
-    .split("\n")
-    .map((line) => line.replace(/^[\s\u00a0]+/g, ""))
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-function editableTextToHtml(value: string) {
-  const paragraphs = value
-    .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-
-  return paragraphsToHtml(paragraphs);
-}
-
-function buildLeadOnlyDescription(leadParagraphs: string[]) {
-  return paragraphsToHtml(normalizeAiLeadParagraphs(leadParagraphs));
 }
 
 export default function MerchQuantumApp() {
-  const fileRef = useRef<HTMLInputElement | null>(null);
-  const previousPreviewUrlsRef = useRef<string[]>([]);
-  const aiLoopBusyRef = useRef(false);
-
   const [provider, setProvider] = useState<ProviderId | "">("");
   const [token, setToken] = useState("");
   const [connected, setConnected] = useState(false);
-  const [loadingApi, setLoadingApi] = useState(false);
-  const [apiStatus, setApiStatus] = useState("");
-  const [pulseConnected, setPulseConnected] = useState(false);
-  const [apiShops, setApiShops] = useState<Shop[]>([]);
-  const [apiProducts, setApiProducts] = useState<Product[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [availableShops, setAvailableShops] = useState<Shop[]>([]);
   const [shopId, setShopId] = useState("");
+  const [products, setProducts] = useState<Product[]>([]);
   const [productId, setProductId] = useState("");
-  const [search, setSearch] = useState("");
-  const [templateDescription, setTemplateDescription] = useState("");
   const [template, setTemplate] = useState<Template | null>(null);
+  const [search, setSearch] = useState("");
   const [images, setImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
+  const [apiStatus, setApiStatus] = useState("");
   const [message, setMessage] = useState("");
+  const [loadingApi, setLoadingApi] = useState(false);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
   const [runStatus, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
-  const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
+  const [pulseConnected, setPulseConnected] = useState(false);
+  const [guidanceStep, setGuidanceStep] = useState<"connect" | "import" | "template" | "review" | null>("connect");
+  const [templateConfirmation, setTemplateConfirmation] = useState("");
 
-  const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
-  const isLiveProvider = selectedProvider?.isLive || false;
-  const availableShops = connected && isLiveProvider ? (apiShops.length ? apiShops : FALLBACK_SHOPS) : [];
-  const productSource = apiProducts.length ? apiProducts : FALLBACK_PRODUCTS;
-  const templateKey = useMemo(() => `${template?.reference || "no-template"}::${templateDescription.trim()}`, [template?.reference, templateDescription]);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const providerMeta = useMemo(
+    () => PROVIDERS.find((entry) => entry.id === provider) ?? null,
+    [provider]
+  );
+
+  const isLiveProvider = Boolean(providerMeta?.isLive);
 
   const visibleProducts = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return productSource.filter(
-      (p) =>
-        p.shopId === shopId &&
-        (!q || p.title.toLowerCase().includes(q) || p.type.toLowerCase().includes(q))
-    );
-  }, [shopId, search, productSource]);
-
-  const sortedImages = useMemo(() => {
-    return [...images].sort((a, b) => {
-      const statusDelta = getStatusSortValue(a.status) - getStatusSortValue(b.status);
-      if (statusDelta !== 0) return statusDelta;
-      return a.name.localeCompare(b.name);
-    });
-  }, [images]);
+    const term = search.trim().toLowerCase();
+    const filtered = products.filter((product) => product.shopId === shopId);
+    if (!term) return filtered;
+    return filtered.filter((product) => product.title.toLowerCase().includes(term));
+  }, [products, search, shopId]);
 
   const selectedImage = useMemo(
-    () => images.find((img) => img.id === selectedId) || sortedImages[0] || null,
-    [images, selectedId, sortedImages]
+    () => images.find((entry) => entry.id === selectedId) ?? images[0] ?? null,
+    [images, selectedId]
   );
-  const readyCount = images.filter((img) => img.status === "ready").length;
-  const reviewCount = images.filter((img) => img.status === "review").length;
-  const errorCount = images.filter((img) => img.status === "error").length;
-  const processingCount = images.filter((img) => img.status === "pending" || img.aiProcessing).length;
-  const uploadDisabled = !connected || !template || images.length === 0 || isRunningBatch || processingCount > 0;
-  const guidanceStep = !connected
-    ? "connect"
-    : images.length === 0
-      ? "import"
-      : !shopId || !template
-        ? "template"
-        : "settled";
-  const templateConfirmation = template ? `Selected template: ${template.nickname}` : "";
-  const skippedCount = Array.from(message.matchAll(/Skipped (\d+)/g)).reduce((total, [, count]) => total + Number(count || 0), 0);
-  const processingBanner = isRunningBatch
-    ? `Uploading ${images.length} draft product${images.length === 1 ? "" : "s"}.`
-    : processingCount > 0
-      ? `Quantum AI is generating listing copy for ${processingCount} image${processingCount === 1 ? "" : "s"}. Upload Draft Products will unlock automatically when processing finishes.`
-      : connected && template && images.length > 0
-        ? "Listing generation is complete. Review any flagged items, then upload draft products."
-        : "";
-  const processingBannerTone = isRunningBatch
-    ? "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-950/20 dark:text-violet-200"
-    : processingCount > 0
-      ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-200"
-      : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-950/20 dark:text-emerald-200";
 
-  function getProviderRoute(path: "connect" | "disconnect" | "products" | "product" | "batch-create") {
-    return `/api/providers/${path}`;
-  }
+  const readyCount = useMemo(() => images.filter((entry) => entry.status === "ready").length, [images]);
+  const reviewCount = useMemo(() => images.filter((entry) => entry.status === "review").length, [images]);
+  const errorCount = useMemo(() => images.filter((entry) => entry.status === "error").length, [images]);
+  const processingCount = useMemo(() => images.filter((entry) => entry.aiProcessing).length, [images]);
+  const skippedCount = Math.max(images.length - readyCount - reviewCount - errorCount, 0);
 
-  useEffect(() => {
-    const previous = previousPreviewUrlsRef.current;
-    const current = images.map((img) => img.preview);
+  const sortedImages = useMemo(() => [...images].sort(compareByStatus), [images]);
 
-    for (const url of previous) {
-      if (url.startsWith("blob:") && !current.includes(url)) {
-        URL.revokeObjectURL(url);
-      }
+  const uploadDisabled = useMemo(() => {
+    if (!connected || !provider || !shopId || !productId || !selectedImage) return true;
+    if (isRunningBatch || loadingProducts || processingCount > 0) return true;
+    return reviewCount > 0 || errorCount > 0;
+  }, [connected, errorCount, isRunningBatch, loadingProducts, processingCount, productId, provider, reviewCount, selectedImage, shopId]);
+
+  const processingBannerTone = useMemo(() => {
+    if (isRunningBatch) return "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-950/20 dark:text-violet-200";
+    if (processingCount > 0) return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-200";
+    return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/20 dark:text-emerald-200";
+  }, [isRunningBatch, processingCount]);
+
+  const processingBanner = useMemo(() => {
+    if (isRunningBatch) {
+      return "Uploading draft products now. Keep this tab open until the current batch finishes.";
     }
-
-    previousPreviewUrlsRef.current = current;
-  }, [images]);
-
-  useEffect(() => {
-    return () => {
-      for (const url of previousPreviewUrlsRef.current) {
-        if (url.startsWith("blob:")) URL.revokeObjectURL(url);
-      }
-    };
-  }, []);
+    if (processingCount > 0) {
+      return `Quantum AI is still generating listings for ${processingCount} image${processingCount === 1 ? "" : "s"}. Upload Draft Products will unlock when processing is complete.`;
+    }
+    if (images.length > 0) {
+      return "Listing generation is complete. Review the selected draft details, then upload when ready.";
+    }
+    return "";
+  }, [images.length, isRunningBatch, processingCount]);
 
   useEffect(() => {
-    if (!selectedImage || selectedImage.artworkBounds) return;
-
-    let cancelled = false;
-    void analyzeArtworkBounds(selectedImage.file)
-      .then((bounds) => {
-        if (cancelled) return;
-        setImages((current) =>
-          current.map((img) => (img.id === selectedImage.id ? { ...img, artworkBounds: bounds } : img))
-        );
-      })
-      .catch(() => undefined);
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedImage]);
-
-  useEffect(() => {
-    if (!images.length) return;
-    setImages((current) =>
-      current.map((img) =>
-        img.processedTemplateKey === templateKey
-          ? img
-          : {
-              ...img,
-              processedTemplateKey: undefined,
-              aiDraft: undefined,
-              aiProcessing: false,
-              status: "pending",
-              statusReason: "Quantum AI is preparing listing copy.",
-            }
-      )
-    );
-  }, [templateKey]);
-
-  useEffect(() => {
-    if (!connected || !isLiveProvider || !shopId) return;
-    if (loadingProducts || apiProducts.some((product) => product.shopId === shopId)) return;
-    void loadProductsForShop(shopId);
-  }, [connected, isLiveProvider, shopId, loadingProducts, apiProducts]);
-
-  useEffect(() => {
-    if (!shopId || !productId) return;
-    void loadProductTemplate(productId);
-  }, [shopId, productId]);
-
-  useEffect(() => {
-    if (aiLoopBusyRef.current) return;
-    const nextImage = images.find((img) => !img.aiProcessing && img.processedTemplateKey !== templateKey);
-    if (!nextImage) return;
-
-    aiLoopBusyRef.current = true;
-    setImages((current) =>
-      current.map((img) =>
-        img.id === nextImage.id
-          ? { ...img, aiProcessing: true, status: "pending", statusReason: "Quantum AI is analyzing artwork." }
-          : img
-      )
-    );
-
-    void (async () => {
-      try {
-        const imageDataUrl = await readDataUrl(nextImage.file);
-        const response = await fetchWithTimeout(
-          "/api/ai/listing",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              imageDataUrl,
-              title: safeTitle(nextImage.final, nextImage.cleaned),
-              fileName: nextImage.name,
-              productFamily: resolveProductFamily(nextImage.final, templateDescription),
-              templateContext: buildTemplateContext(templateDescription),
-            }),
-          },
-          60000
-        );
-
-        const data = await parseResponsePayload(response);
-        if (!response.ok) {
-          throw new Error(data?.error || `Quantum AI request failed with status ${response.status}.`);
-        }
-
-        const rawParagraphs = Array.isArray(data?.leadParagraphs)
-          ? data.leadParagraphs
-          : [data?.leadParagraph1, data?.leadParagraph2].filter(Boolean);
-        const leadParagraphs = normalizeAiLeadParagraphs(rawParagraphs.length ? rawParagraphs : buildLeadParagraphs(nextImage.cleaned, templateDescription));
-        const finalTitle = safeTitle(trimToSentence(String(data?.title || nextImage.cleaned), AI_TITLE_MAX_CHARS), nextImage.cleaned);
-        const finalDescription = templateDescription.trim()
-          ? buildDescription(finalTitle, templateDescription, leadParagraphs)
-          : buildLeadOnlyDescription(leadParagraphs);
-        const tags = buildTags(finalTitle, finalDescription, FIXED_TAG_COUNT);
-        const confidence = typeof data?.confidence === "number" ? clamp(data.confidence, 0, 1) : 0.8;
-        const reasonFlags = Array.isArray(data?.reasonFlags)
-          ? data.reasonFlags.filter((flag: unknown) => typeof flag === "string" && flag.trim())
-          : [];
-        const status: ReviewStatus = confidence >= 0.78 && reasonFlags.length === 0 ? "ready" : "review";
-        const statusReason = status === "ready"
-          ? "Quantum AI is confident in this listing."
-          : reasonFlags[0] || "This item may need a quick review before upload.";
-
-        setImages((current) =>
-          current.map((img) =>
-            img.id === nextImage.id
-              ? {
-                  ...img,
-                  final: finalTitle,
-                  finalDescription,
-                  tags,
-                  aiProcessing: false,
-                  status,
-                  statusReason,
-                  processedTemplateKey: templateKey,
-                  aiDraft: {
-                    title: finalTitle,
-                    leadParagraphs,
-                    model: typeof data?.model === "string" ? data.model : AI_MODEL_LABEL,
-                    confidence,
-                    templateReference: template?.reference || "",
-                    reasonFlags,
-                  },
-                }
-              : img
-          )
-        );
-      } catch (error) {
-        const leadParagraphs = normalizeAiLeadParagraphs(buildLeadParagraphs(nextImage.cleaned, templateDescription));
-        const fallbackTitle = safeTitle(nextImage.final, nextImage.cleaned);
-        const fallbackDescription = templateDescription.trim()
-          ? buildDescription(fallbackTitle, templateDescription, leadParagraphs)
-          : buildLeadOnlyDescription(leadParagraphs);
-        const message = formatApiError(error instanceof Error ? error.message : "Quantum AI could not process this item.");
-        setImages((current) =>
-          current.map((img) =>
-            img.id === nextImage.id
-              ? {
-                  ...img,
-                  final: fallbackTitle,
-                  finalDescription: fallbackDescription,
-                  tags: buildTags(fallbackTitle, fallbackDescription, FIXED_TAG_COUNT),
-                  aiProcessing: false,
-                  status: "review",
-                  statusReason: message,
-                  processedTemplateKey: templateKey,
-                }
-              : img
-          )
-        );
-      } finally {
-        aiLoopBusyRef.current = false;
-      }
-    })();
-  }, [images, templateDescription, templateKey, template?.reference]);
-
-  function resetProviderState(clearStatus = true) {
-    setConnected(false);
-    setLoadingApi(false);
-    setPulseConnected(false);
-    if (clearStatus) setApiStatus("");
-    setApiShops([]);
-    setApiProducts([]);
-    setLoadingProducts(false);
-    setShopId("");
-    setProductId("");
-    setTemplate(null);
-    setBatchResults([]);
-    setRunStatus("");
-  }
-
-  async function addFiles(list: FileList | null) {
-    if (!list) return;
-    setMessage("");
-
-    const room = Math.max(0, MAX_BATCH_FILES - images.length);
-    const valid = Array.from(list).filter(isImage).slice(0, room);
-    const skippedByType = Array.from(list).filter((f) => !isImage(f)).length;
-    const skippedByLimit = Math.max(0, Array.from(list).filter(isImage).length - valid.length);
-
-    const good = valid.map((file) => {
-      const cleaned = cleanTitle(file.name);
-      const leadDescription = templateDescription.trim() ? buildDescription(cleaned, templateDescription) : buildLeadOnlyDescription(buildLeadParagraphs(cleaned, templateDescription));
-      return {
-        id: makeId(),
-        name: file.name,
-        file,
-        preview: URL.createObjectURL(file),
-        cleaned,
-        final: cleaned,
-        finalDescription: leadDescription,
-        tags: buildTags(cleaned, leadDescription, FIXED_TAG_COUNT),
-        status: "pending" as ReviewStatus,
-        statusReason: "Quantum AI is preparing listing copy.",
-      } satisfies Img;
-    });
-
-    setImages((current) => {
-      const next = [...current, ...good];
-      if (!selectedId && next[0]) setSelectedId(next[0].id);
-      return next;
-    });
-
-    const parts: string[] = [];
-    if (good.length) parts.push(`Loaded ${good.length} image${good.length === 1 ? "" : "s"}.`);
-    if (skippedByType) parts.push(`Skipped ${skippedByType} non-image file${skippedByType === 1 ? "" : "s"}.`);
-    if (skippedByLimit) parts.push(`Skipped ${skippedByLimit} image${skippedByLimit === 1 ? "" : "s"} above the ${MAX_BATCH_FILES}-file batch cap.`);
-    setMessage(parts.join(" "));
-  }
-
-  async function loadProductsForShop(nextShopId: string) {
-    if (!connected || !isLiveProvider || !nextShopId) {
-      setApiProducts([]);
-      setLoadingProducts(false);
+    if (!provider) {
+      setGuidanceStep("connect");
       return;
     }
 
-    setLoadingProducts(true);
-    try {
-      const response = await fetchWithTimeout(
-        `${getProviderRoute("products")}?provider=${encodeURIComponent(provider)}&shopId=${encodeURIComponent(nextShopId)}`
-      );
-      const data = await parseResponsePayload(response);
-      if (!response.ok) throw new Error(data?.error || `Products request failed with status ${response.status}.`);
-
-      const mapped: Product[] = Array.isArray(data?.products)
-        ? data.products.map((product: ApiProduct) => ({
-            id: product.id,
-            title: product.title || product.id,
-            type: "Template",
-            shopId: String(product.shop_id ?? nextShopId),
-            description: product.description || "",
-          }))
-        : [];
-
-      setApiProducts(mapped);
-      setApiStatus((current) => (current.startsWith("Unable to load products") ? "" : current));
-    } catch (error) {
-      setApiProducts([]);
-      const msg = error instanceof Error ? error.message : "Unable to load products.";
-      setApiStatus(formatApiError(msg));
-    } finally {
-      setLoadingProducts(false);
+    if (!connected) {
+      setGuidanceStep("connect");
+      return;
     }
+
+    if (images.length === 0) {
+      setGuidanceStep("import");
+      return;
+    }
+
+    if (!productId) {
+      setGuidanceStep("template");
+      return;
+    }
+
+    setGuidanceStep("review");
+  }, [connected, images.length, productId, provider]);
+
+  useEffect(() => {
+    if (selectedImage) setSelectedId(selectedImage.id);
+  }, [selectedImage]);
+
+  function resetProviderState(soft = false) {
+    setConnected(false);
+    setAvailableShops([]);
+    setProducts([]);
+    setShopId("");
+    setProductId("");
+    setTemplate(null);
+    setTemplateConfirmation("");
+    if (!soft) setSearch("");
   }
 
   async function connectPrintify() {
-    if (!provider || !token.trim() || !isLiveProvider) return;
+    if (!provider || !token.trim()) return;
+    if (!isLiveProvider) {
+      setApiStatus(`${providerMeta?.label ?? "This provider"} is coming soon.`);
+      return;
+    }
+
     setLoadingApi(true);
     setApiStatus("");
 
     try {
-      const response = await fetchWithTimeout(getProviderRoute("connect"), {
+      const response = await fetch("/api/providers/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, token }),
+        body: JSON.stringify({ provider, token: token.trim() }),
       });
 
-      const data = await parseResponsePayload(response);
-      if (!response.ok) throw new Error(data?.error || `${selectedProvider?.label || "Provider"} connect failed with status ${response.status}.`);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || "Unable to connect provider.");
+      }
 
-      const shopsFromApi: Shop[] = Array.isArray(data?.shops)
-        ? data.shops.map((shop: ApiShop) => ({ id: String(shop.id), title: shop.title || `Shop ${shop.id}` }))
-        : [];
+      const payload = await response.json();
+      const shops = Array.isArray(payload?.shops)
+        ? payload.shops.map((shop: ApiShop) => ({ id: String(shop.id), title: shop.title }))
+        : FALLBACK_SHOPS;
 
-      setApiShops(shopsFromApi);
       setConnected(true);
-      const firstShopId = shopsFromApi[0]?.id || FALLBACK_SHOPS[0].id;
-      setShopId(firstShopId);
+      setAvailableShops(shops);
+      setShopId("");
+      setProducts([]);
+      setProductId("");
+      setTemplate(null);
+      setTemplateConfirmation("");
+      setApiStatus(`${providerMeta?.label ?? "Provider"} connected.`);
       setPulseConnected(true);
-      setTimeout(() => setPulseConnected(false), 1200);
-      void loadProductsForShop(firstShopId);
+      window.setTimeout(() => setPulseConnected(false), 1400);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : `Unable to connect to ${selectedProvider?.label || "provider"}.`;
-      resetProviderState(false);
-      setApiStatus(formatApiError(msg));
+      setApiStatus(error instanceof Error ? error.message : "Unable to connect provider.");
+      resetProviderState(true);
     } finally {
       setLoadingApi(false);
     }
   }
 
   async function disconnectPrintify() {
+    if (!provider || !connected) return;
+
+    setLoadingApi(true);
     try {
-      await fetchWithTimeout(getProviderRoute("disconnect"), { method: "POST" });
-    } catch {
-      // local reset only
+      await fetch("/api/providers/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      }).catch(() => null);
     } finally {
-      setToken("");
       resetProviderState(true);
-      setApiStatus("");
+      setToken("");
+      setApiStatus(`${providerMeta?.label ?? "Provider"} disconnected.`);
+      setLoadingApi(false);
     }
   }
 
-  async function loadProductTemplate(nextProductId = productId) {
-    const fallback = productSource.find((p) => p.id === nextProductId);
-    if (!fallback || !shopId) return;
+  async function loadProductsForShop(targetShopId: string) {
+    if (!provider || !isLiveProvider || !targetShopId) return;
+
+    setLoadingProducts(true);
+    setApiStatus("");
+    setTemplateConfirmation("");
 
     try {
-      const response = await fetchWithTimeout(
-        `${getProviderRoute("product")}?provider=${encodeURIComponent(provider)}&shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(nextProductId)}`
-      );
-      const data = await parseResponsePayload(response);
-      if (!response.ok) throw new Error(data?.error || `Product request failed with status ${response.status}.`);
+      const response = await fetch(`/api/providers/products?provider=${encodeURIComponent(provider)}&shopId=${encodeURIComponent(targetShopId)}`);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || "Unable to load products.");
+      }
 
-      const responseData = (data || {}) as ApiTemplateResponse;
-      const chosen = responseData.product || fallback;
-      const title = chosen?.title || fallback.title;
-      const usingFallbackDescription = !chosen?.description?.trim();
-      const base = formatTemplateDescription(
-        chosen?.description?.trim() ||
-          fallback.description?.trim() ||
-          `${title}. This is the base description from your saved template. Live product descriptions from ${selectedProvider?.label || "the provider"} will replace this placeholder after API wiring.`
-      );
-      const nextPlacementGuide = responseData.placementGuide || template?.placementGuide || DEFAULT_PLACEMENT_GUIDE;
+      const payload = await response.json();
+      const nextProducts = Array.isArray(payload?.products)
+        ? payload.products.map((product: ApiProduct) => ({
+            id: String(product.id),
+            title: product.title,
+            type: String(product.blueprint_id ?? product.print_provider_id ?? "Product"),
+            shopId: String(product.shop_id ?? targetShopId),
+            description: product.description,
+          }))
+        : [];
 
-      setTemplate({
-        reference: chosen?.id || fallback.id,
-        nickname: title,
-        source: "product",
-        shopId,
-        description: base,
-        placementGuide: nextPlacementGuide,
-      });
-      setTemplateDescription(base);
+      setProducts(nextProducts);
+      setTemplate(null);
+      setTemplateConfirmation("");
     } catch (error) {
-      const title = fallback.title;
-      const base = formatTemplateDescription(
-        fallback.description?.trim() ||
-          `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`
-      );
+      setProducts([]);
+      setTemplate(null);
+      setTemplateConfirmation("");
+      setApiStatus(error instanceof Error ? error.message : "Unable to load products.");
+    } finally {
+      setLoadingProducts(false);
+    }
+  }
+
+  async function ensureTemplateForProduct(nextProductId: string) {
+    if (!provider || !shopId || !nextProductId || !isLiveProvider) return;
+
+    try {
+      const response = await fetch(`/api/providers/product?provider=${encodeURIComponent(provider)}&productId=${encodeURIComponent(nextProductId)}&shopId=${encodeURIComponent(shopId)}`);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || "Unable to load selected product.");
+      }
+
+      const payload: ApiTemplateResponse = await response.json();
+      const description = payload?.product?.description || visibleProducts.find((product) => product.id === nextProductId)?.description || "";
+      const title = payload?.product?.title || visibleProducts.find((product) => product.id === nextProductId)?.title || "";
+      const reference = normalizeRef(nextProductId);
 
       setTemplate({
-        reference: fallback.id,
-        nickname: title,
+        reference,
+        nickname: title || `Template ${reference}`,
         source: "product",
         shopId,
-        description: base,
-        placementGuide: template?.placementGuide || DEFAULT_PLACEMENT_GUIDE,
+        description: formatTemplateDescription(description),
+        placementGuide: payload?.placementGuide || DEFAULT_PLACEMENT_GUIDE,
       });
-      setTemplateDescription(base);
+      setTemplateConfirmation(`Using ${title || "selected product"} as the draft template source.`);
+    } catch (error) {
+      setTemplate(null);
+      setTemplateConfirmation("");
+      setApiStatus(error instanceof Error ? error.message : "Unable to load selected product.");
+    }
+  }
+
+  useEffect(() => {
+    if (!productId) {
+      setTemplate(null);
+      setTemplateConfirmation("");
+      return;
+    }
+    void ensureTemplateForProduct(productId);
+  }, [productId]);
+
+  async function addFiles(fileList: FileList | null) {
+    if (!fileList?.length) return;
+
+    const nextFiles = Array.from(fileList).filter((file) => file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(file.name));
+    if (!nextFiles.length) return;
+
+    const slots = Math.max(MAX_BATCH_FILES - images.length, 0);
+    const accepted = nextFiles.slice(0, slots);
+    if (!accepted.length) {
+      setMessage(`Batch limit reached. You can add up to ${MAX_BATCH_FILES} files at once.`);
+      return;
+    }
+
+    const baseTemplateDescription = template?.description || "";
+
+    const prepared = await Promise.all(
+      accepted.map(async (file) => {
+        const preview = URL.createObjectURL(file);
+        const title = cleanTitle(file.name);
+        const artworkBounds = await analyzeArtworkBounds(file).catch(() => normalizeArtworkBounds(undefined, 1, 1));
+        const tags = deriveTags(title, baseTemplateDescription);
+        const fallbackLead = buildLeadParagraphs(title, baseTemplateDescription);
+        const finalDescription = formatProductDescriptionWithSections(fallbackLead, baseTemplateDescription);
+
+        return {
+          id: makeId(),
+          name: file.name,
+          file,
+          preview,
+          cleaned: title,
+          final: title,
+          finalDescription,
+          tags,
+          status: "pending" as ReviewStatus,
+          statusReason: "Pending review.",
+          aiProcessing: true,
+          artworkBounds,
+        } satisfies Img;
+      })
+    );
+
+    setImages((current) => [...current, ...prepared]);
+    setMessage(accepted.length < nextFiles.length ? `Added ${accepted.length} images. Extra files were skipped because the batch is capped at ${MAX_BATCH_FILES}.` : `${accepted.length} image${accepted.length === 1 ? "" : "s"} added.`);
+
+    for (const image of prepared) {
+      const aiDraft = await requestAiListingDraft({ image, templateDescription: baseTemplateDescription, provider: provider || "printify" });
+
+      setImages((current) =>
+        current.map((entry) => {
+          if (entry.id !== image.id) return entry;
+
+          const leadParagraphs = aiDraft?.leadParagraphs?.length ? aiDraft.leadParagraphs : buildLeadParagraphs(entry.final, baseTemplateDescription);
+          const nextTitle = safeTitle(aiDraft?.title || entry.final, entry.final);
+          const nextDescription = formatProductDescriptionWithSections(leadParagraphs, baseTemplateDescription);
+          const nextTags = deriveTags(nextTitle, baseTemplateDescription);
+
+          return {
+            ...entry,
+            final: nextTitle,
+            finalDescription: nextDescription,
+            tags: nextTags,
+            aiDraft: aiDraft || undefined,
+            status: aiDraft ? "ready" : "review",
+            statusReason: aiDraft ? "AI draft generated." : "Using fallback draft. Review before upload.",
+            aiProcessing: false,
+          };
+        })
+      );
     }
   }
 
   async function runDraftBatch() {
-    if (!template || !shopId || images.length === 0 || !isLiveProvider) return;
+    if (!provider || !shopId || !productId || !selectedImage || uploadDisabled) return;
 
     setIsRunningBatch(true);
     setRunStatus("");
     setBatchResults([]);
-    const nextResults: BatchResult[] = [];
 
     try {
-      for (let index = 0; index < images.length; index += 1) {
-        const img = images[index];
-        const titleForUpload = safeTitle(img.final, img.cleaned);
-        const description = img.finalDescription || buildDescription(titleForUpload, templateDescription, img.aiDraft?.leadParagraphs);
-        const tags = img.tags.length ? img.tags : buildTags(titleForUpload, description, FIXED_TAG_COUNT);
+      const draftItems = images.filter((entry) => entry.status !== "error");
+      const response = await fetch("/api/providers/batch-create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider,
+          shopId,
+          productId,
+          templateReference: template?.reference || productId,
+          items: draftItems.map((entry) => ({
+            fileName: entry.name,
+            title: entry.final,
+            description: entry.finalDescription,
+            tags: entry.tags,
+            preview: entry.preview,
+          })),
+        }),
+      });
 
-        setRunStatus(`Uploading draft ${index + 1} of ${images.length}...`);
-
-        try {
-          const imageDataUrl = await readDataUrl(img.file);
-          const artworkBounds = img.artworkBounds || (await analyzeArtworkBounds(img.file));
-          if (!img.artworkBounds) {
-            setImages((current) => current.map((entry) => (entry.id === img.id ? { ...entry, artworkBounds } : entry)));
-          }
-
-          const response = await fetchWithTimeout(getProviderRoute("batch-create"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              provider,
-              shopId,
-              templateProductId: template.reference,
-              item: {
-                fileName: img.name,
-                title: titleForUpload,
-                description,
-                tags,
-                imageDataUrl,
-                artworkBounds,
-              },
-            }),
-          });
-
-          const data = await parseResponsePayload(response);
-          if (!response.ok) throw new Error(data?.error || `Draft request failed with status ${response.status}.`);
-
-          const result = Array.isArray(data?.results) && data.results[0]
-            ? (data.results[0] as BatchResult)
-            : { fileName: img.name, title: titleForUpload, message: data?.message || "Created draft product." };
-
-          nextResults.push(result);
-          setBatchResults([...nextResults]);
-        } catch (error) {
-          const rawMessage = error instanceof Error ? error.message : "Draft create failed.";
-          const errorMessage = formatApiError(rawMessage);
-          nextResults.push({ fileName: img.name, title: titleForUpload, message: errorMessage });
-          setBatchResults([...nextResults]);
-        }
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || "Unable to upload draft products.");
       }
 
-      const createdCount = nextResults.filter((result) => !!result.productId).length;
-      setRunStatus(`Uploaded ${createdCount} draft product${createdCount === 1 ? "" : "s"} out of ${images.length}.`);
+      const payload = await response.json();
+      const results = Array.isArray(payload?.results) ? payload.results : [];
+      setBatchResults(results);
+      setRunStatus(`Draft upload complete. Uploaded ${results.length} product${results.length === 1 ? "" : "s"} out of ${images.length}.`);
+    } catch (error) {
+      setRunStatus(error instanceof Error ? error.message : "Unable to upload draft products.");
     } finally {
       setIsRunningBatch(false);
     }
@@ -1976,7 +1652,7 @@ export default function MerchQuantumApp() {
           <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-slate-800">
           <div className={`relative grid gap-3 rounded-xl transition-all duration-500 ${guidanceStep === "template" ? "border border-violet-200/80 bg-violet-50/50 p-3 shadow-[0_18px_50px_-32px_rgba(124,58,237,0.35)] dark:border-violet-500/30 dark:bg-violet-950/15" : ""}`}>
             {guidanceStep === "template" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
-            <div className="grid items-stretch gap-3 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="grid items-stretch gap-3 md:grid-cols-2 lg:grid-cols-3">
               <div>
                 <Select
                   value={shopId}
@@ -1996,17 +1672,6 @@ export default function MerchQuantumApp() {
                     </option>
                   ))}
                 </Select>
-              </div>
-
-              <div>
-                <div
-                  className="flex min-h-[44px] items-center overflow-hidden rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
-                  title={shopId ? "Products from the selected shop" : "Select a shop to load products"}
-                >
-                  <span className="truncate">
-                    Choose From My Products
-                  </span>
-                </div>
               </div>
 
               <div>
