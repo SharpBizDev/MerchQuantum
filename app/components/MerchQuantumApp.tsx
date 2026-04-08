@@ -1534,18 +1534,17 @@ export default function MerchQuantumApp() {
 
       setApiShops(shopsFromApi);
       setConnected(true);
+      setShopId("");
       setProductId("");
+      setTemplate(null);
+      setTemplateDescription("");
+      setApiProducts([]);
       setPulseConnected(true);
       setTimeout(() => setPulseConnected(false), 1200);
       if (shopsFromApi.length === 0) {
-        setShopId("");
-        setApiProducts([]);
         setApiStatus("No shops were returned for this provider connection.");
         return;
       }
-
-      const firstShopId = shopsFromApi[0].id;
-      setShopId(firstShopId);
     } catch (error) {
       const msg = error instanceof Error ? error.message : `Unable to connect to ${selectedProvider?.label || "provider"}.`;
       resetProviderState(false);
@@ -1967,7 +1966,7 @@ export default function MerchQuantumApp() {
                               e.stopPropagation();
                               removePreviewItem(img.id);
                             }}
-                            className="inline-flex h-2 w-2 items-center justify-center text-[10px] font-medium leading-none text-slate-500 transition-colors hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400"
+                            className="inline-flex h-2 w-2 items-center justify-center text-[9px] font-normal leading-none text-slate-500 transition-colors hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400"
                           >
                             X
                           </button>
