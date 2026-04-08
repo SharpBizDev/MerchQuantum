@@ -1180,8 +1180,8 @@ export default function MerchQuantumApp() {
 
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
   const isLiveProvider = selectedProvider?.isLive || false;
-  const availableShops = connected && isLiveProvider ? (apiShops.length ? apiShops : FALLBACK_SHOPS) : [];
-  const productSource = apiProducts.length ? apiProducts : FALLBACK_PRODUCTS;
+  const availableShops = connected && isLiveProvider ? apiShops : [];
+  const productSource = connected && isLiveProvider ? apiProducts : [];
   const templateKey = useMemo(() => `${template?.reference || "no-template"}::${templateDescription.trim()}`, [template?.reference, templateDescription]);
 
   const visibleProducts = useMemo(() => {
@@ -1498,7 +1498,7 @@ export default function MerchQuantumApp() {
         : [];
 
       setApiProducts(mapped);
-      setApiStatus((current) => (current.startsWith("Unable to load products") ? "" : current));
+      setApiStatus(mapped.length === 0 ? "No products were found for this shop." : "");
     } catch (error) {
       setApiProducts([]);
       const msg = error instanceof Error ? error.message : "Unable to load products.";
@@ -1529,10 +1529,18 @@ export default function MerchQuantumApp() {
 
       setApiShops(shopsFromApi);
       setConnected(true);
-      const firstShopId = shopsFromApi[0]?.id || FALLBACK_SHOPS[0].id;
-      setShopId(firstShopId);
+      setProductId("");
       setPulseConnected(true);
       setTimeout(() => setPulseConnected(false), 1200);
+      if (shopsFromApi.length === 0) {
+        setShopId("");
+        setApiProducts([]);
+        setApiStatus("No shops were returned for this provider connection.");
+        return;
+      }
+
+      const firstShopId = shopsFromApi[0].id;
+      setShopId(firstShopId);
       void loadProductsForShop(firstShopId);
     } catch (error) {
       const msg = error instanceof Error ? error.message : `Unable to connect to ${selectedProvider?.label || "provider"}.`;
@@ -1977,7 +1985,13 @@ export default function MerchQuantumApp() {
                     if (connected && isLiveProvider && nextShopId) void loadProductsForShop(nextShopId);
                   }}
                 >
-                  <option value="">{loadingApi ? "Loading shops..." : "Select Shop"}</option>
+                  <option value="">
+                    {loadingApi
+                      ? "Loading shops..."
+                      : connected && isLiveProvider && availableShops.length === 0
+                        ? "No shops returned"
+                        : "Select Shop"}
+                  </option>
                   {availableShops.map((shop) => (
                     <option key={shop.id} value={shop.id}>
                       {shop.title}
@@ -1993,7 +2007,13 @@ export default function MerchQuantumApp() {
                   disabled={!shopId || loadingProducts}
                   onChange={(e) => setProductId(e.target.value)}
                 >
-                  <option value="">{loadingProducts ? "Loading products..." : "Choose Product Template"}</option>
+                  <option value="">
+                    {loadingProducts
+                      ? "Loading products..."
+                      : connected && isLiveProvider && shopId && visibleProducts.length === 0
+                        ? "No products found"
+                        : "Choose Product Template"}
+                  </option>
                   {visibleProducts.map((product) => (
                     <option key={product.id} value={product.id}>
                       {product.title}
