@@ -1,13 +1,14 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { put } from "@vercel/blob";
 
 import { ProviderError } from "./errors";
 import type { HostedArtworkReference, ProviderId } from "./types";
 
 const DEFAULT_HOSTED_ARTWORK_TTL_MS = 1000 * 60 * 60 * 24;
-const DEFAULT_STORAGE_DIR = process.env.MQ_HOSTED_ARTWORK_DIR?.trim() || path.join(os.tmpdir(), "merchquantum-hosted-artwork");
+const DEFAULT_STORAGE_DIR = process.env.MQ_HOSTED_ARTWORK_DIR?.trim() || "";
+const BLOB_READ_WRITE_TOKEN = process.env.BLOB_READ_WRITE_TOKEN?.trim() || "";
 
 type PublishHostedArtworkOptions = {
   providerId: ProviderId;
@@ -99,6 +100,30 @@ export async function publishHostedArtwork(options: PublishHostedArtworkOptions)
     expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
   };
 
+  if (BLOB_READ_WRITE_TOKEN) {
+    const blob = await put(`provider-artwork/${options.providerId}/${assetId}/${record.fileName}`, decoded.buffer, {
+      access: "public",
+      addRandomSuffix: false,
+      cacheControlMaxAge: Math.max(60, Math.floor(ttlMs / 1000)),
+      contentType: decoded.contentType,
+      token: BLOB_READ_WRITE_TOKEN,
+    });
+
+    return {
+      ...record,
+      publicUrl: blob.url,
+    };
+  }
+
+  if (!storageDir) {
+    throw new ProviderError({
+      providerId: options.providerId,
+      code: "upstream_error",
+      status: 500,
+      message: "Hosted artwork storage is not configured for this environment.",
+    });
+  }
+
   await ensureStorageDir(storageDir);
   await fs.writeFile(getBinaryPath(storageDir, assetId), decoded.buffer);
   await fs.writeFile(getMetadataPath(storageDir, assetId), JSON.stringify(record, null, 2), "utf8");
@@ -116,6 +141,10 @@ export async function readHostedArtwork(
 ): Promise<StoredHostedArtwork | null> {
   const storageDir = options.storageDir || DEFAULT_STORAGE_DIR;
   const now = options.now || new Date();
+
+  if (!storageDir) {
+    return null;
+  }
 
   try {
     const metadataText = await fs.readFile(getMetadataPath(storageDir, assetId), "utf8");
