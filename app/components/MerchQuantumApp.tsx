@@ -1092,6 +1092,10 @@ function getStatusIndicatorClass(status: ReviewStatus) {
   return `h-2 w-2 rounded-full ring-2 ${getStatusTone(status)}`;
 }
 
+function getLoadingIndicatorClass() {
+  return "h-2 w-2 rounded-full ring-2 bg-violet-500 ring-violet-300/80 dark:ring-violet-900/70";
+}
+
 function getStatusSortValue(status: ReviewStatus) {
   switch (status) {
     case "ready":
@@ -1162,6 +1166,8 @@ export default function MerchQuantumApp() {
   const reviewCount = images.filter((img) => img.status === "review").length;
   const errorCount = images.filter((img) => img.status === "error").length;
   const processingCount = images.filter((img) => img.status === "pending" || img.aiProcessing).length;
+  const completedGenerationCount = Math.max(0, images.length - processingCount);
+  const generationProgressPct = images.length > 0 ? Math.round((completedGenerationCount / images.length) * 100) : 0;
   const uploadDisabled = !connected || !template || images.length === 0 || isRunningBatch || processingCount > 0;
   const guidanceStep = !connected
     ? "connect"
@@ -1889,7 +1895,7 @@ export default function MerchQuantumApp() {
                               e.stopPropagation();
                               removePreviewItem(img.id);
                             }}
-                            className="inline-flex h-2 w-2 items-center justify-center text-[8px] font-semibold leading-none text-slate-500 transition-colors hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400"
+                            className="inline-flex h-2 w-2 items-center justify-center text-[11px] font-medium leading-none text-slate-500 transition-colors hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400"
                           >
                             X
                           </button>
@@ -1980,6 +1986,29 @@ export default function MerchQuantumApp() {
                 >
                   {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
                 </Button>
+                {images.length > 0 ? (
+                  <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[11px] font-medium text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                        <div className="inline-flex items-center gap-1.5">
+                          <span className={getLoadingIndicatorClass()} />
+                          <span>Loading: {processingCount}</span>
+                        </div>
+                        <div className="inline-flex items-center gap-1.5">
+                          <span className={getStatusIndicatorClass("ready")} />
+                          <span>Completed: {completedGenerationCount}</span>
+                        </div>
+                      </div>
+                      <span className="shrink-0 text-slate-500 dark:text-slate-400">{generationProgressPct}%</span>
+                    </div>
+                    <div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${processingCount > 0 ? "bg-violet-500" : "bg-emerald-500"}`}
+                        style={{ width: `${generationProgressPct}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
                 {runStatus ? <p className="text-sm text-slate-600 dark:text-slate-400">{runStatus}</p> : null}
                 {batchResults.length > 0 ? (
                   <div className="max-h-[14rem] overflow-auto rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-950">
