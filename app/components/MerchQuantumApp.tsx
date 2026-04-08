@@ -1967,7 +1967,7 @@ export default function MerchQuantumApp() {
                               e.stopPropagation();
                               removePreviewItem(img.id);
                             }}
-                            className="inline-flex h-2 w-2 items-center justify-center text-[11px] font-medium leading-none text-slate-500 transition-colors hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400"
+                            className="inline-flex h-2 w-2 items-center justify-center text-[10px] font-medium leading-none text-slate-500 transition-colors hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400"
                           >
                             X
                           </button>
