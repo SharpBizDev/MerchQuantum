@@ -1292,8 +1292,8 @@ export default function MerchQuantumApp() {
       return;
     }
 
-    if (!visibleProducts.some((product) => product.id === productId)) {
-      setProductId(visibleProducts[0]?.id || "");
+    if (productId && !visibleProducts.some((product) => product.id === productId)) {
+      setProductId("");
     }
   }, [shopId, visibleProducts, productId]);
 
@@ -2026,29 +2026,27 @@ export default function MerchQuantumApp() {
                 <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search My Products" />
               </div>
 
-              {images.length > 0 ? (
-                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[11px] font-medium text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-x-3 gap-y-1.5">
-                      <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                        <span className={getLoadingIndicatorClass()} />
-                        <span>Loading: {processingCount}</span>
-                      </div>
-                      <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                        <span className={getStatusIndicatorClass("ready")} />
-                        <span>Completed: {completedGenerationCount}</span>
-                      </div>
+              <div className="relative h-11 overflow-hidden rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                <div className="flex h-full items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-x-3 gap-y-1.5">
+                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                      <span className={getLoadingIndicatorClass()} />
+                      <span>{processingCount} Loading</span>
                     </div>
-                    <span className="shrink-0 text-slate-500 dark:text-slate-400">{generationProgressPct}%</span>
+                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                      <span className={getStatusIndicatorClass("ready")} />
+                      <span>{completedGenerationCount} Complete</span>
+                    </div>
                   </div>
-                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${processingCount > 0 ? "bg-violet-500" : "bg-emerald-500"}`}
-                      style={{ width: `${generationProgressPct}%` }}
-                    />
-                  </div>
+                  <span className="shrink-0 text-slate-500 dark:text-slate-400">{generationProgressPct}%</span>
                 </div>
-              ) : null}
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-slate-200 dark:bg-slate-800">
+                  <div
+                    className={`h-full transition-all duration-500 ${processingCount > 0 ? "bg-violet-500" : "bg-emerald-500"}`}
+                    style={{ width: `${generationProgressPct}%` }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
           </div>
@@ -2080,7 +2078,7 @@ export default function MerchQuantumApp() {
                     </div>
                   </div>
                 </div>
-                <div className="mt-auto space-y-3 pt-3">
+                <div className="mt-3 space-y-3">
                 <Button
                   className="w-full !bg-violet-600 !text-white hover:!bg-violet-500 dark:!bg-violet-600 dark:hover:!bg-violet-500"
                   disabled={uploadDisabled}
@@ -2108,14 +2106,18 @@ export default function MerchQuantumApp() {
 
               <div className="flex h-full flex-col space-y-3">
                 <Field label="Final Title">
-                  <div className="flex min-h-[44px] items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-0 text-center text-sm font-normal leading-5 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                  <div className="flex min-h-[44px] items-center rounded-xl border border-slate-300 bg-white px-3 py-0 text-left text-sm font-normal leading-5 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
                     {detailTitle}
                   </div>
                 </Field>
 
                 <Field label="Final Description">
-                  <div className="min-h-[316px] whitespace-pre-wrap rounded-xl border border-slate-300 bg-white px-3 py-2 text-center text-sm font-normal leading-6 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 lg:h-[22rem] lg:overflow-y-auto">
-                    {htmlToEditableText(detailDescription)}
+                  <div className="min-h-[280px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 lg:h-[18rem] lg:overflow-y-auto">
+                    <div className="flex min-h-full items-center">
+                      <div className="w-full whitespace-pre-wrap text-left">
+                        {htmlToEditableText(detailDescription)}
+                      </div>
+                    </div>
                   </div>
                 </Field>
               </div>
