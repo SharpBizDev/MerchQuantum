@@ -317,8 +317,46 @@ function maskToken(value: string) {
   return `••••••••••${visible}`;
 }
 
+const PROTECTED_TITLE_SUFFIXES = ["Tank Top", "T-Shirt", "Sweatshirt", "Hoodie", "Shirt", "Tee"] as const;
+
+function getProtectedTitleSuffix(value: string) {
+  const clean = value.replace(/\s+/g, " ").trim();
+  return PROTECTED_TITLE_SUFFIXES.find((suffix) => clean.toLowerCase().endsWith(suffix.toLowerCase())) || null;
+}
+
+function trimTitleAtWordBoundary(value: string, maxChars: number) {
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (!clean || clean.length <= maxChars) return clean;
+
+  const clipped = clean.slice(0, maxChars + 1).trim();
+  const lastSpace = clipped.lastIndexOf(" ");
+  if (lastSpace >= Math.floor(maxChars * 0.55)) {
+    return clipped.slice(0, lastSpace).trim();
+  }
+
+  return clean.slice(0, maxChars).trim();
+}
+
+function repairTitleEnding(value: string, fallback: string) {
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+
+  const fallbackSuffix = getProtectedTitleSuffix(fallback);
+  if (!fallbackSuffix) return clean;
+  if (getProtectedTitleSuffix(clean)) return clean;
+
+  const incompleteEnding = clean.match(/\b(T|Tank|Hood|Sweat)\b$/i);
+  if (!incompleteEnding) return clean;
+
+  return `${clean.slice(0, incompleteEnding.index).trim()} ${fallbackSuffix}`.replace(/\s+/g, " ").trim();
+}
+
 function safeTitle(value: string, fallback: string) {
-  return value.replace(/\s+/g, " ").trim() || fallback;
+  const fallbackTitle = fallback.replace(/\s+/g, " ").trim();
+  const base = value.replace(/\s+/g, " ").trim() || fallbackTitle;
+  const repaired = repairTitleEnding(base, fallbackTitle);
+  const trimmed = trimTitleAtWordBoundary(repaired, AI_TITLE_MAX_CHARS);
+  return repaired.length > AI_TITLE_MAX_CHARS ? trimmed || fallbackTitle : repaired;
 }
 
 function trimToSentence(value: string, maxChars: number) {
@@ -820,7 +858,12 @@ function leadToHtml(paragraphs: string[]) {
 }
 
 function htmlToEditableText(value: string) {
-  return stripHtml(value).replace(/\n{3,}/g, "\n\n").trim();
+  return stripHtml(value)
+    .split("\n")
+    .map((line) => line.trimStart().replace(/[ \t]+$/g, ""))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function formatProductDescriptionWithSections(leadParagraphs: string[], templateDescription: string) {
@@ -1162,6 +1205,10 @@ export default function MerchQuantumApp() {
     () => images.find((img) => img.id === selectedId) || sortedImages[0] || null,
     [images, selectedId, sortedImages]
   );
+  const selectedProduct = useMemo(
+    () => productSource.find((product) => product.id === productId && product.shopId === shopId) || productSource.find((product) => product.id === productId) || null,
+    [productId, productSource, shopId]
+  );
   const readyCount = images.filter((img) => img.status === "ready").length;
   const reviewCount = images.filter((img) => img.status === "review").length;
   const errorCount = images.filter((img) => img.status === "error").length;
@@ -1169,6 +1216,10 @@ export default function MerchQuantumApp() {
   const completedGenerationCount = Math.max(0, images.length - processingCount);
   const generationProgressPct = images.length > 0 ? Math.round((completedGenerationCount / images.length) * 100) : 0;
   const uploadDisabled = !connected || !template || images.length === 0 || isRunningBatch || processingCount > 0;
+  const canShowReviewDetail = connected && !!shopId && !!productId;
+  const detailTitle = selectedImage?.final || template?.nickname || selectedProduct?.title || "Loading selected product...";
+  const detailDescription = selectedImage?.finalDescription
+    || (templateDescription ? templateDescription : canShowReviewDetail ? "Select or add artwork to generate image-based listing copy." : "");
   const guidanceStep = !connected
     ? "connect"
     : images.length === 0
@@ -1176,7 +1227,6 @@ export default function MerchQuantumApp() {
       : !shopId || !template
         ? "template"
         : "settled";
-  const templateConfirmation = template ? `Selected template: ${template.nickname}` : "";
   const skippedCount = Array.from(message.matchAll(/Skipped (\d+)/g)).reduce((total, [, count]) => total + Number(count || 0), 0);
   const processingBanner = processingCount > 0
     ? `Quantum AI is generating listing copy for ${processingCount} image${processingCount === 1 ? "" : "s"} in this batch.`
@@ -1665,7 +1715,7 @@ export default function MerchQuantumApp() {
         </div>
 
         <Box
-          className={`relative overflow-hidden border-slate-900/90 bg-slate-950 text-white shadow-[0_28px_80px_-40px_rgba(15,23,42,0.9)] dark:border-slate-800 ${guidanceStep === "connect" ? "ring-1 ring-violet-500/40 shadow-[0_28px_90px_-40px_rgba(124,58,237,0.45)]" : connected ? "ring-1 ring-emerald-500/30" : ""}`}
+          className={`relative overflow-hidden border-slate-900/90 bg-slate-950 text-white shadow-[0_28px_80px_-40px_rgba(15,23,42,0.9)] dark:border-slate-800 ${guidanceStep === "connect" ? "ring-1 ring-violet-500/40 shadow-[0_28px_90px_-40px_rgba(124,58,237,0.45)]" : connected ? "ring-1 ring-emerald-500/30 shadow-[0_28px_90px_-40px_rgba(16,185,129,0.42)]" : ""}`}
           headerClassName="mb-5"
           title={
             <span className="inline-flex items-center font-semibold tracking-tight">
@@ -1843,13 +1893,13 @@ export default function MerchQuantumApp() {
                   const isSelected = selectedImage?.id === img.id;
                   const isProcessing = img.aiProcessing || img.status === "pending";
                   const previewFrameTone = isProcessing
-                    ? "border-violet-300 bg-violet-50/80 dark:border-violet-500/40 dark:bg-violet-950/20"
+                    ? "border-violet-300 bg-white dark:border-violet-500/40 dark:bg-slate-950"
                     : img.status === "ready"
-                      ? "border-emerald-300 bg-emerald-50/80 dark:border-emerald-500/40 dark:bg-emerald-950/20"
+                      ? "border-emerald-300 bg-white dark:border-emerald-500/40 dark:bg-slate-950"
                       : img.status === "review"
-                        ? "border-amber-300 bg-amber-50/80 dark:border-amber-500/40 dark:bg-amber-950/20"
+                        ? "border-amber-300 bg-white dark:border-amber-500/40 dark:bg-slate-950"
                         : img.status === "error"
-                          ? "border-rose-300 bg-rose-50/80 dark:border-rose-500/40 dark:bg-rose-950/20"
+                          ? "border-rose-300 bg-white dark:border-rose-500/40 dark:bg-slate-950"
                           : "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900";
                   const previewAlignRight = (index + 1) % 10 === 0 || (index + 1) % 10 === 9;
                   const previewOpenUp = sortedImages.length - index <= 10;
@@ -1863,6 +1913,7 @@ export default function MerchQuantumApp() {
                         <div className="relative">
                           {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
                           <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border p-1.5 transition-all duration-500 ${previewFrameTone}`}>
+                            {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-violet-400/80 animate-pulse dark:border-violet-400/60" /> : null}
                             {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
                             {img.preview ? (
                               <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950 ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
@@ -1916,6 +1967,7 @@ export default function MerchQuantumApp() {
               <div>
                 <Select
                   value={shopId}
+                  className={shopId ? "text-[13px] font-normal text-slate-900 dark:text-slate-100" : "font-medium text-slate-500 dark:text-slate-400"}
                   disabled={!availableShops.length}
                   onChange={(e) => {
                     const nextShopId = e.target.value;
@@ -1935,17 +1987,13 @@ export default function MerchQuantumApp() {
               </div>
 
               <div>
-                <div
-                  className="flex min-h-[44px] items-center overflow-hidden rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
-                  title={shopId ? "Products from the selected shop" : "Select a shop to load products"}
+                <Select
+                  value={productId}
+                  className={productId ? "text-[13px] font-normal text-slate-900 dark:text-slate-100" : "font-medium text-slate-500 dark:text-slate-400"}
+                  disabled={!shopId || loadingProducts}
+                  onChange={(e) => setProductId(e.target.value)}
                 >
-                  <span className="truncate">Choose From My Products</span>
-                </div>
-              </div>
-
-              <div>
-                <Select value={productId} disabled={!shopId || loadingProducts} onChange={(e) => setProductId(e.target.value)}>
-                  <option value="">{loadingProducts ? "Loading products..." : "Choose Product"}</option>
+                  <option value="">{loadingProducts ? "Loading products..." : "Choose Product Template"}</option>
                   {visibleProducts.map((product) => (
                     <option key={product.id} value={product.id}>
                       {product.title}
@@ -1957,28 +2005,62 @@ export default function MerchQuantumApp() {
               <div>
                 <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search My Products" />
               </div>
+
+              {images.length > 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[11px] font-medium text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-x-3 gap-y-1.5">
+                      <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                        <span className={getLoadingIndicatorClass()} />
+                        <span>Loading: {processingCount}</span>
+                      </div>
+                      <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                        <span className={getStatusIndicatorClass("ready")} />
+                        <span>Completed: {completedGenerationCount}</span>
+                      </div>
+                    </div>
+                    <span className="shrink-0 text-slate-500 dark:text-slate-400">{generationProgressPct}%</span>
+                  </div>
+                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${processingCount > 0 ? "bg-violet-500" : "bg-emerald-500"}`}
+                      style={{ width: `${generationProgressPct}%` }}
+                    />
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
-
-          {templateConfirmation ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{templateConfirmation}</p> : null}
           </div>
 
           <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-slate-800">
-          {!selectedImage ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400">Select a batch item to review the larger artwork preview, final title, final description, and tags.</p>
+          {!canShowReviewDetail ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400">Select a shop and product to open the review area.</p>
           ) : (
             <div className="space-y-4">
-              <div className="grid gap-4 lg:grid-cols-[296px_minmax(0,1fr)]">
-              <div className="space-y-3">
-                <div className="text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">Uploaded Artwork</div>
-                <div className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white p-4 lg:h-[19rem] dark:border-slate-800 dark:bg-slate-950">
-                  {selectedImage.preview ? (
-                    <img src={selectedImage.preview} alt={selectedImage.final} className="max-h-full max-w-full object-contain" />
-                  ) : null}
-                  <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg bg-white/92 px-2.5 py-1 text-[11px] font-medium text-slate-500 shadow-sm dark:bg-slate-950/90 dark:text-slate-400">
-                    Draft upload only. Review before publishing.
+              <div className="grid items-stretch gap-4 lg:grid-cols-[296px_minmax(0,1fr)]">
+              <div className="flex h-full flex-col">
+                <div className="space-y-1.5">
+                  <div className="flex min-h-[20px] items-center text-sm font-medium leading-5 tracking-tight text-slate-700 dark:text-slate-300">Uploaded Artwork</div>
+                  <div className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white p-4 lg:h-[19rem] dark:border-slate-800 dark:bg-slate-950">
+                    {selectedImage?.preview ? (
+                      <img src={selectedImage.preview} alt={selectedImage.final} className="max-h-full max-w-full object-contain" />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => fileRef.current?.click()}
+                        className="flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/90 px-6 text-center transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/70 dark:hover:bg-slate-900"
+                      >
+                        <span className="text-sm font-medium text-slate-900 dark:text-slate-100">Drag images here</span>
+                        <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">or click Add Images</span>
+                      </button>
+                    )}
+                    <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg bg-white/92 px-2.5 py-1 text-[11px] font-medium text-slate-500 shadow-sm dark:bg-slate-950/90 dark:text-slate-400">
+                      Draft upload only. Review before publishing.
+                    </div>
                   </div>
                 </div>
+                <div className="mt-auto space-y-3 pt-3">
                 <Button
                   className="w-full !bg-violet-600 !text-white hover:!bg-violet-500 dark:!bg-violet-600 dark:hover:!bg-violet-500"
                   disabled={uploadDisabled}
@@ -1986,75 +2068,59 @@ export default function MerchQuantumApp() {
                 >
                   {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
                 </Button>
-                {images.length > 0 ? (
-                  <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[11px] font-medium text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                        <div className="inline-flex items-center gap-1.5">
-                          <span className={getLoadingIndicatorClass()} />
-                          <span>Loading: {processingCount}</span>
-                        </div>
-                        <div className="inline-flex items-center gap-1.5">
-                          <span className={getStatusIndicatorClass("ready")} />
-                          <span>Completed: {completedGenerationCount}</span>
-                        </div>
+                  {runStatus ? <p className="text-sm text-slate-600 dark:text-slate-400">{runStatus}</p> : null}
+                  {batchResults.length > 0 ? (
+                    <div className="max-h-[14rem] overflow-auto rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-950">
+                      <div className="space-y-1.5">
+                        {batchResults.map((result) => (
+                          <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-200 p-2.5 dark:border-slate-800">
+                            <div className="font-medium">{result.title}</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">{result.fileName}</div>
+                            <div className="mt-1 text-sm">{result.message}</div>
+                            {result.productId ? <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Product ID: {result.productId}</div> : null}
+                          </div>
+                        ))}
                       </div>
-                      <span className="shrink-0 text-slate-500 dark:text-slate-400">{generationProgressPct}%</span>
                     </div>
-                    <div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${processingCount > 0 ? "bg-violet-500" : "bg-emerald-500"}`}
-                        style={{ width: `${generationProgressPct}%` }}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-                {runStatus ? <p className="text-sm text-slate-600 dark:text-slate-400">{runStatus}</p> : null}
-                {batchResults.length > 0 ? (
-                  <div className="max-h-[14rem] overflow-auto rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-950">
-                    <div className="space-y-1.5">
-                      {batchResults.map((result) => (
-                        <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-200 p-2.5 dark:border-slate-800">
-                          <div className="font-medium">{result.title}</div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400">{result.fileName}</div>
-                          <div className="mt-1 text-sm">{result.message}</div>
-                          {result.productId ? <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Product ID: {result.productId}</div> : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
+                  ) : null}
+                </div>
               </div>
 
-              <div className="space-y-3 pt-px">
+              <div className="flex h-full flex-col space-y-3">
                 <Field label="Final Title">
-                  <div className="min-h-[44px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
-                    {selectedImage.final}
+                  <div className="flex min-h-[44px] items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-center text-sm leading-5 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                    {detailTitle}
                   </div>
                 </Field>
 
                 <Field label="Final Description">
-                  <div className="min-h-[316px] whitespace-pre-wrap rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
-                    {htmlToEditableText(selectedImage.finalDescription || "")}
+                  <div className="min-h-[316px] whitespace-pre-wrap rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-6 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 lg:h-[22rem] lg:overflow-y-auto">
+                    {htmlToEditableText(detailDescription)}
                   </div>
                 </Field>
               </div>
               </div>
 
-              <div className="space-y-2.5">
-                <div className="text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">Tags</div>
-
-                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {selectedImage ? (
+              <div className="pt-1">
+                <div className="grid gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+                  <div className="flex min-h-[34px] items-center rounded-xl border border-slate-900/90 bg-slate-950 px-2.5 py-1.5 text-sm dark:border-slate-700">
+                    <span className="font-semibold text-violet-500">Quantum</span>
+                    <span className="ml-1 font-semibold text-white">AI</span>
+                    <span className="ml-1 font-semibold text-emerald-400">Tags</span>
+                  </div>
                   {(selectedImage.tags || []).map((tag, index) => (
                     <div
                       key={`${selectedImage.id}-tag-${index}`}
-                      className="min-h-[38px] rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                      title={tag}
+                      className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-center text-sm leading-5 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                     >
-                      {tag}
+                      <span className="truncate">{tag}</span>
                     </div>
                   ))}
                 </div>
               </div>
+              ) : null}
             </div>
           )}
           </div>
