@@ -1,3 +1,5 @@
+import sharp from "sharp";
+
 export type ListingRequest = {
   imageDataUrl?: string;
   title?: string;
@@ -133,12 +135,25 @@ type TemplateSignal = {
   keywords: string[];
 };
 
+type ParsedImageData = {
+  mimeType: string;
+  inlineData: string;
+};
+
+type VisionInputSet = {
+  primary: ParsedImageData;
+  helper?: ParsedImageData;
+  promptHint?: string;
+};
+
 const DEFAULT_MODEL = process.env.GEMINI_LISTING_MODEL || "gemini-2.5-flash";
 const GEMINI_ENDPOINT_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const MAX_TEMPLATE_CONTEXT = 1400;
 const MAX_TITLE_CHARS = 120;
 const MAX_LEAD_CHARS = 260;
 const MAX_GEMINI_ATTEMPTS = 2;
+const SPARSE_TRANSPARENT_COVERAGE_THRESHOLD = 0.68;
+const MIN_TRIM_GAIN_PX = 48;
 
 const WEAK_FILENAME_TOKENS = new Set([
   "img",
@@ -1597,7 +1612,7 @@ function resolveApiKey(explicitApiKey?: string) {
   return process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || "";
 }
 
-function parseImageData(imageDataUrl: string) {
+function parseImageData(imageDataUrl: string): ParsedImageData | null {
   const match = imageDataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
   if (!match) return null;
 
@@ -1605,6 +1620,102 @@ function parseImageData(imageDataUrl: string) {
     mimeType: match[1],
     inlineData: match[2],
   };
+}
+
+async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet | null> {
+  const parsed = parseImageData(imageDataUrl);
+  if (!parsed) return null;
+
+  if (!/^image\/(png|webp)$/i.test(parsed.mimeType)) {
+    return { primary: parsed };
+  }
+
+  try {
+    const sourceBuffer = Buffer.from(parsed.inlineData, "base64");
+    const sourceImage = sharp(sourceBuffer, { failOn: "none", limitInputPixels: false }).ensureAlpha();
+    const metadata = await sourceImage.metadata();
+
+    if (!metadata.hasAlpha || !metadata.width || !metadata.height) {
+      return { primary: parsed };
+    }
+
+    const { data: trimmedBuffer, info: trimmedInfo } = await sourceImage
+      .clone()
+      .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 1 })
+      .png()
+      .toBuffer({ resolveWithObject: true });
+
+    const coverage = (trimmedInfo.width * trimmedInfo.height) / (metadata.width * metadata.height);
+    const trimGain = (metadata.width - trimmedInfo.width) + (metadata.height - trimmedInfo.height);
+
+    if (!Number.isFinite(coverage) || coverage >= SPARSE_TRANSPARENT_COVERAGE_THRESHOLD || trimGain < MIN_TRIM_GAIN_PX) {
+      return { primary: parsed };
+    }
+
+    const panelSize = clamp(Math.max(trimmedInfo.width, trimmedInfo.height) + 96, 640, 1024);
+    const artworkSize = Math.max(220, Math.round(panelSize * 0.7));
+    const gap = 24;
+    const artworkBuffer = await sharp(trimmedBuffer, { failOn: "none", limitInputPixels: false })
+      .resize({
+        width: artworkSize,
+        height: artworkSize,
+        fit: "contain",
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png()
+      .toBuffer();
+
+    const lightPanel = await sharp({
+      create: {
+        width: panelSize,
+        height: panelSize,
+        channels: 4,
+        background: { r: 245, g: 245, b: 244, alpha: 1 },
+      },
+    })
+      .composite([{ input: artworkBuffer, gravity: "center" }])
+      .png()
+      .toBuffer();
+
+    const darkPanel = await sharp({
+      create: {
+        width: panelSize,
+        height: panelSize,
+        channels: 4,
+        background: { r: 17, g: 24, b: 39, alpha: 1 },
+      },
+    })
+      .composite([{ input: artworkBuffer, gravity: "center" }])
+      .png()
+      .toBuffer();
+
+    const helperBuffer = await sharp({
+      create: {
+        width: panelSize * 2 + gap * 3,
+        height: panelSize + gap * 2,
+        channels: 4,
+        background: { r: 229, g: 231, b: 235, alpha: 1 },
+      },
+    })
+      .composite([
+        { input: lightPanel, left: gap, top: gap },
+        { input: darkPanel, left: panelSize + gap * 2, top: gap },
+      ])
+      .png()
+      .toBuffer();
+
+    return {
+      primary: parsed,
+      helper: {
+        mimeType: "image/png",
+        inlineData: helperBuffer.toString("base64"),
+      },
+      promptHint:
+        "A second helper image may be included showing the same artwork cropped to its non-transparent bounds and placed on light and dark neutral panels. Use that helper to read sparse transparent line art, but treat it as the same design rather than a second product image.",
+    };
+  } catch {
+    return { primary: parsed };
+  }
 }
 
 function extractGeminiText(payload: any) {
@@ -1760,7 +1871,8 @@ function buildMasterPrompt(
   filenameAssessment: FilenameAssessment,
   normalizedTitleSeed: string,
   retryContext: RetryContext,
-  localeProfile: LocaleProfile
+  localeProfile: LocaleProfile,
+  visionPromptHint?: string
 ) {
   const templateContext = summarizeTemplateContext(input.templateContext || "");
   const productFamily = cleanSpaces(input.productFamily || "product");
@@ -1780,6 +1892,7 @@ function buildMasterPrompt(
     "- Keep discovery terms relevant and non-redundant.",
     "- Treat templateContext as factual product/spec context, not as buyer-facing lead copy.",
     "- Use templateContext to understand the blank product, fit, materials, and merchandising angle without dumping raw spec language into the opener.",
+    visionPromptHint ? `- ${visionPromptHint}` : "",
     "",
     "STEP 1 IMAGE TRUTH EXTRACTION",
     "- Extract visible text, visible facts, inferred meaning, dominant theme, likely audience, likely occasion, uncertainty, and OCR weakness.",
@@ -1907,8 +2020,8 @@ async function callGeminiRecord(
     retryContext: RetryContext;
   }
 ) {
-  const image = parseImageData(String(input.imageDataUrl || ""));
-  if (!image) return null;
+  const visionInputs = await prepareVisionInputs(String(input.imageDataUrl || ""));
+  if (!visionInputs) return null;
 
   const normalizedTitleSeed = normalizeTitle(input.title || "", input.fileName || "");
   const filenameAssessmentSeed = assessFilenameRelevance(input.fileName || "", []);
@@ -1917,7 +2030,8 @@ async function callGeminiRecord(
     filenameAssessmentSeed,
     normalizedTitleSeed,
     options.retryContext,
-    options.localeProfile
+    options.localeProfile,
+    visionInputs.promptHint
   );
   const endpoint = `${GEMINI_ENDPOINT_BASE}/${encodeURIComponent(options.model)}:generateContent`;
 
@@ -1935,10 +2049,20 @@ async function callGeminiRecord(
             { text: prompt },
             {
               inlineData: {
-                mimeType: image.mimeType,
-                data: image.inlineData,
+                mimeType: visionInputs.primary.mimeType,
+                data: visionInputs.primary.inlineData,
               },
             },
+            ...(visionInputs.helper
+              ? [
+                  {
+                    inlineData: {
+                      mimeType: visionInputs.helper.mimeType,
+                      data: visionInputs.helper.inlineData,
+                    },
+                  },
+                ]
+              : []),
           ],
         },
       ],
