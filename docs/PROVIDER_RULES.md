@@ -17,12 +17,21 @@ This document defines the current provider philosophy and no-drift rules for pro
 - Apliiq
 - SPOD / Spreadconnect
 
-### Implemented in backend, but not currently presented as live in the locked frontend
+### Implemented in backend, but intentionally held out of the locked frontend
 - Prodigi
 
-### Not yet implemented/live
+### Active next provider target, but held pending an official-fit solution
 - Gelato
+
+### Removed from the active queue for this app
 - Lulu Direct
+- Merchize
+
+## Current queue decisions
+- Gelato remains the next provider target, but it is not exposed in the active dropdown while the locked UI still requires a real store list followed by a real template/product source list.
+- Gelato's official create-product flow currently tells merchants to copy `templateId` and `storeId` from the dashboard UI, and the documented flow we found does not provide an official store-list or template-list endpoint that cleanly satisfies the locked dropdown UX. Do not guess around that gap with undocumented endpoints or fake synthetic stores.
+- Prodigi remains a serious provider-core candidate, but it stays on a separate order-first track because its official fit is order submission and product SKU selection rather than the current store/template draft-product flow.
+- Lulu Direct and Merchize are not active roadmap promises for this app. Keep them out of the locked frontend provider list unless a later pass adds a real adapter, route support, regression coverage, and approved UX language.
 
 ## Current provider flow assumptions
 - The user connects one provider at a time.

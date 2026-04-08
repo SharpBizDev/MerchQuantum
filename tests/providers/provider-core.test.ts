@@ -87,12 +87,14 @@ await run("provider registry exposes printify and guards unsupported providers",
   });
 });
 
-await run("provider activation options keep printify and printful live while leaving others gated", () => {
+await run("provider activation options expose only supported locked-frontend providers", () => {
   const printify = PROVIDER_OPTIONS.find((provider) => provider.id === "printify");
   const printful = PROVIDER_OPTIONS.find((provider) => provider.id === "printful");
   const gooten = PROVIDER_OPTIONS.find((provider) => provider.id === "gooten");
   const apliiq = PROVIDER_OPTIONS.find((provider) => provider.id === "apliiq");
   const gelato = PROVIDER_OPTIONS.find((provider) => provider.id === "gelato");
+  const prodigi = PROVIDER_OPTIONS.find((provider) => provider.id === "prodigi");
+  const lulu = PROVIDER_OPTIONS.find((provider) => provider.id === "lulu_direct");
   const spod = PROVIDER_OPTIONS.find((provider) => provider.id === "spod");
 
   assert.equal(printify?.isLive, true);
@@ -100,8 +102,9 @@ await run("provider activation options keep printify and printful live while lea
   assert.equal(gooten?.isLive, true);
   assert.equal(apliiq?.isLive, true);
   assert.equal(spod?.isLive, true);
-  assert.equal(gelato?.isLive, false);
-  assert.equal(gelato?.statusText, "Coming soon");
+  assert.equal(gelato, undefined);
+  assert.equal(prodigi, undefined);
+  assert.equal(lulu, undefined);
 });
 
 await run("provider capability expansion keeps live providers on draft/store flow and direct upload", () => {
@@ -530,11 +533,9 @@ await run("printful adapter creates a normalized manual-api draft product result
           sync_product: { id: 3001, name: "Legacy Tee" },
           sync_variants: [
             {
-              id: 9001,
               variant_id: 4012,
               retail_price: "24.99",
-              options: [{ id: "stitch" }],
-              files: [{ type: "front" }],
+              product: { placements: [{ placement: "front" }] },
             },
           ],
         },
@@ -543,47 +544,41 @@ await run("printful adapter creates a normalized manual-api draft product result
     item: {
       fileName: "art.png",
       title: "Printful Draft",
-      description: "Ignored upstream description",
-      tags: ["one", "two"],
+      description: "Draft description",
+      tags: Array.from({ length: 13 }, (_, index) => `tag-${index + 1}`),
       imageDataUrl: SAMPLE_PNG_DATA_URL,
     },
   });
 
   assert.equal(result.providerId, "printful");
   assert.equal(result.productId, "9991");
-  assert.equal(result.placementGuide?.position, "front");
   assert.match(calls[1].input, /\/store\/products$/);
 });
 
 await run("gooten adapter connects with recipe and partner billing credentials", async () => {
   const { fetchFn, calls } = createQueuedFetch([
-    createResponse({ templates: [{ name: "Template 1" }], error: false }, { status: 200 }),
+    createResponse({ HadError: false, Products: [] }, { status: 200 }),
   ]);
   const adapter = createGootenAdapter({ fetch: fetchFn });
 
-  const result = await adapter.connect({
-    credentials: { apiKey: "recipe-id", apiSecret: "billing-key" },
-  });
+  const result = await adapter.connect({ credentials: { apiKey: "recipe-id", apiSecret: "billing-key" } });
 
   assert.equal(result.providerId, "gooten");
-  assert.equal(result.stores[0]?.id, "gooten-catalog");
-  assert.match(calls[0].input, /partnerBillingKey=billing-key/);
+  assert.equal(result.stores.length, 1);
+  assert.equal(result.stores[0].id, "gooten-catalog");
+  assert.match(calls[0].input, /\/products\/forrecipe/);
 });
 
 await run("gooten adapter lists catalog products as normalized sources", async () => {
   const { fetchFn } = createQueuedFetch([
     createResponse(
       {
-        "product-catalog": [
+        HadError: false,
+        Products: [
           {
-            items: [
-              {
-                product_id: 186,
-                name: "Accent Mugs",
-                meta_description: "<p>Accent mug copy</p>",
-                type: "product",
-              },
-            ],
+            Id: 186,
+            Name: "Accent Mugs",
+            ShortDescription: "Ceramic accent mug",
           },
         ],
       },
@@ -602,8 +597,8 @@ await run("gooten adapter lists catalog products as normalized sources", async (
       id: "186",
       storeId: "gooten-catalog",
       title: "Accent Mugs",
-      description: "Accent mug copy",
-      type: "catalog_product",
+      description: "Ceramic accent mug",
+      type: "product",
     },
   ]);
 });
@@ -612,35 +607,19 @@ await run("gooten adapter loads product detail and normalizes template metadata"
   const { fetchFn } = createQueuedFetch([
     createResponse(
       {
-        "product-catalog": [
-          {
-            items: [
-              {
-                product_id: 186,
-                name: "Accent Mugs",
-                meta_description: "<p>Accent mug copy</p>",
-                type: "product",
-              },
-            ],
-          },
-        ],
+        HadError: false,
+        Product: {
+          Id: 186,
+          Name: "Accent Mugs",
+          ShortDescription: "Ceramic accent mug",
+          Variants: [{ Sku: "Mug11oz-White-BlackAccent" }],
+        },
       },
       { status: 200 }
     ),
     createResponse(
       {
-        ProductVariants: [
-          {
-            Sku: "Mug11oz-White-BlackAccent",
-            HasTemplates: true,
-            PriceInfo: { Price: 7.9, CurrencyCode: "USD" },
-          },
-        ],
-      },
-      { status: 200 }
-    ),
-    createResponse(
-      {
+        HadError: false,
         Options: [
           {
             Name: "Single",
