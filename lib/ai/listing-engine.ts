@@ -146,12 +146,25 @@ type VisionInputSet = {
   promptHint?: string;
 };
 
+export class ListingInputGuardError extends Error {
+  status: number;
+
+  constructor(message: string, status = 413) {
+    super(message);
+    this.name = "ListingInputGuardError";
+    this.status = status;
+  }
+}
+
 const DEFAULT_MODEL = process.env.GEMINI_LISTING_MODEL || "gemini-2.5-flash";
 const GEMINI_ENDPOINT_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const MAX_TEMPLATE_CONTEXT = 1400;
 const MAX_TITLE_CHARS = 120;
 const MAX_LEAD_CHARS = 260;
 const MAX_GEMINI_ATTEMPTS = 2;
+const MAX_VISION_ANALYSIS_BYTES = 15 * 1024 * 1024;
+const MAX_VISION_ANALYSIS_PIXELS = 33_000_000;
+const MAX_VISION_ANALYSIS_DIMENSION = 7000;
 const SPARSE_TRANSPARENT_COVERAGE_THRESHOLD = 0.68;
 const MIN_TRIM_GAIN_PX = 48;
 
@@ -1622,6 +1635,12 @@ function parseImageData(imageDataUrl: string): ParsedImageData | null {
   };
 }
 
+function estimateBase64ByteLength(inlineData: string) {
+  const normalized = inlineData.trim();
+  const padding = normalized.endsWith("==") ? 2 : normalized.endsWith("=") ? 1 : 0;
+  return Math.floor((normalized.length * 3) / 4) - padding;
+}
+
 async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet | null> {
   const parsed = parseImageData(imageDataUrl);
   if (!parsed) return null;
@@ -1631,12 +1650,29 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
   }
 
   try {
+    const estimatedBytes = estimateBase64ByteLength(parsed.inlineData);
+    if (estimatedBytes > MAX_VISION_ANALYSIS_BYTES) {
+      throw new ListingInputGuardError("Image is too large for listing analysis. Please use an image under 15 MB.");
+    }
+
     const sourceBuffer = Buffer.from(parsed.inlineData, "base64");
-    const sourceImage = sharp(sourceBuffer, { failOn: "none", limitInputPixels: false }).ensureAlpha();
+    const sourceImage = sharp(sourceBuffer, {
+      failOn: "none",
+      limitInputPixels: MAX_VISION_ANALYSIS_PIXELS,
+    }).ensureAlpha();
     const metadata = await sourceImage.metadata();
 
     if (!metadata.hasAlpha || !metadata.width || !metadata.height) {
       return { primary: parsed };
+    }
+
+    const sourcePixels = metadata.width * metadata.height;
+    if (
+      sourcePixels > MAX_VISION_ANALYSIS_PIXELS ||
+      metadata.width > MAX_VISION_ANALYSIS_DIMENSION ||
+      metadata.height > MAX_VISION_ANALYSIS_DIMENSION
+    ) {
+      throw new ListingInputGuardError("Image is too large for listing analysis. Please use an image under 33 megapixels.");
     }
 
     const { data: trimmedBuffer, info: trimmedInfo } = await sourceImage
@@ -1655,7 +1691,10 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
     const panelSize = clamp(Math.max(trimmedInfo.width, trimmedInfo.height) + 96, 640, 1024);
     const artworkSize = Math.max(220, Math.round(panelSize * 0.7));
     const gap = 24;
-    const artworkBuffer = await sharp(trimmedBuffer, { failOn: "none", limitInputPixels: false })
+    const artworkBuffer = await sharp(trimmedBuffer, {
+      failOn: "none",
+      limitInputPixels: MAX_VISION_ANALYSIS_PIXELS,
+    })
       .resize({
         width: artworkSize,
         height: artworkSize,
@@ -1713,7 +1752,11 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
       promptHint:
         "A second helper image may be included showing the same artwork cropped to its non-transparent bounds and placed on light and dark neutral panels. Use that helper to read sparse transparent line art, but treat it as the same design rather than a second product image.",
     };
-  } catch {
+  } catch (error) {
+    if (error instanceof ListingInputGuardError) {
+      throw error;
+    }
+
     return { primary: parsed };
   }
 }
@@ -2198,7 +2241,11 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
         if (geminiRecord) {
           return mapRecordToUiResponse(geminiRecord, model, localeProfile);
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof ListingInputGuardError) {
+          throw error;
+        }
+
         if (attempt >= MAX_GEMINI_ATTEMPTS) break;
       }
     }
