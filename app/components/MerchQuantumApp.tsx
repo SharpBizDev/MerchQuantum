@@ -1103,7 +1103,7 @@ type BoxProps = {
 
 function Box({ title, children, className = "", headerClassName = "" }: BoxProps) {
   return (
-    <section className={`rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_60px_-38px_rgba(15,23,42,0.45)] backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/92 ${className}`}>
+    <section className={`rounded-[28px] border border-slate-200/80 bg-white/95 p-4 shadow-[0_18px_60px_-38px_rgba(15,23,42,0.45)] backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/92 ${className}`}>
       {title ? <div className={`mb-4 text-base font-semibold tracking-tight ${headerClassName}`}>{title}</div> : null}
       {children}
     </section>
@@ -1709,8 +1709,8 @@ export default function MerchQuantumApp() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 text-slate-900 transition-colors dark:bg-black dark:text-slate-100 md:p-8">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div className="flex flex-wrap items-center gap-4">
+      <div className="mx-auto max-w-6xl space-y-5">
+        <div className="flex flex-wrap items-center gap-3">
           <BrandMark />
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">
@@ -1723,7 +1723,7 @@ export default function MerchQuantumApp() {
 
         <Box
           className={`relative overflow-hidden border-slate-900/90 bg-slate-950 text-white shadow-[0_28px_80px_-40px_rgba(15,23,42,0.9)] dark:border-slate-800 ${guidanceStep === "connect" ? "ring-1 ring-violet-500/40 shadow-[0_28px_90px_-40px_rgba(124,58,237,0.45)]" : connected ? "ring-1 ring-emerald-500/30 shadow-[0_28px_90px_-40px_rgba(16,185,129,0.42)]" : ""}`}
-          headerClassName="mb-5"
+          headerClassName="mb-4"
           title={
             <span className="inline-flex items-center font-semibold tracking-tight">
               <span className="font-semibold text-violet-600">Quantum</span>
@@ -1839,7 +1839,7 @@ export default function MerchQuantumApp() {
             </div>
           </div>
           
-          <div className="mt-4">
+          <div className="mt-3">
           <div className="px-0.5 py-1">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
@@ -1969,7 +1969,7 @@ export default function MerchQuantumApp() {
           ) : null}
           </div>
 
-          <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-slate-800">
+          <div className="mt-3 border-t border-slate-200/80 pt-3 dark:border-slate-800">
           <div className={`relative grid gap-3 rounded-xl transition-all duration-500 ${guidanceStep === "template" ? "border border-violet-200/80 bg-violet-50/50 p-3 shadow-[0_18px_50px_-32px_rgba(124,58,237,0.35)] dark:border-violet-500/30 dark:bg-violet-950/15" : ""}`}>
             {guidanceStep === "template" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
             <div className="grid items-stretch gap-3 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)]">
@@ -2051,12 +2051,12 @@ export default function MerchQuantumApp() {
           </div>
           </div>
 
-          <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-slate-800">
+          <div className="mt-3 border-t border-slate-200/80 pt-3 dark:border-slate-800">
           {!canShowReviewDetail ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">Select a shop and product to open the review area.</p>
           ) : (
-            <div className="space-y-4">
-              <div className="grid items-stretch gap-4 lg:grid-cols-[296px_minmax(0,1fr)]">
+            <div className="space-y-3">
+              <div className="grid items-stretch gap-3 lg:grid-cols-[296px_minmax(0,1fr)]">
               <div className="flex h-full flex-col">
                 <div className="space-y-1.5">
                   <div className="flex min-h-[20px] items-center text-sm font-medium leading-5 tracking-tight text-slate-700 dark:text-slate-300">Uploaded Artwork</div>
@@ -2124,9 +2124,9 @@ export default function MerchQuantumApp() {
               </div>
 
               {selectedImage ? (
-              <div className="pt-1">
+              <div className="pt-0.5">
                 <div className="grid gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
-                  <div className="flex min-h-[34px] items-center rounded-xl border border-slate-900/90 bg-slate-950 px-2.5 py-1.5 text-sm dark:border-slate-700">
+                  <div className="flex min-h-[34px] items-center justify-center rounded-xl border border-slate-900/90 bg-slate-950 px-2.5 py-1.5 text-center text-sm dark:border-slate-700">
                     <span className="font-semibold text-violet-500">Quantum</span>
                     <span className="ml-1 font-semibold text-white">AI</span>
                     <span className="ml-1 font-semibold text-emerald-400">Tags</span>
