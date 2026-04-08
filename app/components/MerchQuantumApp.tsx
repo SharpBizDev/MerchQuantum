@@ -1088,7 +1088,7 @@ type FieldProps = {
 function Field({ label, children }: FieldProps) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-sm font-medium tracking-tight text-slate-700 dark:text-slate-300">{label}</span>
+      <span className="flex min-h-[20px] items-center text-sm font-medium leading-5 tracking-tight text-slate-700 dark:text-slate-300">{label}</span>
       {children}
     </label>
   );
@@ -2088,13 +2088,13 @@ export default function MerchQuantumApp() {
 
               <div className="flex h-full flex-col space-y-3">
                 <Field label="Final Title">
-                  <div className="flex min-h-[44px] items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-center text-sm leading-5 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                  <div className="flex min-h-[44px] items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-0 text-center text-sm font-normal leading-5 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
                     {detailTitle}
                   </div>
                 </Field>
 
                 <Field label="Final Description">
-                  <div className="min-h-[316px] whitespace-pre-wrap rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-6 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 lg:h-[22rem] lg:overflow-y-auto">
+                  <div className="min-h-[316px] whitespace-pre-wrap rounded-xl border border-slate-300 bg-white px-3 py-2 text-center text-sm font-normal leading-6 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 lg:h-[22rem] lg:overflow-y-auto">
                     {htmlToEditableText(detailDescription)}
                   </div>
                 </Field>
