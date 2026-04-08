@@ -949,12 +949,12 @@ async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, ti
 
 function formatApiError(message: string) {
   const raw = message.trim();
-  if (!raw) return "Live provider connection is not available in this preview.";
+  if (!raw) return "Live provider connection is not available in this environment.";
   if (raw.includes("UnsupportedHttpVerb")) {
-    return "Live Printify connection is not available in this preview. The backend API route is not installed in this environment yet.";
+    return "Live provider connection is not available in this environment. The backend API route is not installed yet.";
   }
   if (raw.startsWith("<?xml")) {
-    return "Live Printify connection is not available in this preview. The request reached a static host instead of a backend API route.";
+    return "Live provider connection is not available in this environment. The request reached a static host instead of the backend API route.";
   }
   if (raw.toLowerCase().includes("abort") || raw.toLowerCase().includes("timed out")) {
     return "The request timed out before the provider responded. Please try again.";
@@ -1541,7 +1541,6 @@ export default function MerchQuantumApp() {
 
       const firstShopId = shopsFromApi[0].id;
       setShopId(firstShopId);
-      void loadProductsForShop(firstShopId);
     } catch (error) {
       const msg = error instanceof Error ? error.message : `Unable to connect to ${selectedProvider?.label || "provider"}.`;
       resetProviderState(false);
@@ -1599,7 +1598,7 @@ export default function MerchQuantumApp() {
       const title = fallback.title;
       const base = formatTemplateDescription(
         fallback.description?.trim() ||
-          `${title}. This is the base description from your saved template. Live product descriptions from Printify will replace this placeholder after API wiring.`
+          `${title}. This is the base description from your saved template. Live product descriptions from ${selectedProvider?.label || "the connected provider"} will replace this placeholder when available.`
       );
 
       setTemplate({
@@ -1982,7 +1981,6 @@ export default function MerchQuantumApp() {
                     setShopId(nextShopId);
                     setProductId("");
                     setTemplate(null);
-                    if (connected && isLiveProvider && nextShopId) void loadProductsForShop(nextShopId);
                   }}
                 >
                   <option value="">
