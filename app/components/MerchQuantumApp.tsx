@@ -1821,26 +1821,33 @@ export default function MerchQuantumApp() {
             className={`cursor-pointer rounded-[22px] border border-dashed px-4 py-3.5 text-sm text-slate-600 transition-all duration-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900 ${guidanceStep === "import" ? "border-violet-400/80 bg-violet-50/70 shadow-[0_0_0_1px_rgba(124,58,237,0.16),0_18px_50px_-30px_rgba(124,58,237,0.45)] dark:border-violet-500/60 dark:bg-violet-950/20" : "border-slate-300/90 bg-slate-50/90 dark:border-slate-700 dark:bg-slate-900/55"} ${connected && images.length > 0 ? "ring-1 ring-emerald-400/20" : ""}`}
           >
             {guidanceStep === "import" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-1 text-left">
+            <div className="grid items-center gap-3 grid-cols-[minmax(0,1fr)_11rem] md:grid-cols-[minmax(0,1fr)_16.5rem]">
+              <div className="min-w-0 space-y-1 text-left">
                 <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click <span className="text-violet-600 dark:text-violet-400">Add Images</span></div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. It generates listing copy automatically and flags anything that needs review.</div>
               </div>
-              {processingBanner ? (
-                <div className="pointer-events-none w-full rounded-xl border border-violet-200 bg-violet-50/80 px-3 py-2 text-sm text-violet-800 dark:border-violet-500/30 dark:bg-violet-950/20 dark:text-violet-200 md:max-w-sm">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex h-3 w-3 items-center justify-center">
-                        <span className="h-3 w-3 rounded-full border-2 border-violet-300 border-t-violet-600 animate-spin dark:border-violet-400/40 dark:border-t-violet-300" />
-                      </span>
-                      <span>{processingBanner}</span>
-                    </div>
-                    <div className="h-1 overflow-hidden rounded-full bg-violet-200/80 dark:bg-violet-900/60">
-                      <div className="h-full w-2/5 rounded-full bg-violet-500 animate-pulse" />
-                    </div>
+              <div
+                aria-hidden={processingCount === 0}
+                className={`pointer-events-none relative h-10 overflow-hidden rounded-xl border px-2.5 text-[11px] font-medium transition-opacity duration-200 ${
+                  processingCount > 0
+                    ? "border-slate-200 bg-white/95 text-slate-600 opacity-100 dark:border-slate-800 dark:bg-slate-950/95 dark:text-slate-300"
+                    : "border-transparent bg-transparent opacity-0"
+                }`}
+              >
+                <div className="flex h-full items-center justify-between gap-2">
+                  <div className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+                    <span className={getLoadingIndicatorClass()} />
+                    <span>{processingCount} Loading</span>
                   </div>
+                  <span className="shrink-0 text-slate-500 dark:text-slate-400">{generationProgressPct}%</span>
                 </div>
-              ) : null}
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-slate-200 dark:bg-slate-800">
+                  <div
+                    className={`h-full transition-all duration-500 ${processingCount > 0 ? "bg-violet-500" : "bg-emerald-500"}`}
+                    style={{ width: `${generationProgressPct}%` }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
           
