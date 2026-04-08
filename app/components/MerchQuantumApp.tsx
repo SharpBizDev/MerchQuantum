@@ -1900,14 +1900,14 @@ export default function MerchQuantumApp() {
                   const isSelected = selectedImage?.id === img.id;
                   const isProcessing = img.aiProcessing || img.status === "pending";
                   const previewFrameTone = isProcessing
-                    ? "border-violet-300 bg-white dark:border-violet-500/40 dark:bg-slate-950"
+                    ? "border-violet-300 dark:border-violet-500/40"
                     : img.status === "ready"
-                      ? "border-emerald-300 bg-white dark:border-emerald-500/40 dark:bg-slate-950"
+                      ? "border-emerald-300 dark:border-emerald-500/40"
                       : img.status === "review"
-                        ? "border-amber-300 bg-white dark:border-amber-500/40 dark:bg-slate-950"
+                        ? "border-amber-300 dark:border-amber-500/40"
                         : img.status === "error"
-                          ? "border-rose-300 bg-white dark:border-rose-500/40 dark:bg-slate-950"
-                          : "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900";
+                          ? "border-rose-300 dark:border-rose-500/40"
+                          : "border-slate-200 dark:border-slate-800";
                   const previewAlignRight = (index + 1) % 10 === 0 || (index + 1) % 10 === 9;
                   const previewOpenUp = sortedImages.length - index <= 10;
                   return (
@@ -1919,9 +1919,11 @@ export default function MerchQuantumApp() {
                       <div className="space-y-1.5">
                         <div className="relative">
                           {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
-                          <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border p-1.5 transition-all duration-500 ${previewFrameTone}`}>
+                          <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border transition-all duration-500 ${previewFrameTone}`}>
                             {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-violet-400/80 animate-pulse dark:border-violet-400/60" /> : null}
-                            {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
+                            <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit] bg-white p-1.5 dark:bg-slate-950">
+                              {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
+                            </div>
                             {img.preview ? (
                               <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950 ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
                                 <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
