@@ -1220,6 +1220,11 @@ export default function MerchQuantumApp() {
   const detailTitle = selectedImage?.final || template?.nickname || selectedProduct?.title || "Loading selected product...";
   const detailDescription = selectedImage?.finalDescription
     || (templateDescription ? templateDescription : canShowReviewDetail ? "Select or add artwork to generate image-based listing copy." : "");
+  const detailTags = selectedImage?.tags?.length
+    ? selectedImage.tags
+    : canShowReviewDetail
+      ? buildTags(detailTitle, detailDescription, FIXED_TAG_COUNT)
+      : [];
   const guidanceStep = !connected
     ? "connect"
     : images.length === 0
@@ -2112,7 +2117,7 @@ export default function MerchQuantumApp() {
                 </Field>
 
                 <Field label="Final Description">
-                  <div className="min-h-[280px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 lg:h-[18rem] lg:overflow-y-auto">
+                  <div className="min-h-[264px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 lg:h-[17rem] lg:overflow-y-auto">
                     <div className="flex min-h-full items-center">
                       <div className="w-full whitespace-pre-wrap text-left">
                         {htmlToEditableText(detailDescription)}
@@ -2123,7 +2128,7 @@ export default function MerchQuantumApp() {
               </div>
               </div>
 
-              {selectedImage ? (
+              {canShowReviewDetail ? (
               <div className="pt-0.5">
                 <div className="grid gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
                   <div className="flex min-h-[34px] items-center justify-center rounded-xl border border-slate-900/90 bg-slate-950 px-2.5 py-1.5 text-center text-sm dark:border-slate-700">
@@ -2131,9 +2136,9 @@ export default function MerchQuantumApp() {
                     <span className="ml-1 font-semibold text-white">AI</span>
                     <span className="ml-1 font-semibold text-emerald-400">Tags</span>
                   </div>
-                  {(selectedImage.tags || []).map((tag, index) => (
+                  {detailTags.map((tag, index) => (
                     <div
-                      key={`${selectedImage.id}-tag-${index}`}
+                      key={`${selectedImage?.id || productId}-tag-${index}`}
                       title={tag}
                       className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-center text-sm leading-5 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                     >
