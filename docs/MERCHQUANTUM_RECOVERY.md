@@ -203,8 +203,7 @@ Always separate these three realities before editing:
 ## Provider activation state
 - Printify remains live in the locked UI.
 - Printful is now unlocked in the current frontend provider flow and should no longer present as a coming-soon provider.
-- Apliiq is now the third live provider path in the locked frontend flow, using backend-only HMAC auth and the hosted-artwork bridge.
-- Gooten and SPOD / Spreadconnect remain live in the locked store/template draft flow.
+- Gooten, Apliiq, and SPOD / Spreadconnect remain implemented in backend, but they are not part of the current live user-facing provider queue.
 - The connection, product loading, template detail, and draft-create requests now route through generic provider endpoints backed by the normalized provider registry.
 - Gelato is the active next provider target, but it is currently held out of the locked frontend because the official Gelato create-from-template docs depend on dashboard-copied `storeId` and `templateId`, and we have not confirmed an official store-list or template-list API that fits the current dropdown UX cleanly.
 - Prodigi remains backend-capable, but it stays on a separate order-first track and should not be surfaced in the locked store/template draft flow without an explicitly approved UX track for order-first providers.
