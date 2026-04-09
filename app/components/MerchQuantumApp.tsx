@@ -1942,6 +1942,17 @@ export default function MerchQuantumApp() {
                             <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit] bg-white p-1.5 dark:bg-slate-950">
                               {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
                             </div>
+                            <button
+                              type="button"
+                              aria-label="remove"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removePreviewItem(img.id);
+                              }}
+                              className="absolute bottom-1 right-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-white/92 p-0 text-[8px] font-normal leading-none text-slate-500 shadow-sm transition-colors hover:text-rose-500 dark:bg-slate-950/90 dark:text-slate-400 dark:hover:text-rose-400"
+                            >
+                              x
+                            </button>
                             {img.preview ? (
                               <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950 ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
                                 <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
@@ -1966,17 +1977,6 @@ export default function MerchQuantumApp() {
                               />
                             );
                           })}
-                          <button
-                            type="button"
-                            aria-label="remove"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removePreviewItem(img.id);
-                            }}
-                            className="inline-flex h-2 w-2 shrink-0 items-center justify-center self-center overflow-hidden p-0 text-[7px] font-normal leading-none text-slate-500 transition-colors hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400"
-                          >
-                            x
-                          </button>
                         </div>
                       </div>
                     </div>
