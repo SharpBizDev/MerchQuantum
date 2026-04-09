@@ -13,25 +13,22 @@ This document defines the current provider philosophy and no-drift rules for pro
 ### Active in the current live user-facing provider flow
 - Printify
 - Printful
-
-### Implemented in backend, but intentionally held out of the live provider queue
 - Gooten
 - Apliiq
 - SPOD / Spreadconnect
-- Prodigi
 
-### Active next provider target, but held pending an official-fit solution
+### Implemented in backend, but intentionally held out of the live provider queue
 - Gelato
+- Prodigi
 
 ### Removed from the active queue for this app
 - Lulu Direct
 - Merchize
 
 ## Current queue decisions
-- Gelato remains the next provider target, but it is not exposed in the live dropdown while the locked UI still requires a real store list followed by a real template/product source list.
-- Gelato's official create-product flow currently tells merchants to copy `templateId` and `storeId` from the dashboard UI, and the documented flow we found does not provide an official store-list or template-list endpoint that cleanly satisfies the locked dropdown UX. Do not guess around that gap with undocumented endpoints or fake synthetic stores.
-- Prodigi remains a serious provider-core candidate, but it stays on a separate order-first track because its official fit is order submission and product SKU selection rather than the current store/template draft-product flow.
-- Gooten, Apliiq, and SPOD remain implemented in backend, but they are not part of the current live user-facing provider queue in the locked app.
+- Gooten, Apliiq, and SPOD / Spreadconnect remain active in the current live user-facing provider queue.
+- Gelato is not part of the live provider queue or active workflow for this app. Its official create-product flow still depends on dashboard-copied `templateId` and `storeId`, and we do not have an official store-list or template-list API fit for the locked dropdown UX. Do not guess around that gap with undocumented endpoints or fake synthetic stores.
+- Prodigi is not part of the live provider queue or active workflow for this app. It stays on a separate order-first track because its official fit is order submission and product SKU selection rather than the current store/template draft-product flow.
 - Lulu Direct and Merchize are not active roadmap promises for this app. Keep them out of the locked frontend provider list unless a later pass adds a real adapter, route support, regression coverage, and approved UX language.
 
 ## Current provider flow assumptions

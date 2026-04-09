@@ -203,10 +203,10 @@ Always separate these three realities before editing:
 ## Provider activation state
 - Printify remains live in the locked UI.
 - Printful is now unlocked in the current frontend provider flow and should no longer present as a coming-soon provider.
-- Gooten, Apliiq, and SPOD / Spreadconnect remain implemented in backend, but they are not part of the current live user-facing provider queue.
+- Gooten, Apliiq, and SPOD / Spreadconnect remain active in the current live user-facing provider queue.
 - The connection, product loading, template detail, and draft-create requests now route through generic provider endpoints backed by the normalized provider registry.
-- Gelato is the active next provider target, but it is currently held out of the locked frontend because the official Gelato create-from-template docs depend on dashboard-copied `storeId` and `templateId`, and we have not confirmed an official store-list or template-list API that fits the current dropdown UX cleanly.
-- Prodigi remains backend-capable, but it stays on a separate order-first track and should not be surfaced in the locked store/template draft flow without an explicitly approved UX track for order-first providers.
+- Gelato is not part of the live provider list or active workflow for this app. It remains held out because the official Gelato create-from-template docs depend on dashboard-copied `storeId` and `templateId`, and we have not confirmed an official store-list or template-list API that fits the current dropdown UX cleanly.
+- Prodigi is not part of the live provider list or active workflow for this app. It remains on a separate order-first track and should not be surfaced in the locked store/template draft flow without an explicitly approved UX track for order-first providers.
 - Lulu Direct and Merchize are removed from the active provider queue for this app and should not be shown as live or coming-soon promises in the locked frontend.
 
 ## Provider foundation after the first blocked rollout wave
