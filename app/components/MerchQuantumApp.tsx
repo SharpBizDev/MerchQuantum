@@ -1217,9 +1217,16 @@ export default function MerchQuantumApp() {
   const generationProgressPct = images.length > 0 ? Math.round((completedGenerationCount / images.length) * 100) : 0;
   const uploadDisabled = !connected || !template || images.length === 0 || isRunningBatch || processingCount > 0;
   const canShowReviewDetail = connected && !!shopId && !!productId;
+  const canShowDetailPanel = !!selectedImage || canShowReviewDetail;
   const detailTitle = selectedImage?.final || template?.nickname || selectedProduct?.title || "Loading selected product...";
   const detailDescription = selectedImage?.finalDescription
-    || (templateDescription ? templateDescription : canShowReviewDetail ? "Select or add artwork to generate image-based listing copy." : "");
+    || (templateDescription
+      ? templateDescription
+      : canShowReviewDetail
+        ? "Select or add artwork to generate image-based listing copy."
+        : selectedImage
+          ? "Add a shop and product template when you're ready. Quantum AI will build the final listing copy here."
+          : "");
   const detailTags = selectedImage?.tags?.length
     ? selectedImage.tags
     : canShowReviewDetail
@@ -1966,9 +1973,9 @@ export default function MerchQuantumApp() {
                               e.stopPropagation();
                               removePreviewItem(img.id);
                             }}
-                            className="inline-flex h-2 w-2 items-center justify-center text-[9px] font-normal leading-none text-slate-500 transition-colors hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400"
+                            className="inline-flex h-[10px] w-[10px] items-center justify-center p-0 text-[8px] font-normal leading-[8px] text-slate-500 transition-colors hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400"
                           >
-                            X
+                            x
                           </button>
                         </div>
                       </div>
@@ -2063,7 +2070,7 @@ export default function MerchQuantumApp() {
           </div>
 
           <div className="mt-3 border-t border-slate-200/80 pt-3 dark:border-slate-800">
-          {!canShowReviewDetail ? (
+          {!canShowDetailPanel ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">Select a shop and product to open the review area.</p>
           ) : (
             <div className="space-y-3">
