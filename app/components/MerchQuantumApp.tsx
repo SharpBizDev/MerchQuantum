@@ -1827,23 +1827,70 @@ export default function MerchQuantumApp() {
             className={`cursor-pointer rounded-[22px] border border-dashed px-4 py-3.5 text-sm text-slate-600 transition-all duration-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900 ${guidanceStep === "import" ? "border-violet-400/80 bg-violet-50/70 shadow-[0_0_0_1px_rgba(124,58,237,0.16),0_18px_50px_-30px_rgba(124,58,237,0.45)] dark:border-violet-500/60 dark:bg-violet-950/20" : "border-slate-300/90 bg-slate-50/90 dark:border-slate-700 dark:bg-slate-900/55"} ${connected && images.length > 0 ? "ring-1 ring-emerald-400/20" : ""}`}
           >
             {guidanceStep === "import" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
-            <div className="grid items-center gap-3 grid-cols-[minmax(0,1fr)_11rem] md:grid-cols-[minmax(0,1fr)_16.5rem]">
-              <div className="min-w-0 space-y-1 text-left">
+            <div className="min-w-0 space-y-2 text-left">
+              <div className="min-w-0 space-y-1">
                 <div className="font-medium text-slate-900 dark:text-slate-100">Drag images here or click <span className="text-violet-600 dark:text-violet-400">Add Images</span></div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">Powered by Quantum AI. It generates listing copy automatically and flags anything that needs review.</div>
               </div>
-              <div
-                aria-hidden={processingCount === 0}
-                className={`pointer-events-none relative h-10 overflow-hidden rounded-xl border px-2.5 text-[11px] font-medium transition-opacity duration-200 ${
-                  processingCount > 0
-                    ? "border-slate-200 bg-white/95 text-slate-600 opacity-100 dark:border-slate-800 dark:bg-slate-950/95 dark:text-slate-300"
-                    : "border-transparent bg-transparent opacity-0"
-                }`}
-              >
-                <div className="flex h-full items-center justify-between gap-2">
+              <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white/95 px-2.5 py-2 text-[11px] font-medium text-slate-600 dark:border-slate-800 dark:bg-slate-950/95 dark:text-slate-300">
+                <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 pr-16">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                      <span className={getStatusIndicatorClass("ready")} />
+                      <span>{readyCount} Ready</span>
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                      <span className={getStatusIndicatorClass("review")} />
+                      <span>{reviewCount} Needs Review</span>
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                      <span className={getStatusIndicatorClass("error")} />
+                      <span>{errorCount} Failed</span>
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                      <span>{skippedCount} Skipped</span>
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                      <span>x = Remove</span>
+                    </div>
+                  </div>
+                  <span
+                    role="button"
+                    tabIndex={images.length ? 0 : -1}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!images.length) return;
+                      setImages([]);
+                      setSelectedId("");
+                      setMessage("");
+                      setBatchResults([]);
+                      setRunStatus("");
+                    }}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (!images.length) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setImages([]);
+                        setSelectedId("");
+                        setMessage("");
+                        setBatchResults([]);
+                        setRunStatus("");
+                      }
+                    }}
+                    className={`text-[11px] font-medium transition-colors ${images.length ? "cursor-pointer text-slate-500 hover:text-violet-600 dark:text-slate-400 dark:hover:text-violet-400" : "cursor-default text-slate-400 opacity-40 dark:text-slate-600"}`}
+                  >
+                    Clear All
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                   <div className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap">
                     <span className={getLoadingIndicatorClass()} />
                     <span>{processingCount} Loading</span>
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                    <span className={getStatusIndicatorClass("ready")} />
+                    <span>{completedGenerationCount} Complete</span>
                   </div>
                   <span className="shrink-0 text-slate-500 dark:text-slate-400">{generationProgressPct}%</span>
                 </div>
@@ -1856,61 +1903,6 @@ export default function MerchQuantumApp() {
               </div>
             </div>
           </div>
-          
-          <div className="mt-3">
-          <div className="px-0.5 py-1">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                <div className="inline-flex items-center gap-1.5">
-                  <span className={getStatusIndicatorClass("ready")} />
-                  <span>{readyCount}</span>
-                  Approved / Ready
-                </div>
-                <div className="inline-flex items-center gap-1.5">
-                  <span className={getStatusIndicatorClass("review")} />
-                  <span>{reviewCount}</span>
-                  Needs Review
-                </div>
-                <div className="inline-flex items-center gap-1.5">
-                  <span className={getStatusIndicatorClass("error")} />
-                  <span>{errorCount}</span>
-                  Rejected / Error
-                </div>
-                <div className="inline-flex items-center gap-1.5">
-                  <span>{skippedCount}</span>
-                  Skipped
-                </div>
-                <div className="inline-flex items-center gap-1.5">X = Remove</div>
-              </div>
-              <span
-                role="button"
-                tabIndex={images.length ? 0 : -1}
-                onClick={() => {
-                  if (!images.length) return;
-                  setImages([]);
-                  setSelectedId("");
-                  setMessage("");
-                  setBatchResults([]);
-                  setRunStatus("");
-                }}
-                onKeyDown={(e) => {
-                  if (!images.length) return;
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setImages([]);
-                    setSelectedId("");
-                    setMessage("");
-                    setBatchResults([]);
-                    setRunStatus("");
-                  }
-                }}
-                className={`text-sm font-medium transition-colors ${images.length ? "cursor-pointer text-slate-500 hover:text-violet-600 dark:text-slate-400 dark:hover:text-violet-400" : "cursor-default text-slate-400 opacity-40 dark:text-slate-600"}`}
-              >
-                Clear All
-              </span>
-            </div>
-          </div>
-
           {sortedImages.length > 0 ? (
             <div className="mt-3">
               <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
@@ -1985,12 +1977,11 @@ export default function MerchQuantumApp() {
               </div>
             </div>
           ) : null}
-          </div>
 
           <div className="mt-3 border-t border-slate-200/80 pt-3 dark:border-slate-800">
           <div className={`relative grid gap-3 rounded-xl transition-all duration-500 ${guidanceStep === "template" ? "border border-violet-200/80 bg-violet-50/50 p-3 shadow-[0_18px_50px_-32px_rgba(124,58,237,0.35)] dark:border-violet-500/30 dark:bg-violet-950/15" : ""}`}>
             {guidanceStep === "template" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
-            <div className="grid items-stretch gap-3 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="grid items-stretch gap-3 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)]">
               <div>
                 <Select
                   value={shopId}
@@ -2042,28 +2033,6 @@ export default function MerchQuantumApp() {
 
               <div>
                 <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search My Products" />
-              </div>
-
-              <div className="relative h-11 overflow-hidden rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
-                <div className="flex h-full items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-x-3 gap-y-1.5">
-                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                      <span className={getLoadingIndicatorClass()} />
-                      <span>{processingCount} Loading</span>
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                      <span className={getStatusIndicatorClass("ready")} />
-                      <span>{completedGenerationCount} Complete</span>
-                    </div>
-                  </div>
-                  <span className="shrink-0 text-slate-500 dark:text-slate-400">{generationProgressPct}%</span>
-                </div>
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-slate-200 dark:bg-slate-800">
-                  <div
-                    className={`h-full transition-all duration-500 ${processingCount > 0 ? "bg-violet-500" : "bg-emerald-500"}`}
-                    style={{ width: `${generationProgressPct}%` }}
-                  />
-                </div>
               </div>
             </div>
           </div>
