@@ -1736,16 +1736,18 @@ export default function MerchQuantumApp() {
           className={`relative overflow-hidden border-slate-900/90 bg-slate-950 text-white shadow-[0_28px_80px_-40px_rgba(15,23,42,0.9)] dark:border-slate-800 ${guidanceStep === "connect" ? "ring-1 ring-violet-500/40 shadow-[0_28px_90px_-40px_rgba(124,58,237,0.45)]" : connected ? "ring-1 ring-emerald-500/30 shadow-[0_28px_90px_-40px_rgba(16,185,129,0.42)]" : ""}`}
           headerClassName="mb-4"
           title={
-            <span className="inline-flex items-center gap-2 font-semibold tracking-tight">
-              <span className="font-semibold text-violet-600">Quantum</span>
-              <span className="ml-1 font-semibold text-white">AI</span>
-              <span className={`ml-1 font-semibold ${connected ? `text-emerald-400 ${pulseConnected ? "animate-pulse" : ""}` : "text-white"}`}>
-                {connected ? "Connection" : "Connect"}
+            <div className="flex items-end justify-between gap-3">
+              <span className="inline-flex items-center gap-2 font-semibold tracking-tight">
+                <span className="font-semibold text-violet-600">Quantum</span>
+                <span className="ml-1 font-semibold text-white">AI</span>
+                <span className={`ml-1 font-semibold ${connected ? `text-emerald-400 ${pulseConnected ? "animate-pulse" : ""}` : "text-white"}`}>
+                  {connected ? "Connection" : "Connect"}
+                </span>
               </span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-300">
+              <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-300">
                 Auto Listings Generator
               </span>
-            </span>
+            </div>
           }
         >
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-500/70 to-transparent" />
@@ -1842,7 +1844,7 @@ export default function MerchQuantumApp() {
                     </div>
                     <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                       <span className={getStatusIndicatorClass("review")} />
-                      <span>{reviewCount} Needs Review</span>
+                      <span>{reviewCount} Review</span>
                     </div>
                     <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                       <span className={getStatusIndicatorClass("error")} />
@@ -1850,9 +1852,6 @@ export default function MerchQuantumApp() {
                     </div>
                     <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                       <span>{skippedCount} Skipped</span>
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                      <span>x = Remove</span>
                     </div>
                     <div className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap">
                       <span className={getLoadingIndicatorClass()} />
