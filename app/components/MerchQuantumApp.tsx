@@ -553,19 +553,4 @@ function formatTemplateDescription(templateDescription: string) {
     const cleaned = trimmed.startsWith("-")
       ? "- " + trimmed.replace(/^[-–—]\s*/, "")
       : trimmed.replace(/\s+/g, " ");
-    const header = cleaned.replace(/:$/, "");
-
-    if (headers.has(header) && out.length && out[out.length - 1] !== "") out.push("");
-    out.push(cleaned);
-  }
-
-  while (out.length && out[out.length - 1] === "") out.pop();
-  return out.join("\n");
-}
-
-function detectProductFamilyFromText(value: string) {
-  const text = stripHtml(value).trim();
-  if (!text) return null;
-
-  for (const rule of FAMILY_RULES) {
-    if (rule.patterns.some((pattern
+    const header = cleaned.re
