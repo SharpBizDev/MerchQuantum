@@ -1861,7 +1861,6 @@ export default function MerchQuantumApp() {
                       <span className="h-2.5 w-2.5 rounded-full bg-sky-500 ring-2 ring-sky-200/90 dark:ring-sky-900/60" />
                       <span>{completedGenerationCount} Complete</span>
                     </div>
-                    <span className="shrink-0 whitespace-nowrap text-slate-500 dark:text-slate-400">{generationProgressPct}%</span>
                     <span
                       role="button"
                       tabIndex={images.length ? 0 : -1}
@@ -1888,7 +1887,7 @@ export default function MerchQuantumApp() {
                       }}
                       className={`whitespace-nowrap text-[10px] font-medium transition-colors ${images.length ? "cursor-pointer text-slate-500 hover:text-violet-600 dark:text-slate-400 dark:hover:text-violet-400" : "cursor-default text-slate-400 opacity-40 dark:text-slate-600"}`}
                     >
-                      Clear All
+                      Clear
                     </span>
                 </div>
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] rounded-full bg-slate-200/90 dark:bg-slate-800">
