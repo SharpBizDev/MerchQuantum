@@ -1924,9 +1924,9 @@ export default function MerchQuantumApp() {
                     >
                       <div className="relative">
                         {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
-                        <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border bg-white transition-all duration-500 dark:bg-slate-950 ${previewFrameTone}`}>
+                        <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border transition-all duration-500 ${previewFrameTone}`}>
                           {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-violet-400/80 animate-pulse dark:border-violet-400/60" /> : null}
-                          <div className="absolute bottom-1 left-0 z-20 flex items-center gap-1">
+                          <div className="absolute left-1/2 top-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1">
                             {(["ready", "review", "error"] as const).map((status) => {
                               const isActive = img.status === status;
                               return (
@@ -1943,9 +1943,6 @@ export default function MerchQuantumApp() {
                               );
                             })}
                           </div>
-                          <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit] p-1">
-                            {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
-                          </div>
                           <button
                             type="button"
                             aria-label="remove"
@@ -1953,10 +1950,13 @@ export default function MerchQuantumApp() {
                               e.stopPropagation();
                               removePreviewItem(img.id);
                             }}
-                            className="absolute bottom-1 right-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-white/92 p-0 text-[8px] font-normal leading-none text-slate-500 shadow-sm transition-colors hover:text-rose-500 dark:bg-slate-950/90 dark:text-slate-400 dark:hover:text-rose-400"
+                            className="absolute right-1 top-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-white/92 p-0 text-[8px] font-normal leading-none text-slate-500 shadow-sm transition-colors hover:text-rose-500 dark:bg-slate-950/90 dark:text-slate-400 dark:hover:text-rose-400"
                           >
                             x
                           </button>
+                          <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit] bg-white dark:bg-slate-950">
+                            {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
+                          </div>
                           {img.preview ? (
                             <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950 ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
                               <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
