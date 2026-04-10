@@ -1920,52 +1920,49 @@ export default function MerchQuantumApp() {
                     <div
                       key={img.id}
                       onClick={() => setSelectedId(img.id)}
-                      className={`rounded-xl border p-1.5 transition-all duration-500 ${isProcessing ? "border-violet-300 bg-violet-50/80 shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)] dark:border-violet-500/45 dark:bg-violet-950/20" : isSelected ? "border-violet-500 bg-violet-50/50 dark:border-violet-500 dark:bg-violet-950/20" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"}`}
+                      className={`rounded-lg transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
                     >
-                      <div className="space-y-1.5">
-                        <div className="relative">
-                          {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
-                          <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border transition-all duration-500 ${previewFrameTone}`}>
-                            {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-violet-400/80 animate-pulse dark:border-violet-400/60" /> : null}
-                            <div className="absolute bottom-2 right-6 z-20 flex items-center gap-1">
-                              {(["ready", "review", "error"] as const).map((status) => {
-                                const isActive = img.status === status;
-                                return (
-                                  <button
-                                    key={status}
-                                    type="button"
-                                    aria-label={status}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      updatePreviewStatus(img.id, status);
-                                    }}
-                                    className={`${getStatusIndicatorClass(isActive ? status : "pending")} transition-transform hover:scale-105`}
-                                  />
-                                );
-                              })}
-                            </div>
-                            <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit] bg-white p-1.5 dark:bg-slate-950">
-                              {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
-                            </div>
-                            <button
-                              type="button"
-                              aria-label="remove"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removePreviewItem(img.id);
-                              }}
-                              className="absolute bottom-1 right-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-white/92 p-0 text-[8px] font-normal leading-none text-slate-500 shadow-sm transition-colors hover:text-rose-500 dark:bg-slate-950/90 dark:text-slate-400 dark:hover:text-rose-400"
-                            >
-                              x
-                            </button>
-                            {img.preview ? (
-                              <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950 ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
-                                <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
-                              </div>
-                            ) : null}
+                      <div className="relative">
+                        {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
+                        <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border bg-white transition-all duration-500 dark:bg-slate-950 ${previewFrameTone}`}>
+                          {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-violet-400/80 animate-pulse dark:border-violet-400/60" /> : null}
+                          <div className="absolute bottom-1 left-0.5 z-20 flex items-center gap-1">
+                            {(["ready", "review", "error"] as const).map((status) => {
+                              const isActive = img.status === status;
+                              return (
+                                <button
+                                  key={status}
+                                  type="button"
+                                  aria-label={status}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updatePreviewStatus(img.id, status);
+                                  }}
+                                  className={`${getStatusIndicatorClass(isActive ? status : "pending")} transition-transform hover:scale-105`}
+                                />
+                              );
+                            })}
                           </div>
+                          <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit] p-1.5">
+                            {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
+                          </div>
+                          <button
+                            type="button"
+                            aria-label="remove"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removePreviewItem(img.id);
+                            }}
+                            className="absolute bottom-1 right-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-white/92 p-0 text-[8px] font-normal leading-none text-slate-500 shadow-sm transition-colors hover:text-rose-500 dark:bg-slate-950/90 dark:text-slate-400 dark:hover:text-rose-400"
+                          >
+                            x
+                          </button>
+                          {img.preview ? (
+                            <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block dark:border-slate-800 dark:bg-slate-950 ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
+                              <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
+                            </div>
+                          ) : null}
                         </div>
-
                       </div>
                     </div>
                   );
