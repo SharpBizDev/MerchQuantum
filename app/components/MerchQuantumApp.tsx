@@ -1927,6 +1927,23 @@ export default function MerchQuantumApp() {
                           {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
                           <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border transition-all duration-500 ${previewFrameTone}`}>
                             {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-violet-400/80 animate-pulse dark:border-violet-400/60" /> : null}
+                            <div className="absolute inset-x-0 top-1 z-20 flex items-center justify-center gap-1">
+                              {(["ready", "review", "error"] as const).map((status) => {
+                                const isActive = img.status === status;
+                                return (
+                                  <button
+                                    key={status}
+                                    type="button"
+                                    aria-label={status}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      updatePreviewStatus(img.id, status);
+                                    }}
+                                    className={`${getStatusIndicatorClass(isActive ? status : "pending")} transition-transform hover:scale-105`}
+                                  />
+                                );
+                              })}
+                            </div>
                             <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit] bg-white p-1.5 dark:bg-slate-950">
                               {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
                             </div>
@@ -1949,23 +1966,6 @@ export default function MerchQuantumApp() {
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-center gap-1">
-                          {(["ready", "review", "error"] as const).map((status) => {
-                            const isActive = img.status === status;
-                            return (
-                              <button
-                                key={status}
-                                type="button"
-                                aria-label={status}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  updatePreviewStatus(img.id, status);
-                                }}
-                                className={`${getStatusIndicatorClass(isActive ? status : "pending")} transition-transform hover:scale-105`}
-                              />
-                            );
-                          })}
-                        </div>
                       </div>
                     </div>
                   );
