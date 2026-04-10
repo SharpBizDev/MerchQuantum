@@ -1926,7 +1926,7 @@ export default function MerchQuantumApp() {
                         {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
                         <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border bg-white transition-all duration-500 dark:bg-slate-950 ${previewFrameTone}`}>
                           {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-violet-400/80 animate-pulse dark:border-violet-400/60" /> : null}
-                          <div className="absolute bottom-1 left-0.5 z-20 flex items-center gap-1">
+                          <div className="absolute bottom-1 left-0 z-20 flex items-center gap-1">
                             {(["ready", "review", "error"] as const).map((status) => {
                               const isActive = img.status === status;
                               return (
@@ -1943,7 +1943,7 @@ export default function MerchQuantumApp() {
                               );
                             })}
                           </div>
-                          <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit] p-1.5">
+                          <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit] p-1">
                             {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
                           </div>
                           <button
