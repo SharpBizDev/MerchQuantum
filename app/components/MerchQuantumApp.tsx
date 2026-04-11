@@ -1166,6 +1166,7 @@ export default function MerchQuantumApp() {
   const [apiShops, setApiShops] = useState<Shop[]>([]);
   const [apiProducts, setApiProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [loadingTemplateDetails, setLoadingTemplateDetails] = useState(false);
   const [shopId, setShopId] = useState("");
   const [productId, setProductId] = useState("");
   const [search, setSearch] = useState("");
@@ -1232,6 +1233,7 @@ export default function MerchQuantumApp() {
     : canShowReviewDetail
       ? buildTags(detailTitle, detailDescription, FIXED_TAG_COUNT)
       : [];
+  const isDetailDescriptionLoading = loadingTemplateDetails || !!selectedImage?.aiProcessing;
   const guidanceStep = !connected
     ? "connect"
     : images.length === 0
@@ -1577,6 +1579,7 @@ export default function MerchQuantumApp() {
     const fallback = productSource.find((p) => p.id === nextProductId);
     if (!fallback || !shopId) return;
 
+    setLoadingTemplateDetails(true);
     try {
       const response = await fetchWithTimeout(
         `${getProviderRoute("product")}?provider=${encodeURIComponent(provider)}&shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(nextProductId)}`
@@ -1622,6 +1625,8 @@ export default function MerchQuantumApp() {
       });
       setTemplateDescription(base);
       setApiStatus(formatApiError(error instanceof Error ? error.message : "Unable to load template product."));
+    } finally {
+      setLoadingTemplateDetails(false);
     }
   }
 
@@ -2094,9 +2099,16 @@ export default function MerchQuantumApp() {
                 <Field label="Final Description">
                   <div className="min-h-[264px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal leading-6 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 lg:h-[17rem] lg:overflow-y-auto">
                     <div className="flex min-h-full items-center">
-                      <div className="w-full whitespace-pre-wrap text-left">
-                        {htmlToEditableText(detailDescription)}
-                      </div>
+                      {isDetailDescriptionLoading ? (
+                        <div className="flex w-full items-center justify-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400">
+                          <span className={`${getLoadingIndicatorClass()} animate-pulse`} />
+                          <span>Loading description...</span>
+                        </div>
+                      ) : (
+                        <div className="w-full whitespace-pre-wrap text-left">
+                          {htmlToEditableText(detailDescription)}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </Field>
