@@ -1178,6 +1178,7 @@ export default function MerchQuantumApp() {
   const [runStatus, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
+  const [attentionTarget, setAttentionTarget] = useState<"provider" | "token" | "import" | null>(null);
 
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
   const isLiveProvider = selectedProvider?.isLive || false;
@@ -1250,6 +1251,26 @@ export default function MerchQuantumApp() {
     return `/api/providers/${path}`;
   }
 
+  function triggerAttentionCue(target: "provider" | "token" | "import") {
+    setAttentionTarget(target);
+    window.clearTimeout((triggerAttentionCue as typeof triggerAttentionCue & { timeoutId?: number }).timeoutId);
+    (triggerAttentionCue as typeof triggerAttentionCue & { timeoutId?: number }).timeoutId = window.setTimeout(() => {
+      setAttentionTarget((current) => (current === target ? null : current));
+    }, 1200);
+  }
+
+  function getMissingWorkflowTarget(includeImportStep: boolean) {
+    if (!provider) return "provider" as const;
+    if (!connected) return "token" as const;
+    if (includeImportStep && images.length === 0) return "import" as const;
+    return null;
+  }
+
+  function nudgeWorkflow(includeImportStep: boolean) {
+    const target = getMissingWorkflowTarget(includeImportStep);
+    if (target) triggerAttentionCue(target);
+  }
+
   useEffect(() => {
     const previous = previousPreviewUrlsRef.current;
     const current = images.map((img) => img.preview);
@@ -1268,6 +1289,7 @@ export default function MerchQuantumApp() {
       for (const url of previousPreviewUrlsRef.current) {
         if (url.startsWith("blob:")) URL.revokeObjectURL(url);
       }
+      window.clearTimeout((triggerAttentionCue as typeof triggerAttentionCue & { timeoutId?: number }).timeoutId);
     };
   }, []);
 
@@ -1762,26 +1784,28 @@ export default function MerchQuantumApp() {
             className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-emerald-400/90 to-transparent" : "bg-gradient-to-r from-transparent via-violet-500/70 to-transparent"} ${pulseConnected || guidanceStep === "connect" ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
           />
           <div className="grid gap-3 md:grid-cols-2">
-            <Select
-              value={provider}
-              onChange={(e) => {
-                const nextProvider = e.target.value as ProviderId | "";
-                setProvider(nextProvider);
-                setToken("");
-                resetProviderState(false);
-                const nextMeta = PROVIDERS.find((entry) => entry.id === nextProvider);
-                setApiStatus(nextMeta && !nextMeta.isLive ? `${nextMeta.label} is coming soon.` : "");
-              }}
-            >
-              <option value="">Choose Provider</option>
-              {PROVIDERS.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.label}
-                </option>
-              ))}
-            </Select>
+            <div className={`${attentionTarget === "provider" ? "rounded-2xl ring-2 ring-violet-400/70 shadow-[0_0_0_1px_rgba(167,139,250,0.22),0_22px_55px_-30px_rgba(124,58,237,0.6)] animate-pulse" : ""}`}>
+              <Select
+                value={provider}
+                onChange={(e) => {
+                  const nextProvider = e.target.value as ProviderId | "";
+                  setProvider(nextProvider);
+                  setToken("");
+                  resetProviderState(false);
+                  const nextMeta = PROVIDERS.find((entry) => entry.id === nextProvider);
+                  setApiStatus(nextMeta && !nextMeta.isLive ? `${nextMeta.label} is coming soon.` : "");
+                }}
+              >
+                <option value="">Choose Provider</option>
+                {PROVIDERS.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
 
-            <div className="relative">
+            <div className={`relative ${attentionTarget === "token" ? "rounded-2xl ring-2 ring-violet-400/70 shadow-[0_0_0_1px_rgba(167,139,250,0.22),0_22px_55px_-30px_rgba(124,58,237,0.6)] animate-pulse" : ""}`}>
               <Input
                 type={connected ? "text" : "password"}
                 value={connected ? maskToken(token) : token}
@@ -1834,7 +1858,7 @@ export default function MerchQuantumApp() {
               void addFiles(e.dataTransfer.files);
             }}
             onClick={() => fileRef.current?.click()}
-            className={`cursor-pointer rounded-[22px] border border-dashed px-4 py-3.5 text-sm text-slate-600 transition-all duration-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900 ${guidanceStep === "import" ? "border-violet-400/80 bg-violet-50/70 shadow-[0_0_0_1px_rgba(124,58,237,0.16),0_18px_50px_-30px_rgba(124,58,237,0.45)] dark:border-violet-500/60 dark:bg-violet-950/20" : "border-slate-300/90 bg-slate-50/90 dark:border-slate-700 dark:bg-slate-900/55"} ${connected && images.length > 0 ? "ring-1 ring-emerald-400/20" : ""}`}
+            className={`cursor-pointer rounded-[22px] border border-dashed px-4 py-3.5 text-sm text-slate-600 transition-all duration-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900 ${guidanceStep === "import" ? "border-violet-400/80 bg-violet-50/70 shadow-[0_0_0_1px_rgba(124,58,237,0.16),0_18px_50px_-30px_rgba(124,58,237,0.45)] dark:border-violet-500/60 dark:bg-violet-950/20" : "border-slate-300/90 bg-slate-50/90 dark:border-slate-700 dark:bg-slate-900/55"} ${connected && images.length > 0 ? "ring-1 ring-emerald-400/20" : ""} ${attentionTarget === "import" ? "ring-2 ring-violet-400/70 shadow-[0_0_0_1px_rgba(167,139,250,0.22),0_22px_55px_-30px_rgba(124,58,237,0.6)] animate-pulse" : ""}`}
           >
             {guidanceStep === "import" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
             <div className="flex min-w-0 flex-col gap-2 text-left lg:flex-row lg:items-start lg:justify-between lg:gap-4">
@@ -1979,7 +2003,10 @@ export default function MerchQuantumApp() {
           ) : null}
 
           <div className="mt-3 border-t border-slate-200/80 pt-3 dark:border-slate-800">
-          <div className={`relative grid gap-3 rounded-xl transition-all duration-500 ${guidanceStep === "template" ? "border border-violet-200/80 bg-violet-50/50 p-3 shadow-[0_18px_50px_-32px_rgba(124,58,237,0.35)] dark:border-violet-500/30 dark:bg-violet-950/15" : ""}`}>
+          <div
+            onPointerDownCapture={() => nudgeWorkflow(false)}
+            className={`relative grid gap-3 rounded-xl transition-all duration-500 ${guidanceStep === "template" ? "border border-violet-200/80 bg-violet-50/50 p-3 shadow-[0_18px_50px_-32px_rgba(124,58,237,0.35)] dark:border-violet-500/30 dark:bg-violet-950/15" : ""}`}
+          >
             {guidanceStep === "template" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
             <div className="grid items-stretch gap-3 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)]">
               <div>
@@ -2040,7 +2067,7 @@ export default function MerchQuantumApp() {
 
           <div className="mt-3 border-t border-slate-200/80 pt-3 dark:border-slate-800">
           {!canShowDetailPanel ? null : (
-            <div className="space-y-3">
+            <div className="space-y-3" onPointerDownCapture={() => nudgeWorkflow(true)}>
               <div className="grid items-stretch gap-3 lg:grid-cols-[296px_minmax(0,1fr)]">
               <div className="flex h-full flex-col">
                 <div className="space-y-1.5">
