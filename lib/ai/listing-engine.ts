@@ -167,6 +167,8 @@ const MAX_VISION_ANALYSIS_PIXELS = 33_000_000;
 const MAX_VISION_ANALYSIS_DIMENSION = 7000;
 const SPARSE_TRANSPARENT_COVERAGE_THRESHOLD = 0.68;
 const MIN_TRIM_GAIN_PX = 48;
+const ANALYSIS_LIGHT_BACKGROUND = { r: 245, g: 245, b: 244, alpha: 1 } as const;
+const ANALYSIS_DARK_BACKGROUND = { r: 17, g: 24, b: 39, alpha: 1 } as const;
 
 const WEAK_FILENAME_TOKENS = new Set([
   "img",
@@ -473,6 +475,7 @@ function clamp(value: number, min: number, max: number) {
 function titleCaseWord(word: string) {
   if (!word) return word;
   const upper = word.toUpperCase();
+  if (upper === "T-SHIRT") return "T-Shirt";
   if (["AI", "USA", "DTG", "DTF", "SVG", "PNG", "JPG", "PDF", "DIY"].includes(upper)) return upper;
   return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
 }
@@ -486,10 +489,34 @@ function normalizeTitle(rawTitle: string, fileName = "", maxChars = MAX_TITLE_CH
     .split(/\s+/)
     .filter(Boolean);
 
+  const normalizedWords: string[] = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    const nextWord = words[index + 1] || "";
+
+    if (/^t$/i.test(word) && /^shirt$/i.test(nextWord)) {
+      normalizedWords.push("T-Shirt");
+      index += 1;
+      continue;
+    }
+
+    if (/^t-?shirt$/i.test(word) || /^tshirt$/i.test(word)) {
+      normalizedWords.push("T-Shirt");
+      continue;
+    }
+
+    if (/^t$/i.test(word)) {
+      normalizedWords.push("Tee");
+      continue;
+    }
+
+    normalizedWords.push(word);
+  }
+
   const seen = new Set<string>();
   const deduped: string[] = [];
 
-  for (const word of words) {
+  for (const word of normalizedWords) {
     const key = word.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -1751,6 +1778,49 @@ function estimateBase64ByteLength(inlineData: string) {
   return Math.floor((normalized.length * 3) / 4) - padding;
 }
 
+function toLinearRgbChannel(channel: number) {
+  const normalized = clamp(channel / 255, 0, 1);
+  return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+}
+
+function getRelativeLuminance(red: number, green: number, blue: number) {
+  return (
+    0.2126 * toLinearRgbChannel(red) +
+    0.7152 * toLinearRgbChannel(green) +
+    0.0722 * toLinearRgbChannel(blue)
+  );
+}
+
+function getContrastRatio(firstLuminance: number, secondLuminance: number) {
+  const lighter = Math.max(firstLuminance, secondLuminance);
+  const darker = Math.min(firstLuminance, secondLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+async function getAlphaWeightedArtworkLuminance(imageBuffer: Buffer) {
+  const { data, info } = await sharp(imageBuffer, {
+    failOn: "none",
+    limitInputPixels: MAX_VISION_ANALYSIS_PIXELS,
+  })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const channels = info.channels || 4;
+  let weightedLuminance = 0;
+  let totalAlpha = 0;
+
+  for (let index = 0; index < data.length; index += channels) {
+    const alpha = (data[index + 3] || 0) / 255;
+    if (alpha <= 0) continue;
+
+    weightedLuminance += getRelativeLuminance(data[index], data[index + 1], data[index + 2]) * alpha;
+    totalAlpha += alpha;
+  }
+
+  return totalAlpha > 0 ? weightedLuminance / totalAlpha : null;
+}
+
 async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet | null> {
   const parsed = parseImageData(imageDataUrl);
   if (!parsed) return null;
@@ -1800,7 +1870,7 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
 
     const panelSize = clamp(Math.max(trimmedInfo.width, trimmedInfo.height) + 96, 640, 1024);
     const artworkSize = Math.max(220, Math.round(panelSize * 0.7));
-    const gap = 24;
+    const artworkLuminance = await getAlphaWeightedArtworkLuminance(trimmedBuffer);
     const artworkBuffer = await sharp(trimmedBuffer, {
       failOn: "none",
       limitInputPixels: MAX_VISION_ANALYSIS_PIXELS,
@@ -1814,53 +1884,46 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
       .png()
       .toBuffer();
 
-    const lightPanel = await sharp({
+    const lightBackgroundLuminance = getRelativeLuminance(
+      ANALYSIS_LIGHT_BACKGROUND.r,
+      ANALYSIS_LIGHT_BACKGROUND.g,
+      ANALYSIS_LIGHT_BACKGROUND.b
+    );
+    const darkBackgroundLuminance = getRelativeLuminance(
+      ANALYSIS_DARK_BACKGROUND.r,
+      ANALYSIS_DARK_BACKGROUND.g,
+      ANALYSIS_DARK_BACKGROUND.b
+    );
+    const resolvedArtworkLuminance = artworkLuminance ?? 0.85;
+    const contrastOnLight = getContrastRatio(resolvedArtworkLuminance, lightBackgroundLuminance);
+    const contrastOnDark = getContrastRatio(resolvedArtworkLuminance, darkBackgroundLuminance);
+    const useDarkBackground = contrastOnDark >= contrastOnLight;
+    const analysisBackground = useDarkBackground ? ANALYSIS_DARK_BACKGROUND : ANALYSIS_LIGHT_BACKGROUND;
+    const analysisBackgroundLabel = useDarkBackground ? "dark" : "light";
+
+    const analysisBuffer = await sharp({
       create: {
         width: panelSize,
         height: panelSize,
         channels: 4,
-        background: { r: 245, g: 245, b: 244, alpha: 1 },
+        background: analysisBackground,
       },
     })
       .composite([{ input: artworkBuffer, gravity: "center" }])
-      .png()
-      .toBuffer();
-
-    const darkPanel = await sharp({
-      create: {
-        width: panelSize,
-        height: panelSize,
-        channels: 4,
-        background: { r: 17, g: 24, b: 39, alpha: 1 },
-      },
-    })
-      .composite([{ input: artworkBuffer, gravity: "center" }])
-      .png()
-      .toBuffer();
-
-    const helperBuffer = await sharp({
-      create: {
-        width: panelSize * 2 + gap * 3,
-        height: panelSize + gap * 2,
-        channels: 4,
-        background: { r: 229, g: 231, b: 235, alpha: 1 },
-      },
-    })
-      .composite([
-        { input: lightPanel, left: gap, top: gap },
-        { input: darkPanel, left: panelSize + gap * 2, top: gap },
-      ])
       .png()
       .toBuffer();
 
     return {
-      primary: parsed,
-      helper: {
+      primary: {
         mimeType: "image/png",
-        inlineData: helperBuffer.toString("base64"),
+        inlineData: analysisBuffer.toString("base64"),
+      },
+      helper: {
+        mimeType: parsed.mimeType,
+        inlineData: parsed.inlineData,
       },
       promptHint:
-        "A second helper image may be included showing the same artwork cropped to its non-transparent bounds and placed on light and dark neutral panels. Use that helper to read sparse transparent line art, but treat it as the same design rather than a second product image.",
+        `The first image may be a temporary high-contrast analysis render of the original transparent artwork placed on a ${analysisBackgroundLabel} neutral background. Use it to read sparse transparent line art more accurately. A second helper image may show the untouched original transparent upload. Treat both images as the same design rather than separate products.`,
     };
   } catch (error) {
     if (error instanceof ListingInputGuardError) {
@@ -2069,11 +2132,13 @@ function buildMasterPrompt(
     "STEP 4 TITLE GENERATION",
     "- Produce concise, readable, marketplace-usable titles.",
     "- Avoid hype stuffing, fake urgency, and unsupported claims.",
+    "- Expand apparel shorthand into natural buyer-facing nouns; do not reduce product nouns to single-letter fragments like T.",
     "",
     "STEP 5 TWO-LAYER DESCRIPTION GENERATION",
     "- Produce two lead paragraphs only for buyer-facing opening copy.",
     "- Keep persuasion copy separate from factual template/spec content.",
     "- Never start the first lead paragraph with the full title string.",
+    "- Make the first lead paragraph name the visible message, motif, or design meaning directly so the opener feels specific to the artwork instead of generic template filler.",
     "",
     "STEP 6 DISCOVERY TERMS BY MARKETPLACE",
     "- Render internal channel-aware outputs for Etsy, Amazon, eBay, and TikTok Shop.",

@@ -437,6 +437,47 @@ async function main() {
     assert.equal(result.reasonFlags.length, 0);
   });
 
+  await run("transparent artwork uses a derived high-contrast analysis image while preserving the untouched upload", async () => {
+    const fixture = GOLDEN_CORPUS_FIXTURES.find((entry) => entry.name === "transparent png weak contrast");
+    assert.ok(fixture);
+
+    const image = readFixtureImageDataUrl(fixture.imageFile);
+    let capturedPrompt = "";
+    let capturedPrimary: { mimeType?: string; data?: string } = {};
+    let capturedHelper: { mimeType?: string; data?: string } = {};
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: image.dataUrl,
+        fileName: fixture.request.fileName,
+        title: fixture.request.title,
+        productFamily: fixture.request.productFamily,
+        templateContext: fixture.request.templateContext,
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_url, init) => {
+          const requestBody = JSON.parse(String(init?.body || "{}"));
+          const parts = requestBody?.contents?.[0]?.parts || [];
+          capturedPrompt = String(parts[0]?.text || "");
+          capturedPrimary = parts[1]?.inlineData || {};
+          capturedHelper = parts[2]?.inlineData || {};
+
+          return createGeminiResponse(createGeminiPayload(fixture.payloadOverrides));
+        },
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    assert.equal(capturedPrimary.mimeType, "image/png");
+    assert.notEqual(capturedPrimary.data, image.base64);
+    assert.equal(capturedHelper.mimeType, "image/png");
+    assert.equal(capturedHelper.data, image.base64);
+    assert.equal(/temporary high-contrast analysis render/i.test(capturedPrompt), true);
+    assert.equal(/untouched original transparent upload/i.test(capturedPrompt), true);
+  });
+
   await run("validator keeps the strongest ambiguity warning while preserving real OCR clarity concerns", () => {
     const semantic: SemanticRecord = {
       productNoun: "graphic tee",
@@ -583,9 +624,21 @@ async function main() {
             const parts = requestBody?.contents?.[0]?.parts || [];
             const prompt = String(parts[0]?.text || "");
             const inlineData = parts[1]?.inlineData || {};
+            const helperInlineData = parts[2]?.inlineData || {};
 
             assert.equal(inlineData.mimeType, "image/png", `${fixture.name}: image mime type`);
-            assert.equal(inlineData.data, image.base64, `${fixture.name}: exact image fixture should be sent to Gemini`);
+            if (fixture.name === "transparent png weak contrast") {
+              assert.notEqual(inlineData.data, image.base64, `${fixture.name}: should use derived analysis image as primary`);
+              assert.equal(helperInlineData.mimeType, "image/png", `${fixture.name}: helper image mime type`);
+              assert.equal(helperInlineData.data, image.base64, `${fixture.name}: untouched original image should be preserved as helper`);
+              assert.equal(
+                /temporary high-contrast analysis render/i.test(prompt),
+                true,
+                `${fixture.name}: prompt should describe derived analysis render`
+              );
+            } else {
+              assert.equal(inlineData.data, image.base64, `${fixture.name}: exact image fixture should be sent to Gemini`);
+            }
             assert.equal(prompt.includes(`fileName: ${fixture.request.fileName}`), true, `${fixture.name}: prompt should include request filename`);
             assert.equal(
               prompt.includes(`productFamily: ${fixture.request.productFamily}`),
@@ -689,6 +742,8 @@ async function main() {
     );
 
     assert.equal(response.source, "gemini");
+    assert.equal(/(?:^| )T(?: |$)/.test(response.title), false);
+    assert.equal(/T-Shirt|Tee|Shirt/i.test(response.title), true);
     assert.equal(/crafted for comfort and style/i.test(response.leadParagraphs[1]), false);
     assert.equal(/doing the heavy lifting on comfort and presentation/i.test(response.leadParagraphs[1]), false);
     assert.equal(/wear|gift|buyer|listing|trust/i.test(response.leadParagraphs[1]), true);
