@@ -233,6 +233,34 @@ async function main() {
     }
   });
 
+  await run("lead paragraph normalization replaces generic first paragraph with a more specific buyer-facing opener", () => {
+    const semantic: SemanticRecord = {
+      productNoun: "graphic tee",
+      titleCore: "Faith Over Fear Christian Tee",
+      benefitCore: "Clean discovery copy for faith-forward shoppers.",
+      likelyAudience: "faith-based buyers",
+      styleOccasion: "faith-forward",
+      visibleKeywords: ["faith over fear", "faith"],
+      inferredKeywords: ["christian gift"],
+      forbiddenClaims: [],
+    };
+
+    const leads = normalizeLeadParagraphs(
+      "Faith Over Fear Christian Tee",
+      [
+        "Crafted for comfort and style, this tee is perfect for anyone seeking inspiration or looking to share a meaningful statement.",
+        "This versatile addition to your casual wardrobe also makes a thoughtful gift for a loved one.",
+      ],
+      semantic,
+      undefined,
+      "Comfort Colors 1717 heavyweight garment-dyed t-shirt. 100% ring-spun cotton. Relaxed fit with double-needle stitching and shoulder-to-shoulder twill tape. Great for everyday casual wear and giftable boutique apparel."
+    );
+
+    assert.equal(/crafted for comfort and style/i.test(leads[0]), false);
+    assert.equal(/thoughtful gift|versatile addition|casual wardrobe/i.test(leads[0]), false);
+    assert.equal(/faith|message|garment-dyed|ring-spun|everyday/i.test(leads[0]), true);
+  });
+
   await run("validator grades green for clear records and red for unclear or repetitive records", () => {
     const semantic: SemanticRecord = {
       productNoun: "graphic tee",
@@ -360,6 +388,53 @@ async function main() {
       clipped.reasonFlags.some((flag) => flag.toLowerCase().includes("appears clipped")),
       true
     );
+  });
+
+  await run("validator keeps clearly readable designs green when only soft OCR and symbolic uncertainty remain", () => {
+    const semantic: SemanticRecord = {
+      productNoun: "graphic tee",
+      titleCore: "Faith Over Fear Christian Tee",
+      benefitCore: "Clear discovery copy for buyer intent.",
+      likelyAudience: "faith-based buyers",
+      styleOccasion: "faith-forward",
+      visibleKeywords: ["faith over fear", "faith"],
+      inferredKeywords: ["christian"],
+      forbiddenClaims: [],
+    };
+
+    const result = gradeListing(
+      {
+        visibleText: ["faith over fear"],
+        visibleFacts: ["clean readable slogan on transparent artwork"],
+        inferredMeaning: ["faith-forward encouragement"],
+        dominantTheme: "faith-forward",
+        likelyAudience: "faith-based buyers",
+        likelyOccasion: "daily wear",
+        uncertainty: ["The specific symbolic meaning is open to interpretation."],
+        ocrWeakness: "weak contrast",
+        meaningClarity: 0.9,
+        hasReadableText: true,
+      },
+      semantic,
+      {
+        classification: "strong_support",
+        usefulness: 0.9,
+        usefulTokens: ["faith", "fear"],
+        ignoredTokens: [],
+        conflictSeverity: "none",
+        shouldIgnore: false,
+        reason: "supportive filename",
+      },
+      semantic.titleCore,
+      [
+        "The \"Faith Over Fear\" message gives this graphic tee a clear faith-forward angle that reads quickly at a glance.",
+        "It feels wearable, giftable, and straightforward for buyers who want an encouraging design without extra filler.",
+      ],
+      ["faith shirt", "christian tee", "encouraging gift", "daily wear", "readable slogan"]
+    );
+
+    assert.equal(result.grade, "green");
+    assert.equal(result.reasonFlags.length, 0);
   });
 
   await run("validator keeps the strongest ambiguity warning while preserving real OCR clarity concerns", () => {

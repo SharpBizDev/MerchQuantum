@@ -1274,10 +1274,101 @@ function buildDiscoveryTerms(semantic: SemanticRecord, maxTerms: number) {
     .slice(0, maxTerms);
 }
 
+function stripLeadProductWords(value: string) {
+  return cleanSpaces(
+    value.replace(
+      /\b(?:graphic|tee|shirt|t-shirt|t shirt|hoodie|sweatshirt|tank top|hat|sticker|bag|accessory|item|product|gift)\b/gi,
+      " "
+    )
+  );
+}
+
+function getPrimaryDesignAnchor(semantic: SemanticRecord) {
+  const candidates = unique([
+    ...semantic.visibleKeywords,
+    ...semantic.inferredKeywords,
+    semantic.titleCore,
+    semantic.styleOccasion,
+  ]);
+
+  for (const candidate of candidates) {
+    const stripped = stripLeadProductWords(candidate);
+    if (!stripped) continue;
+
+    const comparable = normalizeComparableText(stripped);
+    if (!comparable) continue;
+    if (/^(graphic|design|artwork|product|style)$/.test(comparable)) continue;
+    if (/white lettering|black lettering|transparent design|clean transparent design|bold lettering|text on/i.test(comparable)) {
+      continue;
+    }
+    if (stripped.split(/\s+/).length > 8) continue;
+
+    return stripped;
+  }
+
+  return semantic.styleOccasion || semantic.productNoun;
+}
+
+function getPrimaryDesignPhrase(semantic: SemanticRecord) {
+  const anchor = cleanSpaces(getPrimaryDesignAnchor(semantic));
+  if (!anchor) return "the design";
+
+  if (
+    anchor.split(/\s+/).length <= 6 &&
+    !/\b(?:graphic|design|art|artwork|scene|illustration|style|line art|landscape)\b/i.test(anchor)
+  ) {
+    return `the "${normalizeTitle(anchor, anchor)}" message`;
+  }
+
+  if (/\b(?:graphic|design|art|artwork|scene|illustration|style|line art|landscape)\b/i.test(anchor)) {
+    return `the ${anchor.toLowerCase()}`;
+  }
+
+  return `the ${anchor.toLowerCase()} artwork`;
+}
+
+function getSemanticLeadSignalTokens(semantic: SemanticRecord, templateSignal?: TemplateSignal | null) {
+  return unique([
+    ...toKeywordTokens(getPrimaryDesignAnchor(semantic)),
+    ...toKeywordTokens(semantic.titleCore),
+    ...semantic.visibleKeywords.flatMap((keyword) => toKeywordTokens(keyword)),
+    ...semantic.inferredKeywords.flatMap((keyword) => toKeywordTokens(keyword)),
+    ...(templateSignal?.keywords || []).flatMap((keyword) => toKeywordTokens(keyword)),
+  ])
+    .filter((token) => token.length > 3)
+    .slice(0, 20);
+}
+
+function looksGenericBuyerLead(paragraph: string, semantic: SemanticRecord, templateSignal?: TemplateSignal | null) {
+  const clean = cleanSpaces(paragraph);
+  if (!clean) return true;
+
+  const comparable = normalizeComparableText(clean);
+  const signalTokens = getSemanticLeadSignalTokens(semantic, templateSignal);
+  const hasSignal = signalTokens.some((token) => comparable.includes(token));
+  const genericPattern =
+    /crafted for comfort|perfect for everyday wear|ideal choice|ideal pick|thoughtful gift|versatile addition|pairs well with any outfit|casual wardrobe|share a meaningful statement|anyone seeking inspiration|powerful message|high-quality|loved one/i;
+
+  if (genericPattern.test(clean)) return true;
+  if (!hasSignal && tokenizeForVariety(clean).length < 12) return true;
+  return false;
+}
+
 function buildDefaultLead(semantic: SemanticRecord, localeProfile: LocaleProfile) {
+  const designPhrase = getPrimaryDesignPhrase(semantic);
+  const seed = `${semantic.titleCore}|${semantic.styleOccasion}|${semantic.likelyAudience}|${localeProfile.locale}`;
+
   return [
-    `${capitalizeFirst(semantic.benefitCore)} shape the tone of this ${semantic.productNoun}, giving it a ${semantic.styleOccasion} feel that reads clearly at a glance.`,
-    `It is positioned for ${semantic.likelyAudience} shoppers who want something easy to wear, easy to gift, and strong enough to let the design carry the story.`,
+    pickDeterministicVariant(seed, [
+      `${capitalizeFirst(designPhrase)} gives this ${semantic.productNoun} a ${semantic.styleOccasion} angle that reads clearly at a glance and feels specific from the first scroll.`,
+      `${capitalizeFirst(designPhrase)} keeps the mood of this ${semantic.productNoun} clear, giving it a ${semantic.styleOccasion} feel that lands quickly without sounding generic.`,
+      `This ${semantic.productNoun} uses ${designPhrase.toLowerCase()} to create a ${semantic.styleOccasion} direction that feels easy to read and easy to place.`,
+    ]),
+    pickDeterministicVariant(`${seed}|buyer`, [
+      `It suits ${semantic.likelyAudience} shoppers who want something wearable, giftable, and straightforward about what the design is actually communicating.`,
+      `That direction makes the ${semantic.productNoun} feel easier to trust for everyday wear, gifting, and quick buyer decisions without overexplaining the artwork.`,
+      `The result feels grounded for ${semantic.likelyAudience}, giving the design enough personality to stay wearable, giftable, and easy to understand.`,
+    ]),
   ];
 }
 
@@ -1324,6 +1415,10 @@ export function normalizeLeadParagraphs(
     finalParagraphs.push(normalizedFallback[finalParagraphs.length]);
   }
 
+  if (looksGenericBuyerLead(finalParagraphs[0] || "", semantic, templateSignal)) {
+    finalParagraphs[0] = normalizedFallback[0];
+  }
+
   if (templateSignal) {
     const secondLead = finalParagraphs[1] || "";
     const secondLeadComparable = normalizeComparableText(secondLead);
@@ -1337,15 +1432,13 @@ export function normalizeLeadParagraphs(
         .filter((token) => token.length > 4)
         .some((token) => secondLeadComparable.includes(token)) ||
       templateSignal.keywords.some((keyword) => secondLeadComparable.includes(normalizeComparableText(keyword)));
-    const genericLead =
-      /crafted for comfort|perfect for everyday wear|ideal choice|thoughtful gift|versatile addition|pairs well with any outfit|simply adding a touch|casual wardrobe/i.test(
-        secondLead
-      ) ||
-      tokenizeForVariety(secondLead).length < 10;
+    const genericLead = looksGenericBuyerLead(secondLead, semantic, templateSignal);
 
     if (!mentionsTemplateSignal || genericLead) {
       finalParagraphs[1] = normalizedFallback[1];
     }
+  } else if (looksGenericBuyerLead(finalParagraphs[1] || "", semantic, templateSignal)) {
+    finalParagraphs[1] = normalizedFallback[1];
   }
 
   return finalParagraphs;
@@ -1417,6 +1510,18 @@ export function gradeListing(
   const reasonDetails: ListingReason[] = [];
   const complianceFlags: string[] = [];
   let confidence = 0.56;
+  const strongGrounding =
+    imageTruth.meaningClarity >= 0.84 &&
+    (imageTruth.hasReadableText || imageTruth.visibleText.length > 0 || imageTruth.visibleFacts.length >= 2);
+  const materialUncertainty = imageTruth.uncertainty
+    .filter((summary) => {
+      const normalized = summary.toLowerCase();
+      if (!strongGrounding) return true;
+      return !/specific symbolic meaning|exact interpretation|open to interpretation|exact number|specific features|not explicitly depicted|title seed/i.test(
+        normalized
+      );
+    })
+    .slice(0, 2);
 
   confidence += imageTruth.meaningClarity >= 0.8 ? 0.24 : imageTruth.meaningClarity >= 0.6 ? 0.12 : -0.12;
   confidence += imageTruth.hasReadableText ? 0.05 : -0.04;
@@ -1439,18 +1544,22 @@ export function gradeListing(
     );
   }
 
-  if (imageTruth.ocrWeakness && !/none|clear/i.test(imageTruth.ocrWeakness)) {
+  const softOcrWarning =
+    strongGrounding &&
+    /weak contrast|partial|low contrast/i.test(imageTruth.ocrWeakness) &&
+    (imageTruth.hasReadableText || imageTruth.visibleText.length > 0);
+
+  if (imageTruth.ocrWeakness && !/none|clear/i.test(imageTruth.ocrWeakness) && !softOcrWarning) {
     confidence -= 0.1;
     reasonDetails.push(
       makeReason("ocr_weakness", "warning", "image_truth", "OCR/text legibility is weak or partial.")
     );
   }
 
-  if (imageTruth.uncertainty.length > 0) {
+  if (materialUncertainty.length > 0) {
     confidence -= 0.06;
     reasonDetails.push(
-      ...imageTruth.uncertainty
-        .slice(0, 2)
+      ...materialUncertainty
         .map((summary, index) => makeReason(`image_uncertainty_${index + 1}`, "warning", "image_truth", summary))
     );
   }
@@ -1601,17 +1710,18 @@ function buildTemplateAwareLead(
   if (!templateSignal) return buildDefaultLead(semantic, localeProfile);
 
   const seed = `${semantic.titleCore}|${templateSignal.shortLabel}|${templateSignal.useCase}|${semantic.likelyAudience}`;
+  const designPhrase = getPrimaryDesignPhrase(semantic);
   const firstParagraph = pickDeterministicVariant(seed, [
-    `Built on a ${templateSignal.shortLabel.toLowerCase()} base, this ${semantic.productNoun} feels ready for ${templateSignal.useCase}, supported by ${templateSignal.detailSummary.toLowerCase()}.`,
-    `${capitalizeFirst(templateSignal.detailSummary)} give this ${semantic.productNoun} a more believable foundation for ${templateSignal.useCase}, keeping the design message clear at a glance.`,
-    `This ${semantic.productNoun} uses ${templateSignal.detailSummary.toLowerCase()} to support a ${templateSignal.useCase} angle that feels grounded instead of generic.`,
+    `${capitalizeFirst(designPhrase)} lands on a ${templateSignal.shortLabel.toLowerCase()} base that supports ${templateSignal.useCase} without burying the artwork under raw spec language.`,
+    `The combination of ${designPhrase.toLowerCase()} and ${templateSignal.detailSummary.toLowerCase()} gives this ${semantic.productNoun} a more believable ${templateSignal.useCase} feel from the first glance.`,
+    `${capitalizeFirst(designPhrase)} stays front and center here, while ${templateSignal.detailSummary.toLowerCase()} keep the ${semantic.productNoun} grounded for ${templateSignal.useCase}.`,
   ]);
 
   const secondParagraph = pickDeterministicVariant(`${seed}|buyer`, [
-    `That ${templateSignal.shortLabel.toLowerCase()} foundation helps shoppers picture the design in real rotation without forcing the opener into a raw spec dump.`,
-    `Instead of leaning on stock filler, the product context gives buyers a clearer sense of how the design fits into repeat wear, gifting, and everyday styling.`,
-    `The template details give the artwork a more convincing home, so the listing can stay message-led while still sounding useful for buyers.`,
-    `Those product cues keep the copy grounded for ${templateSignal.useCase}, making the listing feel easier to trust, gift, and wear on repeat.`,
+    `That mix helps ${semantic.likelyAudience} shoppers picture it in repeat wear, gifting, and everyday rotation without turning the opener into a spec dump.`,
+    `It feels easier to trust as a gift or everyday pick because the artwork stays specific while the product context stays practical.`,
+    `The result is a ${semantic.productNoun} that feels wearable, giftable, and clear about what the design is actually communicating.`,
+    `Those product cues keep the description grounded for ${templateSignal.useCase}, so buyers get a clearer sense of how the design fits real use.`,
   ]);
 
   return [
