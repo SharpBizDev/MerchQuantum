@@ -848,6 +848,7 @@ function getReasonStrength(detail: ListingReason) {
 function shouldSuppressWeakReason(detail: ListingReason, imageTruth: ImageTruthRecord, bucketSize: number) {
   const normalized = detail.summary.toLowerCase();
   const strongGrounding =
+    hasStrongReadyGrounding(imageTruth) ||
     imageTruth.meaningClarity >= 0.72 ||
     imageTruth.hasReadableText ||
     imageTruth.visibleText.length > 0 ||
@@ -919,6 +920,21 @@ function polishReasonDetails(reasonDetails: ListingReason[], imageTruth: ImageTr
   }
 
   return mergeReasonDetails(polished);
+}
+
+function isSoftReviewReason(detail: ListingReason, imageTruth: ImageTruthRecord) {
+  if (detail.severity === "info") return true;
+  if (!hasStrongReadyGrounding(imageTruth)) return false;
+  if (detail.stage !== "image_truth") return false;
+
+  const normalized = detail.summary.toLowerCase();
+  return /specific symbolic meaning|exact interpretation|open to interpretation|exact number|specific features|stylized/.test(
+    normalized
+  );
+}
+
+function getReviewBlockingReasonDetails(reasonDetails: ListingReason[], imageTruth: ImageTruthRecord) {
+  return reasonDetails.filter((detail) => !isSoftReviewReason(detail, imageTruth));
 }
 
 function reasonFlagsFromDetails(reasonDetails: ListingReason[], complianceFlags: string[]) {
@@ -1190,15 +1206,31 @@ function sanitizeValidatorSignals(
   );
 
   const polishedReasonDetails = polishReasonDetails(filteredReasonDetails, imageTruth);
+  const blockingReasonDetails = getReviewBlockingReasonDetails(polishedReasonDetails, imageTruth);
   const rebuiltReasonFlags = reasonFlagsFromDetails(polishedReasonDetails, filteredComplianceFlags);
+  const blockingReasonFlags = reasonFlagsFromDetails(blockingReasonDetails, filteredComplianceFlags);
+  const readyThreshold = getReadyConfidenceThreshold(imageTruth);
   let grade = validator.grade;
 
   if (validator.confidence < 0.38) {
     grade = "red";
-  } else if (rebuiltReasonFlags.length === 0 && filteredComplianceFlags.length === 0 && validator.confidence >= 0.78) {
+  } else if (blockingReasonFlags.length === 0 && filteredComplianceFlags.length === 0 && validator.confidence >= readyThreshold) {
     grade = "green";
-  } else if (grade === "green" && (rebuiltReasonFlags.length > 0 || filteredComplianceFlags.length > 0)) {
+  } else if (
+    grade === "green" &&
+    (blockingReasonFlags.length > 0 || filteredComplianceFlags.length > 0 || validator.confidence < readyThreshold)
+  ) {
     grade = "orange";
+  }
+
+  if (grade === "green") {
+    return {
+      ...validator,
+      grade,
+      reasonFlags: [],
+      complianceFlags: [],
+      reasonDetails: [],
+    } satisfies ValidatorResult;
   }
 
   return {
@@ -1590,9 +1622,7 @@ export function gradeListing(
   const reasonDetails: ListingReason[] = [];
   const complianceFlags: string[] = [];
   let confidence = 0.56;
-  const strongGrounding =
-    imageTruth.meaningClarity >= 0.84 &&
-    (imageTruth.hasReadableText || imageTruth.visibleText.length > 0 || imageTruth.visibleFacts.length >= 2);
+  const strongGrounding = hasStrongReadyGrounding(imageTruth);
   const materialUncertainty = imageTruth.uncertainty
     .filter((summary) => {
       const normalized = summary.toLowerCase();
@@ -1689,7 +1719,9 @@ export function gradeListing(
   const dedupedCompliance = unique(complianceFlags).slice(0, 4);
   const mergedReasonDetails = mergeReasonDetails(reasonDetails);
   const polishedReasonDetails = polishReasonDetails(mergedReasonDetails, imageTruth);
+  const blockingReasonDetails = getReviewBlockingReasonDetails(polishedReasonDetails, imageTruth);
   const dedupedReasons = reasonFlagsFromDetails(polishedReasonDetails, dedupedCompliance);
+  const readyThreshold = getReadyConfidenceThreshold(imageTruth);
 
   if (confidence < 0.38 || imageTruth.meaningClarity < 0.35) {
     return {
@@ -1703,7 +1735,7 @@ export function gradeListing(
     } satisfies ValidatorResult;
   }
 
-  if (confidence >= 0.78 && dedupedReasons.length === 0 && dedupedCompliance.length === 0) {
+  if (confidence >= readyThreshold && blockingReasonDetails.length === 0 && dedupedCompliance.length === 0) {
     return {
       grade: "green",
       confidence,
@@ -1823,6 +1855,20 @@ function parseImageData(imageDataUrl: string): ParsedImageData | null {
     mimeType: match[1],
     inlineData: match[2],
   };
+}
+
+function hasStrongReadyGrounding(imageTruth: ImageTruthRecord) {
+  return (
+    imageTruth.meaningClarity >= 0.84 &&
+    (imageTruth.hasReadableText ||
+      imageTruth.visibleText.length > 0 ||
+      imageTruth.visibleFacts.length > 0 ||
+      imageTruth.inferredMeaning.length > 0)
+  );
+}
+
+function getReadyConfidenceThreshold(imageTruth: ImageTruthRecord) {
+  return hasStrongReadyGrounding(imageTruth) ? 0.74 : 0.78;
 }
 
 function estimateBase64ByteLength(inlineData: string) {
@@ -2110,16 +2156,20 @@ function normalizeValidator(
     fallback.reasonDetails
   );
   const complianceFlags = normalizeArray(obj.complianceFlags).slice(0, 8);
+  const confidence = clamp(Number(obj.confidence ?? fallback.confidence) || fallback.confidence, 0, 1);
   const effectiveComplianceFlags = complianceFlags.length ? complianceFlags : fallback.complianceFlags;
   const effectiveReasonFlags = reasonFlagsFromDetails(reasonDetails, effectiveComplianceFlags);
+  const readyThreshold = context ? getReadyConfidenceThreshold(context.imageTruth) : 0.78;
+  const blockingReasonDetails = context ? getReviewBlockingReasonDetails(reasonDetails, context.imageTruth) : reasonDetails;
+  const blockingReasonFlags = reasonFlagsFromDetails(blockingReasonDetails, effectiveComplianceFlags);
 
-  if (grade === "green" && (effectiveReasonFlags.length > 0 || effectiveComplianceFlags.length > 0)) {
+  if (grade === "green" && (blockingReasonFlags.length > 0 || effectiveComplianceFlags.length > 0 || confidence < readyThreshold)) {
     grade = "orange";
   }
 
   const normalizedValidator = {
     grade,
-    confidence: clamp(Number(obj.confidence ?? fallback.confidence) || fallback.confidence, 0, 1),
+    confidence,
     reasonFlags: effectiveReasonFlags,
     complianceFlags: effectiveComplianceFlags,
     reasonDetails,

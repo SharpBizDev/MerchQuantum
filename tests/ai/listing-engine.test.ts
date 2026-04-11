@@ -465,6 +465,53 @@ async function main() {
     assert.equal(result.reasonFlags.length, 0);
   });
 
+  await run("validator keeps clearly interpretable symbolic designs ready when only soft ambiguity remains", () => {
+    const semantic: SemanticRecord = {
+      productNoun: "graphic tee",
+      titleCore: "Classic Peace Sign Retro Hippie T-Shirt",
+      benefitCore: "Readable retro peace design for laid-back buyers.",
+      likelyAudience: "retro lifestyle shoppers",
+      styleOccasion: "retro hippie",
+      visibleKeywords: ["peace sign", "retro"],
+      inferredKeywords: ["hippie shirt", "festival tee"],
+      forbiddenClaims: [],
+    };
+
+    const result = gradeListing(
+      {
+        visibleText: [],
+        visibleFacts: ["clear retro peace sign artwork on transparent background"],
+        inferredMeaning: ["peace-forward retro mood", "laid-back hippie style"],
+        dominantTheme: "retro peace",
+        likelyAudience: "retro lifestyle shoppers",
+        likelyOccasion: "casual wear",
+        uncertainty: ["The exact symbolic meaning is open to interpretation."],
+        ocrWeakness: "none",
+        meaningClarity: 0.9,
+        hasReadableText: false,
+      },
+      semantic,
+      {
+        classification: "partial_support",
+        usefulness: 0.56,
+        usefulTokens: ["peace", "retro", "hippie"],
+        ignoredTokens: [],
+        conflictSeverity: "none",
+        shouldIgnore: false,
+        reason: "filename supports the visible design theme",
+      },
+      semantic.titleCore,
+      [
+        "The retro peace sign artwork gives this graphic tee a clear laid-back vibe that reads quickly even without text.",
+        "It feels easy to wear for festival weekends, casual days, and shoppers who want a recognizable vintage-inspired symbol.",
+      ],
+      ["peace sign shirt", "retro hippie tee", "festival graphic", "vintage peace", "casual retro style"]
+    );
+
+    assert.equal(result.grade, "green");
+    assert.equal(result.reasonFlags.length, 0);
+  });
+
   await run("transparent artwork uses a derived high-contrast analysis image while preserving the untouched upload", async () => {
     const fixture = GOLDEN_CORPUS_FIXTURES.find((entry) => entry.name === "transparent png weak contrast");
     assert.ok(fixture);
@@ -595,6 +642,7 @@ async function main() {
       result.reasonFlags.some((flag) => flag.toLowerCase().includes("specific features of the mountains are unclear")),
       false
     );
+    assert.equal(result.grade === "orange" || result.grade === "red", true);
   });
 
   await run("fallback response remains backward compatible when Gemini is unavailable", async () => {
@@ -952,6 +1000,73 @@ async function main() {
       response.reasonFlags.some((flag) => flag.toLowerCase().includes("filename strongly conflicts")),
       true
     );
+  });
+
+  await run("Gemini validator can stay green when only soft symbolic ambiguity remains", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "Classic Peace Sign Retro Hippie Shirt.png",
+        productFamily: "t-shirt",
+        templateContext: "Comfort Colors 1717 garment-dyed heavyweight tee with relaxed fit and ring-spun cotton.",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async () =>
+          createGeminiResponse(
+            createGeminiPayload({
+              imageTruth: {
+                visibleText: [],
+                visibleFacts: ["clear retro peace sign artwork on transparent background"],
+                inferredMeaning: ["peace-forward retro mood", "laid-back hippie style"],
+                dominantTheme: "retro peace",
+                likelyAudience: "retro lifestyle shoppers",
+                likelyOccasion: "casual wear",
+                uncertainty: ["The exact symbolic meaning is open to interpretation."],
+                ocrWeakness: "none",
+                meaningClarity: 0.9,
+                hasReadableText: false,
+              },
+              filenameAssessment: {
+                classification: "partial_support",
+                usefulness: 0.56,
+                usefulTokens: ["peace", "retro", "hippie"],
+                ignoredTokens: [],
+                conflictSeverity: "none",
+                shouldIgnore: false,
+                reason: "filename supports the visible design theme",
+              },
+              semanticRecord: {
+                titleCore: "Classic Peace Sign Retro Hippie T-Shirt",
+                benefitCore: "Readable retro peace design for laid-back buyers.",
+                likelyAudience: "retro lifestyle shoppers",
+                styleOccasion: "retro hippie",
+                visibleKeywords: ["peace sign", "retro"],
+                inferredKeywords: ["hippie shirt", "festival tee"],
+                forbiddenClaims: [],
+              },
+              canonicalTitle: "Classic Peace Sign Retro Hippie T-Shirt",
+              canonicalLeadParagraphs: [
+                "The retro peace sign graphic gives this shirt a clear vintage mood that reads fast without relying on extra filler.",
+                "It lands as an easy festival-ready or casual everyday design for shoppers who want a recognizable peace-forward look.",
+              ],
+              validator: {
+                grade: "green",
+                confidence: 0.84,
+                reasonFlags: ["The exact symbolic meaning is open to interpretation."],
+                complianceFlags: [],
+                reasonDetails: [],
+              },
+            })
+          ),
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    assert.equal(response.grade, "green");
+    assert.equal(response.reasonFlags.length, 0);
   });
 
   await run("Gemini validator filters unsupported compliance flags on faith conflict cases", async () => {
