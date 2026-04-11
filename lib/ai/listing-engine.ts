@@ -314,4 +314,175 @@ const COMPLIANCE_RULE_PACKS = [
     ],
   },
 ] as const;
-const GEMINI_RESPONSE_SCHEMA = { type: "OBJECT", ...
+
+const GEMINI_RESPONSE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    imageTruth: {
+      type: "OBJECT",
+      properties: {
+        visibleText: { type: "ARRAY", items: { type: "STRING" } },
+        visibleFacts: { type: "ARRAY", items: { type: "STRING" } },
+        inferredMeaning: { type: "ARRAY", items: { type: "STRING" } },
+        dominantTheme: { type: "STRING" },
+        likelyAudience: { type: "STRING" },
+        likelyOccasion: { type: "STRING" },
+        uncertainty: { type: "ARRAY", items: { type: "STRING" } },
+        ocrWeakness: { type: "STRING" },
+        meaningClarity: { type: "NUMBER" },
+        hasReadableText: { type: "BOOLEAN" },
+      },
+      required: [
+        "visibleText",
+        "visibleFacts",
+        "inferredMeaning",
+        "dominantTheme",
+        "likelyAudience",
+        "likelyOccasion",
+        "uncertainty",
+        "ocrWeakness",
+        "meaningClarity",
+        "hasReadableText",
+      ],
+    },
+    filenameAssessment: {
+      type: "OBJECT",
+      properties: {
+        classification: { type: "STRING" },
+        usefulness: { type: "NUMBER" },
+        usefulTokens: { type: "ARRAY", items: { type: "STRING" } },
+        ignoredTokens: { type: "ARRAY", items: { type: "STRING" } },
+        conflictSeverity: { type: "STRING" },
+        shouldIgnore: { type: "BOOLEAN" },
+        reason: { type: "STRING" },
+      },
+      required: ["classification", "usefulness", "usefulTokens", "ignoredTokens", "reason"],
+    },
+    semanticRecord: {
+      type: "OBJECT",
+      properties: {
+        productNoun: { type: "STRING" },
+        titleCore: { type: "STRING" },
+        benefitCore: { type: "STRING" },
+        likelyAudience: { type: "STRING" },
+        styleOccasion: { type: "STRING" },
+        visibleKeywords: { type: "ARRAY", items: { type: "STRING" } },
+        inferredKeywords: { type: "ARRAY", items: { type: "STRING" } },
+        forbiddenClaims: { type: "ARRAY", items: { type: "STRING" } },
+      },
+      required: [
+        "productNoun",
+        "titleCore",
+        "benefitCore",
+        "likelyAudience",
+        "styleOccasion",
+        "visibleKeywords",
+        "inferredKeywords",
+        "forbiddenClaims",
+      ],
+    },
+    marketplaceDrafts: {
+      type: "OBJECT",
+      properties: {
+        etsy: {
+          type: "OBJECT",
+          properties: {
+            title: { type: "STRING" },
+            leadParagraphs: { type: "ARRAY", items: { type: "STRING" } },
+            discoveryTerms: { type: "ARRAY", items: { type: "STRING" } },
+          },
+          required: ["title", "leadParagraphs", "discoveryTerms"],
+        },
+        amazon: {
+          type: "OBJECT",
+          properties: {
+            title: { type: "STRING" },
+            leadParagraphs: { type: "ARRAY", items: { type: "STRING" } },
+            discoveryTerms: { type: "ARRAY", items: { type: "STRING" } },
+          },
+          required: ["title", "leadParagraphs", "discoveryTerms"],
+        },
+        ebay: {
+          type: "OBJECT",
+          properties: {
+            title: { type: "STRING" },
+            leadParagraphs: { type: "ARRAY", items: { type: "STRING" } },
+            discoveryTerms: { type: "ARRAY", items: { type: "STRING" } },
+          },
+          required: ["title", "leadParagraphs", "discoveryTerms"],
+        },
+        tiktokShop: {
+          type: "OBJECT",
+          properties: {
+            title: { type: "STRING" },
+            leadParagraphs: { type: "ARRAY", items: { type: "STRING" } },
+            discoveryTerms: { type: "ARRAY", items: { type: "STRING" } },
+          },
+          required: ["title", "leadParagraphs", "discoveryTerms"],
+        },
+      },
+      required: ["etsy", "amazon", "ebay", "tiktokShop"],
+    },
+    validator: {
+      type: "OBJECT",
+      properties: {
+        grade: { type: "STRING" },
+        confidence: { type: "NUMBER" },
+        reasonFlags: { type: "ARRAY", items: { type: "STRING" } },
+        complianceFlags: { type: "ARRAY", items: { type: "STRING" } },
+        reasonDetails: {
+          type: "ARRAY",
+          items: {
+            type: "OBJECT",
+            properties: {
+              code: { type: "STRING" },
+              severity: { type: "STRING" },
+              stage: { type: "STRING" },
+              summary: { type: "STRING" },
+            },
+            required: ["code", "severity", "stage", "summary"],
+          },
+        },
+      },
+      required: ["grade", "confidence", "reasonFlags", "complianceFlags"],
+    },
+    canonicalTitle: { type: "STRING" },
+    canonicalLeadParagraphs: { type: "ARRAY", items: { type: "STRING" } },
+  },
+  required: [
+    "imageTruth",
+    "filenameAssessment",
+    "semanticRecord",
+    "marketplaceDrafts",
+    "validator",
+    "canonicalTitle",
+    "canonicalLeadParagraphs",
+  ],
+};
+
+function cleanSpaces(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function stripExtension(value: string) {
+  return value.replace(/\.[a-z0-9]{2,5}$/i, "");
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function titleCaseWord(word: string) {
+  if (!word) return word;
+  const upper = word.toUpperCase();
+  if (upper === "T-SHIRT") return "T-Shirt";
+  if (["AI", "USA", "DTG", "DTF", "SVG", "PNG", "JPG", "PDF", "DIY"].includes(upper)) return upper;
+  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+}
+
+function normalizeTitle(rawTitle: string, fileName = "", maxChars = MAX_TITLE_CHARS) {
+  const seed = cleanSpaces(stripExtension(rawTitle || fileName || "Product"));
+  const words = seed
+    .replace(/[\/_|]+/g, " ")
+    .replace(/\s*[-â€“â€”]\s*/g, " ")
+    .replaceþÉâ¦ y¶¬{®(š+my×è­ºÞ¾+rŠ{.šf«
