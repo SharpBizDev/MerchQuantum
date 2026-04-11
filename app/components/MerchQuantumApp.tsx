@@ -1178,7 +1178,7 @@ export default function MerchQuantumApp() {
   const [runStatus, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
-  const [attentionTarget, setAttentionTarget] = useState<"provider" | "token" | "import" | null>(null);
+  const [attentionTarget, setAttentionTarget] = useState<"provider" | "token" | "import" | "shop" | "template" | null>(null);
 
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
   const isLiveProvider = selectedProvider?.isLive || false;
@@ -1251,7 +1251,7 @@ export default function MerchQuantumApp() {
     return `/api/providers/${path}`;
   }
 
-  function triggerAttentionCue(target: "provider" | "token" | "import") {
+  function triggerAttentionCue(target: "provider" | "token" | "import" | "shop" | "template") {
     setAttentionTarget(target);
     window.clearTimeout((triggerAttentionCue as typeof triggerAttentionCue & { timeoutId?: number }).timeoutId);
     (triggerAttentionCue as typeof triggerAttentionCue & { timeoutId?: number }).timeoutId = window.setTimeout(() => {
@@ -1263,6 +1263,8 @@ export default function MerchQuantumApp() {
     if (!provider) return "provider" as const;
     if (!connected) return "token" as const;
     if (includeImportStep && images.length === 0) return "import" as const;
+    if (!shopId) return "shop" as const;
+    if (!template) return "template" as const;
     return null;
   }
 
@@ -2009,12 +2011,12 @@ export default function MerchQuantumApp() {
           >
             {guidanceStep === "template" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-violet-500/80 to-transparent" /> : null}
             <div className="grid items-stretch gap-3 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)]">
-              <div>
-                <Select
-                  value={shopId}
-                  className={shopId ? "text-[13px] font-normal text-slate-900 dark:text-slate-100" : "font-medium text-slate-500 dark:text-slate-400"}
-                  disabled={!availableShops.length}
-                  onChange={(e) => {
+                <div className={attentionTarget === "shop" ? "rounded-2xl ring-2 ring-violet-400/70 shadow-[0_0_0_1px_rgba(167,139,250,0.22),0_22px_55px_-30px_rgba(124,58,237,0.6)] animate-pulse" : ""}>
+                  <Select
+                    value={shopId}
+                    className={shopId ? "text-[13px] font-normal text-slate-900 dark:text-slate-100" : "font-medium text-slate-500 dark:text-slate-400"}
+                    disabled={!availableShops.length}
+                    onChange={(e) => {
                     const nextShopId = e.target.value;
                     setShopId(nextShopId);
                     setProductId("");
@@ -2033,15 +2035,15 @@ export default function MerchQuantumApp() {
                       {shop.title}
                     </option>
                   ))}
-                </Select>
-              </div>
+                  </Select>
+                </div>
 
-              <div>
-                <Select
-                  value={productId}
-                  className={productId ? "text-[13px] font-normal text-slate-900 dark:text-slate-100" : "font-medium text-slate-500 dark:text-slate-400"}
-                  disabled={!shopId || loadingProducts}
-                  onChange={(e) => setProductId(e.target.value)}
+                <div className={attentionTarget === "template" ? "rounded-2xl ring-2 ring-violet-400/70 shadow-[0_0_0_1px_rgba(167,139,250,0.22),0_22px_55px_-30px_rgba(124,58,237,0.6)] animate-pulse" : ""}>
+                  <Select
+                    value={productId}
+                    className={productId ? "text-[13px] font-normal text-slate-900 dark:text-slate-100" : "font-medium text-slate-500 dark:text-slate-400"}
+                    disabled={!shopId || loadingProducts}
+                    onChange={(e) => setProductId(e.target.value)}
                 >
                   <option value="">
                     {loadingProducts
