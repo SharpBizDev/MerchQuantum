@@ -686,6 +686,7 @@ function looksClippedLeadParagraph(value: string) {
   if (!hasTerminalSentencePunctuation(clean)) return true;
 
   const withoutEnding = clean.replace(/[.!?]["')\]]*$/, "").trim();
+  if (/\b(?:or|and)\s+(?:simply|just|even)\s*$/i.test(withoutEnding)) return true;
   const trailingWord = withoutEnding.split(/\s+/).pop()?.toLowerCase() || "";
   return INCOMPLETE_ENDING_WORDS.has(trailingWord);
 }
@@ -927,21 +928,73 @@ function reasonFlagsFromDetails(reasonDetails: ListingReason[], complianceFlags:
   return unique([...fromDetails, ...complianceFlags]).slice(0, 6);
 }
 
+function isWeakImageTitleCandidate(value: string) {
+  const comparable = normalizeComparableText(stripLeadProductWords(value));
+  if (!comparable) return true;
+  if (/^(graphic|design|artwork|art|style|message|slogan|scene|illustration|look|vibe)$/.test(comparable)) {
+    return true;
+  }
+  if (
+    /white lettering|black lettering|clean transparent design|transparent design|transparent artwork|text on|lettering on|clean readable slogan|readable slogan|bold lettering|low contrast/i.test(
+      comparable
+    )
+  ) {
+    return true;
+  }
+
+  return comparable.split(/\s+/).filter(Boolean).length > 9;
+}
+
 function getVisibleTextSeed(imageTruth: ImageTruthRecord) {
-  const visibleSeed = normalizeTitle(imageTruth.visibleText.slice(0, 2).join(" "), "");
-  return visibleSeed || normalizeTitle(imageTruth.visibleFacts.slice(0, 1).join(" "), "");
+  const candidates = unique([...imageTruth.visibleText, ...imageTruth.visibleFacts]);
+  for (const candidate of candidates) {
+    if (isWeakImageTitleCandidate(candidate)) continue;
+    const normalized = normalizeTitle(candidate, "");
+    if (normalized) return normalized;
+  }
+
+  return "";
+}
+
+function getImageDrivenTitleSeed(imageTruth: ImageTruthRecord) {
+  const visibleSeed = getVisibleTextSeed(imageTruth);
+  if (visibleSeed) return visibleSeed;
+
+  const candidates = unique([...imageTruth.inferredMeaning, imageTruth.dominantTheme, imageTruth.likelyOccasion]);
+  for (const candidate of candidates) {
+    if (isWeakImageTitleCandidate(candidate)) continue;
+    const normalized = normalizeTitle(candidate, "");
+    if (normalized) return normalized;
+  }
+
+  return "";
+}
+
+function hasStrongImageGrounding(imageTruth: ImageTruthRecord) {
+  return (
+    imageTruth.meaningClarity >= 0.8 &&
+    (imageTruth.hasReadableText ||
+      imageTruth.visibleText.length > 0 ||
+      imageTruth.visibleFacts.length > 0 ||
+      imageTruth.inferredMeaning.length > 0)
+  );
 }
 
 function chooseTitleSeed(input: ListingRequest, imageTruth: ImageTruthRecord, filenameAssessment: FilenameAssessment) {
-  const explicitTitle = normalizeTitle(input.title || "", input.fileName || "");
+  const explicitTitle = cleanSpaces(input.title || "") ? normalizeTitle(input.title || "", "") : "";
   if (explicitTitle) return explicitTitle;
 
-  const visibleSeed = getVisibleTextSeed(imageTruth);
-  if (visibleSeed && (filenameAssessment.shouldIgnore || filenameAssessment.classification === "weak_or_generic")) {
-    return visibleSeed;
+  const imageDrivenSeed = getImageDrivenTitleSeed(imageTruth);
+  if (
+    imageDrivenSeed &&
+    (hasStrongImageGrounding(imageTruth) ||
+      filenameAssessment.shouldIgnore ||
+      filenameAssessment.classification !== "strong_support")
+  ) {
+    return imageDrivenSeed;
   }
 
-  return normalizeTitle(input.fileName || visibleSeed || "Product", visibleSeed || "");
+  return normalizeTitle(input.fileName || imageDrivenSeed || "Product", imageDrivenSeed || "");
 }
 
 function normalizeComparableText(value: string) {
@@ -1374,7 +1427,7 @@ function looksGenericBuyerLead(paragraph: string, semantic: SemanticRecord, temp
   const signalTokens = getSemanticLeadSignalTokens(semantic, templateSignal);
   const hasSignal = signalTokens.some((token) => comparable.includes(token));
   const genericPattern =
-    /crafted for comfort|perfect for everyday wear|ideal choice|ideal pick|thoughtful gift|versatile addition|pairs well with any outfit|casual wardrobe|share a meaningful statement|anyone seeking inspiration|powerful message|high-quality|loved one/i;
+    /crafted for comfort|perfect for everyday wear|ideal choice|ideal pick|thoughtful gift|versatile addition|pairs well with any outfit|casual wardrobe|share a meaningful statement|anyone seeking inspiration|powerful message|high-quality|loved one|music festivals|casual outings|or simply\b|conversation starter/i;
 
   if (genericPattern.test(clean)) return true;
   if (!hasSignal && tokenizeForVariety(clean).length < 12) return true;
@@ -1392,9 +1445,9 @@ function buildDefaultLead(semantic: SemanticRecord, localeProfile: LocaleProfile
       `This ${semantic.productNoun} uses ${designPhrase.toLowerCase()} to create a ${semantic.styleOccasion} direction that feels easy to read and easy to place.`,
     ]),
     pickDeterministicVariant(`${seed}|buyer`, [
-      `It suits ${semantic.likelyAudience} shoppers who want something wearable, giftable, and straightforward about what the design is actually communicating.`,
-      `That direction makes the ${semantic.productNoun} feel easier to trust for everyday wear, gifting, and quick buyer decisions without overexplaining the artwork.`,
-      `The result feels grounded for ${semantic.likelyAudience}, giving the design enough personality to stay wearable, giftable, and easy to understand.`,
+      `It gives buyers a quicker read on ${designPhrase.toLowerCase()}, so the ${semantic.productNoun} feels specific before any template details have to do the heavy lifting.`,
+      `That ${semantic.styleOccasion} direction keeps ${designPhrase.toLowerCase()} doing the work, which helps ${semantic.likelyAudience} shoppers understand the design without leaning on filler copy.`,
+      `The design stays clear enough to sell the mood on first impression, giving ${semantic.likelyAudience} shoppers a better sense of the artwork than a spec-led opener would.`,
     ]),
   ];
 }
@@ -1739,16 +1792,16 @@ function buildTemplateAwareLead(
   const seed = `${semantic.titleCore}|${templateSignal.shortLabel}|${templateSignal.useCase}|${semantic.likelyAudience}`;
   const designPhrase = getPrimaryDesignPhrase(semantic);
   const firstParagraph = pickDeterministicVariant(seed, [
-    `${capitalizeFirst(designPhrase)} lands on a ${templateSignal.shortLabel.toLowerCase()} base that supports ${templateSignal.useCase} without burying the artwork under raw spec language.`,
-    `The combination of ${designPhrase.toLowerCase()} and ${templateSignal.detailSummary.toLowerCase()} gives this ${semantic.productNoun} a more believable ${templateSignal.useCase} feel from the first glance.`,
-    `${capitalizeFirst(designPhrase)} stays front and center here, while ${templateSignal.detailSummary.toLowerCase()} keep the ${semantic.productNoun} grounded for ${templateSignal.useCase}.`,
+    `${capitalizeFirst(designPhrase)} stays front and center, while the ${templateSignal.shortLabel.toLowerCase()} base gives this ${semantic.productNoun} enough real-world context to suit ${templateSignal.useCase}.`,
+    `${capitalizeFirst(designPhrase)} sets the tone immediately, and ${templateSignal.detailSummary.toLowerCase()} help the ${semantic.productNoun} feel believable for ${templateSignal.useCase} without turning the opener into a spec sheet.`,
+    `The ${templateSignal.shortLabel.toLowerCase()} base supports ${designPhrase.toLowerCase()} without burying the artwork in raw product details, so the ${semantic.productNoun} still reads design-first for ${templateSignal.useCase}.`,
   ]);
 
   const secondParagraph = pickDeterministicVariant(`${seed}|buyer`, [
-    `That mix helps ${semantic.likelyAudience} shoppers picture it in repeat wear, gifting, and everyday rotation without turning the opener into a spec dump.`,
-    `It feels easier to trust as a gift or everyday pick because the artwork stays specific while the product context stays practical.`,
-    `The result is a ${semantic.productNoun} that feels wearable, giftable, and clear about what the design is actually communicating.`,
-    `Those product cues keep the description grounded for ${templateSignal.useCase}, so buyers get a clearer sense of how the design fits real use.`,
+    `Buyers get a quicker read on ${designPhrase.toLowerCase()} first, while the product cues quietly support repeat wear, gifting, and everyday use.`,
+    `That balance keeps ${designPhrase.toLowerCase()} doing the real work up front, so the description feels specific to the artwork before the template details take over.`,
+    `It gives ${semantic.likelyAudience} shoppers a clearer sense of the ${semantic.styleOccasion} mood, while the product context backs up the listing without turning it into a spec dump.`,
+    `The opener stays centered on ${designPhrase.toLowerCase()}, which makes the ${semantic.productNoun} feel more intentional than a generic blank-product description.`,
   ]);
 
   return [
@@ -2085,7 +2138,7 @@ function normalizeValidator(
 function buildMasterPrompt(
   input: ListingRequest,
   filenameAssessment: FilenameAssessment,
-  normalizedTitleSeed: string,
+  explicitTitleSeed: string,
   retryContext: RetryContext,
   localeProfile: LocaleProfile,
   visionPromptHint?: string
@@ -2108,6 +2161,8 @@ function buildMasterPrompt(
     "- Keep discovery terms relevant and non-redundant.",
     "- Treat templateContext as factual product/spec context, not as buyer-facing lead copy.",
     "- Use templateContext to understand the blank product, fit, materials, and merchandising angle without dumping raw spec language into the opener.",
+    "- Use fileName only as supporting evidence after the image signal. If the artwork is clear, do not let the filename write the title or opening copy for you.",
+    "- Strong transparent PNG artwork with clean readable text or simple legible iconography still counts as meaningful visual evidence even when the canvas is sparse.",
     visionPromptHint ? `- ${visionPromptHint}` : "",
     "",
     "STEP 1 IMAGE TRUTH EXTRACTION",
@@ -2133,12 +2188,14 @@ function buildMasterPrompt(
     "- Produce concise, readable, marketplace-usable titles.",
     "- Avoid hype stuffing, fake urgency, and unsupported claims.",
     "- Expand apparel shorthand into natural buyer-facing nouns; do not reduce product nouns to single-letter fragments like T.",
+    "- When the image meaning is clear, derive the title from the visible message, motif, or theme before borrowing filename words.",
     "",
     "STEP 5 TWO-LAYER DESCRIPTION GENERATION",
     "- Produce two lead paragraphs only for buyer-facing opening copy.",
     "- Keep persuasion copy separate from factual template/spec content.",
     "- Never start the first lead paragraph with the full title string.",
     "- Make the first lead paragraph name the visible message, motif, or design meaning directly so the opener feels specific to the artwork instead of generic template filler.",
+    "- Both lead paragraphs must end as complete sentences with no trailing fragments, ellipses, or unfinished list clauses.",
     "",
     "STEP 6 DISCOVERY TERMS BY MARKETPLACE",
     "- Render internal channel-aware outputs for Etsy, Amazon, eBay, and TikTok Shop.",
@@ -2158,8 +2215,8 @@ function buildMasterPrompt(
     "",
     "INPUT CONTEXT",
     `productFamily: ${productFamily}`,
-    `titleSeed: ${normalizedTitleSeed}`,
-    `fileName: ${input.fileName || "none"}`,
+    `titleSeed: ${explicitTitleSeed || "none"}`,
+    `fileNameSupport: ${input.fileName || "none"}`,
     `templateContext: ${templateContext}`,
     `locale: ${localeProfile.locale}`,
     `retryAttempt: ${retryContext.attempt}`,
@@ -2241,12 +2298,12 @@ async function callGeminiRecord(
   const visionInputs = await prepareVisionInputs(String(input.imageDataUrl || ""));
   if (!visionInputs) return null;
 
-  const normalizedTitleSeed = normalizeTitle(input.title || "", input.fileName || "");
+  const explicitTitleSeed = cleanSpaces(input.title || "") ? normalizeTitle(input.title || "", "") : "";
   const filenameAssessmentSeed = assessFilenameRelevance(input.fileName || "", []);
   const prompt = buildMasterPrompt(
     input,
     filenameAssessmentSeed,
-    normalizedTitleSeed,
+    explicitTitleSeed,
     options.retryContext,
     options.localeProfile,
     visionInputs.promptHint
@@ -2302,14 +2359,14 @@ async function callGeminiRecord(
   if (!parsed || typeof parsed !== "object") return null;
 
   const parsedObj = parsed as Record<string, unknown>;
-  const imageTruth = normalizeImageTruth(parsedObj.imageTruth, normalizedTitleSeed);
+  const imageTruth = normalizeImageTruth(parsedObj.imageTruth, explicitTitleSeed);
   const filenameAssessment = assessFilenameRelevance(input.fileName || "", imageTruth.visibleText);
   const semanticFallback = buildSemanticRecord(input, imageTruth, filenameAssessment);
   const semantic = normalizeSemantic(parsedObj.semanticRecord, semanticFallback);
 
   const canonicalTitle = normalizeTitle(
-    String(parsedObj.canonicalTitle || parsedObj.title || semantic.titleCore || normalizedTitleSeed),
-    input.fileName || normalizedTitleSeed
+    String(parsedObj.canonicalTitle || parsedObj.title || semantic.titleCore || explicitTitleSeed),
+    input.fileName || explicitTitleSeed
   );
 
   const canonicalLeads = normalizeLeadParagraphs(
@@ -2359,7 +2416,7 @@ async function callGeminiRecord(
       ...validator,
       reasonFlags,
     },
-    canonicalTitle: canonicalTitle || marketplaceDrafts.etsy.title || semantic.titleCore || normalizedTitleSeed || "Product",
+    canonicalTitle: canonicalTitle || marketplaceDrafts.etsy.title || semantic.titleCore || explicitTitleSeed || "Product",
     canonicalLeadParagraphs: canonicalLeads,
   } satisfies EngineRecord;
 }

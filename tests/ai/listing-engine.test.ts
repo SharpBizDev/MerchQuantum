@@ -261,6 +261,34 @@ async function main() {
     assert.equal(/faith|message|garment-dyed|ring-spun|everyday/i.test(leads[0]), true);
   });
 
+  await run("lead paragraph normalization replaces generic trailing filler with a complete design-aware sentence", () => {
+    const semantic: SemanticRecord = {
+      productNoun: "graphic tee",
+      titleCore: "Retro Peace Sign Graphic Tee",
+      benefitCore: "Specific retro artwork copy for vintage-style buyers.",
+      likelyAudience: "retro art shoppers",
+      styleOccasion: "retro hippie",
+      visibleKeywords: ["peace sign", "retro"],
+      inferredKeywords: ["hippie shirt", "festival style"],
+      forbiddenClaims: [],
+    };
+
+    const leads = normalizeLeadParagraphs(
+      "Retro Peace Sign Graphic Tee",
+      [
+        "The retro peace sign graphic gives this tee a laid-back vintage mood that reads quickly at a glance.",
+        "Ideal for casual outings, music festivals, or simply...",
+      ],
+      semantic,
+      undefined,
+      "Comfort Colors 1717 heavyweight garment-dyed t-shirt. 100% ring-spun cotton. Relaxed fit with double-needle stitching and shoulder-to-shoulder twill tape. Great for everyday casual wear and giftable boutique apparel."
+    );
+
+    assert.equal(/music festivals|or simply/i.test(leads[1]), false);
+    assert.equal(/[.!?]["')\]]*$/.test(leads[1]), true);
+    assert.equal(/peace|retro|hippie|artwork|design/i.test(leads[1]), true);
+  });
+
   await run("validator grades green for clear records and red for unclear or repetitive records", () => {
     const semantic: SemanticRecord = {
       productNoun: "graphic tee",
@@ -478,6 +506,37 @@ async function main() {
     assert.equal(/untouched original transparent upload/i.test(capturedPrompt), true);
   });
 
+  await run("Gemini prompt keeps filename as support-only context when no explicit title is supplied", async () => {
+    let capturedPrompt = "";
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        fileName: "Classic Peace Sign Retro Hippie Shirt.png",
+        title: "",
+        productFamily: "t-shirt",
+        templateContext:
+          "Comfort Colors 1717 heavyweight garment-dyed t-shirt. 100% ring-spun cotton. Relaxed fit with double-needle stitching and shoulder-to-shoulder twill tape. Great for everyday casual wear and giftable boutique apparel.",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_url, init) => {
+          const requestBody = JSON.parse(String(init?.body || "{}"));
+          const parts = requestBody?.contents?.[0]?.parts || [];
+          capturedPrompt = String(parts[0]?.text || "");
+
+          return createGeminiResponse(createGeminiPayload());
+        },
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    assert.equal(/titleSeed: none/i.test(capturedPrompt), true);
+    assert.equal(/fileNameSupport: Classic Peace Sign Retro Hippie Shirt\.png/i.test(capturedPrompt), true);
+    assert.equal(/do not let the filename write the title or opening copy/i.test(capturedPrompt), true);
+  });
+
   await run("validator keeps the strongest ambiguity warning while preserving real OCR clarity concerns", () => {
     const semantic: SemanticRecord = {
       productNoun: "graphic tee",
@@ -639,7 +698,11 @@ async function main() {
             } else {
               assert.equal(inlineData.data, image.base64, `${fixture.name}: exact image fixture should be sent to Gemini`);
             }
-            assert.equal(prompt.includes(`fileName: ${fixture.request.fileName}`), true, `${fixture.name}: prompt should include request filename`);
+            assert.equal(
+              prompt.includes(`fileNameSupport: ${fixture.request.fileName}`),
+              true,
+              `${fixture.name}: prompt should include request filename as support context`
+            );
             assert.equal(
               prompt.includes(`productFamily: ${fixture.request.productFamily}`),
               true,
