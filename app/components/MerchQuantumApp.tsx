@@ -67,6 +67,7 @@ type Img = {
   name: string;
   file: File;
   preview: string;
+  previewBackground: string;
   cleaned: string;
   final: string;
   finalDescription: string;
@@ -160,6 +161,7 @@ const DISPLAY_ALPHA_THRESHOLD = 12;
 const DISPLAY_TRANSPARENCY_RATIO_THRESHOLD = 0.04;
 const DISPLAY_DARK_BACKGROUND = "#000000";
 const DISPLAY_LIGHT_BACKGROUND = "#FFFFFF";
+const DISPLAY_NEUTRAL_BACKGROUND = "#020616";
 
 const STOP_WORDS = new Set([
   "the",
@@ -516,7 +518,7 @@ async function analyzeArtworkBounds(file: File): Promise<ArtworkBounds> {
   }
 }
 
-async function createContrastSafePreview(file: File): Promise<string> {
+async function createContrastSafePreview(file: File): Promise<{ src: string; background: string }> {
   let keepObjectUrl = false;
   const objectUrl = URL.createObjectURL(file);
 
@@ -536,7 +538,7 @@ async function createContrastSafePreview(file: File): Promise<string> {
 
     if (!sampleCtx) {
       keepObjectUrl = true;
-      return objectUrl;
+      return { src: objectUrl, background: DISPLAY_NEUTRAL_BACKGROUND };
     }
 
     sampleCtx.clearRect(0, 0, sampleWidth, sampleHeight);
@@ -563,7 +565,7 @@ async function createContrastSafePreview(file: File): Promise<string> {
     const transparencyRatio = totalPixels > 0 ? transparentPixelCount / totalPixels : 0;
     if (!visiblePixelCount || transparencyRatio < DISPLAY_TRANSPARENCY_RATIO_THRESHOLD) {
       keepObjectUrl = true;
-      return objectUrl;
+      return { src: objectUrl, background: DISPLAY_NEUTRAL_BACKGROUND };
     }
 
     const renderScale = Math.min(1, DISPLAY_PREVIEW_MAX_DIMENSION / longestEdge);
@@ -576,17 +578,18 @@ async function createContrastSafePreview(file: File): Promise<string> {
 
     if (!renderCtx) {
       keepObjectUrl = true;
-      return objectUrl;
+      return { src: objectUrl, background: DISPLAY_NEUTRAL_BACKGROUND };
     }
 
-    renderCtx.fillStyle = choosePreviewBackground(totalAlpha > 0 ? weightedLuminance / totalAlpha : null);
+    const previewBackground = choosePreviewBackground(totalAlpha > 0 ? weightedLuminance / totalAlpha : null);
+    renderCtx.fillStyle = previewBackground;
     renderCtx.fillRect(0, 0, renderWidth, renderHeight);
     renderCtx.drawImage(img, 0, 0, renderWidth, renderHeight);
 
-    return renderCanvas.toDataURL("image/png");
+    return { src: renderCanvas.toDataURL("image/png"), background: previewBackground };
   } catch {
     keepObjectUrl = true;
-    return objectUrl;
+    return { src: objectUrl, background: DISPLAY_NEUTRAL_BACKGROUND };
   } finally {
     if (!keepObjectUrl) {
       URL.revokeObjectURL(objectUrl);
@@ -1597,11 +1600,13 @@ export default function MerchQuantumApp() {
       const leadDescription = templateDescription.trim()
         ? buildDescription(cleaned, templateDescription)
         : buildLeadOnlyDescription(buildLeadParagraphs(cleaned, templateDescription));
+      const preview = await createContrastSafePreview(file);
       return {
         id: makeId(),
         name: file.name,
         file,
-        preview: await createContrastSafePreview(file),
+        preview: preview.src,
+        previewBackground: preview.background,
         cleaned,
         final: cleaned,
         finalDescription: leadDescription,
@@ -2099,8 +2104,11 @@ export default function MerchQuantumApp() {
                           >
                             x
                           </button>
-                          <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit]">
-                            {img.preview ? <img src={img.preview} alt={img.final} className="max-h-full max-w-full object-contain" /> : null}
+                          <div
+                            className="absolute inset-0 flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit]"
+                            style={{ backgroundColor: img.previewBackground }}
+                          >
+                            {img.preview ? <img src={img.preview} alt={img.final} className="h-full w-full object-contain" /> : null}
                           </div>
                           {img.preview ? (
                             <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-xl group-hover:block ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
