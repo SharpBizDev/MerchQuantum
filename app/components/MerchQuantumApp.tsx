@@ -60,6 +60,8 @@ type AiListingDraft = {
   confidence: number;
   templateReference: string;
   reasonFlags: string[];
+  source: "gemini" | "fallback";
+  grade: "green" | "orange" | "red";
 };
 
 type Img = {
@@ -1134,6 +1136,8 @@ async function requestAiListingDraft({
       confidence: typeof payload?.confidence === "number" ? payload.confidence : 0,
       templateReference: typeof payload?.templateReference === "string" ? payload.templateReference : "",
       reasonFlags,
+      source: payload?.source === "gemini" || payload?.source === "fallback" ? payload.source : "fallback",
+      grade: payload?.grade === "green" || payload?.grade === "orange" || payload?.grade === "red" ? payload.grade : "orange",
     };
   } catch {
     return null;
@@ -1270,7 +1274,8 @@ function getStatusSortValue(status: ReviewStatus) {
 export default function MerchQuantumApp() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const previousPreviewUrlsRef = useRef<string[]>([]);
-  const aiLoopBusyRef = useRef(false);
+  const aiLoopBusyRef = useRef<symbol | null>(null);
+  const activeTemplateKeyRef = useRef("");
 
   const [provider, setProvider] = useState<ProviderId | "">("");
   const [token, setToken] = useState("");
@@ -1300,6 +1305,7 @@ export default function MerchQuantumApp() {
   const availableShops = connected && isLiveProvider ? apiShops : [];
   const productSource = connected && isLiveProvider ? apiProducts : [];
   const templateKey = useMemo(() => `${template?.reference || "no-template"}::${templateDescription.trim()}`, [template?.reference, templateDescription]);
+  const templateReadyForAi = !!template && !!templateDescription.trim() && !loadingTemplateDetails;
 
   const visibleProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1349,7 +1355,10 @@ export default function MerchQuantumApp() {
     : canShowReviewDetail
       ? buildTags(detailTitle, detailDescription, FIXED_TAG_COUNT)
       : [];
-  const isDetailDescriptionLoading = loadingTemplateDetails || !!selectedImage?.aiProcessing;
+  const isDetailDescriptionLoading =
+    loadingTemplateDetails
+    || !!selectedImage?.aiProcessing
+    || !!(selectedImage && templateReadyForAi && selectedImage.processedTemplateKey !== templateKey);
   const guidanceStep = !connected
     ? "connect"
     : images.length === 0
@@ -1411,6 +1420,8 @@ export default function MerchQuantumApp() {
   }, []);
 
   useEffect(() => {
+    activeTemplateKeyRef.current = templateKey;
+    aiLoopBusyRef.current = null;
     setImages((current) =>
       current.map((img) =>
         img.processedTemplateKey === templateKey
@@ -1461,11 +1472,17 @@ export default function MerchQuantumApp() {
   }, [shopId, productId]);
 
   useEffect(() => {
+    if (!templateReadyForAi) return;
     if (aiLoopBusyRef.current) return;
     const nextImage = images.find((img) => !img.aiProcessing && img.processedTemplateKey !== templateKey);
     if (!nextImage) return;
 
-    aiLoopBusyRef.current = true;
+    const requestTemplateKey = templateKey;
+    const requestTemplateDescription = templateDescription;
+    const requestTemplateReference = template?.reference || "";
+    const requestOwner = Symbol(nextImage.id);
+
+    aiLoopBusyRef.current = requestOwner;
     setImages((current) =>
       current.map((img) =>
         img.id === nextImage.id
@@ -1485,8 +1502,8 @@ export default function MerchQuantumApp() {
             body: JSON.stringify({
               imageDataUrl,
               fileName: nextImage.name,
-              templateContext: templateDescription,
-              productFamily: resolveProductFamily(nextImage.cleaned, templateDescription),
+              templateContext: requestTemplateDescription,
+              productFamily: resolveProductFamily(nextImage.cleaned, requestTemplateDescription),
             }),
           },
           60000
@@ -1494,28 +1511,45 @@ export default function MerchQuantumApp() {
 
         const data = await parseResponsePayload(response);
         if (!response.ok) throw new Error(data?.error || `AI request failed with status ${response.status}.`);
+        if (activeTemplateKeyRef.current !== requestTemplateKey) return;
 
         const leadParagraphs = normalizeAiLeadParagraphs(Array.isArray(data?.leadParagraphs) ? data.leadParagraphs : []);
-        const fallbackLead = buildLeadParagraphs(nextImage.cleaned, templateDescription);
+        const fallbackLead = buildLeadParagraphs(nextImage.cleaned, requestTemplateDescription);
         const finalLead = leadParagraphs.length ? leadParagraphs : fallbackLead;
         const fallbackTitle = safeTitle(nextImage.final, nextImage.cleaned);
         const titleFromApi = typeof data?.title === "string" ? data.title : fallbackTitle;
         const finalTitle = safeTitle(titleFromApi, fallbackTitle);
-        const finalDescription = templateDescription.trim()
-          ? buildDescription(finalTitle, templateDescription, finalLead)
+        const finalDescription = requestTemplateDescription.trim()
+          ? buildDescription(finalTitle, requestTemplateDescription, finalLead)
           : buildLeadOnlyDescription(finalLead);
         const tags = buildTags(finalTitle, finalDescription, FIXED_TAG_COUNT);
         const confidence = Number.isFinite(data?.confidence) ? clamp(Number(data.confidence), 0, 1) : 0;
         const reasonFlags = Array.isArray(data?.reasonFlags)
           ? data.reasonFlags.filter((flag: unknown) => typeof flag === "string")
           : [];
-
-        const status: ReviewStatus = confidence >= 0.8 && reasonFlags.length === 0 ? "ready" : "review";
+        const grade = data?.grade === "green" || data?.grade === "orange" || data?.grade === "red"
+          ? data.grade
+          : confidence >= 0.8 && reasonFlags.length === 0
+            ? "green"
+            : "orange";
+        const source = data?.source === "gemini" || data?.source === "fallback"
+          ? data.source
+          : "fallback";
+        const status: ReviewStatus =
+          grade === "green"
+            ? "ready"
+            : grade === "red"
+              ? "error"
+              : "review";
         const statusReason = status === "ready"
           ? "AI draft looks solid."
           : reasonFlags.length
             ? reasonFlags.join(" • ")
-            : "Review the AI draft before upload.";
+            : status === "error"
+              ? "Quantum AI could not generate a usable draft for this image."
+              : source === "fallback"
+                ? "Quantum AI completed this item with fallback output. Review before upload."
+                : "Review the AI draft before upload.";
 
         setImages((current) =>
           current.map((img) =>
@@ -1528,47 +1562,45 @@ export default function MerchQuantumApp() {
                   aiProcessing: false,
                   status,
                   statusReason,
-                  processedTemplateKey: templateKey,
+                  processedTemplateKey: requestTemplateKey,
                   aiDraft: {
                     title: finalTitle,
                     leadParagraphs,
                     model: typeof data?.model === "string" ? data.model : AI_MODEL_LABEL,
                     confidence,
-                    templateReference: template?.reference || "",
+                    templateReference: requestTemplateReference,
                     reasonFlags,
+                    source,
+                    grade,
                   },
                 }
               : img
           )
         );
       } catch (error) {
-        const leadParagraphs = normalizeAiLeadParagraphs(buildLeadParagraphs(nextImage.cleaned, templateDescription));
-        const fallbackTitle = safeTitle(nextImage.final, nextImage.cleaned);
-        const fallbackDescription = templateDescription.trim()
-          ? buildDescription(fallbackTitle, templateDescription, leadParagraphs)
-          : buildLeadOnlyDescription(leadParagraphs);
+        if (activeTemplateKeyRef.current !== requestTemplateKey) return;
         const message = formatApiError(error instanceof Error ? error.message : "Quantum AI could not process this item.");
         setImages((current) =>
           current.map((img) =>
             img.id === nextImage.id
               ? {
                   ...img,
-                  final: fallbackTitle,
-                  finalDescription: fallbackDescription,
-                  tags: buildTags(fallbackTitle, fallbackDescription, FIXED_TAG_COUNT),
                   aiProcessing: false,
-                  status: "review",
+                  status: "error",
                   statusReason: message,
-                  processedTemplateKey: templateKey,
+                  processedTemplateKey: requestTemplateKey,
+                  aiDraft: undefined,
                 }
               : img
           )
         );
       } finally {
-        aiLoopBusyRef.current = false;
+        if (aiLoopBusyRef.current === requestOwner) {
+          aiLoopBusyRef.current = null;
+        }
       }
     })();
-  }, [images, templateDescription, templateKey, template?.reference]);
+  }, [images, template, templateDescription, templateKey, templateReadyForAi]);
 
   function resetProviderState(clearStatus = true) {
     setConnected(false);
