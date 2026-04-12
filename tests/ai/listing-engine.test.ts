@@ -559,6 +559,190 @@ async function main() {
     assert.equal(result.reasonFlags.length, 0);
   });
 
+  await run("validator keeps dark monochrome transparent logo artwork in review instead of failed when image signal is still recoverable", () => {
+    const semantic: SemanticRecord = {
+      productNoun: "graphic tee",
+      titleCore: "Classic Arcade Logo Minimalist Gamer Shirt",
+      benefitCore: "Readable minimalist arcade logo styling for retro gaming buyers.",
+      likelyAudience: "retro gaming fans",
+      styleOccasion: "minimal gamer",
+      visibleKeywords: ["arcade logo", "gamer"],
+      inferredKeywords: ["retro gaming shirt", "minimalist gamer tee"],
+      forbiddenClaims: [],
+    };
+
+    const result = gradeListing(
+      {
+        visibleText: [],
+        visibleFacts: ["dark monochrome arcade-style logo on transparent background"],
+        inferredMeaning: ["retro gamer identity", "minimal arcade brand look"],
+        dominantTheme: "retro arcade",
+        likelyAudience: "retro gaming fans",
+        likelyOccasion: "casual wear",
+        uncertainty: ["Small interior logo details remain stylized rather than fully literal."],
+        ocrWeakness: "low contrast on the untouched transparent render",
+        meaningClarity: 0.33,
+        hasReadableText: false,
+      },
+      semantic,
+      {
+        classification: "partial_support",
+        usefulness: 0.58,
+        usefulTokens: ["arcade", "logo", "gamer"],
+        ignoredTokens: [],
+        conflictSeverity: "none",
+        shouldIgnore: false,
+        reason: "filename supports the visible logo direction",
+      },
+      semantic.titleCore,
+      [
+        "The monochrome arcade logo keeps the design clean and recognizable for buyers who want a simple retro gaming look.",
+        "It reads as a usable gamer tee even when the smallest interior details stay stylized instead of perfectly literal.",
+      ],
+      ["arcade logo shirt", "retro gamer tee", "minimal gamer shirt", "arcade graphic tee", "gaming logo shirt"]
+    );
+
+    assert.equal(result.grade, "orange");
+    assert.equal(result.reasonFlags.some((flag) => flag.toLowerCase().includes("unclear")), false);
+  });
+
+  await run("validator keeps decorative faith-text transparent artwork in review instead of failed when the message is still recoverable", () => {
+    const semantic: SemanticRecord = {
+      productNoun: "graphic tee",
+      titleCore: "Jesus I Believe In You Christian Faith Shirt",
+      benefitCore: "Decorative faith-led message for devotional apparel buyers.",
+      likelyAudience: "christian faith shoppers",
+      styleOccasion: "devotional",
+      visibleKeywords: ["jesus i believe in you", "faith"],
+      inferredKeywords: ["christian faith shirt", "devotional tee"],
+      forbiddenClaims: [],
+    };
+
+    const result = gradeListing(
+      {
+        visibleText: ["jesus i believe in you"],
+        visibleFacts: ["decorative badge-style faith lettering on transparent artwork"],
+        inferredMeaning: ["devotional christian encouragement"],
+        dominantTheme: "christian faith",
+        likelyAudience: "christian faith shoppers",
+        likelyOccasion: "daily devotion",
+        uncertainty: ["Decorative flourishes soften a few letter edges in the raw transparent view."],
+        ocrWeakness: "partial decorative lettering with low contrast in the untouched transparent render",
+        meaningClarity: 0.34,
+        hasReadableText: true,
+      },
+      semantic,
+      {
+        classification: "strong_support",
+        usefulness: 0.8,
+        usefulTokens: ["jesus", "believe", "faith"],
+        ignoredTokens: [],
+        conflictSeverity: "none",
+        shouldIgnore: false,
+        reason: "filename supports the visible message",
+      },
+      semantic.titleCore,
+      [
+        "The Jesus I Believe In You message comes through clearly enough for buyers who want a visible faith-centered design.",
+        "It stays usable for a review-state listing even when decorative badge details make the lettering less than perfect in the raw scan.",
+      ],
+      ["jesus faith shirt", "christian devotional tee", "believe in you shirt", "faith graphic tee", "christian encouragement shirt"]
+    );
+
+    assert.equal(result.grade, "orange");
+    assert.equal(result.reasonFlags.some((flag) => flag.toLowerCase().includes("image meaning is too unclear")), false);
+  });
+
+  await run("validator keeps dense line-art with readable internal text in review instead of failed when the core message survives", () => {
+    const semantic: SemanticRecord = {
+      productNoun: "graphic tee",
+      titleCore: "Discover Decide Defend 1 Peter 3 15 Christian Scripture Tee",
+      benefitCore: "Scripture-forward message supported by bold symbolic line art.",
+      likelyAudience: "faith-based buyers",
+      styleOccasion: "scripture-centered",
+      visibleKeywords: ["discover decide defend", "1 peter 3 15"],
+      inferredKeywords: ["scripture shirt", "christian fingerprint tee"],
+      forbiddenClaims: [],
+    };
+
+    const result = gradeListing(
+      {
+        visibleText: ["discover decide defend", "1 peter 3 15"],
+        visibleFacts: ["dense fingerprint line art with readable scripture-centered text inside the shape"],
+        inferredMeaning: ["apologetics-oriented christian message"],
+        dominantTheme: "scripture-centered",
+        likelyAudience: "faith-based buyers",
+        likelyOccasion: "church wear",
+        uncertainty: ["Outer fingerprint lines add noise around the text, but the core wording remains recoverable."],
+        ocrWeakness: "partial OCR around dense line-art noise",
+        meaningClarity: 0.31,
+        hasReadableText: true,
+      },
+      semantic,
+      {
+        classification: "partial_support",
+        usefulness: 0.7,
+        usefulTokens: ["discover", "decide", "defend", "peter", "faith"],
+        ignoredTokens: [],
+        conflictSeverity: "none",
+        shouldIgnore: false,
+        reason: "filename supports the visible scripture message",
+      },
+      semantic.titleCore,
+      [
+        "The Discover Decide Defend message still reads through the fingerprint line art well enough to anchor the design for buyers.",
+        "It belongs in review rather than failure because the core scripture-driven wording is still meaningfully recoverable.",
+      ],
+      ["discover decide defend shirt", "1 peter 3 15 tee", "christian scripture shirt", "faith fingerprint shirt", "apologetics tee"]
+    );
+
+    assert.equal(result.grade, "orange");
+    assert.equal(result.reasonFlags.some((flag) => flag.toLowerCase().includes("too unclear")), false);
+  });
+
+  await run("validator still preserves legitimate failed cases for truly unreadable transparent artwork", () => {
+    const semantic: SemanticRecord = {
+      productNoun: "graphic tee",
+      titleCore: "Graphic Tee",
+      benefitCore: "Generic placeholder copy.",
+      likelyAudience: "unknown",
+      styleOccasion: "unknown",
+      visibleKeywords: [],
+      inferredKeywords: [],
+      forbiddenClaims: [],
+    };
+
+    const result = gradeListing(
+      {
+        visibleText: [],
+        visibleFacts: [],
+        inferredMeaning: [],
+        dominantTheme: "unknown",
+        likelyAudience: "unknown",
+        likelyOccasion: "unknown",
+        uncertainty: ["Image meaning is too unclear for safe listing generation."],
+        ocrWeakness: "unreadable low-contrast transparent artwork",
+        meaningClarity: 0.18,
+        hasReadableText: false,
+      },
+      semantic,
+      {
+        classification: "weak_or_generic",
+        usefulness: 0.05,
+        usefulTokens: [],
+        ignoredTokens: ["img", "transparent"],
+        conflictSeverity: "none",
+        shouldIgnore: true,
+        reason: "weak filename",
+      },
+      semantic.titleCore,
+      ["Graphic tee.", "Graphic tee."],
+      ["graphic tee"]
+    );
+
+    assert.equal(result.grade, "red");
+  });
+
   await run("transparent artwork uses a derived high-contrast analysis image while preserving the untouched upload", async () => {
     const fixture = GOLDEN_CORPUS_FIXTURES.find((entry) => entry.name === "transparent png weak contrast");
     assert.ok(fixture);
@@ -597,6 +781,50 @@ async function main() {
     assert.equal(/black and white garment-neutral backgrounds/i.test(capturedPrompt), true);
     assert.equal(/cropped close view around the visible artwork bounds/i.test(capturedPrompt), true);
     assert.equal(/untouched original transparent upload/i.test(capturedPrompt), true);
+  });
+
+  await run("dense transparent line-art adds a text-prioritized helper render for OCR-oriented grounding", async () => {
+    const image = await createTransparentSvgDataUrl(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+        <rect width="1200" height="1200" fill="transparent"/>
+        <g fill="none" stroke="#000000" stroke-width="18" stroke-linecap="round">
+          <path d="M280 220 C440 180 760 180 920 220" />
+          <path d="M250 320 C430 270 770 270 950 320" />
+          <path d="M220 430 C420 370 780 370 980 430" />
+          <path d="M200 550 C410 480 790 480 1000 550" />
+          <path d="M220 670 C420 730 780 730 980 670" />
+          <path d="M250 780 C430 830 770 830 950 780" />
+        </g>
+        <text x="205" y="580" font-size="100" font-family="Arial, sans-serif" font-weight="700" fill="#000000">DISCOVER</text>
+        <text x="310" y="690" font-size="92" font-family="Arial, sans-serif" font-weight="700" fill="#000000">DECIDE</text>
+        <text x="330" y="790" font-size="92" font-family="Arial, sans-serif" font-weight="700" fill="#000000">DEFEND</text>
+      </svg>
+    `);
+    let capturedPrompt = "";
+    let capturedImages: Array<{ mimeType?: string; data?: string }> = [];
+
+    await generateListingResponse(
+      {
+        imageDataUrl: image.dataUrl,
+        fileName: "discover-decide-defend-scripture.png",
+        title: "",
+        productFamily: "t-shirt",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_url, init) => {
+          const parts = getGeminiRequestParts(init);
+          capturedPrompt = String(parts[0]?.text || "");
+          capturedImages = getGeminiInlineImageParts(init);
+          return createGeminiResponse(createGeminiPayload());
+        },
+      }
+    );
+
+    assert.equal(/single-ink text-prioritized helper render/i.test(capturedPrompt), true);
+    assert.equal(capturedImages.length >= 5, true);
+    assert.equal(capturedImages.some((part) => part.data === image.base64), true);
   });
 
   await run("transparent white artwork uses a black-backed derived analysis image while preserving the untouched upload", async () => {

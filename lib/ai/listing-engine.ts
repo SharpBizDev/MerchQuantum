@@ -177,6 +177,7 @@ const MIN_ANALYSIS_PANEL_SIZE = 960;
 const MAX_ANALYSIS_PANEL_SIZE = 1600;
 const ANALYSIS_ARTWORK_FILL_RATIO = 0.88;
 const CROPPED_ANALYSIS_ARTWORK_FILL_RATIO = 0.96;
+const TEXT_PRIORITY_ANALYSIS_ARTWORK_FILL_RATIO = 0.985;
 const ANALYSIS_LIGHT_BACKGROUND = { r: 255, g: 255, b: 255, alpha: 1 } as const;
 const ANALYSIS_DARK_BACKGROUND = { r: 0, g: 0, b: 0, alpha: 1 } as const;
 
@@ -1220,10 +1221,13 @@ function sanitizeValidatorSignals(
   const rebuiltReasonFlags = reasonFlagsFromDetails(polishedReasonDetails, filteredComplianceFlags);
   const blockingReasonFlags = reasonFlagsFromDetails(blockingReasonDetails, filteredComplianceFlags);
   const readyThreshold = getReadyConfidenceThreshold(imageTruth);
+  const recoverableForReview = hasRecoverableReviewGrounding(imageTruth, title, leadParagraphs);
   let grade = validator.grade;
 
-  if (validator.confidence < 0.38) {
+  if (validator.confidence < 0.38 && !recoverableForReview) {
     grade = "red";
+  } else if (grade === "red" && recoverableForReview && filteredComplianceFlags.length === 0) {
+    grade = "orange";
   } else if (blockingReasonFlags.length === 0 && filteredComplianceFlags.length === 0 && validator.confidence >= readyThreshold) {
     grade = "green";
   } else if (
@@ -1732,8 +1736,9 @@ export function gradeListing(
   const blockingReasonDetails = getReviewBlockingReasonDetails(polishedReasonDetails, imageTruth);
   const dedupedReasons = reasonFlagsFromDetails(polishedReasonDetails, dedupedCompliance);
   const readyThreshold = getReadyConfidenceThreshold(imageTruth);
+  const recoverableForReview = hasRecoverableReviewGrounding(imageTruth, effectiveTitle, leadParagraphs);
 
-  if (confidence < 0.38 || imageTruth.meaningClarity < 0.35) {
+  if ((confidence < 0.38 || imageTruth.meaningClarity < 0.35) && !recoverableForReview) {
     return {
       grade: "red",
       confidence,
@@ -1877,6 +1882,49 @@ function hasStrongReadyGrounding(imageTruth: ImageTruthRecord) {
   );
 }
 
+function hasRecoverableReviewGrounding(
+  imageTruth: ImageTruthRecord,
+  title: string,
+  leadParagraphs: string[]
+) {
+  const hasReadableEvidence = imageTruth.hasReadableText || imageTruth.visibleText.length > 0;
+  const hasRecoverableImageSignal =
+    imageTruth.visibleFacts.length > 0 ||
+    imageTruth.inferredMeaning.length > 0 ||
+    (!!cleanSpaces(imageTruth.dominantTheme) && cleanSpaces(imageTruth.dominantTheme).toLowerCase() !== "unknown");
+  const lowInformationSignal = [
+    ...imageTruth.visibleFacts,
+    ...imageTruth.inferredMeaning,
+    imageTruth.dominantTheme,
+    ...imageTruth.uncertainty,
+  ]
+    .map((value) => cleanSpaces(value).toLowerCase())
+    .join(" ");
+  const hardUncertainty = imageTruth.uncertainty.some((summary) =>
+    /meaning unclear|too unclear|unable to read|cannot read|unreadable|illegible|no meaningful signal/i.test(summary)
+  );
+  const weakTitle = !cleanSpaces(title) || isLowSignalTitle(title);
+  const clippedLead = leadParagraphs.some((paragraph) => looksClippedLeadParagraph(paragraph));
+
+  if (hardUncertainty || weakTitle || clippedLead) {
+    return false;
+  }
+
+  if (hasReadableEvidence) {
+    return true;
+  }
+
+  if (
+    /single small dot|single dot mark|single mark|tiny mark|minimal abstract|extremely minimal|low information/i.test(
+      lowInformationSignal
+    )
+  ) {
+    return false;
+  }
+
+  return hasRecoverableImageSignal && imageTruth.meaningClarity >= 0.3;
+}
+
 function getReadyConfidenceThreshold(imageTruth: ImageTruthRecord) {
   return hasStrongReadyGrounding(imageTruth) ? 0.74 : 0.78;
 }
@@ -2016,6 +2064,44 @@ async function buildDerivedAnalysisImage(
   };
 }
 
+async function buildTextPriorityAnalysisImage(
+  artworkBuffer: Buffer,
+  panelSize: number,
+  useDarkBackground: boolean
+): Promise<ParsedImageData> {
+  const source = sharp(artworkBuffer, {
+    failOn: "none",
+    limitInputPixels: MAX_VISION_ANALYSIS_PIXELS,
+  }).ensureAlpha();
+  const metadata = await source.metadata();
+  const width = metadata.width || 1;
+  const height = metadata.height || 1;
+  const alphaMask = await source.clone().extractChannel("alpha").png().toBuffer();
+  const inkColor = useDarkBackground ? ANALYSIS_LIGHT_BACKGROUND : ANALYSIS_DARK_BACKGROUND;
+  const flatArtwork = await sharp({
+    create: {
+      width,
+      height,
+      channels: 3,
+      background: {
+        r: inkColor.r,
+        g: inkColor.g,
+        b: inkColor.b,
+      },
+    },
+  })
+    .joinChannel(alphaMask)
+    .png()
+    .toBuffer();
+
+  return buildDerivedAnalysisImage(
+    flatArtwork,
+    panelSize,
+    useDarkBackground ? ANALYSIS_DARK_BACKGROUND : ANALYSIS_LIGHT_BACKGROUND,
+    { fillRatio: TEXT_PRIORITY_ANALYSIS_ARTWORK_FILL_RATIO }
+  );
+}
+
 async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet | null> {
   const parsed = parseImageData(imageDataUrl);
   if (!parsed) return null;
@@ -2114,6 +2200,15 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
           fillRatio: CROPPED_ANALYSIS_ARTWORK_FILL_RATIO,
         })
       : null;
+    const shouldIncludeTextPriorityRender =
+      hasStrongLuminanceBias || hasMixedContrastArtwork || shouldIncludeCroppedCloseRender;
+    const textPriorityRender = shouldIncludeTextPriorityRender
+      ? await buildTextPriorityAnalysisImage(
+          croppedCloseRender ? trimmedBuffer : sourceBuffer,
+          panelSize,
+          useDarkBackground
+        )
+      : null;
     const primary = croppedCloseRender || (useDarkBackground ? blackBackedRender : whiteBackedRender);
     const helpers: ParsedImageData[] = [];
 
@@ -2126,6 +2221,9 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
     if (croppedCloseRender && primary !== croppedCloseRender) {
       helpers.push(croppedCloseRender);
     }
+    if (textPriorityRender) {
+      helpers.push(textPriorityRender);
+    }
     helpers.push({
       mimeType: parsed.mimeType,
       inlineData: parsed.inlineData,
@@ -2135,7 +2233,7 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
       primary,
       helpers,
       promptHint:
-        `The provided images all show the same artwork. The strongest temporary high-contrast analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background. Additional helper renders may show the same transparent design on both black and white garment-neutral backgrounds, and a cropped close view around the visible artwork bounds may be included when the full canvas leaves too much empty space. A later helper image may show the untouched original transparent upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`,
+        `The provided images all show the same artwork. The strongest temporary high-contrast analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background. Additional helper renders may show the same transparent design on both black and white garment-neutral backgrounds, and a cropped close view around the visible artwork bounds may be included when the full canvas leaves too much empty space. A single-ink text-prioritized helper render may also appear to emphasize letters, symbols, and linework shape without changing the original design. A later helper image may show the untouched original transparent upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`,
     };
   } catch (error) {
     if (error instanceof ListingInputGuardError) {
