@@ -2002,22 +2002,18 @@ export default function MerchQuantumApp() {
                 <div className="flex min-w-max flex-nowrap items-center gap-x-3 gap-y-1.5 lg:justify-end">
                     <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                       <span className={getStatusIndicatorClass("ready")} />
-                      <span>{readyCount} Ready</span>
+                      <span>{readyCount} Good</span>
                     </div>
                     <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                       <span className={getStatusIndicatorClass("error")} />
-                      <span>{errorCount} Failed</span>
+                      <span>{errorCount} Fail</span>
                     </div>
                     <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                       <span>{queuedCount} Q</span>
                     </div>
-                    <div className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap">
-                      <span className={getLoadingIndicatorClass()} />
-                      <span>{processingCount} Loading</span>
-                    </div>
                     <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                       <span className="h-2.5 w-2.5 rounded-full bg-[#00A6F4] ring-2 ring-[#00A6F4]/35" />
-                      <span>{completedGenerationCount} Complete</span>
+                      <span>{completedGenerationCount} Done</span>
                     </div>
                     <span
                       role="button"
