@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
@@ -45,6 +45,20 @@ function isNearPixel(
     Math.abs(pixel.b - target.b) <= tolerance &&
     Math.abs(pixel.a - target.a) <= tolerance
   );
+}
+
+function getGeminiRequestParts(init?: RequestInit) {
+  const requestBody = JSON.parse(String(init?.body || "{}"));
+  return (requestBody?.contents?.[0]?.parts || []) as Array<{
+    text?: string;
+    inlineData?: { mimeType?: string; data?: string };
+  }>;
+}
+
+function getGeminiInlineImageParts(init?: RequestInit) {
+  return getGeminiRequestParts(init)
+    .filter((part) => part?.inlineData)
+    .map((part) => part.inlineData || {});
 }
 
 function createGeminiResponse(payload: unknown, status = 200) {
@@ -321,6 +335,832 @@ async function main() {
     assert.equal(/[.!?]["')\]]*$/.test(leads[1]), true);
     assert.equal(/peace|retro|hippie|artwork|design/i.test(leads[1]), true);
   });
+
+  await run("validator grades green for clear records and red for unclear or repetitive records", () => {
+    const semantic: SemanticRecord = {
+      productNoun: "graphic tee",
+      titleCore: "Faith Over Fear Christian Tee",
+      benefitCore: "Clear discovery copy for buyer intent.",
+      likelyAudience: "faith-based buyers",
+      styleOccasion: "faith-forward",
+      visibleKeywords: ["faith"],
+      inferredKeywords: ["christian"],
+      forbiddenClaims: [],
+    };
+
+    const green = gradeListing(
+      {
+        visibleText: ["faith over fear"],
+        visibleFacts: ["white text on black design"],
+        inferredMeaning: ["faith-forward"],
+        dominantTheme: "faith-forward",
+        likelyAudience: "faith-based buyers",
+        likelyOccasion: "daily wear",
+        uncertainty: [],
+        ocrWeakness: "none",
+        meaningClarity: 0.92,
+        hasReadableText: true,
+      },
+      semantic,
+      {
+        classification: "strong_support",
+        usefulness: 0.9,
+        usefulTokens: ["faith", "fear"],
+        ignoredTokens: [],
+        conflictSeverity: "none",
+        shouldIgnore: false,
+        reason: "supportive filename",
+      },
+      semantic.titleCore,
+      [
+        "Clean faith-forward styling for everyday wear and buyer clarity.",
+        "Gift-ready positioning and readable messaging support marketplace discovery.",
+      ],
+      ["faith shirt", "christian tee", "gift idea", "daily wear", "readable slogan"]
+    );
+    assert.equal(green.grade, "green");
+    assert.equal(green.reasonDetails.length, 0);
+
+    const red = gradeListing(
+      {
+        visibleText: [],
+        visibleFacts: [],
+        inferredMeaning: [],
+        dominantTheme: "unknown",
+        likelyAudience: "unknown",
+        likelyOccasion: "unknown",
+        uncertainty: ["meaning unclear"],
+        ocrWeakness: "weak contrast",
+        meaningClarity: 0.2,
+        hasReadableText: false,
+      },
+      {
+        ...semantic,
+        titleCore: "Product",
+      },
+      {
+        classification: "weak_or_generic",
+        usefulness: 0.1,
+        usefulTokens: [],
+        ignoredTokens: ["img", "final"],
+        conflictSeverity: "none",
+        shouldIgnore: true,
+        reason: "weak filename",
+      },
+      "Product",
+      ["Product product product.", "Product product product."],
+      ["product"]
+    );
+    assert.equal(red.grade, "red");
+    assert.ok(red.reasonFlags.some((flag) => flag.toLowerCase().includes("unclear")));
+  });
+
+  await run("validator downgrades clipped lead paragraphs from green", () => {
+    const semantic: SemanticRecord = {
+      productNoun: "graphic tee",
+      titleCore: "Faith Over Fear Christian Tee",
+      benefitCore: "Clear discovery copy for buyer intent.",
+      likelyAudience: "faith-based buyers",
+      styleOccasion: "faith-forward",
+      visibleKeywords: ["faith"],
+      inferredKeywords: ["christian"],
+      forbiddenClaims: [],
+    };
+
+    const clipped = gradeListing(
+      {
+        visibleText: ["faith over fear"],
+        visibleFacts: ["white text on black design"],
+        inferredMeaning: ["faith-forward"],
+        dominantTheme: "faith-forward",
+        likelyAudience: "faith-based buyers",
+        likelyOccasion: "daily wear",
+        uncertainty: [],
+        ocrWeakness: "none",
+        meaningClarity: 0.92,
+        hasReadableText: true,
+      },
+      semantic,
+      {
+        classification: "strong_support",
+        usefulness: 0.9,
+        usefulTokens: ["faith", "fear"],
+        ignoredTokens: [],
+        conflictSeverity: "none",
+        shouldIgnore: false,
+        reason: "supportive filename",
+      },
+      semantic.titleCore,
+      [
+        "Clean faith-forward styling for everyday wear and buyer clarity...",
+        "Gift-ready positioning and readable messaging support marketplace discovery.",
+      ],
+      ["faith shirt", "christian tee", "gift idea", "daily wear", "readable slogan"]
+    );
+
+    assert.equal(clipped.grade, "orange");
+    assert.equal(
+      clipped.reasonFlags.some((flag) => flag.toLowerCase().includes("appears clipped")),
+      true
+    );
+  });
+
+  await run("validator keeps clearly readable designs green when only soft OCR and symbolic uncertainty remain", () => {
+    const semantic: SemanticRecord = {
+      productNoun: "graphic tee",
+      titleCore: "Faith Over Fear Christian Tee",
+      benefitCore: "Clear discovery copy for buyer intent.",
+      likelyAudience: "faith-based buyers",
+      styleOccasion: "faith-forward",
+      visibleKeywords: ["faith over fear", "faith"],
+      inferredKeywords: ["christian"],
+      forbiddenClaims: [],
+    };
+
+    const result = gradeListing(
+      {
+        visibleText: ["faith over fear"],
+        visibleFacts: ["clean readable slogan on transparent artwork"],
+        inferredMeaning: ["faith-forward encouragement"],
+        dominantTheme: "faith-forward",
+        likelyAudience: "faith-based buyers",
+        likelyOccasion: "daily wear",
+        uncertainty: ["The specific symbolic meaning is open to interpretation."],
+        ocrWeakness: "weak contrast",
+        meaningClarity: 0.9,
+        hasReadableText: true,
+      },
+      semantic,
+      {
+        classification: "strong_support",
+        usefulness: 0.9,
+        usefulTokens: ["faith", "fear"],
+        ignoredTokens: [],
+        conflictSeverity: "none",
+        shouldIgnore: false,
+        reason: "supportive filename",
+      },
+      semantic.titleCore,
+      [
+        "The \"Faith Over Fear\" message gives this graphic tee a clear faith-forward angle that reads quickly at a glance.",
+        "It feels wearable, giftable, and straightforward for buyers who want an encouraging design without extra filler.",
+      ],
+      ["faith shirt", "christian tee", "encouraging gift", "daily wear", "readable slogan"]
+    );
+
+    assert.equal(result.grade, "green");
+    assert.equal(result.reasonFlags.length, 0);
+  });
+
+  await run("validator keeps clearly interpretable symbolic designs ready when only soft ambiguity remains", () => {
+    const semantic: SemanticRecord = {
+      productNoun: "graphic tee",
+      titleCore: "Classic Peace Sign Retro Hippie T-Shirt",
+      benefitCore: "Readable retro peace design for laid-back buyers.",
+      likelyAudience: "retro lifestyle shoppers",
+      styleOccasion: "retro hippie",
+      visibleKeywords: ["peace sign", "retro"],
+      inferredKeywords: ["hippie shirt", "festival tee"],
+      forbiddenClaims: [],
+    };
+
+    const result = gradeListing(
+      {
+        visibleText: [],
+        visibleFacts: ["clear retro peace sign artwork on transparent background"],
+        inferredMeaning: ["peace-forward retro mood", "laid-back hippie style"],
+        dominantTheme: "retro peace",
+        likelyAudience: "retro lifestyle shoppers",
+        likelyOccasion: "casual wear",
+        uncertainty: ["The exact symbolic meaning is open to interpretation."],
+        ocrWeakness: "none",
+        meaningClarity: 0.9,
+        hasReadableText: false,
+      },
+      semantic,
+      {
+        classification: "partial_support",
+        usefulness: 0.56,
+        usefulTokens: ["peace", "retro", "hippie"],
+        ignoredTokens: [],
+        conflictSeverity: "none",
+        shouldIgnore: false,
+        reason: "filename supports the visible design theme",
+      },
+      semantic.titleCore,
+      [
+        "The retro peace sign artwork gives this graphic tee a clear laid-back vibe that reads quickly even without text.",
+        "It feels easy to wear for festival weekends, casual days, and shoppers who want a recognizable vintage-inspired symbol.",
+      ],
+      ["peace sign shirt", "retro hippie tee", "festival graphic", "vintage peace", "casual retro style"]
+    );
+
+    assert.equal(result.grade, "green");
+    assert.equal(result.reasonFlags.length, 0);
+  });
+
+  await run("transparent artwork uses a derived high-contrast analysis image while preserving the untouched upload", async () => {
+    const fixture = GOLDEN_CORPUS_FIXTURES.find((entry) => entry.name === "transparent png weak contrast");
+    assert.ok(fixture);
+
+    const image = readFixtureImageDataUrl(fixture.imageFile);
+    let capturedPrompt = "";
+    let capturedImages: Array<{ mimeType?: string; data?: string }> = [];
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: image.dataUrl,
+        fileName: fixture.request.fileName,
+        title: fixture.request.title,
+        productFamily: fixture.request.productFamily,
+        templateContext: fixture.request.templateContext,
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_url, init) => {
+          const parts = getGeminiRequestParts(init);
+          capturedPrompt = String(parts[0]?.text || "");
+          capturedImages = getGeminiInlineImageParts(init);
+
+          return createGeminiResponse(createGeminiPayload(fixture.payloadOverrides));
+        },
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    assert.equal(capturedImages.length >= 4, true);
+    assert.equal(capturedImages.every((part) => part.mimeType === "image/png"), true);
+    assert.equal(capturedImages.some((part) => part.data === image.base64), true);
+    assert.equal(capturedImages.filter((part) => part.data !== image.base64).length >= 3, true);
+    assert.equal(/temporary high-contrast analysis render/i.test(capturedPrompt), true);
+    assert.equal(/black and white garment-neutral backgrounds/i.test(capturedPrompt), true);
+    assert.equal(/cropped close view around the visible artwork bounds/i.test(capturedPrompt), true);
+    assert.equal(/untouched original transparent upload/i.test(capturedPrompt), true);
+  });
+
+  await run("transparent white artwork uses a black-backed derived analysis image while preserving the untouched upload", async () => {
+    const image = await createTransparentSvgDataUrl(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+        <rect width="1200" height="1200" fill="transparent"/>
+        <text x="140" y="640" font-size="260" font-family="Arial, sans-serif" font-weight="700" fill="#FFFFFF">BE KIND</text>
+      </svg>
+    `);
+    let capturedImages: Array<{ mimeType?: string; data?: string }> = [];
+
+    await generateListingResponse(
+      {
+        imageDataUrl: image.dataUrl,
+        fileName: "IMG_0001_final.png",
+        title: "",
+        productFamily: "t-shirt",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_url, init) => {
+          capturedImages = getGeminiInlineImageParts(init);
+          return createGeminiResponse(
+            createGeminiPayload({
+              canonicalTitle: "Be Kind Minimal Graphic Tee",
+              canonicalLeadParagraphs: [
+                "The visible be kind message keeps the design easy to understand for buyers who want a clean encouragement graphic.",
+                "It works as a simple everyday tee for shoppers who prefer readable artwork over filler-heavy copy.",
+              ],
+            })
+          );
+        },
+      }
+    );
+
+    assert.equal(capturedImages.length >= 4, true);
+    assert.equal(capturedImages.some((part) => part.data === image.base64), true);
+
+    const derivedImages = capturedImages.filter((part) => part.data && part.data !== image.base64);
+    assert.equal(derivedImages.length >= 3, true);
+
+    const derivedPixels = await Promise.all(derivedImages.map((part) => readCornerPixel(String(part.data || ""))));
+    assert.equal(derivedPixels.some((pixel) => isNearPixel(pixel, { r: 0, g: 0, b: 0, a: 255 })), true);
+    assert.equal(derivedPixels.some((pixel) => isNearPixel(pixel, { r: 255, g: 255, b: 255, a: 255 })), true);
+  });
+
+  await run("transparent black artwork uses a white-backed derived analysis image while preserving the untouched upload", async () => {
+    const image = await createTransparentSvgDataUrl(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+        <rect width="1200" height="1200" fill="transparent"/>
+        <text x="160" y="640" font-size="260" font-family="Arial, sans-serif" font-weight="700" fill="#000000">STAY WILD</text>
+      </svg>
+    `);
+    let capturedImages: Array<{ mimeType?: string; data?: string }> = [];
+
+    await generateListingResponse(
+      {
+        imageDataUrl: image.dataUrl,
+        fileName: "IMG_0002_final.png",
+        title: "",
+        productFamily: "t-shirt",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_url, init) => {
+          capturedImages = getGeminiInlineImageParts(init);
+          return createGeminiResponse(
+            createGeminiPayload({
+              canonicalTitle: "Stay Wild Outdoor Graphic Tee",
+              canonicalLeadParagraphs: [
+                "The visible stay wild message gives the design a clear outdoor tone that reads quickly in search results.",
+                "It stays buyer-friendly without leaning on generic template filler or weak filename fragments.",
+              ],
+            })
+          );
+        },
+      }
+    );
+
+    assert.equal(capturedImages.length >= 4, true);
+    assert.equal(capturedImages.some((part) => part.data === image.base64), true);
+
+    const derivedImages = capturedImages.filter((part) => part.data && part.data !== image.base64);
+    assert.equal(derivedImages.length >= 3, true);
+
+    const derivedPixels = await Promise.all(derivedImages.map((part) => readCornerPixel(String(part.data || ""))));
+    assert.equal(derivedPixels.some((pixel) => isNearPixel(pixel, { r: 255, g: 255, b: 255, a: 255 })), true);
+    assert.equal(derivedPixels.some((pixel) => isNearPixel(pixel, { r: 0, g: 0, b: 0, a: 255 })), true);
+  });
+
+  await run("mixed transparent artwork adds an opposite-contrast helper render while preserving the untouched upload", async () => {
+    const image = await createTransparentSvgDataUrl(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+        <rect width="1200" height="1200" fill="transparent"/>
+        <text x="140" y="420" font-size="250" font-family="Arial, sans-serif" font-weight="700" fill="#FFFFFF">HIGH</text>
+        <text x="140" y="780" font-size="250" font-family="Arial, sans-serif" font-weight="700" fill="#000000">LOW</text>
+      </svg>
+    `);
+    let capturedPrompt = "";
+    let capturedImages: Array<{ mimeType?: string; data?: string }> = [];
+
+    await generateListingResponse(
+      {
+        imageDataUrl: image.dataUrl,
+        fileName: "mixed_signal_artwork.png",
+        title: "",
+        productFamily: "t-shirt",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_url, init) => {
+          const parts = getGeminiRequestParts(init);
+          capturedPrompt = String(parts[0]?.text || "");
+          capturedImages = getGeminiInlineImageParts(init);
+          return createGeminiResponse(
+            createGeminiPayload({
+              canonicalTitle: "High Low Contrast Graphic Tee",
+              canonicalLeadParagraphs: [
+                "The mixed light and dark artwork stays readable once both contrast views are considered as the same design.",
+                "It keeps the opening copy image-led and finishes with complete sentences for buyers.",
+              ],
+            })
+          );
+        },
+      }
+    );
+
+    assert.equal(/black and white garment-neutral backgrounds/i.test(capturedPrompt), true);
+    assert.equal(/cropped close view around the visible artwork bounds/i.test(capturedPrompt), true);
+    assert.equal(capturedImages.length >= 4, true);
+    assert.equal(capturedImages.some((part) => part.data === image.base64), true);
+
+    const derivedImages = capturedImages.filter((part) => part.data && part.data !== image.base64);
+    assert.equal(derivedImages.length >= 3, true);
+
+    const derivedPixels = await Promise.all(derivedImages.map((part) => readCornerPixel(String(part.data || ""))));
+    assert.equal(derivedPixels.some((pixel) => isNearPixel(pixel, { r: 0, g: 0, b: 0, a: 255 })), true);
+    assert.equal(derivedPixels.some((pixel) => isNearPixel(pixel, { r: 255, g: 255, b: 255, a: 255 })), true);
+  });
+
+  await run("Gemini prompt keeps filename as support-only context when no explicit title is supplied", async () => {
+    let capturedPrompt = "";
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        fileName: "Classic Peace Sign Retro Hippie Shirt.png",
+        title: "",
+        productFamily: "t-shirt",
+        templateContext:
+          "Comfort Colors 1717 heavyweight garment-dyed t-shirt. 100% ring-spun cotton. Relaxed fit with double-needle stitching and shoulder-to-shoulder twill tape. Great for everyday casual wear and giftable boutique apparel.",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_url, init) => {
+          const requestBody = JSON.parse(String(init?.body || "{}"));
+          const parts = requestBody?.contents?.[0]?.parts || [];
+          capturedPrompt = String(parts[0]?.text || "");
+
+          return createGeminiResponse(createGeminiPayload());
+        },
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    assert.equal(/titleSeed: none/i.test(capturedPrompt), true);
+    assert.equal(/fileNameSupport: Classic Peace Sign Retro Hippie Shirt\.png/i.test(capturedPrompt), true);
+    assert.equal(/do not let the filename write the title or opening copy/i.test(capturedPrompt), true);
+    assert.equal(/trust the clearest render over the filename/i.test(capturedPrompt), true);
+  });
+
+  await run("validator keeps the strongest ambiguity warning while preserving real OCR clarity concerns", () => {
+    const semantic: SemanticRecord = {
+      productNoun: "graphic tee",
+      titleCore: "Minimalist Mountain Adventure Hiking T Shirt",
+      benefitCore: "Outdoor-themed discovery copy for buyers who like clean art.",
+      likelyAudience: "outdoor lifestyle buyers",
+      styleOccasion: "minimal adventure aesthetic",
+      visibleKeywords: [],
+      inferredKeywords: ["mountain shirt", "hiking tee"],
+      forbiddenClaims: [],
+    };
+
+    const result = gradeListing(
+      {
+        visibleText: [],
+        visibleFacts: ["low-contrast mountain-like line art"],
+        inferredMeaning: ["stylized outdoor scene"],
+        dominantTheme: "outdoor",
+        likelyAudience: "outdoor lifestyle buyers",
+        likelyOccasion: "casual wear",
+        uncertainty: [
+          "The extreme low contrast and minimal detail make the visual content highly ambiguous and open to interpretation.",
+          "The exact number or specific features of the mountains are unclear.",
+        ],
+        ocrWeakness: "weak contrast",
+        meaningClarity: 0.58,
+        hasReadableText: false,
+      },
+      semantic,
+      {
+        classification: "partial_support",
+        usefulness: 0.42,
+        usefulTokens: ["mountain", "adventure"],
+        ignoredTokens: [],
+        conflictSeverity: "none",
+        shouldIgnore: false,
+        reason: "soft support from filename clues",
+      },
+      semantic.titleCore,
+      [
+        "Minimal mountain line art keeps the listing visually calm while still pointing toward an outdoor adventure mood.",
+        "The clean tee framing makes the artwork usable for shoppers who like subtle hiking and nature-inspired graphics.",
+      ],
+      ["mountain tee", "hiking shirt", "outdoor graphic", "nature art", "adventure style"]
+    );
+
+    assert.equal(
+      result.reasonFlags.some((flag) => flag.toLowerCase().includes("ocr/text legibility is weak or partial")),
+      true
+    );
+    assert.equal(
+      result.reasonFlags.some((flag) => flag.toLowerCase().includes("highly ambiguous")),
+      true
+    );
+    assert.equal(
+      result.reasonFlags.some((flag) => flag.toLowerCase().includes("specific features of the mountains are unclear")),
+      false
+    );
+    assert.equal(result.grade === "orange" || result.grade === "red", true);
+  });
+
+  await run("fallback response remains backward compatible when Gemini is unavailable", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "Blessed Christian Tee",
+        fileName: "blessed_christian_tee.png",
+        productFamily: "t-shirt",
+        templateContext: "Heavyweight cotton with shoulder taping.",
+      },
+      { apiKey: "" }
+    );
+
+    assert.equal(typeof response.title, "string");
+    assert.ok(Array.isArray(response.leadParagraphs));
+    assert.equal(response.leadParagraphs.length, 2);
+    assert.equal(typeof response.leadParagraph1, "string");
+    assert.equal(typeof response.leadParagraph2, "string");
+    assert.equal(typeof response.confidence, "number");
+    assert.ok(Array.isArray(response.reasonFlags));
+    assert.equal(typeof response.model, "string");
+    assert.equal(response.source, "fallback");
+  });
+
+  await run("fallback uses template context to improve weak filename outputs", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "IMG_9384_final_design.png",
+        productFamily: "t-shirt",
+        templateContext:
+          "Comfort Colors 1717 heavyweight garment-dyed t-shirt. 100% ring-spun cotton. Relaxed fit with double-needle stitching and shoulder-to-shoulder twill tape. Great for everyday casual wear and giftable boutique apparel.",
+      },
+      { apiKey: "" }
+    );
+
+    assert.equal(response.source, "fallback");
+    assert.equal(response.title.toLowerCase().includes("img 9384"), false);
+    assert.equal(response.title.toLowerCase().includes("garment"), true);
+    assert.equal(
+      response.leadParagraphs.some((paragraph) => /ring-spun cotton|relaxed fit|everyday casual wear/i.test(paragraph)),
+      true
+    );
+    assert.equal(
+      response.marketplaceDrafts.etsy.discoveryTerms.some((term) => /heavyweight|ring spun cotton|relaxed fit/i.test(term)),
+      true
+    );
+  });
+
+  await run("image-backed golden corpus preserves grade, title, lead, and filename handling behavior", async () => {
+    const seenBase64 = new Set<string>();
+
+    for (const fixture of GOLDEN_CORPUS_FIXTURES) {
+      const image = readFixtureImageDataUrl(fixture.imageFile);
+      seenBase64.add(image.base64);
+      assert.equal(image.absolutePath.endsWith(`${path.sep}${fixture.imageFile}`), true, `${fixture.name}: image path should resolve`);
+
+      const filenameAssessment = assessFilenameRelevance(
+        fixture.request.fileName,
+        (createGeminiPayload(fixture.payloadOverrides).imageTruth.visibleText || []) as string[]
+      );
+
+      assert.equal(filenameAssessment.classification, fixture.expected.filename.classification, `${fixture.name}: filename classification`);
+      assert.equal(filenameAssessment.shouldIgnore, fixture.expected.filename.shouldIgnore, `${fixture.name}: filename shouldIgnore`);
+      assert.equal(
+        filenameAssessment.conflictSeverity,
+        fixture.expected.filename.conflictSeverity,
+        `${fixture.name}: filename conflict severity`
+      );
+
+      const response = await generateListingResponse(
+        {
+          imageDataUrl: image.dataUrl,
+          fileName: fixture.request.fileName,
+          title: fixture.request.title,
+          productFamily: fixture.request.productFamily,
+          templateContext: fixture.request.templateContext,
+        },
+        {
+          apiKey: "test-key",
+          model: "gemini-test",
+          fetchFn: async (_url, init) => {
+            const parts = getGeminiRequestParts(init);
+            const prompt = String(parts[0]?.text || "");
+            const imageParts = getGeminiInlineImageParts(init);
+            const inlineData = imageParts[0] || {};
+            const helperInlineData = imageParts[imageParts.length - 1] || {};
+
+            assert.equal(inlineData.mimeType, "image/png", `${fixture.name}: image mime type`);
+            if (fixture.name === "transparent png weak contrast") {
+              assert.equal(imageParts.length >= 4, true, `${fixture.name}: should send multi-render helper bundle`);
+              assert.notEqual(inlineData.data, image.base64, `${fixture.name}: should use derived analysis image as primary`);
+              assert.equal(helperInlineData.mimeType, "image/png", `${fixture.name}: helper image mime type`);
+              assert.equal(helperInlineData.data, image.base64, `${fixture.name}: untouched original image should be preserved as helper`);
+              assert.equal(
+                /temporary high-contrast analysis render/i.test(prompt),
+                true,
+                `${fixture.name}: prompt should describe derived analysis render`
+              );
+              assert.equal(
+                /black and white garment-neutral backgrounds/i.test(prompt),
+                true,
+                `${fixture.name}: prompt should describe black and white helper renders`
+              );
+            } else {
+              assert.equal(inlineData.data, image.base64, `${fixture.name}: exact image fixture should be sent to Gemini`);
+            }
+            assert.equal(
+              prompt.includes(`fileNameSupport: ${fixture.request.fileName}`),
+              true,
+              `${fixture.name}: prompt should include request filename as support context`
+            );
+            assert.equal(
+              prompt.includes(`productFamily: ${fixture.request.productFamily}`),
+              true,
+              `${fixture.name}: prompt should include product family`
+            );
+
+            return createGeminiResponse(createGeminiPayload(fixture.payloadOverrides));
+          },
+        }
+      );
+
+      assert.equal(response.source, "gemini", fixture.name);
+      assert.equal(response.grade, fixture.expected.grade, fixture.name);
+      assert.equal(response.leadParagraphs.length, 2, fixture.name);
+      assert.equal(response.leadParagraphs[0].toLowerCase().startsWith(response.title.toLowerCase()), false, fixture.name);
+
+      for (const titleFragment of fixture.expected.titleMustInclude) {
+        assert.equal(response.title.toLowerCase().includes(titleFragment.toLowerCase()), true, `${fixture.name}: title fragment ${titleFragment}`);
+      }
+
+      for (const titleFragment of fixture.expected.titleMustExclude || []) {
+        assert.equal(
+          response.title.toLowerCase().includes(titleFragment.toLowerCase()),
+          false,
+          `${fixture.name}: unexpected title fragment ${titleFragment}`
+        );
+      }
+
+      for (const leadFragment of fixture.expected.leadMustInclude || []) {
+        assert.equal(
+          response.leadParagraphs.some((paragraph) => paragraph.toLowerCase().includes(leadFragment.toLowerCase())),
+          true,
+          `${fixture.name}: missing lead fragment ${leadFragment}`
+        );
+      }
+
+      for (const reasonFragment of fixture.expected.reasonIncludes || []) {
+        assert.equal(
+          response.reasonFlags.some((flag) => flag.toLowerCase().includes(reasonFragment.toLowerCase())),
+          true,
+          `${fixture.name}: missing reason fragment ${reasonFragment}`
+        );
+      }
+    }
+
+    assert.equal(seenBase64.size, GOLDEN_CORPUS_FIXTURES.length, "fixture images should all be unique binary cases");
+  });
+
+  await run("Gemini structured output maps into canonical UI response shape", async () => {
+    const fetchFn: typeof fetch = async () => createGeminiResponse(createGeminiPayload());
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "seed title",
+        fileName: "faith_over_fear.png",
+        productFamily: "t-shirt",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn,
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    assert.equal(response.model, "gemini-test");
+    assert.equal(response.title.length > 0, true);
+    assert.equal(response.leadParagraphs.length, 2);
+    assert.equal(typeof response.confidence, "number");
+    assert.ok(Array.isArray(response.reasonFlags));
+    assert.ok(response.marketplaceDrafts.etsy.title.length > 0);
+    assert.equal(response.leadParagraphs[0].toLowerCase().startsWith(response.title.toLowerCase()), false);
+  });
+
+  await run("Gemini lead shaping replaces generic second paragraph with template-grounded buyer copy", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "IMG_9384_final_design.png",
+        productFamily: "t-shirt",
+        templateContext:
+          "Comfort Colors 1717 heavyweight garment-dyed t-shirt. 100% ring-spun cotton. Relaxed fit with double-needle stitching and shoulder-to-shoulder twill tape. Great for everyday casual wear and giftable boutique apparel.",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async () =>
+          createGeminiResponse(
+            createGeminiPayload({
+              canonicalTitle: "Faith Over Fear T Shirt Inspirational Motivational Spiritual Tee",
+              canonicalLeadParagraphs: [
+                "Embrace strength and positivity with our 'Faith Over Fear' t-shirt. This powerful message serves as a daily reminder to trust in your beliefs and overcome challenges with courage and hope.",
+                "Crafted for comfort and style, this tee is perfect for anyone seeking inspiration or looking to share a meaningful statement. It's an ideal addition to your casual wardrobe or a thoughtful gift for a loved one.",
+              ],
+            })
+          ),
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    assert.equal(/(?:^| )T(?: |$)/.test(response.title), false);
+    assert.equal(/T-Shirt|Tee|Shirt/i.test(response.title), true);
+    assert.equal(/crafted for comfort and style/i.test(response.leadParagraphs[1]), false);
+    assert.equal(/doing the heavy lifting on comfort and presentation/i.test(response.leadParagraphs[1]), false);
+    assert.equal(/wear|gift|buyer|listing|trust/i.test(response.leadParagraphs[1]), true);
+  });
+
+  await run("Gemini lead shaping returns finished sentences instead of clipped ellipsis endings", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "IMG_9384_final_design.png",
+        productFamily: "t-shirt",
+        templateContext:
+          "Comfort Colors 1717 heavyweight garment-dyed t-shirt. 100% ring-spun cotton. Relaxed fit with double-needle stitching and shoulder-to-shoulder twill tape. Great for everyday casual wear and giftable boutique apparel.",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async () =>
+          createGeminiResponse(
+            createGeminiPayload({
+              canonicalLeadParagraphs: [
+                "Faith Over Fear Christian Tee delivers a clear message of confidence and conviction for buyers who want an encouraging design that reads quickly in thumbnails, feels meaningful in person, and keeps the visual message central even on busy marketplace result pages...",
+                "Crafted for comfort and style, this heavyweight garment-dyed tee works beautifully for repeat wear, giftable moments, and everyday casual outfits while helping shoppers understand the product story without scrolling through a wall of raw template specs...",
+              ],
+            })
+          ),
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    for (const lead of response.leadParagraphs) {
+      assert.equal(/(?:\.\.\.|…)\s*$/.test(lead), false);
+      assert.equal(/[.!?]["')\]]*$/.test(lead), true);
+    }
+  });
+
+  await run("template-aware second paragraph varies across different listing contexts", async () => {
+    const heavyResponse = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "faith_over_fear.png",
+        productFamily: "t-shirt",
+        templateContext:
+          "Comfort Colors 1717 heavyweight garment-dyed t-shirt. 100% ring-spun cotton. Relaxed fit with double-needle stitching.",
+      },
+      {
+        apiKey: "",
+      }
+    );
+
+    const summerResponse = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "sunset-palm-beach-art.png",
+        productFamily: "t-shirt",
+        templateContext:
+          "Lightweight cotton tee with a breathable feel, easy summer styling, and a gift-friendly beachwear angle.",
+      },
+      {
+        apiKey: "",
+      }
+    );
+
+    assert.notEqual(heavyResponse.leadParagraphs[1], summerResponse.leadParagraphs[1]);
+    assert.equal(/doing the heavy lifting on comfort and presentation/i.test(heavyResponse.leadParagraphs[1]), false);
+    assert.equal(/doing the heavy lifting on comfort and presentation/i.test(summerResponse.leadParagraphs[1]), false);
+  });
+
+  await run("runtime resolves GOOGLE_GENERATIVE_AI_API_KEY for Gemini calls", async () => {
+    const previousGemini = process.env.GEMINI_API_KEY;
+    const previousGoogle = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+
+    delete process.env.GEMINI_API_KEY;
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY = "google-env-key";
+
+    try {
+      const response = await generateListingResponse(
+        {
+          imageDataUrl: SAMPLE_PNG_DATA_URL,
+          title: "seed title",
+          fileName: "faith_over_fear.png",
+          productFamily: "t-shirt",
+          templateContext: "Heavyweight ring-spun cotton tee built for everyday wear.",
+        },
+        {
+          model: "gemini-test",
+          fetchFn: async (_url, init) => {
+            assert.equal(String(init?.headers?.["x-goog-api-key"] || ""), "google-env-key");
+            return createGeminiResponse(createGeminiPayload());
+          },
+        }
+      );
+
+      assert.equal(response.source, "gemini");
+    } finally {
+      if (typeof previousGemini === "string") {
+        process.env.GEMINI_API_KEY = previousGemini;
+      } else {
+        delete process.env.GEMINI_API_KEY;
+      }
+
+      if (typeof previousGoogle === "string") {
+        process.env.GOOGLE_GENERATIVE_AI_API_KEY = previousGoogle;
+      } else {
+        delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+      }
+    }
+  });
+
   await run("Gemini validator output cannot stay green when reasons or compliance flags are present", async () => {
     const response = await generateListingResponse(
       {
