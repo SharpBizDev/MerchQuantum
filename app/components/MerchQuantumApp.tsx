@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { DEMO_LISTINGS, type DemoListing } from "../../lib/demo/merchquantum-demo";
 import { PROVIDER_OPTIONS } from "../../lib/providers/client-options";
 
 const APP_TAGLINE = "Bulk product creation, simplified";
 const ACTIVE_BATCH_FILES = 50;
 const CONNECTED_TOTAL_BATCH_FILES = 300;
-const DEMO_TOTAL_BATCH_FILES = 5;
+const DEMO_TOTAL_BATCH_FILES = DEMO_LISTINGS.length;
 const DEMO_TITLE_PLACEHOLDER = "Upload 5 Designs Free and See AI Listing Results Instantly";
 const DEMO_DESCRIPTION_PLACEHOLDER = "Upload up to 5 designs free to preview how MerchQuantum scans artwork, writes titles and descriptions, and builds listing-ready content. Connect a provider to unlock templates, product details, and full batch draft creation.";
 const FIXED_TAG_COUNT = 13;
@@ -72,6 +73,7 @@ type Img = {
   id: string;
   name: string;
   file: File;
+  isDemo?: boolean;
   preview: string;
   previewBackground: string;
   cleaned: string;
@@ -1287,6 +1289,7 @@ export default function MerchQuantumApp() {
   const previousPreviewUrlsRef = useRef<string[]>([]);
   const aiLoopBusyRef = useRef<symbol | null>(null);
   const activeTemplateKeyRef = useRef("");
+  const demoTimeoutsRef = useRef<number[]>([]);
 
   const [provider, setProvider] = useState<ProviderId | "">("");
   const [token, setToken] = useState("");
@@ -1346,6 +1349,8 @@ export default function MerchQuantumApp() {
     () => productSource.find((product) => product.id === productId && product.shopId === shopId) || productSource.find((product) => product.id === productId) || null,
     [productId, productSource, shopId]
   );
+  const isDemoState = !provider && !token.trim() && !connected;
+  const selectedDemoId = selectedImage?.isDemo ? selectedImage.name : "";
   const readyCount = images.filter((img) => img.status === "ready").length;
   const errorCount = images.filter((img) => img.status === "error").length;
   const processingCount = images.filter((img) => img.status === "pending" || img.aiProcessing).length;
@@ -1356,7 +1361,6 @@ export default function MerchQuantumApp() {
   const uploadDisabled = !connected || !template || images.length === 0 || isRunningBatch || processingCount > 0;
   const canShowReviewDetail = connected && !!shopId && !!productId;
   const canShowDetailPanel = !!selectedImage || canShowReviewDetail;
-  const isDemoState = !connected;
   const detailTitle = selectedImage?.final
     || (isDemoState
       ? DEMO_TITLE_PLACEHOLDER
@@ -1424,6 +1428,16 @@ export default function MerchQuantumApp() {
   }
 
   useEffect(() => {
+    if (isDemoState) return;
+    if (!images.some((img) => img.isDemo) && !queuedImages.some((img) => img.isDemo)) return;
+    clearDemoTimeouts();
+    setImages((current) => current.filter((img) => !img.isDemo));
+    setQueuedImages((current) => current.filter((img) => !img.isDemo));
+    setSelectedId("");
+    setMessage("");
+  }, [connected, images, isDemoState, provider, queuedImages, token]);
+
+  useEffect(() => {
     const previous = previousPreviewUrlsRef.current;
     const current = [...images, ...queuedImages].map((img) => img.preview);
 
@@ -1438,6 +1452,7 @@ export default function MerchQuantumApp() {
 
   useEffect(() => {
     return () => {
+      clearDemoTimeouts();
       for (const url of previousPreviewUrlsRef.current) {
         if (url.startsWith("blob:")) URL.revokeObjectURL(url);
       }
@@ -1654,15 +1669,98 @@ export default function MerchQuantumApp() {
     setRunStatus("");
   }
 
+  function clearDemoTimeouts() {
+    for (const timeoutId of demoTimeoutsRef.current) {
+      window.clearTimeout(timeoutId);
+    }
+    demoTimeoutsRef.current = [];
+  }
+
+  function clearPreviewWorkspace() {
+    clearDemoTimeouts();
+    setImages([]);
+    setQueuedImages([]);
+    setSelectedId("");
+    setMessage("");
+    setBatchResults([]);
+    setRunStatus("");
+  }
+
+  function createDemoFile(demo: DemoListing) {
+    return new File([demo.svgMarkup], demo.name, { type: "image/svg+xml" });
+  }
+
+  function buildDemoImage(demo: DemoListing): Img {
+    return {
+      id: makeId(),
+      name: demo.name,
+      file: createDemoFile(demo),
+      isDemo: true,
+      preview: demo.preview,
+      previewBackground: demo.previewBackground,
+      cleaned: demo.title,
+      final: "Quantum AI is processing title...",
+      finalDescription: "",
+      tags: [],
+      status: "pending",
+      statusReason: "Quantum AI is analyzing the demo design.",
+      aiProcessing: true,
+    };
+  }
+
+  function playDemoListing(demo: DemoListing) {
+    clearDemoTimeouts();
+    setMessage("");
+    setQueuedImages([]);
+    setBatchResults([]);
+    setRunStatus("");
+
+    const demoImage = buildDemoImage(demo);
+    setImages([demoImage]);
+    setSelectedId(demoImage.id);
+
+    demoTimeoutsRef.current = [
+      window.setTimeout(() => {
+        setImages((current) =>
+          current.map((entry) =>
+            entry.id === demoImage.id
+              ? {
+                  ...entry,
+                  final: demo.title,
+                  statusReason: "Quantum AI is building the demo description.",
+                }
+              : entry
+          )
+        );
+      }, 700),
+      window.setTimeout(() => {
+        setImages((current) =>
+          current.map((entry) =>
+            entry.id === demoImage.id
+              ? {
+                  ...entry,
+                  final: demo.title,
+                  finalDescription: demo.description,
+                  tags: demo.tags,
+                  status: "ready",
+                  statusReason: "Demo result ready.",
+                  aiProcessing: false,
+                }
+              : entry
+          )
+        );
+      }, 1800),
+    ];
+  }
+
   async function addFiles(list: FileList | null) {
     if (!list) return;
+    if (!connected) return;
     setMessage("");
-
-    const isDemoImport = !connected;
     const incoming = Array.from(list);
     const imageFiles = incoming.filter(isImage);
     const ignoredByType = incoming.length - imageFiles.length;
-    const currentTotal = isDemoImport ? images.length : images.length + queuedImages.length;
+    const currentTotal = images.length + queuedImages.length;
     const room = Math.max(0, totalBatchLimit - currentTotal);
     const accepted = imageFiles.slice(0, room);
     const ignoredByLimit = Math.max(0, imageFiles.length - accepted.length);
@@ -1688,15 +1786,13 @@ export default function MerchQuantumApp() {
       } satisfies Img;
     }));
 
-    const activeRoom = isDemoImport
-      ? Math.max(0, DEMO_TOTAL_BATCH_FILES - images.length)
-      : queuedImages.length > 0
-        ? 0
-        : Math.max(0, activeBatchLimit - images.length);
+    const activeRoom = queuedImages.length > 0
+      ? 0
+      : Math.max(0, activeBatchLimit - images.length);
     const nextActive = good.slice(0, activeRoom);
-    const nextQueued = isDemoImport ? [] : good.slice(activeRoom);
+    const nextQueued = good.slice(activeRoom);
     const mergedActive = [...images, ...nextActive];
-    const mergedQueued = isDemoImport ? [] : [...queuedImages, ...nextQueued];
+    const mergedQueued = [...queuedImages, ...nextQueued];
     setImages(mergedActive);
     setQueuedImages(mergedQueued);
     if (!selectedId && mergedActive[0]) setSelectedId(mergedActive[0].id);
@@ -1961,6 +2057,11 @@ export default function MerchQuantumApp() {
   }
 
   function removePreviewItem(targetId: string) {
+    const target = images.find((entry) => entry.id === targetId);
+    if (target?.isDemo) {
+      clearPreviewWorkspace();
+      return;
+    }
     const remainingActive = images.filter((entry) => entry.id !== targetId);
     const { active: nextActive, queued: nextQueued } = fillActiveBatch(remainingActive, queuedImages, activeBatchLimit);
     setImages(nextActive);
@@ -2074,7 +2175,11 @@ export default function MerchQuantumApp() {
             accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg"
             className="hidden"
             onChange={(e) => {
-              void addFiles(e.target.files);
+              if (connected) {
+                void addFiles(e.target.files);
+              } else {
+                nudgeWorkflow(false);
+              }
               e.currentTarget.value = "";
             }}
           />
@@ -2083,22 +2188,55 @@ export default function MerchQuantumApp() {
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
+              if (!connected) return;
               void addFiles(e.dataTransfer.files);
             }}
-            onClick={() => fileRef.current?.click()}
-            className={`cursor-pointer rounded-[22px] border border-dashed px-4 py-3.5 text-sm text-slate-200 transition-all duration-500 hover:bg-[#0b1024] ${guidanceStep === "import" ? "border-[#7F22FE]/80 bg-[#7F22FE]/10 shadow-[0_0_0_1px_rgba(127,34,254,0.16),0_18px_50px_-30px_rgba(127,34,254,0.45)]" : "border-slate-700 bg-[#020616]/82"} ${connected && hasAnyLoadedImages ? "ring-1 ring-[#00BC7D]/20" : ""} ${attentionTarget === "import" ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.22),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
+            onClick={() => {
+              if (connected) {
+                fileRef.current?.click();
+                return;
+              }
+              if (!isDemoState) nudgeWorkflow(false);
+            }}
+            className={`rounded-[22px] border border-dashed px-4 py-3.5 text-sm text-slate-200 transition-all duration-500 ${connected ? "cursor-pointer hover:bg-[#0b1024]" : isDemoState ? "cursor-default" : "cursor-not-allowed"} ${guidanceStep === "import" ? "border-[#7F22FE]/80 bg-[#7F22FE]/10 shadow-[0_0_0_1px_rgba(127,34,254,0.16),0_18px_50px_-30px_rgba(127,34,254,0.45)]" : "border-slate-700 bg-[#020616]/82"} ${connected && hasAnyLoadedImages ? "ring-1 ring-[#00BC7D]/20" : ""} ${attentionTarget === "import" ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.22),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
           >
             {guidanceStep === "import" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
             <div className="flex min-w-0 flex-col gap-2 text-left lg:flex-row lg:items-start lg:justify-between lg:gap-4">
               <div className="min-w-0 shrink-0 pt-0.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="font-medium text-white">Drag or click to <span className="text-white">Add Images</span></div>
-                  {!connected ? (
+                  <div className="font-medium text-white">
+                    {isDemoState ? "Choose 1 of 5 demo designs" : "Drag or click to Add Images"}
+                  </div>
+                  {isDemoState ? (
                     <span className="inline-flex items-center rounded-full border border-[#7F22FE]/70 bg-[#7F22FE]/14 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#c9a7ff] shadow-[0_0_0_1px_rgba(127,34,254,0.12),0_0_22px_-10px_rgba(127,34,254,0.9)]">
                       Try Now
                     </span>
                   ) : null}
                 </div>
+                {isDemoState ? (
+                  <div className="mt-2 flex gap-2 overflow-x-auto pb-1 pr-1">
+                    {DEMO_LISTINGS.map((demo) => {
+                      const isActive = selectedDemoId === demo.name;
+                      return (
+                        <button
+                          key={demo.id}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            playDemoListing(demo);
+                          }}
+                          className="inline-flex w-[72px] shrink-0 flex-col gap-1 text-left"
+                        >
+                          <span className={`relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl border bg-[#020616] transition-all duration-300 ${isActive ? "border-[#7F22FE]/80 ring-1 ring-[#7F22FE]/60 shadow-[0_12px_30px_-18px_rgba(127,34,254,0.55)]" : "border-slate-700 hover:border-[#7F22FE]/50"}`}>
+                            <span className="absolute inset-0" style={{ backgroundColor: demo.previewBackground }} />
+                            <img src={demo.preview} alt={demo.title} className="relative h-full w-full object-contain" />
+                          </span>
+                          <span className="truncate text-[10px] font-medium leading-3 text-slate-300">{demo.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
               <div className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden px-0.5 pb-1.5 pt-0.5 text-[11px] font-medium text-white sm:text-xs">
                 <div className="flex min-w-max flex-nowrap items-center gap-x-2.5 gap-y-1.5 lg:justify-end">
@@ -2123,24 +2261,14 @@ export default function MerchQuantumApp() {
                       onClick={(e) => {
                         e.stopPropagation();
                         if (!hasAnyLoadedImages) return;
-                        setImages([]);
-                        setQueuedImages([]);
-                        setSelectedId("");
-                        setMessage("");
-                        setBatchResults([]);
-                        setRunStatus("");
+                        clearPreviewWorkspace();
                       }}
                       onKeyDown={(e) => {
                         e.stopPropagation();
                         if (!hasAnyLoadedImages) return;
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          setImages([]);
-                          setQueuedImages([]);
-                          setSelectedId("");
-                          setMessage("");
-                          setBatchResults([]);
-                          setRunStatus("");
+                          clearPreviewWorkspace();
                         }
                       }}
                       className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none text-white hover:text-white focus:text-white active:text-white sm:text-xs ${hasAnyLoadedImages ? "cursor-pointer" : "cursor-default"}`}
