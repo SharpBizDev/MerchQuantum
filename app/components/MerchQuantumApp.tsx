@@ -2205,12 +2205,7 @@ export default function MerchQuantumApp() {
                 fileRef.current?.click();
                 return;
               }
-              if (isDemoState) {
-                setDemoModeOpen(true);
-                if (!demoShopId) setDemoShopId(DEMO_SHOPS[0]?.id || "");
-                return;
-              }
-              nudgeWorkflow(false);
+              if (!isDemoState) nudgeWorkflow(false);
             }}
             className={`rounded-[22px] border border-dashed px-4 py-3.5 text-sm text-slate-200 transition-all duration-500 ${connected ? "cursor-pointer hover:bg-[#0b1024]" : isDemoState ? "cursor-default" : "cursor-not-allowed"} ${guidanceStep === "import" ? "border-[#7F22FE]/80 bg-[#7F22FE]/10 shadow-[0_0_0_1px_rgba(127,34,254,0.16),0_18px_50px_-30px_rgba(127,34,254,0.45)]" : "border-slate-700 bg-[#020616]/82"} ${connected && hasAnyLoadedImages ? "ring-1 ring-[#00BC7D]/20" : ""} ${attentionTarget === "import" ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.22),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
           >
@@ -2219,7 +2214,7 @@ export default function MerchQuantumApp() {
               <div className="min-w-0 shrink-0 pt-0.5">
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="font-medium text-white">
-                    {demoControlsVisible ? "Choose 1 of 5 demo designs" : isDemoState ? "See MerchQuantum in action" : "Drag or click to Add Images"}
+                    {demoControlsVisible ? "Choose 1 of 5 demo designs" : "Drag or click to Add Images"}
                   </div>
                   {isDemoState ? (
                     <button
