@@ -10,6 +10,11 @@ export type DemoListing = {
   tags: string[];
 };
 
+export type DemoShopOption = {
+  id: string;
+  label: string;
+};
+
 const DEMO_SPEC_BLOCK = [
   "Classic Tee Demo Specs",
   "- Unisex everyday fit with a clean front-print presentation",
@@ -106,4 +111,12 @@ export const DEMO_LISTINGS: DemoListing[] = [
     tags: ["faith shirt", "anchor tee", "inspirational graphic", "church shirt", "hope design", "christian apparel", "encouragement gift", "script graphic", "boutique tee", "faith gift", "calm style", "clean typography", "unisex faith tee"],
     svgMarkup: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><g fill="none" fill-rule="evenodd"><path d="M120 56v96M92 164c0 18 12 30 28 30s28-12 28-30M70 144c0 26 20 48 50 48s50-22 50-48" stroke="#FFFFFF" stroke-linecap="round" stroke-width="10"/><circle cx="120" cy="42" r="14" fill="#FFFFFF"/><path d="M74 152H48M192 152h-26" stroke="#FFFFFF" stroke-linecap="round" stroke-width="10"/><path d="M70 78c16-8 32-12 50-12 28 0 48 10 64 28" stroke="#A78BFA" stroke-linecap="round" stroke-width="8"/></g></svg>`,
   }),
+];
+
+export const DEMO_SHOPS: DemoShopOption[] = [
+  { id: "etsy", label: "Your Etsy Shop" },
+  { id: "amazon", label: "Your Amazon Store" },
+  { id: "ebay", label: "Your eBay Store" },
+  { id: "walmart", label: "Your Walmart Store" },
+  { id: "shopify", label: "Your Shopify Store" },
 ];

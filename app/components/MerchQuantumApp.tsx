@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { DEMO_LISTINGS, type DemoListing } from "../../lib/demo/merchquantum-demo";
+import { DEMO_LISTINGS, DEMO_SHOPS, type DemoListing } from "../../lib/demo/merchquantum-demo";
 import { PROVIDER_OPTIONS } from "../../lib/providers/client-options";
 
 const APP_TAGLINE = "Bulk product creation, simplified";
@@ -1309,6 +1309,9 @@ export default function MerchQuantumApp() {
   const [images, setImages] = useState<Img[]>([]);
   const [queuedImages, setQueuedImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
+  const [demoModeOpen, setDemoModeOpen] = useState(false);
+  const [demoShopId, setDemoShopId] = useState(DEMO_SHOPS[0]?.id || "");
+  const [demoTemplateId, setDemoTemplateId] = useState("");
   const [message, setMessage] = useState("");
   const [runStatus, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
@@ -1350,7 +1353,7 @@ export default function MerchQuantumApp() {
     [productId, productSource, shopId]
   );
   const isDemoState = !provider && !token.trim() && !connected;
-  const selectedDemoId = selectedImage?.isDemo ? selectedImage.name : "";
+  const demoControlsVisible = isDemoState && demoModeOpen;
   const readyCount = images.filter((img) => img.status === "ready").length;
   const errorCount = images.filter((img) => img.status === "error").length;
   const processingCount = images.filter((img) => img.status === "pending" || img.aiProcessing).length;
@@ -1429,6 +1432,8 @@ export default function MerchQuantumApp() {
 
   useEffect(() => {
     if (isDemoState) return;
+    setDemoModeOpen(false);
+    setDemoTemplateId("");
     if (!images.some((img) => img.isDemo) && !queuedImages.some((img) => img.isDemo)) return;
     clearDemoTimeouts();
     setImages((current) => current.filter((img) => !img.isDemo));
@@ -1681,6 +1686,7 @@ export default function MerchQuantumApp() {
     setImages([]);
     setQueuedImages([]);
     setSelectedId("");
+    setDemoTemplateId("");
     setMessage("");
     setBatchResults([]);
     setRunStatus("");
@@ -1709,6 +1715,9 @@ export default function MerchQuantumApp() {
   }
 
   function playDemoListing(demo: DemoListing) {
+    setDemoModeOpen(true);
+    setDemoTemplateId(demo.id);
+    if (!demoShopId) setDemoShopId(DEMO_SHOPS[0]?.id || "");
     clearDemoTimeouts();
     setMessage("");
     setQueuedImages([]);
@@ -2196,7 +2205,12 @@ export default function MerchQuantumApp() {
                 fileRef.current?.click();
                 return;
               }
-              if (!isDemoState) nudgeWorkflow(false);
+              if (isDemoState) {
+                setDemoModeOpen(true);
+                if (!demoShopId) setDemoShopId(DEMO_SHOPS[0]?.id || "");
+                return;
+              }
+              nudgeWorkflow(false);
             }}
             className={`rounded-[22px] border border-dashed px-4 py-3.5 text-sm text-slate-200 transition-all duration-500 ${connected ? "cursor-pointer hover:bg-[#0b1024]" : isDemoState ? "cursor-default" : "cursor-not-allowed"} ${guidanceStep === "import" ? "border-[#7F22FE]/80 bg-[#7F22FE]/10 shadow-[0_0_0_1px_rgba(127,34,254,0.16),0_18px_50px_-30px_rgba(127,34,254,0.45)]" : "border-slate-700 bg-[#020616]/82"} ${connected && hasAnyLoadedImages ? "ring-1 ring-[#00BC7D]/20" : ""} ${attentionTarget === "import" ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.22),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
           >
@@ -2205,18 +2219,26 @@ export default function MerchQuantumApp() {
               <div className="min-w-0 shrink-0 pt-0.5">
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="font-medium text-white">
-                    {isDemoState ? "Choose 1 of 5 demo designs" : "Drag or click to Add Images"}
+                    {demoControlsVisible ? "Choose 1 of 5 demo designs" : isDemoState ? "See MerchQuantum in action" : "Drag or click to Add Images"}
                   </div>
                   {isDemoState ? (
-                    <span className="inline-flex items-center rounded-full border border-[#7F22FE]/70 bg-[#7F22FE]/14 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#c9a7ff] shadow-[0_0_0_1px_rgba(127,34,254,0.12),0_0_22px_-10px_rgba(127,34,254,0.9)]">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDemoModeOpen(true);
+                        if (!demoShopId) setDemoShopId(DEMO_SHOPS[0]?.id || "");
+                      }}
+                      className="inline-flex items-center rounded-full border border-[#7F22FE]/70 bg-[#7F22FE]/14 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#c9a7ff] shadow-[0_0_0_1px_rgba(127,34,254,0.12),0_0_22px_-10px_rgba(127,34,254,0.9)] transition-colors hover:bg-[#7F22FE]/18"
+                    >
                       Try Now
-                    </span>
+                    </button>
                   ) : null}
                 </div>
-                {isDemoState ? (
+                {demoControlsVisible ? (
                   <div className="mt-2 flex gap-2 overflow-x-auto pb-1 pr-1">
                     {DEMO_LISTINGS.map((demo) => {
-                      const isActive = selectedDemoId === demo.name;
+                      const isActive = demoTemplateId === demo.id;
                       return (
                         <button
                           key={demo.id}
@@ -2359,6 +2381,40 @@ export default function MerchQuantumApp() {
             </div>
           ) : null}
 
+          {demoControlsVisible ? (
+          <div className="mt-3 border-t border-slate-800 pt-3">
+            <div className="grid items-stretch gap-3 md:grid-cols-2">
+              <Select
+                value={demoShopId}
+                className={demoShopId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
+                onChange={(e) => setDemoShopId(e.target.value)}
+              >
+                {DEMO_SHOPS.map((shop) => (
+                  <option key={shop.id} value={shop.id}>
+                    {shop.label}
+                  </option>
+                ))}
+              </Select>
+
+              <Select
+                value={demoTemplateId}
+                className={demoTemplateId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
+                onChange={(e) => {
+                  const nextDemo = DEMO_LISTINGS.find((entry) => entry.id === e.target.value);
+                  setDemoTemplateId(e.target.value);
+                  if (nextDemo) playDemoListing(nextDemo);
+                }}
+              >
+                <option value="">Choose Product Template</option>
+                {DEMO_LISTINGS.map((demo) => (
+                  <option key={demo.id} value={demo.id}>
+                    {demo.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          ) : connected || !isDemoState ? (
           <div className="mt-3 border-t border-slate-800 pt-3">
           <div
             onPointerDownCapture={() => nudgeWorkflow(false)}
@@ -2421,6 +2477,7 @@ export default function MerchQuantumApp() {
             </div>
           </div>
           </div>
+          ) : null}
 
           <div className="mt-3 border-t border-slate-800 pt-3">
           {!canShowDetailPanel ? null : (
