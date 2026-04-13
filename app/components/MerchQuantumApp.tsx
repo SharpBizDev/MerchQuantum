@@ -1955,7 +1955,7 @@ export default function MerchQuantumApp() {
                 value={connected ? maskToken(token) : token}
                 disabled={!provider}
                 readOnly={connected}
-                placeholder="Provider Personal Access Token (API)"
+                placeholder="Provider API Key"
                 onChange={(e) => setToken(e.target.value)}
                 className={`pr-32 ${connected ? "pr-52" : ""} disabled:cursor-not-allowed`}
               />
