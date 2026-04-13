@@ -2261,7 +2261,7 @@ export default function MerchQuantumApp() {
                         e.stopPropagation();
                         openDemoMode();
                       }}
-                      className="ml-auto inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-[#7F22FE]/45 bg-[#7F22FE]/10 px-2 py-0.5 text-[10px] font-medium uppercase leading-none tracking-[0.18em] text-[#d8b9ff] shadow-[0_0_0_1px_rgba(127,34,254,0.12),0_0_22px_-10px_rgba(127,34,254,0.9)] transition-colors hover:bg-[#7F22FE]/14 hover:text-[#ead8ff]"
+                      className="ml-auto inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-200 transition-colors hover:bg-white/10"
                     >
                       Try Now
                     </button>
