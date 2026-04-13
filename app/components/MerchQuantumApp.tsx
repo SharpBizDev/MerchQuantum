@@ -2212,7 +2212,7 @@ export default function MerchQuantumApp() {
             {guidanceStep === "import" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
             <div className="flex min-w-0 flex-col gap-2 text-left lg:flex-row lg:items-start lg:justify-between lg:gap-4">
               <div className="min-w-0 shrink-0 pt-0.5">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                   <div className="font-medium text-white">
                     {demoControlsVisible ? "Choose 1 of 5 demo designs" : "Drag or click to Add Images"}
                   </div>
@@ -2224,7 +2224,7 @@ export default function MerchQuantumApp() {
                         setDemoModeOpen(true);
                         if (!demoShopId) setDemoShopId(DEMO_SHOPS[0]?.id || "");
                       }}
-                      className="inline-flex items-center rounded-full border border-[#7F22FE]/70 bg-[#7F22FE]/14 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#c9a7ff] shadow-[0_0_0_1px_rgba(127,34,254,0.12),0_0_22px_-10px_rgba(127,34,254,0.9)] transition-colors hover:bg-[#7F22FE]/18"
+                      className="inline-flex shrink-0 items-center whitespace-nowrap py-0 text-[10px] font-medium uppercase leading-none tracking-[0.12em] text-[#c9a7ff] transition-colors hover:text-[#d7bbff] sm:rounded-full sm:border sm:border-[#7F22FE]/70 sm:bg-[#7F22FE]/14 sm:px-2 sm:py-0.5 sm:text-[11px] sm:font-semibold sm:tracking-[0.18em] sm:shadow-[0_0_0_1px_rgba(127,34,254,0.12),0_0_22px_-10px_rgba(127,34,254,0.9)] sm:hover:bg-[#7F22FE]/18"
                     >
                       Try Now
                     </button>
