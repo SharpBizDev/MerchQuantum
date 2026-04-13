@@ -2052,7 +2052,7 @@ export default function MerchQuantumApp() {
                           setRunStatus("");
                         }
                       }}
-                      className={`whitespace-nowrap text-[11px] font-medium text-white transition-colors sm:text-xs ${hasAnyLoadedImages ? "cursor-pointer hover:text-slate-200" : "cursor-default opacity-45"}`}
+                      className={`inline-flex items-center whitespace-nowrap text-[11px] font-medium leading-none text-white hover:text-white focus:text-white active:text-white sm:text-xs ${hasAnyLoadedImages ? "cursor-pointer" : "cursor-default"}`}
                     >
                       Clear
                     </span>
