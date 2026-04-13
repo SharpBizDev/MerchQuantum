@@ -7,6 +7,8 @@ const APP_TAGLINE = "Bulk product creation, simplified";
 const ACTIVE_BATCH_FILES = 50;
 const CONNECTED_TOTAL_BATCH_FILES = 300;
 const DEMO_TOTAL_BATCH_FILES = 5;
+const DEMO_TITLE_PLACEHOLDER = "Upload 5 Designs Free and See AI Listing Results Instantly";
+const DEMO_DESCRIPTION_PLACEHOLDER = "Upload up to 5 designs free to preview how MerchQuantum scans artwork, writes titles and descriptions, and builds listing-ready content. Connect a provider to unlock templates, product details, and full batch draft creation.";
 const FIXED_TAG_COUNT = 13;
 
 type ProviderId =
@@ -863,251 +865,287 @@ function getFamilyLabel(family: ProductFamily) {
 }
 
 function buildLeadParagraphs(title: string, templateDescription: string) {
-  const safe = safeTitle(title, title);
-  const family = resolveProductFamily(safe, templateDescription);
-  const familyLabel = getFamilyLabel(family);
-  const themePhrase = detectThemePhrase(safe);
-  const trimmedTitle = trimTitleAtWordBoundary(safe, AI_TITLE_MAX_CHARS) || safe;
+  const family = resolveProductFamily(title, templateDescription);
+  const theme = detectThemePhrase(title);
+  const productName = safeTitle(title, "This product");
 
-  const sentenceA = (() => {
-    switch (family) {
-      case "t-shirt":
-        return `${trimmedTitle} puts the design front and center with a ${themePhrase} graphic tee presentation that reads clearly at first glance.`;
-      case "hoodie":
-        return `${trimmedTitle} gives the artwork a ${themePhrase} hoodie presentation with a strong front-facing graphic focus.`;
-      case "sweatshirt":
-        return `${trimmedTitle} frames the artwork as a ${themePhrase} sweatshirt with a clear, easy-to-read statement graphic.`;
-      case "tank top":
-        return `${trimmedTitle} turns the design into a ${themePhrase} tank top with a crisp graphic presence that stays easy to recognize.`;
-      default:
-        return `${trimmedTitle} presents the artwork as a ${themePhrase} ${familyLabel} with a clean, readable graphic focus.`;
-    }
-  })();
-
-  const sentenceB = (() => {
-    switch (family) {
-      case "t-shirt":
-        return `It is a strong fit for casual rotation, gift-ready assortments, and apparel shoppers who want a shirt that communicates the design theme quickly without extra explanation.`;
-      case "hoodie":
-        return `It works well for layered everyday wear, cooler-season drops, and gift-ready assortments that need a design-led hoodie with immediate visual clarity.`;
-      case "sweatshirt":
-        return `It fits naturally into comfort-led collections, seasonal gifting, and everyday wardrobe picks that benefit from a design buyers can recognize right away.`;
-      case "tank top":
-        return `It fits naturally into warm-weather collections, gym-adjacent casual wear, and gift-ready assortments that benefit from a direct, recognizable graphic statement.`;
-      case "hat":
-        return `It works well for accessory-led drops, everyday styling, and gift-ready picks where the design needs to stay visible in a compact format.`;
-      case "drinkware":
-        return `It gives the design an easy gift-ready angle and a practical everyday use case, making it a flexible choice for buyers who want both function and personality.`;
-      case "candle":
-        return `It adds an easy gift-ready angle and a calm lifestyle feel, making the design feel more intentional in home, self-care, or seasonal collections.`;
-      case "bath-body":
-        return `It gives the design a polished personal-care angle that feels giftable, approachable, and easy to understand in boutique-style assortments.`;
-      case "home-kitchen":
-        return `It fits naturally into home-forward and gift-ready assortments where the artwork needs to read quickly and still feel polished in daily use.`;
-      case "wall-art":
-        return `It works well for design-led home decor collections and gift-ready assortments where the artwork needs to carry the product story with minimal explanation.`;
-      case "sticker":
-        return `It is a strong fit for impulse-friendly add-ons and gift-ready accessory collections where the design needs to feel immediate, fun, and easy to understand.`;
-      case "bag":
-        return `It gives the artwork a functional everyday carry angle that still feels design-led and easy to recognize in gift-ready accessory assortments.`;
-      case "accessory":
-        return `It works well for smaller add-on products and gift-ready assortments where the design needs to stay direct, clear, and visually memorable.`;
-      case "footwear":
-        return `It gives the design a wearable lifestyle angle that feels bold, practical, and easy to understand in gift-ready fashion assortments.`;
-      default:
-        return `It gives the design a clear buyer-facing story with enough visual direction to feel giftable, approachable, and easy to place in everyday collections.`;
-    }
-  })();
-
-  return normalizeAiLeadParagraphs([sentenceA, sentenceB]);
+  switch (family) {
+    case "t-shirt":
+      return [
+        `${productName} brings a ${theme} look to an easygoing everyday tee made for casual wear, simple layering, and standout gift appeal.`,
+        `It is a strong fit for daily rotation, niche apparel drops, and laid-back outfits that benefit from comfortable wear and a design with real personality.`,
+      ];
+    case "hoodie":
+      return [
+        `${productName} brings a ${theme} look to a comfortable hoodie made for cooler weather, easy layering, and everyday wear.`,
+        `It works well for casual wardrobes, giftable apparel drops, and design-led collections that need warmth, comfort, and a strong visual point of view.`,
+      ];
+    case "sweatshirt":
+      return [
+        `${productName} brings a ${theme} look to a classic sweatshirt built for comfort, relaxed styling, and easy everyday use.`,
+        `It fits naturally into seasonal drops, weekend wardrobes, and gift-ready apparel collections that need familiar comfort with a stronger design presence.`,
+      ];
+    case "tank top":
+      return [
+        `${productName} brings a ${theme} look to a lightweight tank made for warm-weather wear, casual comfort, and easy daily styling.`,
+        `It suits gym-to-weekend outfits, summer assortments, and giftable apparel collections that need a cleaner balance of comfort, versatility, and visual appeal.`,
+      ];
+    case "hat":
+      return [
+        `${productName} adds a ${theme} finish to casual outfits, daily errands, and easy giftable accessory collections.`,
+        `It is built for grab-and-go wear, everyday rotation, and simple styling that gives the design room to stand out without overcomplicating the look.`,
+      ];
+    case "drinkware":
+      return [
+        `${productName} brings a ${theme} touch to daily routines, desk setups, coffee breaks, and easy gift giving.`,
+        `It works well for personal use, practical gifting, and lifestyle collections that need something functional, cleanly presented, and easy to enjoy every day.`,
+      ];
+    case "candle":
+      return [
+        `${productName} brings a ${theme} feel to cozy spaces, thoughtful gifting, and décor-driven everyday use.`,
+        `It fits naturally into seasonal collections, self-care moments, and home-focused assortments that benefit from a polished mood and gift-ready presentation.`,
+      ];
+    case "bath-body":
+      return [
+        `${productName} brings a ${theme} touch to routine self-care, simple gifting, and practical daily use.`,
+        `It works well for boutique-style assortments, wellness gifting, and personal care collections that need a cleaner product story and approachable presentation.`,
+      ];
+    case "home-kitchen":
+      return [
+        `${productName} adds a ${theme} element to everyday spaces, practical routines, and home-focused gifting moments.`,
+        `It fits naturally into décor-minded collections, everyday household use, and giftable assortments that benefit from a useful item with stronger personality.`,
+      ];
+    case "wall-art":
+      return [
+        `${productName} brings a ${theme} statement to walls, shelves, and styled spaces that need visual interest.`,
+        `It works well for home refreshes, giftable décor collections, and design-led assortments that benefit from a stronger focal point and easy presentation.`,
+      ];
+    case "sticker":
+      return [
+        `${productName} brings a ${theme} look to laptops, water bottles, journals, and other everyday surfaces.`,
+        `It is a strong fit for impulse-friendly gifting, low-commitment add-ons, and accessory collections that benefit from flexible use and quick visual appeal.`,
+      ];
+    case "bag":
+      return [
+        `${productName} adds a ${theme} touch to daily carry, errands, travel, and practical gift giving.`,
+        `It works for everyday utility, easy outfitting, and giftable accessory collections that need simple function with a more distinctive visual edge.`,
+      ];
+    case "footwear":
+      return [
+        `${productName} brings a ${theme} look to casual footwear designed for everyday wear and easy outfit pairing.`,
+        `It fits best in comfort-focused collections, giftable lifestyle assortments, and design-led drops that benefit from familiar use with stronger personality.`,
+      ];
+    case "accessory":
+      return [
+        `${productName} adds a ${theme} touch to daily essentials, practical gifting, and easy add-on purchases.`,
+        `It works well for lifestyle collections, impulse-friendly accessories, and design-led assortments that need utility without losing visual identity.`,
+      ];
+    default:
+      return [
+        `${productName} brings a ${theme} look to an everyday product designed for practical use, giftability, and clean presentation.`,
+        `It fits naturally into niche collections, casual gifting moments, and design-led assortments that benefit from simple utility and a stronger point of view.`,
+      ];
+  }
 }
 
-function buildDescription(title: string, templateDescription: string, leadParagraphs: string[]) {
-  const safe = safeTitle(title, title);
-  const { introParagraphs, sections } = parseTemplateDescription(formatTemplateDescription(templateDescription));
-  const lead = normalizeAiLeadParagraphs(leadParagraphs);
-  const parts: string[] = [];
-
-  if (lead.length) {
-    parts.push(lead.join("\n\n"));
-  }
-
-  const bodySource = dedupeParagraphs(introParagraphs);
-  if (bodySource.length) {
-    parts.push(bodySource.join("\n\n"));
-  }
-
-  for (const section of sections) {
-    const lines: string[] = [section.heading];
-    if (section.paragraphs.length) lines.push(...section.paragraphs);
-    if (section.bullets.length) lines.push(...section.bullets.map((bullet) => `- ${bullet}`));
-    parts.push(lines.join("\n"));
-  }
-
-  return parts.filter(Boolean).join("\n\n");
+function titleCaseTag(value: string) {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
-function splitDescriptionIntoParts(description: string) {
-  const trimmed = description.trim();
-  if (!trimmed) {
-    return { leadParagraphs: [] as string[], templateBlock: "" };
+function deriveTags(title: string, templateDescription: string) {
+  const combined = `${title} ${stripHtml(templateDescription)}`.toLowerCase();
+  const words = combined.match(/[a-z0-9]+/g) || [];
+  const singles = Array.from(new Set(words.filter((word) => word.length >= 3 && !STOP_WORDS.has(word))));
+
+  const phrases: string[] = [];
+  for (let i = 0; i < words.length - 1; i += 1) {
+    const a = words[i];
+    const b = words[i + 1];
+    if (a.length < 3 || b.length < 3 || STOP_WORDS.has(a) || STOP_WORDS.has(b)) continue;
+    phrases.push(`${a} ${b}`);
   }
 
-  const rawBlocks = trimmed
-    .split(/\n\s*\n/)
-    .map((block) => block.trim())
-    .filter(Boolean);
-
-  const headerBlocks: string[] = [];
-  const leadParagraphs: string[] = [];
-  let templateStarted = false;
-
-  for (const block of rawBlocks) {
-    const firstLine = block.split("\n")[0]?.trim().replace(/:$/, "") || "";
-    const isHeaderBlock = [
-      "Product features",
-      "Care instructions",
-      "Size chart",
-      "Product details",
-      "Materials",
-      "Sizing",
-      "Dimensions",
-    ].includes(firstLine);
-
-    if (templateStarted || isHeaderBlock) {
-      templateStarted = true;
-      headerBlocks.push(block);
-    } else {
-      leadParagraphs.push(block);
-    }
-  }
-
-  return {
-    leadParagraphs,
-    templateBlock: headerBlocks.join("\n\n"),
-  };
+  const ranked = Array.from(new Set([...phrases, ...singles])).slice(0, FIXED_TAG_COUNT);
+  while (ranked.length < FIXED_TAG_COUNT) ranked.push(`Keyword ${ranked.length + 1}`);
+  return ranked.map(titleCaseTag);
 }
 
-function buildTags(title: string, description: string, count = FIXED_TAG_COUNT) {
-  const combined = `${title} ${description}`.toLowerCase();
-  const words = combined
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((word) => word.length >= 3 && !STOP_WORDS.has(word));
-  const counts = new Map<string, number>();
-
-  for (const word of words) {
-    counts.set(word, (counts.get(word) || 0) + 1);
-  }
-
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, count)
-    .map(([word]) => word)
-    .concat(Array.from({ length: count }, (_, index) => `tag-${index + 1}`))
-    .slice(0, count);
+function leadToHtml(paragraphs: string[]) {
+  return paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
 }
 
 function htmlToEditableText(value: string) {
   return stripHtml(value)
+    .split("\n")
+    .map((line) => line.trimStart().replace(/[ \t]+$/g, ""))
+    .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
-function parseResponsePayload(response: Response) {
-  return response.text().then((text) => {
-    if (!text) return {};
-    try {
-      return JSON.parse(text) as Record<string, unknown>;
-    } catch {
-      return { error: text };
-    }
+function formatProductDescriptionWithSections(leadParagraphs: string[], templateDescription: string) {
+  const paragraphs = dedupeParagraphs(normalizeAiLeadParagraphs(leadParagraphs));
+  const leadHtml = leadToHtml(paragraphs);
+
+  const formattedTemplate = formatTemplateDescription(templateDescription);
+  const parsed = parseTemplateDescription(formattedTemplate);
+  const detailSectionHeadings = new Set(["Product features", "Care instructions", "Size chart"]);
+
+  const detailSections = parsed.sections.filter((section) => detailSectionHeadings.has(section.heading));
+
+  if (detailSections.length === 0) {
+    return leadHtml;
+  }
+
+  const detailHtml = detailSections
+    .map((section) => {
+      const pieces: string[] = [`<h3>${escapeHtml(section.heading)}</h3>`];
+      for (const paragraph of section.paragraphs) {
+        pieces.push(`<p>${escapeHtml(paragraph)}</p>`);
+      }
+      if (section.bullets.length > 0) {
+        const items = section.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join("");
+        pieces.push(`<ul>${items}</ul>`);
+      }
+      return pieces.join("");
+    })
+    .join("");
+
+  return `${leadHtml}${detailHtml}`;
+}
+
+function buildLeadOnlyDescription(leadParagraphs: string[]) {
+  return leadToHtml(dedupeParagraphs(normalizeAiLeadParagraphs(leadParagraphs)));
+}
+
+function buildDescription(title: string, templateDescription: string, leadOverride?: string[]) {
+  return formatProductDescriptionWithSections(
+    leadOverride || buildLeadParagraphs(title, templateDescription),
+    templateDescription
+  );
+}
+
+function buildTags(title: string, description: string, count: number) {
+  return deriveTags(title, description).slice(0, count);
+}
+
+function isImage(file: File) {
+  if (file.type.startsWith("image/")) return true;
+  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+  return ["png", "jpg", "jpeg", "webp", "gif", "svg"].includes(ext);
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("Unable to read file."));
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.readAsDataURL(file);
   });
+}
+
+function readDataUrl(file: File) {
+  return fileToDataUrl(file);
 }
 
 const REQUEST_TIMEOUT_MS = 45000;
 
 async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
   } finally {
     clearTimeout(timeout);
   }
 }
 
 function formatApiError(message: string) {
-  if (!message) return "Something went wrong. Please try again.";
-  const lower = message.toLowerCase();
-
-  if (lower.includes("static host")) {
+  const raw = message.trim();
+  if (!raw) return "Live provider connection is not available in this environment.";
+  if (raw.includes("UnsupportedHttpVerb")) {
+    return "Live provider connection is not available in this environment. The backend API route is not installed yet.";
+  }
+  if (raw.startsWith("<?xml")) {
     return "Live provider connection is not available in this environment. The request reached a static host instead of the backend API route.";
   }
-  if (lower.includes("timed out")) {
+  if (raw.toLowerCase().includes("abort") || raw.toLowerCase().includes("timed out")) {
     return "The request timed out before the provider responded. Please try again.";
   }
-  if (lower.includes("failed to fetch") || lower.includes("networkerror")) {
-    return "MerchQuantum could not reach the server. Please check your connection and try again.";
-  }
-
-  return message;
+  return raw.length > 220 ? `${raw.slice(0, 220)}...` : raw;
 }
 
-async function requestJson(url: string, init?: RequestInit) {
-  const response = await fetchWithTimeout(url, init);
-  const text = await response.text();
-  let data: unknown = {};
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { error: text };
-    }
+async function parseResponsePayload(response: Response) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    return response.json();
   }
-  return { response, data: data as Record<string, unknown> };
+
+  const text = await response.text();
+  return { error: text || `Request failed with status ${response.status}.` };
 }
 
 async function requestAiListingDraft({
-  title,
-  imageDataUrl,
-  templateContext,
-  productFamily,
+  image,
+  templateDescription,
+  provider,
 }: {
-  title: string;
-  imageDataUrl: string;
-  templateContext: string;
-  productFamily: ProductFamily;
-}): Promise<AiListingDraft> {
-  const { response, data } = await requestJson("/api/ai/listing", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  image: Img;
+  templateDescription: string;
+  provider: ProviderId;
+}): Promise<AiListingDraft | null> {
+  try {
+    const imageDataUrl = await fileToDataUrl(image.file);
+    const templateContext = buildTemplateContext(templateDescription);
+    const productFamily = resolveProductFamily(image.final, templateDescription);
+
+    const response = await fetch("/api/ai/listing", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        imageDataUrl,
+        fileName: image.name,
+        provider,
+        productFamily,
+        templateContext,
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = await response.json();
+    const title = safeTitle(payload?.title || "", image.final);
+    const leadParagraphs = normalizeAiLeadParagraphs(Array.isArray(payload?.leadParagraphs) ? payload.leadParagraphs : []);
+    const reasonFlags = Array.isArray(payload?.reasonFlags)
+      ? payload.reasonFlags.filter((value: unknown): value is string => typeof value === "string")
+      : [];
+
+    return {
       title,
-      imageDataUrl,
-      templateContext,
-      productFamily,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(String(data?.error || `Quantum AI request failed with status ${response.status}.`));
+      leadParagraphs,
+      model: typeof payload?.model === "string" ? payload.model : AI_MODEL_LABEL,
+      confidence: typeof payload?.confidence === "number" ? payload.confidence : 0,
+      templateReference: typeof payload?.templateReference === "string" ? payload.templateReference : "",
+      reasonFlags,
+      source: payload?.source === "gemini" || payload?.source === "fallback" ? payload.source : "fallback",
+      grade: payload?.grade === "green" || payload?.grade === "orange" || payload?.grade === "red" ? payload.grade : "orange",
+    };
+  } catch {
+    return null;
   }
-
-  const leadParagraphs = Array.isArray(data?.leadParagraphs)
-    ? normalizeAiLeadParagraphs((data.leadParagraphs as unknown[]).map((entry) => String(entry || "")))
-    : [];
-
-  return {
-    title: String(data?.title || title).trim() || title,
-    leadParagraphs,
-    model: String(data?.model || AI_MODEL_LABEL),
-    confidence: typeof data?.confidence === "number" ? data.confidence : 0.65,
-    templateReference: String(data?.templateReference || ""),
-    reasonFlags: Array.isArray(data?.reasonFlags) ? (data.reasonFlags as unknown[]).map((entry) => String(entry || "")).filter(Boolean) : [],
-    source: data?.source === "gemini" || data?.source === "fallback" ? data.source : "fallback",
-    grade: data?.grade === "green" || data?.grade === "orange" || data?.grade === "red" ? data.grade : "orange",
-  };
 }
 
 function compareByStatus(a: Img, b: Img) {
@@ -1117,7 +1155,7 @@ function compareByStatus(a: Img, b: Img) {
     pending: 2,
   };
 
-  return order[a.status] - order[b.status] || a.name.localeCompare(b.name);
+  return order[a.status] - order[b.status];
 }
 
 function fillActiveBatch(active: Img[], queued: Img[], limit: number) {
@@ -1132,19 +1170,17 @@ function fillActiveBatch(active: Img[], queued: Img[], limit: number) {
   };
 }
 
-function Button({
-  children,
-  className = "",
-  tone = "primary",
-  type = "button",
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  tone?: "primary" | "ghost";
-}) {
-  const base = "inline-flex min-h-[44px] items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60";
-  const tones = tone === "ghost"
-    ? "border border-slate-700 bg-[#020616] text-white/85 hover:bg-[#0b1024]"
-    : "bg-[#7F22FE] text-white hover:bg-[#6d1ee0]";
+type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  tone?: "default" | "ghost";
+};
+
+function Button({ className = "", tone = "default", type = "button", ...props }: ButtonProps) {
+  const base =
+    "inline-flex min-h-[40px] items-center justify-center rounded-xl px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60";
+  const tones =
+    tone === "ghost"
+      ? "border border-slate-700 bg-[#020616] text-white/85 hover:bg-[#0b1024]"
+      : "bg-[#7F22FE] text-white hover:bg-[#6d1ee0]";
 
   return <button type={type} className={`${base} ${tones} ${className}`} {...props} />;
 }
@@ -1320,15 +1356,21 @@ export default function MerchQuantumApp() {
   const uploadDisabled = !connected || !template || images.length === 0 || isRunningBatch || processingCount > 0;
   const canShowReviewDetail = connected && !!shopId && !!productId;
   const canShowDetailPanel = !!selectedImage || canShowReviewDetail;
-  const detailTitle = selectedImage?.final || template?.nickname || selectedProduct?.title || "Loading selected product...";
+  const isDemoState = !connected;
+  const detailTitle = selectedImage?.final
+    || (isDemoState
+      ? DEMO_TITLE_PLACEHOLDER
+      : template?.nickname || selectedProduct?.title || "Loading selected product...");
   const detailDescription = selectedImage?.finalDescription
-    || (templateDescription
-      ? templateDescription
-      : canShowReviewDetail
-        ? "Select or add artwork to generate image-based listing copy."
-        : selectedImage
-          ? "Add a shop and product template when you're ready. Quantum AI will build the final listing copy here."
-          : "");
+    || (isDemoState
+      ? DEMO_DESCRIPTION_PLACEHOLDER
+      : templateDescription
+        ? templateDescription
+        : canShowReviewDetail
+          ? "Select or add artwork to generate image-based listing copy."
+          : selectedImage
+            ? "Add a shop and product template when you're ready. Quantum AI will build the final listing copy here."
+            : "");
   const detailTags = selectedImage?.tags?.length
     ? selectedImage.tags
     : canShowReviewDetail
@@ -1344,13 +1386,14 @@ export default function MerchQuantumApp() {
       ? "import"
       : !shopId || !template
         ? "template"
-        : "detail";
-
+        : "settled";
   const processingBanner = processingCount > 0
     ? `Quantum AI is generating listing copy for ${processingCount} image${processingCount === 1 ? "" : "s"} in this batch.`
     : "";
 
-  const activeTemplateDescription = templateDescription;
+  function getProviderRoute(path: "connect" | "disconnect" | "products" | "product" | "batch-create") {
+    return `/api/providers/${path}`;
+  }
 
   function triggerAttentionCue(target: "provider" | "token" | "import" | "shop" | "template") {
     setAttentionTarget(target);
@@ -1360,26 +1403,18 @@ export default function MerchQuantumApp() {
     }, 1200);
   }
 
-  function nudgeWorkflow(detailOnly = false) {
-    if (!provider) {
-      triggerAttentionCue("provider");
-      return;
-    }
-    if (!connected) {
-      triggerAttentionCue("token");
-      return;
-    }
-    if (!images.length) {
-      triggerAttentionCue("import");
-      return;
-    }
-    if (!shopId) {
-      if (!detailOnly || images.length > 0) triggerAttentionCue("shop");
-      return;
-    }
-    if (!template) {
-      if (!detailOnly || images.length > 0) triggerAttentionCue("template");
-    }
+  function getMissingWorkflowTarget(includeImportStep: boolean) {
+    if (!provider) return "provider" as const;
+    if (!connected) return "token" as const;
+    if (includeImportStep && images.length === 0) return "import" as const;
+    if (!shopId) return "shop" as const;
+    if (!template) return "template" as const;
+    return null;
+  }
+
+  function nudgeWorkflow(includeImportStep: boolean) {
+    const target = getMissingWorkflowTarget(includeImportStep);
+    if (target) triggerAttentionCue(target);
   }
 
   function nudgeProviderSelectionFromTokenArea() {
@@ -1391,11 +1426,13 @@ export default function MerchQuantumApp() {
   useEffect(() => {
     const previous = previousPreviewUrlsRef.current;
     const current = [...images, ...queuedImages].map((img) => img.preview);
+
     for (const url of previous) {
-      if (!current.includes(url) && url.startsWith("blob:")) {
+      if (url.startsWith("blob:") && !current.includes(url)) {
         URL.revokeObjectURL(url);
       }
     }
+
     previousPreviewUrlsRef.current = current;
   }, [images, queuedImages]);
 
@@ -1410,20 +1447,18 @@ export default function MerchQuantumApp() {
 
   useEffect(() => {
     activeTemplateKeyRef.current = templateKey;
-  }, [templateKey]);
-
-  useEffect(() => {
-    if (!templateKey) return;
+    aiLoopBusyRef.current = null;
     setImages((current) =>
       current.map((img) =>
         img.processedTemplateKey === templateKey
           ? img
           : {
               ...img,
+              processedTemplateKey: undefined,
+              aiDraft: undefined,
+              aiProcessing: false,
               status: "pending",
               statusReason: "Quantum AI is preparing listing copy.",
-              aiProcessing: false,
-              aiDraft: undefined,
             }
       )
     );
@@ -1433,28 +1468,61 @@ export default function MerchQuantumApp() {
           ? img
           : {
               ...img,
+              processedTemplateKey: undefined,
+              aiDraft: undefined,
+              aiProcessing: false,
               status: "pending",
               statusReason: "Quantum AI is preparing listing copy.",
-              aiProcessing: false,
-              aiDraft: undefined,
             }
       )
     );
   }, [templateKey]);
 
   useEffect(() => {
+    if (!connected || !isLiveProvider || !shopId) {
+      setApiProducts([]);
+      setProductId("");
+      return;
+    }
+
+    void loadProductsForShop(shopId);
+  }, [shopId]);
+
+  useEffect(() => {
+    if (!shopId) {
+      setProductId("");
+      setTemplate(null);
+      setTemplateDescription("");
+      return;
+    }
+
+    if (productId && !visibleProducts.some((product) => product.id === productId)) {
+      setProductId("");
+    }
+  }, [shopId, visibleProducts, productId]);
+
+  useEffect(() => {
+    if (!shopId || !productId) {
+      setTemplate(null);
+      setTemplateDescription("");
+      return;
+    }
+
+    void loadProductTemplate(productId);
+  }, [shopId, productId]);
+
+  useEffect(() => {
     if (!templateReadyForAi) return;
     if (aiLoopBusyRef.current) return;
-
-    const nextImage = images.find((img) => img.processedTemplateKey !== templateKey && !img.aiProcessing);
+    const nextImage = images.find((img) => !img.aiProcessing && img.processedTemplateKey !== templateKey);
     if (!nextImage) return;
 
     const requestTemplateKey = templateKey;
     const requestTemplateDescription = templateDescription;
     const requestTemplateReference = template?.reference || "";
     const requestOwner = Symbol(nextImage.id);
-    aiLoopBusyRef.current = requestOwner;
 
+    aiLoopBusyRef.current = requestOwner;
     setImages((current) =>
       current.map((img) =>
         img.id === nextImage.id
@@ -1465,41 +1533,54 @@ export default function MerchQuantumApp() {
 
     void (async () => {
       try {
-        const response = await fetchWithTimeout("/api/ai/listing", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: nextImage.cleaned,
-            imageDataUrl: nextImage.preview,
-            templateContext: requestTemplateDescription,
-            productFamily: resolveProductFamily(nextImage.cleaned, requestTemplateDescription),
-          }),
-        });
+        const imageDataUrl = await readDataUrl(nextImage.file);
+        const response = await fetchWithTimeout(
+          "/api/ai/listing",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              imageDataUrl,
+              fileName: nextImage.name,
+              templateContext: requestTemplateDescription,
+              productFamily: resolveProductFamily(nextImage.cleaned, requestTemplateDescription),
+            }),
+          },
+          60000
+        );
 
         const data = await parseResponsePayload(response);
-        if (!response.ok) throw new Error(String(data?.error || `AI request failed with status ${response.status}.`));
+        if (!response.ok) throw new Error(data?.error || `AI request failed with status ${response.status}.`);
         if (activeTemplateKeyRef.current !== requestTemplateKey) return;
 
+        const leadParagraphs = normalizeAiLeadParagraphs(Array.isArray(data?.leadParagraphs) ? data.leadParagraphs : []);
         const fallbackLead = buildLeadParagraphs(nextImage.cleaned, requestTemplateDescription);
-        const finalTitle = safeTitle(String(data?.title || nextImage.cleaned), nextImage.cleaned);
-        const finalLead = normalizeAiLeadParagraphs(
-          Array.isArray(data?.leadParagraphs) ? (data.leadParagraphs as unknown[]).map((entry) => String(entry || "")) : fallbackLead
-        );
+        const finalLead = leadParagraphs.length ? leadParagraphs : fallbackLead;
+        const fallbackTitle = safeTitle(nextImage.final, nextImage.cleaned);
+        const titleFromApi = typeof data?.title === "string" ? data.title : fallbackTitle;
+        const finalTitle = safeTitle(titleFromApi, fallbackTitle);
         const finalDescription = requestTemplateDescription.trim()
           ? buildDescription(finalTitle, requestTemplateDescription, finalLead)
-          : finalLead.join("\n\n");
-        const tags = Array.isArray(data?.tags)
-          ? (data.tags as unknown[]).map((entry) => String(entry || "")).filter(Boolean).slice(0, FIXED_TAG_COUNT)
-          : buildTags(finalTitle, finalDescription, FIXED_TAG_COUNT);
-        const reasonFlags = Array.isArray(data?.reasonFlags) ? (data.reasonFlags as unknown[]).map((entry) => String(entry || "")).filter(Boolean) : [];
+          : buildLeadOnlyDescription(finalLead);
+        const tags = buildTags(finalTitle, finalDescription, FIXED_TAG_COUNT);
+        const confidence = Number.isFinite(data?.confidence) ? clamp(Number(data.confidence), 0, 1) : 0;
+        const reasonFlags = Array.isArray(data?.reasonFlags)
+          ? data.reasonFlags.filter((flag: unknown) => typeof flag === "string")
+          : [];
         const grade = data?.grade === "green" || data?.grade === "orange" || data?.grade === "red"
           ? data.grade
-          : (typeof data?.confidence === "number" && data.confidence >= 0.8 && reasonFlags.length === 0 ? "green" : "red");
-        const source = data?.source === "gemini" || data?.source === "fallback" ? data.source : "fallback";
-        const confidence = typeof data?.confidence === "number" ? data.confidence : 0.65;
-        const status: ReviewStatus = grade === "green" ? "ready" : "error";
+          : confidence >= 0.8 && reasonFlags.length === 0
+            ? "green"
+            : "red";
+        const source = data?.source === "gemini" || data?.source === "fallback"
+          ? data.source
+          : "fallback";
+        const status: ReviewStatus =
+          grade === "green"
+            ? "ready"
+            : "error";
         const statusReason = status === "ready"
-          ? "Quantum AI approved this item as ready."
+          ? "AI draft looks solid."
           : reasonFlags.length
             ? reasonFlags.join(" • ")
             : source === "fallback"
@@ -1514,14 +1595,14 @@ export default function MerchQuantumApp() {
                   final: finalTitle,
                   finalDescription,
                   tags,
+                  aiProcessing: false,
                   status,
                   statusReason,
-                  aiProcessing: false,
                   processedTemplateKey: requestTemplateKey,
                   aiDraft: {
                     title: finalTitle,
-                    leadParagraphs: finalLead,
-                    model: String(data?.model || AI_MODEL_LABEL),
+                    leadParagraphs,
+                    model: typeof data?.model === "string" ? data.model : AI_MODEL_LABEL,
                     confidence,
                     templateReference: requestTemplateReference,
                     reasonFlags,
@@ -1540,10 +1621,11 @@ export default function MerchQuantumApp() {
             img.id === nextImage.id
               ? {
                   ...img,
+                  aiProcessing: false,
                   status: "error",
                   statusReason: message,
-                  aiProcessing: false,
                   processedTemplateKey: requestTemplateKey,
+                  aiDraft: undefined,
                 }
               : img
           )
@@ -1559,55 +1641,51 @@ export default function MerchQuantumApp() {
   function resetProviderState(clearStatus = true) {
     setConnected(false);
     setLoadingApi(false);
+    setPulseConnected(false);
     if (clearStatus) setApiStatus("");
     setApiShops([]);
     setApiProducts([]);
     setLoadingProducts(false);
-    setLoadingTemplateDetails(false);
     setShopId("");
     setProductId("");
     setTemplate(null);
     setTemplateDescription("");
-    setSearch("");
+    setBatchResults([]);
+    setRunStatus("");
   }
 
   async function addFiles(list: FileList | null) {
     if (!list) return;
+    setMessage("");
 
     const incoming = Array.from(list);
-    if (!incoming.length) return;
-
-    const imageFiles = incoming.filter((file) => file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(file.name));
+    const imageFiles = incoming.filter(isImage);
     const ignoredByType = incoming.length - imageFiles.length;
     const currentTotal = images.length + queuedImages.length;
     const room = Math.max(0, totalBatchLimit - currentTotal);
     const accepted = imageFiles.slice(0, room);
     const ignoredByLimit = Math.max(0, imageFiles.length - accepted.length);
 
-    const good: Img[] = [];
-    for (const file of accepted) {
-      try {
-        const preview = await createContrastSafePreview(file);
-        const artworkBounds = await analyzeArtworkBounds(file);
-        const cleaned = cleanTitle(file.name);
-        good.push({
-          id: makeId(),
-          name: file.name,
-          file,
-          preview: preview.src,
-          previewBackground: preview.background,
-          cleaned,
-          final: cleaned,
-          finalDescription: "",
-          tags: [],
-          status: "pending" as ReviewStatus,
-          statusReason: "Quantum AI is preparing listing copy.",
-          artworkBounds,
-        });
-      } catch {
-        // Ignore unreadable files.
-      }
-    }
+    const good = await Promise.all(accepted.map(async (file) => {
+      const cleaned = cleanTitle(file.name);
+      const leadDescription = templateDescription.trim()
+        ? buildDescription(cleaned, templateDescription)
+        : buildLeadOnlyDescription(buildLeadParagraphs(cleaned, templateDescription));
+      const preview = await createContrastSafePreview(file);
+      return {
+        id: makeId(),
+        name: file.name,
+        file,
+        preview: preview.src,
+        previewBackground: preview.background,
+        cleaned,
+        final: cleaned,
+        finalDescription: leadDescription,
+        tags: buildTags(cleaned, leadDescription, FIXED_TAG_COUNT),
+        status: "pending" as ReviewStatus,
+        statusReason: "Quantum AI is preparing listing copy.",
+      } satisfies Img;
+    }));
 
     const activeRoom = queuedImages.length > 0 ? 0 : Math.max(0, activeBatchLimit - images.length);
     const nextActive = good.slice(0, activeRoom);
@@ -1625,9 +1703,7 @@ export default function MerchQuantumApp() {
     if (nextQueued.length) {
       parts.push(`Queued ${nextQueued.length} for later batches.`);
     }
-    if (ignoredByType) {
-      parts.push(`Ignored ${ignoredByType} non-image file${ignoredByType === 1 ? "" : "s"}.`);
-    }
+    if (ignoredByType) parts.push(`Ignored ${ignoredByType} non-image file${ignoredByType === 1 ? "" : "s"}.`);
     if (ignoredByLimit) {
       parts.push(
         connected
@@ -1635,206 +1711,209 @@ export default function MerchQuantumApp() {
           : `Demo mode supports up to ${DEMO_TOTAL_BATCH_FILES} images. Connect a provider for full batch access.`
       );
     }
-
     setMessage(parts.join(" "));
   }
 
-  async function connectPrintify() {
-    if (!provider || !token.trim()) return;
-    setLoadingProducts(false);
-    setApiStatus("");
-    setRunStatus("");
-    setBatchResults([]);
-    setLoadingApi(true);
+  async function loadProductsForShop(nextShopId: string) {
+    if (!connected || !isLiveProvider || !nextShopId) {
+      setApiProducts([]);
+      setLoadingProducts(false);
+      return;
+    }
+
+    setLoadingProducts(true);
     try {
-      const { response, data } = await requestJson("/api/providers/connect", {
+      const response = await fetchWithTimeout(
+        `${getProviderRoute("products")}?provider=${encodeURIComponent(provider)}&shopId=${encodeURIComponent(nextShopId)}`
+      );
+      const data = await parseResponsePayload(response);
+      if (!response.ok) throw new Error(data?.error || `Products request failed with status ${response.status}.`);
+
+      const mapped: Product[] = Array.isArray(data?.products)
+        ? data.products.map((product: ApiProduct) => ({
+            id: product.id,
+            title: product.title || product.id,
+            type: "Template",
+            shopId: String(product.shop_id ?? nextShopId),
+            description: product.description || "",
+          }))
+        : [];
+
+      setApiProducts(mapped);
+      setApiStatus(mapped.length === 0 ? "No products were found for this shop." : "");
+    } catch (error) {
+      setApiProducts([]);
+      const msg = error instanceof Error ? error.message : "Unable to load products.";
+      setApiStatus(formatApiError(msg));
+    } finally {
+      setLoadingProducts(false);
+    }
+  }
+
+  async function connectPrintify() {
+    if (!provider || !token.trim() || !isLiveProvider) return;
+    setLoadingApi(true);
+    setApiStatus("");
+
+    try {
+      const response = await fetchWithTimeout(getProviderRoute("connect"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, token: token.trim() }),
+        body: JSON.stringify({ provider, token }),
       });
 
-      if (!response.ok) throw new Error(String(data?.error || `${selectedProvider?.label || "Provider"} connect failed with status ${response.status}.`));
+      const data = await parseResponsePayload(response);
+      if (!response.ok) throw new Error(data?.error || `${selectedProvider?.label || "Provider"} connect failed with status ${response.status}.`);
 
-      const shops = Array.isArray(data?.shops) ? (data.shops as ApiShop[]).map((shop) => ({ id: String(shop.id), title: String(shop.title) })) : [];
+      const shopsFromApi: Shop[] = Array.isArray(data?.shops)
+        ? data.shops.map((shop: ApiShop) => ({ id: String(shop.id), title: shop.title || `Shop ${shop.id}` }))
+        : [];
+
+      setApiShops(shopsFromApi);
       setConnected(true);
+      setShopId("");
+      setProductId("");
+      setTemplate(null);
+      setTemplateDescription("");
+      setApiProducts([]);
       setPulseConnected(true);
-      window.setTimeout(() => setPulseConnected(false), 1200);
-      setApiShops(shops);
-      setApiStatus(shops.length ? "Connected successfully." : "Connected successfully, but no shops were returned.");
-      if (shops.length === 1) {
-        setShopId(shops[0].id);
+      setTimeout(() => setPulseConnected(false), 1200);
+      if (shopsFromApi.length === 0) {
+        setApiStatus("No shops were returned for this provider connection.");
+        return;
       }
     } catch (error) {
-      setApiStatus(formatApiError(error instanceof Error ? error.message : "Connection failed."));
+      const msg = error instanceof Error ? error.message : `Unable to connect to ${selectedProvider?.label || "provider"}.`;
       resetProviderState(false);
+      setApiStatus(formatApiError(msg));
     } finally {
       setLoadingApi(false);
     }
   }
 
   async function disconnectPrintify() {
-    if (!provider) return;
     try {
-      await requestJson("/api/providers/disconnect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider }),
-      });
+      await fetchWithTimeout(getProviderRoute("disconnect"), { method: "POST" });
+    } catch {
+      // local reset only
     } finally {
-      resetProviderState();
       setToken("");
+      resetProviderState(true);
+      setApiStatus("");
     }
   }
 
-  useEffect(() => {
-    if (!connected || !isLiveProvider || !shopId) {
-      setApiProducts([]);
-      return;
-    }
+  async function loadProductTemplate(nextProductId = productId) {
+    const fallback = productSource.find((p) => p.id === nextProductId);
+    if (!fallback || !shopId) return;
 
-    let cancelled = false;
-    setLoadingProducts(true);
-    void (async () => {
-      try {
-        const { response, data } = await requestJson(`/api/providers/products?provider=${provider}&shopId=${encodeURIComponent(shopId)}`);
-        if (!response.ok) throw new Error(String(data?.error || `Products request failed with status ${response.status}.`));
-
-        const products = Array.isArray(data?.products)
-          ? (data.products as ApiProduct[]).map((product) => ({
-              id: String(product.id),
-              title: String(product.title),
-              type: String(product.blueprint_id || product.print_provider_id || product.description || "Product"),
-              shopId: String(product.shop_id ?? shopId),
-              description: product.description,
-            }))
-          : [];
-
-        if (!cancelled) {
-          setApiProducts(products);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setApiStatus(formatApiError(error instanceof Error ? error.message : "Could not load products."));
-        }
-      } finally {
-        if (!cancelled) setLoadingProducts(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [connected, isLiveProvider, provider, shopId]);
-
-  useEffect(() => {
-    if (!connected || !isLiveProvider || !provider || !productId) return;
-
-    let cancelled = false;
     setLoadingTemplateDetails(true);
-    setTemplateDescription("");
-    setTemplate(null);
+    try {
+      const response = await fetchWithTimeout(
+        `${getProviderRoute("product")}?provider=${encodeURIComponent(provider)}&shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(nextProductId)}`
+      );
+      const data = await parseResponsePayload(response);
+      if (!response.ok) throw new Error(data?.error || `Product request failed with status ${response.status}.`);
 
-    void (async () => {
-      try {
-        const { response, data } = await requestJson(`/api/providers/product?provider=${provider}&shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(productId)}`);
-        if (!response.ok) throw new Error(String(data?.error || `Product request failed with status ${response.status}.`));
+      const responseData = (data || {}) as ApiTemplateResponse;
+      const chosen = responseData.product || fallback;
+      const title = chosen?.title || fallback.title;
+      const usingFallbackDescription = !chosen?.description?.trim();
+      const base = formatTemplateDescription(
+        chosen?.description?.trim() ||
+          fallback.description?.trim() ||
+          `${title}. This is the base description from your saved template. Live product descriptions from ${selectedProvider?.label || "the provider"} will replace this placeholder after API wiring.`
+      );
+      const nextPlacementGuide = responseData.placementGuide || template?.placementGuide || DEFAULT_PLACEMENT_GUIDE;
 
-        const responseData = data as ApiTemplateResponse;
-        const product = responseData.product;
-        const description = String(product?.description || "").trim();
-        const formattedDescription = formatTemplateDescription(description);
-        const usingFallbackDescription = !formattedDescription;
-        const fallbackDescription = selectedProduct?.description || templateDescription || "";
-        const finalDescription = usingFallbackDescription ? fallbackDescription : formattedDescription;
-        const reference = product?.id ? String(product.id) : productId;
+      setTemplate({
+        reference: chosen?.id || fallback.id,
+        nickname: title,
+        source: "product",
+        shopId,
+        description: base,
+        placementGuide: nextPlacementGuide,
+      });
+      setTemplateDescription(base);
+      setApiStatus(usingFallbackDescription ? "Live template description is unavailable here, so MerchQuantum is using the saved product summary from this provider response." : "");
+    } catch (error) {
+      const title = fallback.title;
+      const base = formatTemplateDescription(
+        fallback.description?.trim() ||
+          `${title}. This is the base description from your saved template. Live product descriptions from ${selectedProvider?.label || "the connected provider"} will replace this placeholder when available.`
+      );
 
-        if (!cancelled) {
-          setTemplate({
-            reference,
-            nickname: selectedProduct?.title || `Template ${reference}`,
-            source: product ? "product" : "manual",
-            shopId,
-            description: finalDescription,
-            placementGuide: responseData.placementGuide || DEFAULT_PLACEMENT_GUIDE,
-          });
-          setTemplateDescription(finalDescription);
-          setApiStatus(usingFallbackDescription ? "Live template description is unavailable here, so MerchQuantum is using the saved product summary from this provider response." : "");
-        }
-      } catch (error) {
-        if (!cancelled) {
-          const fallbackDescription = selectedProduct?.description || "";
-          setTemplate({
-            reference: productId,
-            nickname: selectedProduct?.title || `Template ${productId}`,
-            source: "manual",
-            shopId,
-            description: fallbackDescription,
-            placementGuide: DEFAULT_PLACEMENT_GUIDE,
-          });
-          setTemplateDescription(fallbackDescription);
-          setApiStatus(formatApiError(error instanceof Error ? error.message : "Could not load template details."));
-        }
-      } finally {
-        if (!cancelled) setLoadingTemplateDetails(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [connected, isLiveProvider, productId, provider, selectedProduct?.description, selectedProduct?.title, shopId]);
+      setTemplate({
+        reference: fallback.id,
+        nickname: title,
+        source: "product",
+        shopId,
+        description: base,
+        placementGuide: template?.placementGuide || DEFAULT_PLACEMENT_GUIDE,
+      });
+      setTemplateDescription(base);
+      setApiStatus(formatApiError(error instanceof Error ? error.message : "Unable to load template product."));
+    } finally {
+      setLoadingTemplateDetails(false);
+    }
+  }
 
   async function runDraftBatch() {
-    if (uploadDisabled) return;
-    setIsRunningBatch(true);
-    setBatchResults([]);
-    setRunStatus("");
+    if (!template || !shopId || images.length === 0 || !isLiveProvider) return;
 
-    const nextResults: BatchResult[] = [];
     const activeImages = images;
+    setIsRunningBatch(true);
+    setRunStatus("");
+    setBatchResults([]);
+    const nextResults: BatchResult[] = [];
 
     try {
-      for (const [index, img] of activeImages.entries()) {
-        setRunStatus(`Uploading draft ${index + 1} of ${activeImages.length}...`);
-        try {
-          const titleForUpload = img.final || cleanTitle(img.name);
-          const description = img.finalDescription || buildDescription(titleForUpload, activeTemplateDescription, buildLeadParagraphs(titleForUpload, activeTemplateDescription));
-          const tags = img.tags.length ? img.tags : buildTags(titleForUpload, description, FIXED_TAG_COUNT);
-          const imageDataUrl = img.preview;
-          const artworkBounds = normalizeArtworkBounds(img.artworkBounds, 1, 1);
+      for (let index = 0; index < activeImages.length; index += 1) {
+        const img = activeImages[index];
+        const titleForUpload = safeTitle(img.final, img.cleaned);
+        const description = img.finalDescription || buildDescription(titleForUpload, templateDescription, img.aiDraft?.leadParagraphs);
+        const tags = img.tags.length ? img.tags : buildTags(titleForUpload, description, FIXED_TAG_COUNT);
 
-          const response = await fetchWithTimeout("/api/providers/batch-create", {
+        setRunStatus(`Uploading draft ${index + 1} of ${activeImages.length}...`);
+
+        try {
+          const imageDataUrl = await readDataUrl(img.file);
+          const artworkBounds = img.artworkBounds || (await analyzeArtworkBounds(img.file));
+          if (!img.artworkBounds) {
+            setImages((current) => current.map((entry) => (entry.id === img.id ? { ...entry, artworkBounds } : entry)));
+          }
+
+          const response = await fetchWithTimeout(getProviderRoute("batch-create"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               provider,
-              token,
               shopId,
-              productId,
-              results: [{
+              templateProductId: template.reference,
+              item: {
                 fileName: img.name,
                 title: titleForUpload,
                 description,
                 tags,
                 imageDataUrl,
                 artworkBounds,
-              }],
+              },
             }),
           });
 
           const data = await parseResponsePayload(response);
-          if (!response.ok) throw new Error(String(data?.error || `Draft request failed with status ${response.status}.`));
+          if (!response.ok) throw new Error(data?.error || `Draft request failed with status ${response.status}.`);
 
           const result = Array.isArray(data?.results) && data.results[0]
             ? (data.results[0] as BatchResult)
-            : { fileName: img.name, title: titleForUpload, message: String(data?.message || "Created draft product.") };
+            : { fileName: img.name, title: titleForUpload, message: data?.message || "Created draft product." };
 
           nextResults.push(result);
           setBatchResults([...nextResults]);
         } catch (error) {
           const rawMessage = error instanceof Error ? error.message : "Draft create failed.";
           const errorMessage = formatApiError(rawMessage);
-          nextResults.push({ fileName: img.name, title: img.final || cleanTitle(img.name), message: errorMessage });
+          nextResults.push({ fileName: img.name, title: titleForUpload, message: errorMessage });
           setBatchResults([...nextResults]);
         }
       }
@@ -2007,7 +2086,14 @@ export default function MerchQuantumApp() {
             {guidanceStep === "import" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
             <div className="flex min-w-0 flex-col gap-2 text-left lg:flex-row lg:items-start lg:justify-between lg:gap-4">
               <div className="min-w-0 shrink-0 pt-0.5">
-              <div className="font-medium text-white">Drag or click to <span className="text-white">Add Images</span></div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="font-medium text-white">Drag or click to <span className="text-white">Add Images</span></div>
+                  {!connected ? (
+                    <span className="inline-flex items-center rounded-full border border-[#7F22FE]/70 bg-[#7F22FE]/14 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#c9a7ff] shadow-[0_0_0_1px_rgba(127,34,254,0.12),0_0_22px_-10px_rgba(127,34,254,0.9)]">
+                      Try 5 Free
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <div className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden px-0.5 pb-1.5 pt-0.5 text-[11px] font-medium text-white sm:text-xs">
                 <div className="flex min-w-max flex-nowrap items-center gap-x-2.5 gap-y-1.5 lg:justify-end">
@@ -2270,7 +2356,7 @@ export default function MerchQuantumApp() {
 
                 <Field label="Final Description">
                   <div className="min-h-[264px] rounded-xl border border-slate-700 bg-[#020616] px-3 py-2 text-sm font-normal leading-6 text-white lg:h-[17rem] lg:overflow-y-auto">
-                    <div className="flex min-h-full items-center">
+                    <div className={`flex min-h-full ${isDemoState && !isDetailDescriptionLoading ? "items-start" : "items-center"}`}>
                       {isDetailDescriptionLoading ? (
                         <div className="flex w-full items-center justify-center gap-2 text-sm font-medium text-slate-300">
                           <span className={`${getLoadingIndicatorClass()} animate-pulse`} />
