@@ -1658,10 +1658,11 @@ export default function MerchQuantumApp() {
     if (!list) return;
     setMessage("");
 
+    const isDemoImport = !connected;
     const incoming = Array.from(list);
     const imageFiles = incoming.filter(isImage);
     const ignoredByType = incoming.length - imageFiles.length;
-    const currentTotal = images.length + queuedImages.length;
+    const currentTotal = isDemoImport ? images.length : images.length + queuedImages.length;
     const room = Math.max(0, totalBatchLimit - currentTotal);
     const accepted = imageFiles.slice(0, room);
     const ignoredByLimit = Math.max(0, imageFiles.length - accepted.length);
@@ -1687,11 +1688,15 @@ export default function MerchQuantumApp() {
       } satisfies Img;
     }));
 
-    const activeRoom = queuedImages.length > 0 ? 0 : Math.max(0, activeBatchLimit - images.length);
+    const activeRoom = isDemoImport
+      ? Math.max(0, DEMO_TOTAL_BATCH_FILES - images.length)
+      : queuedImages.length > 0
+        ? 0
+        : Math.max(0, activeBatchLimit - images.length);
     const nextActive = good.slice(0, activeRoom);
-    const nextQueued = good.slice(activeRoom);
+    const nextQueued = isDemoImport ? [] : good.slice(activeRoom);
     const mergedActive = [...images, ...nextActive];
-    const mergedQueued = [...queuedImages, ...nextQueued];
+    const mergedQueued = isDemoImport ? [] : [...queuedImages, ...nextQueued];
     setImages(mergedActive);
     setQueuedImages(mergedQueued);
     if (!selectedId && mergedActive[0]) setSelectedId(mergedActive[0].id);
@@ -2090,7 +2095,7 @@ export default function MerchQuantumApp() {
                   <div className="font-medium text-white">Drag or click to <span className="text-white">Add Images</span></div>
                   {!connected ? (
                     <span className="inline-flex items-center rounded-full border border-[#7F22FE]/70 bg-[#7F22FE]/14 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#c9a7ff] shadow-[0_0_0_1px_rgba(127,34,254,0.12),0_0_22px_-10px_rgba(127,34,254,0.9)]">
-                      Try 5 Free
+                      Try Now
                     </span>
                   ) : null}
                 </div>
