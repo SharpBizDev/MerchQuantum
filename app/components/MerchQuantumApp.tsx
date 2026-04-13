@@ -2052,8 +2052,9 @@ export default function MerchQuantumApp() {
                           setRunStatus("");
                         }
                       }}
-                      className={`inline-flex items-center whitespace-nowrap text-[11px] font-medium leading-none text-white hover:text-white focus:text-white active:text-white sm:text-xs ${hasAnyLoadedImages ? "cursor-pointer" : "cursor-default"}`}
+                      className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none text-white hover:text-white focus:text-white active:text-white sm:text-xs ${hasAnyLoadedImages ? "cursor-pointer" : "cursor-default"}`}
                     >
+                      <span className="h-2.5 w-2.5 rounded-full bg-[#7F22FE] ring-2 ring-[#7F22FE]/35" />
                       Clear
                     </span>
                 </div>
