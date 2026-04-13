@@ -1382,6 +1382,12 @@ export default function MerchQuantumApp() {
     }
   }
 
+  function nudgeProviderSelectionFromTokenArea() {
+    if (!provider) {
+      triggerAttentionCue("provider");
+    }
+  }
+
   useEffect(() => {
     const previous = previousPreviewUrlsRef.current;
     const current = [...images, ...queuedImages].map((img) => img.preview);
@@ -1938,7 +1944,12 @@ export default function MerchQuantumApp() {
               </Select>
             </div>
 
-            <div className={`relative ${attentionTarget === "token" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}>
+            <div
+              onMouseEnter={nudgeProviderSelectionFromTokenArea}
+              onFocusCapture={nudgeProviderSelectionFromTokenArea}
+              onPointerDownCapture={nudgeProviderSelectionFromTokenArea}
+              className={`relative ${attentionTarget === "token" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
+            >
               <Input
                 type={connected ? "text" : "password"}
                 value={connected ? maskToken(token) : token}
@@ -1996,10 +2007,10 @@ export default function MerchQuantumApp() {
             {guidanceStep === "import" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
             <div className="flex min-w-0 flex-col gap-2 text-left lg:flex-row lg:items-start lg:justify-between lg:gap-4">
               <div className="min-w-0 shrink-0 pt-0.5">
-              <div className="font-medium text-white">Drag or click to <span className="text-[#7F22FE]">add images</span></div>
+              <div className="font-medium text-white">Drag or click to <span className="text-white">Add Images</span></div>
               </div>
               <div className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden px-0.5 pb-1.5 pt-0.5 text-[11px] font-medium text-white sm:text-xs">
-                <div className="flex min-w-max flex-nowrap items-center gap-x-3 gap-y-1.5 lg:justify-end">
+                <div className="flex min-w-max flex-nowrap items-center gap-x-2.5 gap-y-1.5 lg:justify-end">
                     <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                       <span className={getStatusIndicatorClass("ready")} />
                       <span>{readyCount} Good</span>
@@ -2009,7 +2020,7 @@ export default function MerchQuantumApp() {
                       <span>{errorCount} Fail</span>
                     </div>
                     <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                      <span>{queuedCount} Q</span>
+                      <span>{queuedCount} Queue</span>
                     </div>
                     <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                       <span className="h-2.5 w-2.5 rounded-full bg-[#00A6F4] ring-2 ring-[#00A6F4]/35" />
@@ -2041,7 +2052,7 @@ export default function MerchQuantumApp() {
                           setRunStatus("");
                         }
                       }}
-                      className={`whitespace-nowrap text-[11px] font-medium transition-colors sm:text-xs ${hasAnyLoadedImages ? "cursor-pointer text-[#7F22FE] hover:text-[#8f49ff]" : "cursor-default text-slate-500 opacity-40"}`}
+                      className={`whitespace-nowrap text-[11px] font-medium text-[#7F22FE] transition-colors sm:text-xs ${hasAnyLoadedImages ? "cursor-pointer hover:text-[#8f49ff]" : "cursor-default opacity-45"}`}
                     >
                       Clear
                     </span>
