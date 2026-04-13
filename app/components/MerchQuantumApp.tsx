@@ -2261,7 +2261,7 @@ export default function MerchQuantumApp() {
                         e.stopPropagation();
                         openDemoMode();
                       }}
-                      className="ml-auto inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-200 transition-colors hover:bg-white/10"
+                      className="ml-auto inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-200"
                     >
                       Try Now
                     </button>
@@ -2295,12 +2295,12 @@ export default function MerchQuantumApp() {
                 <div className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden px-0.5 pb-1.5 pt-0.5 text-[11px] font-medium text-white sm:text-xs">
                 <div className="flex min-w-max flex-nowrap items-center gap-x-2.5 gap-y-1.5 lg:justify-end">
                     <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                      <StatusThumbIcon tone="ready" direction="up" />
                       <span>{readyCount}</span>
+                      <StatusThumbIcon tone="ready" direction="up" />
                     </div>
                     <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                      <StatusThumbIcon tone="error" direction="down" />
                       <span>{errorCount}</span>
+                      <StatusThumbIcon tone="error" direction="down" />
                     </div>
                     <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                       <span>{queuedCount} Queue</span>
