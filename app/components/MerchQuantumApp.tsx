@@ -2200,8 +2200,11 @@ export default function MerchQuantumApp() {
                     <div className="space-y-3" onPointerDownCapture={() => nudgeWorkflow(true)}>
                       <div className="grid items-stretch gap-3 lg:grid-cols-[296px_minmax(0,1fr)]">
                         <div className="flex h-full flex-col">
-                          <div className="space-y-1.5">
-                            <div className="flex min-h-[20px] items-center text-sm font-medium leading-5 tracking-tight text-slate-200">Uploaded Artwork</div>
+                          <div
+                            className="space-y-1.5 cursor-pointer"
+                            onClick={() => fileRef.current?.click()}
+                          >
+                            <div className="flex min-h-[20px] items-center text-sm font-medium leading-5 tracking-tight text-slate-200">Upload Artwork</div>
                             <div className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-[#020616] lg:h-[19rem]">
                               {selectedImage?.preview ? (
                                 <div
@@ -2223,7 +2226,11 @@ export default function MerchQuantumApp() {
                                 </div>
                               )}
 
-                              <div className="absolute inset-x-3 bottom-3 z-20 px-3 py-2">
+                              <div
+                                className="absolute bottom-3 left-1/2 z-20 w-max max-w-[calc(100%-1.5rem)] -translate-x-1/2 px-3 py-2"
+                                onClick={(e) => e.stopPropagation()}
+                                onPointerDown={(e) => e.stopPropagation()}
+                              >
                                 <div className="flex min-w-0 flex-nowrap items-center gap-x-2.5 overflow-x-auto overflow-y-hidden px-0.5 pb-1.5 pt-0.5 text-[11px] font-medium text-white sm:text-xs">
                                   <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                                     <span>{readyCount}</span>
