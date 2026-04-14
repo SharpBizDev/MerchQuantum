@@ -2154,8 +2154,36 @@ export default function MerchQuantumApp() {
                     </Select>
                   </div>
 
-                  <div>
-                    <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search My Products" />
+                  <div className="relative">
+                    <Input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search My Products"
+                      disabled={!shopId}
+                      readOnly={!shopId}
+                      aria-disabled={!shopId}
+                      className={!shopId ? "cursor-not-allowed select-none" : ""}
+                    />
+                    {!shopId ? (
+                      <button
+                        type="button"
+                        aria-label="Select Shop first"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          triggerAttentionCue("shop");
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          triggerAttentionCue("shop");
+                        }}
+                        onFocus={() => triggerAttentionCue("shop")}
+                        onKeyDown={(e) => {
+                          e.preventDefault();
+                          triggerAttentionCue("shop");
+                        }}
+                        className="absolute inset-0 z-10 cursor-not-allowed rounded-xl bg-transparent outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-0"
+                      />
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -2191,6 +2219,11 @@ export default function MerchQuantumApp() {
                                   : "border-slate-700";
                             const previewAlignRight = (index + 1) % 10 === 0 || (index + 1) % 10 === 9;
                             const previewOpenUp = sortedImages.length - index <= 10;
+                            const statusIndicator = img.status === "ready"
+                              ? { tone: "ready" as const, direction: "up" as const }
+                              : img.status === "error"
+                                ? { tone: "error" as const, direction: "down" as const }
+                                : null;
 
                             return (
                               <div
@@ -2202,29 +2235,19 @@ export default function MerchQuantumApp() {
                                   {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
                                   <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border bg-[#020616] transition-all duration-500 ${previewFrameTone}`}>
                                     {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
-                                    <div className="absolute bottom-2 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1">
-                                      {(["ready", "error"] as const).map((status) => {
-                                        const isActive = img.status === status;
-                                        const activeToneClass = status === "ready"
-                                          ? "border-[#00BC7D]/65 bg-[#00BC7D]/10"
-                                          : "border-[#FF2056]/65 bg-[#FF2056]/10";
-
-                                        return (
-                                          <button
-                                            key={status}
-                                            type="button"
-                                            aria-label={status}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              updatePreviewStatus(img.id, status);
-                                            }}
-                                            className={`inline-flex h-5 w-5 items-center justify-center rounded-full border transition-all ${isActive ? activeToneClass : "border-slate-700 bg-[#020616]/92 hover:border-slate-500"}`}
-                                          >
-                                            <StatusThumbIcon tone={status} direction={status === "ready" ? "up" : "down"} />
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
+                                    {statusIndicator ? (
+                                      <button
+                                        type="button"
+                                        aria-label={statusIndicator.tone}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          updatePreviewStatus(img.id, statusIndicator.tone);
+                                        }}
+                                        className="absolute bottom-2 left-1/2 z-20 inline-flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full bg-black"
+                                      >
+                                        <StatusThumbIcon tone={statusIndicator.tone} direction={statusIndicator.direction} />
+                                      </button>
+                                    ) : null}
                                     <button
                                       type="button"
                                       aria-label="remove"
@@ -2286,7 +2309,7 @@ export default function MerchQuantumApp() {
                                 </div>
                               )}
 
-                              <div className="absolute inset-x-3 bottom-3 z-20 rounded-xl border border-slate-700/80 bg-[#020616]/92 px-3 py-2 shadow-lg backdrop-blur-sm">
+                              <div className="absolute inset-x-3 bottom-3 z-20 px-3 py-2">
                                 <div className="flex min-w-0 flex-nowrap items-center gap-x-2.5 overflow-x-auto overflow-y-hidden px-0.5 pb-1.5 pt-0.5 text-[11px] font-medium text-white sm:text-xs">
                                   <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                                     <span>{readyCount}</span>
