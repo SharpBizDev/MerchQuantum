@@ -15,6 +15,5 @@ export const PROVIDER_OPTIONS: ProviderOption[] = [
   { id: "printful", providerId: "printful", label: "Printful", isLive: true },
   { id: "gooten", providerId: "gooten", label: "Gooten", isLive: true },
   { id: "apliiq", providerId: "apliiq", label: "Apliiq", isLive: true },
-  { id: "spod", providerId: "spod", label: "SPOD", isLive: true },
   { id: "spreadconnect", providerId: "spod", label: "Spreadconnect", isLive: true },
 ];
