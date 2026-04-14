@@ -1,26 +1,20 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { DEMO_LISTINGS, DEMO_SHOPS, type DemoListing } from "../../lib/demo/merchquantum-demo";
-import { PROVIDER_OPTIONS } from "../../lib/providers/client-options";
+import { PROVIDER_OPTIONS, type ProviderChoiceId } from "../../lib/providers/client-options";
 
 const APP_TAGLINE = "Bulk product creation, simplified";
 const ACTIVE_BATCH_FILES = 50;
 const CONNECTED_TOTAL_BATCH_FILES = 300;
-const DEMO_TOTAL_BATCH_FILES = DEMO_LISTINGS.length;
-const DEMO_TITLE_PLACEHOLDER = "Upload 5 Designs Free and See AI Listing Results Instantly";
-const DEMO_DESCRIPTION_PLACEHOLDER = "Upload up to 5 designs free to preview how MerchQuantum scans artwork, writes titles and descriptions, and builds listing-ready content. Connect a provider to unlock templates, product details, and full batch draft creation.";
 const FIXED_TAG_COUNT = 13;
 
 type ProviderId =
   | "printify"
   | "printful"
-  | "gelato"
   | "gooten"
   | "apliiq"
   | "spod"
-  | "prodigi"
-  | "lulu_direct";
+  | "spreadconnect";
 
 type ProductFamily =
   | "t-shirt"
@@ -73,8 +67,6 @@ type Img = {
   id: string;
   name: string;
   file: File;
-  isDemo?: boolean;
-  demoListingId?: string;
   preview: string;
   previewBackground: string;
   cleaned: string;
@@ -1266,10 +1258,6 @@ function getStatusTone(status: ReviewStatus) {
   }
 }
 
-function getStatusIndicatorClass(status: ReviewStatus) {
-  return `h-2 w-2 rounded-full ring-2 ${getStatusTone(status)}`;
-}
-
 function getLoadingIndicatorClass() {
   return "h-2 w-2 rounded-full ring-2 bg-[#7F22FE] ring-[#7F22FE]/35";
 }
@@ -1313,9 +1301,8 @@ export default function MerchQuantumApp() {
   const previousPreviewUrlsRef = useRef<string[]>([]);
   const aiLoopBusyRef = useRef<symbol | null>(null);
   const activeTemplateKeyRef = useRef("");
-  const demoTimeoutsRef = useRef<number[]>([]);
 
-  const [provider, setProvider] = useState<ProviderId | "">("");
+  const [provider, setProvider] = useState<ProviderChoiceId | "">("");
   const [token, setToken] = useState("");
   const [connected, setConnected] = useState(false);
   const [loadingApi, setLoadingApi] = useState(false);
@@ -1333,19 +1320,17 @@ export default function MerchQuantumApp() {
   const [images, setImages] = useState<Img[]>([]);
   const [queuedImages, setQueuedImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
-  const [demoModeOpen, setDemoModeOpen] = useState(false);
-  const [demoShopId, setDemoShopId] = useState("");
-  const [demoTemplateId, setDemoTemplateId] = useState("");
   const [message, setMessage] = useState("");
   const [runStatus, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
   const [attentionTarget, setAttentionTarget] = useState<"provider" | "token" | "import" | "shop" | "template" | null>(null);
 
+  const resolvedProviderId = provider === "spreadconnect" ? "spod" : provider;
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
   const isLiveProvider = selectedProvider?.isLive || false;
-  const totalBatchLimit = connected ? CONNECTED_TOTAL_BATCH_FILES : DEMO_TOTAL_BATCH_FILES;
-  const activeBatchLimit = connected ? ACTIVE_BATCH_FILES : DEMO_TOTAL_BATCH_FILES;
+  const totalBatchLimit = CONNECTED_TOTAL_BATCH_FILES;
+  const activeBatchLimit = ACTIVE_BATCH_FILES;
   const availableShops = connected && isLiveProvider ? apiShops : [];
   const productSource = connected && isLiveProvider ? apiProducts : [];
   const templateKey = useMemo(() => `${template?.reference || "no-template"}::${templateDescription.trim()}`, [template?.reference, templateDescription]);
@@ -1368,12 +1353,9 @@ export default function MerchQuantumApp() {
     });
   }, [images]);
 
-  const isDemoState = !provider && !token.trim() && !connected;
-  const demoControlsVisible = isDemoState && demoModeOpen;
   const selectedImage = useMemo(() => {
-    if (demoControlsVisible && !selectedId) return null;
     return images.find((img) => img.id === selectedId) || sortedImages[0] || null;
-  }, [demoControlsVisible, images, selectedId, sortedImages]);
+  }, [images, selectedId, sortedImages]);
   const selectedProduct = useMemo(
     () => productSource.find((product) => product.id === productId && product.shopId === shopId) || productSource.find((product) => product.id === productId) || null,
     [productId, productSource, shopId]
@@ -1385,23 +1367,22 @@ export default function MerchQuantumApp() {
   const hasAnyLoadedImages = images.length > 0 || queuedImages.length > 0;
   const completedGenerationCount = readyCount + errorCount;
   const generationProgressPct = images.length > 0 ? Math.round((completedGenerationCount / images.length) * 100) : 0;
-  const uploadDisabled = !connected || !template || images.length === 0 || isRunningBatch || processingCount > 0;
-  const canShowReviewDetail = connected && !!shopId && !!productId;
-  const canShowDetailPanel = !!selectedImage || canShowReviewDetail || demoControlsVisible;
+  const isWorkspaceConfigured = connected && !!shopId && !!template;
+  const uploadDisabled = !isWorkspaceConfigured || images.length === 0 || isRunningBatch || processingCount > 0;
+  const canShowReviewDetail = isWorkspaceConfigured;
+  const canShowDetailPanel = canShowReviewDetail || !!selectedImage;
   const detailTitle = selectedImage?.final
-    || (isDemoState
-      ? DEMO_TITLE_PLACEHOLDER
-      : template?.nickname || selectedProduct?.title || "Loading selected product...");
+    || template?.nickname
+    || selectedProduct?.title
+    || "Loading selected product...";
   const detailDescription = selectedImage?.finalDescription
-    || (isDemoState
-      ? DEMO_DESCRIPTION_PLACEHOLDER
-      : templateDescription
-        ? templateDescription
-        : canShowReviewDetail
-          ? "Select or add artwork to generate image-based listing copy."
-          : selectedImage
-            ? "Add a shop and product template when you're ready. Quantum AI will build the final listing copy here."
-            : "");
+    || (templateDescription
+      ? templateDescription
+      : canShowReviewDetail
+        ? "Select or add artwork to generate image-based listing copy."
+        : selectedImage
+          ? "Add a shop and product template when you're ready. Quantum AI will build the final listing copy here."
+          : "");
   const detailTags = selectedImage?.tags?.length
     ? selectedImage.tags
     : canShowReviewDetail
@@ -1413,11 +1394,11 @@ export default function MerchQuantumApp() {
     || !!(selectedImage && templateReadyForAi && selectedImage.processedTemplateKey !== templateKey);
   const guidanceStep = !connected
     ? "connect"
-    : images.length === 0
-      ? "import"
-      : !shopId || !template
-        ? "template"
-        : "settled";
+    : !shopId || !template
+      ? "template"
+      : images.length === 0
+        ? "import"
+      : "settled";
   const processingBanner = processingCount > 0
     ? `Quantum AI is generating listing copy for ${processingCount} image${processingCount === 1 ? "" : "s"} in this batch.`
     : "";
@@ -1437,9 +1418,9 @@ export default function MerchQuantumApp() {
   function getMissingWorkflowTarget(includeImportStep: boolean) {
     if (!provider) return "provider" as const;
     if (!connected) return "token" as const;
-    if (includeImportStep && images.length === 0) return "import" as const;
     if (!shopId) return "shop" as const;
     if (!template) return "template" as const;
+    if (includeImportStep && images.length === 0) return "import" as const;
     return null;
   }
 
@@ -1453,18 +1434,6 @@ export default function MerchQuantumApp() {
       triggerAttentionCue("provider");
     }
   }
-
-  useEffect(() => {
-    if (isDemoState) return;
-    setDemoModeOpen(false);
-    setDemoTemplateId("");
-    if (!images.some((img) => img.isDemo) && !queuedImages.some((img) => img.isDemo)) return;
-    clearDemoTimeouts();
-    setImages((current) => current.filter((img) => !img.isDemo));
-    setQueuedImages((current) => current.filter((img) => !img.isDemo));
-    setSelectedId("");
-    setMessage("");
-  }, [connected, images, isDemoState, provider, queuedImages, token]);
 
   useEffect(() => {
     const previous = previousPreviewUrlsRef.current;
@@ -1481,7 +1450,6 @@ export default function MerchQuantumApp() {
 
   useEffect(() => {
     return () => {
-      clearDemoTimeouts();
       for (const url of previousPreviewUrlsRef.current) {
         if (url.startsWith("blob:")) URL.revokeObjectURL(url);
       }
@@ -1698,98 +1666,13 @@ export default function MerchQuantumApp() {
     setRunStatus("");
   }
 
-  function clearDemoTimeouts() {
-    for (const timeoutId of demoTimeoutsRef.current) {
-      window.clearTimeout(timeoutId);
-    }
-    demoTimeoutsRef.current = [];
-  }
-
   function clearPreviewWorkspace() {
-    clearDemoTimeouts();
     setImages([]);
     setQueuedImages([]);
     setSelectedId("");
-    setDemoTemplateId("");
     setMessage("");
     setBatchResults([]);
     setRunStatus("");
-  }
-
-  function createDemoFile(demo: DemoListing) {
-    return new File([demo.svgMarkup], demo.name, { type: "image/svg+xml" });
-  }
-
-  function buildDemoImage(demo: DemoListing): Img {
-    return {
-      id: makeId(),
-      name: demo.name,
-      file: createDemoFile(demo),
-      isDemo: true,
-      demoListingId: demo.id,
-      preview: demo.preview,
-      previewBackground: demo.previewBackground,
-      cleaned: demo.title,
-      final: "Quantum AI is processing title...",
-      finalDescription: "",
-      tags: [],
-      status: "pending",
-      statusReason: "Quantum AI is analyzing the demo design.",
-      aiProcessing: true,
-    };
-  }
-
-  function buildLoadedDemoImage(demo: DemoListing): Img {
-    return {
-      id: makeId(),
-      name: demo.name,
-      file: createDemoFile(demo),
-      isDemo: true,
-      demoListingId: demo.id,
-      preview: demo.preview,
-      previewBackground: demo.previewBackground,
-      cleaned: demo.title,
-      final: demo.title,
-      finalDescription: demo.description,
-      tags: demo.tags,
-      status: "ready",
-      statusReason: "Demo result ready.",
-      aiProcessing: false,
-    };
-  }
-
-  function openDemoMode() {
-    const hasLoadedDemoGallery =
-      images.length === DEMO_LISTINGS.length &&
-      queuedImages.length === 0 &&
-      images.every((img) => img.isDemo);
-
-    if (hasLoadedDemoGallery) return;
-
-    setDemoModeOpen(true);
-    clearDemoTimeouts();
-    setDemoShopId("");
-    setDemoTemplateId("");
-    setMessage("");
-    setImages(DEMO_LISTINGS.map(buildLoadedDemoImage));
-    setQueuedImages([]);
-    setSelectedId("");
-    setBatchResults([]);
-    setRunStatus("");
-  }
-
-  function playDemoListing(demo: DemoListing) {
-    setDemoModeOpen(true);
-    setDemoTemplateId(demo.id);
-    clearDemoTimeouts();
-    setMessage("");
-    setQueuedImages([]);
-    setBatchResults([]);
-    setRunStatus("");
-    const demoPool = images.length > 0 ? images : DEMO_LISTINGS.map(buildLoadedDemoImage);
-    const existing = demoPool.find((entry) => entry.demoListingId === demo.id);
-    setImages(demoPool);
-    setSelectedId(existing?.id || "");
   }
 
   async function addFiles(list: FileList | null) {
@@ -1845,17 +1728,13 @@ export default function MerchQuantumApp() {
     }
     if (ignoredByType) parts.push(`Ignored ${ignoredByType} non-image file${ignoredByType === 1 ? "" : "s"}.`);
     if (ignoredByLimit) {
-      parts.push(
-        connected
-          ? `Ignored ${ignoredByLimit} image${ignoredByLimit === 1 ? "" : "s"} above the ${CONNECTED_TOTAL_BATCH_FILES}-image total cap.`
-          : `Demo mode supports up to ${DEMO_TOTAL_BATCH_FILES} images. Connect a provider for full batch access.`
-      );
+      parts.push(`Ignored ${ignoredByLimit} image${ignoredByLimit === 1 ? "" : "s"} above the ${CONNECTED_TOTAL_BATCH_FILES}-image total cap.`);
     }
     setMessage(parts.join(" "));
   }
 
   async function loadProductsForShop(nextShopId: string) {
-    if (!connected || !isLiveProvider || !nextShopId) {
+    if (!connected || !isLiveProvider || !nextShopId || !resolvedProviderId) {
       setApiProducts([]);
       setLoadingProducts(false);
       return;
@@ -1864,7 +1743,7 @@ export default function MerchQuantumApp() {
     setLoadingProducts(true);
     try {
       const response = await fetchWithTimeout(
-        `${getProviderRoute("products")}?provider=${encodeURIComponent(provider)}&shopId=${encodeURIComponent(nextShopId)}`
+        `${getProviderRoute("products")}?provider=${encodeURIComponent(resolvedProviderId)}&shopId=${encodeURIComponent(nextShopId)}`
       );
       const data = await parseResponsePayload(response);
       if (!response.ok) throw new Error(data?.error || `Products request failed with status ${response.status}.`);
@@ -1891,7 +1770,7 @@ export default function MerchQuantumApp() {
   }
 
   async function connectPrintify() {
-    if (!provider || !token.trim() || !isLiveProvider) return;
+    if (!provider || !resolvedProviderId || !token.trim() || !isLiveProvider) return;
     setLoadingApi(true);
     setApiStatus("");
 
@@ -1899,7 +1778,7 @@ export default function MerchQuantumApp() {
       const response = await fetchWithTimeout(getProviderRoute("connect"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, token }),
+        body: JSON.stringify({ provider: resolvedProviderId, token }),
       });
 
       const data = await parseResponsePayload(response);
@@ -1945,12 +1824,12 @@ export default function MerchQuantumApp() {
 
   async function loadProductTemplate(nextProductId = productId) {
     const fallback = productSource.find((p) => p.id === nextProductId);
-    if (!fallback || !shopId) return;
+    if (!fallback || !shopId || !resolvedProviderId) return;
 
     setLoadingTemplateDetails(true);
     try {
       const response = await fetchWithTimeout(
-        `${getProviderRoute("product")}?provider=${encodeURIComponent(provider)}&shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(nextProductId)}`
+        `${getProviderRoute("product")}?provider=${encodeURIComponent(resolvedProviderId)}&shopId=${encodeURIComponent(shopId)}&productId=${encodeURIComponent(nextProductId)}`
       );
       const data = await parseResponsePayload(response);
       if (!response.ok) throw new Error(data?.error || `Product request failed with status ${response.status}.`);
@@ -1999,7 +1878,7 @@ export default function MerchQuantumApp() {
   }
 
   async function runDraftBatch() {
-    if (!template || !shopId || images.length === 0 || !isLiveProvider) return;
+    if (!template || !shopId || images.length === 0 || !isLiveProvider || !resolvedProviderId) return;
 
     const activeImages = images;
     setIsRunningBatch(true);
@@ -2027,7 +1906,7 @@ export default function MerchQuantumApp() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              provider,
+              provider: resolvedProviderId,
               shopId,
               templateProductId: template.reference,
               item: {
@@ -2096,11 +1975,6 @@ export default function MerchQuantumApp() {
   }
 
   function removePreviewItem(targetId: string) {
-    const target = images.find((entry) => entry.id === targetId);
-    if (target?.isDemo) {
-      clearPreviewWorkspace();
-      return;
-    }
     const remainingActive = images.filter((entry) => entry.id !== targetId);
     const { active: nextActive, queued: nextQueued } = fillActiveBatch(remainingActive, queuedImages, activeBatchLimit);
     setImages(nextActive);
@@ -2151,7 +2025,7 @@ export default function MerchQuantumApp() {
               <Select
                 value={provider}
                 onChange={(e) => {
-                  const nextProvider = e.target.value as ProviderId | "";
+                  const nextProvider = e.target.value as ProviderChoiceId | "";
                   setProvider(nextProvider);
                   setToken("");
                   resetProviderState(false);
@@ -2206,420 +2080,337 @@ export default function MerchQuantumApp() {
           {apiStatus ? <p className="mt-3 text-sm text-[#FE9A00]">{apiStatus}</p> : null}
         </Box>
 
-        <Box className="border-slate-800 bg-[#020616] shadow-[0_24px_70px_-38px_rgba(2,6,22,0.95)]">
-          <input
-            ref={fileRef}
-            type="file"
-            multiple
-            accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg"
-            className="hidden"
-            onChange={(e) => {
-              if (connected) {
-                void addFiles(e.target.files);
-              } else {
-                nudgeWorkflow(false);
-              }
-              e.currentTarget.value = "";
-            }}
-          />
+        {connected ? (
+          <Box className="border-slate-800 bg-[#020616] shadow-[0_24px_70px_-38px_rgba(2,6,22,0.95)]">
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg"
+              className="hidden"
+              onChange={(e) => {
+                if (connected && isWorkspaceConfigured) {
+                  void addFiles(e.target.files);
+                } else {
+                  nudgeWorkflow(true);
+                }
+                e.currentTarget.value = "";
+              }}
+            />
 
-          <div
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (isDemoState) {
-                openDemoMode();
-                return;
-              }
-              if (!connected) return;
-              void addFiles(e.dataTransfer.files);
-            }}
-            onClick={() => {
-              if (connected) {
-                fileRef.current?.click();
-                return;
-              }
-              if (isDemoState) {
-                openDemoMode();
-                return;
-              }
-              if (!isDemoState) nudgeWorkflow(false);
-            }}
-            className={`rounded-[22px] border border-dashed px-4 py-3.5 text-sm text-slate-200 transition-all duration-500 ${connected || isDemoState ? "cursor-pointer hover:bg-[#0b1024]" : "cursor-not-allowed"} ${guidanceStep === "import" ? "border-[#7F22FE]/80 bg-[#7F22FE]/10 shadow-[0_0_0_1px_rgba(127,34,254,0.16),0_18px_50px_-30px_rgba(127,34,254,0.45)]" : "border-slate-700 bg-[#020616]/82"} ${connected && hasAnyLoadedImages ? "ring-1 ring-[#00BC7D]/20" : ""} ${attentionTarget === "import" ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.22),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
-          >
-            {guidanceStep === "import" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
-            <div className="flex min-w-0 flex-col gap-2 text-left lg:flex-row lg:items-start lg:justify-between lg:gap-4">
-              <div className="min-w-0 w-full pt-0.5">
-                <div className="flex min-w-0 items-center justify-between gap-2">
-                  <div className="truncate font-medium text-white">
-                    {demoControlsVisible ? "Choose 1 of 5 demo designs" : "Click to Add Images"}
-                  </div>
-                  {isDemoState ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openDemoMode();
+            <div className="mt-3 border-t border-slate-800 pt-3">
+              <div
+                onPointerDownCapture={() => nudgeWorkflow(false)}
+                className={`relative grid gap-3 rounded-xl transition-all duration-500 ${guidanceStep === "template" ? "border border-[#7F22FE]/40 bg-[#7F22FE]/10 p-3 shadow-[0_18px_50px_-32px_rgba(127,34,254,0.38)]" : ""}`}
+              >
+                {guidanceStep === "template" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
+                <div className="grid items-stretch gap-3 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)]">
+                  <div className={attentionTarget === "shop" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}>
+                    <Select
+                      value={shopId}
+                      className={shopId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
+                      disabled={!availableShops.length}
+                      onChange={(e) => {
+                        const nextShopId = e.target.value;
+                        setShopId(nextShopId);
+                        setProductId("");
+                        setTemplate(null);
                       }}
-                      className="ml-auto inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-200"
                     >
-                      Try Now
-                    </button>
-                  ) : null}
-                </div>
-                {demoControlsVisible ? (
-                  <div className="mt-2 flex gap-2 overflow-x-auto pb-1 pr-1">
-                    {DEMO_LISTINGS.map((demo) => {
-                      const isActive = demoTemplateId === demo.id;
-                      return (
-                        <button
-                          key={demo.id}
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            playDemoListing(demo);
-                          }}
-                          className="inline-flex w-[72px] shrink-0 flex-col gap-1 text-left"
-                        >
-                          <span className={`relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl border bg-[#020616] transition-all duration-300 ${isActive ? "border-[#7F22FE]/80 ring-1 ring-[#7F22FE]/60 shadow-[0_12px_30px_-18px_rgba(127,34,254,0.55)]" : "border-slate-700 hover:border-[#7F22FE]/50"}`}>
-                            <span className="absolute inset-0" style={{ backgroundColor: demo.previewBackground }} />
-                            <img src={demo.preview} alt={demo.title} className="relative h-full w-full object-contain" />
-                          </span>
-                          <span className="truncate text-[10px] font-medium leading-3 text-slate-300">{demo.label}</span>
-                        </button>
-                      );
-                    })}
+                      <option value="">
+                        {loadingApi
+                          ? "Loading shops..."
+                          : connected && isLiveProvider && availableShops.length === 0
+                            ? "No shops returned"
+                            : "Select Shop"}
+                      </option>
+                      {availableShops.map((shop) => (
+                        <option key={shop.id} value={shop.id}>
+                          {shop.title}
+                        </option>
+                      ))}
+                    </Select>
                   </div>
-                ) : null}
+
+                  <div className={attentionTarget === "template" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}>
+                    <Select
+                      value={productId}
+                      className={productId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
+                      disabled={!shopId || loadingProducts}
+                      onChange={(e) => setProductId(e.target.value)}
+                    >
+                      <option value="">
+                        {loadingProducts
+                          ? "Loading products..."
+                          : connected && isLiveProvider && shopId && visibleProducts.length === 0
+                            ? "No products found"
+                            : "Choose Product Template"}
+                      </option>
+                      {visibleProducts.map((product) => (
+                        <option key={product.id} value={product.id}>
+                          {product.title}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search My Products" />
+                  </div>
+                </div>
               </div>
-                <div className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden px-0.5 pb-1.5 pt-0.5 text-[11px] font-medium text-white sm:text-xs">
-                <div className="flex min-w-max flex-nowrap items-center gap-x-2.5 gap-y-1.5 lg:justify-end">
-                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                      <span>{readyCount}</span>
-                      <StatusThumbIcon tone="ready" direction="up" />
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                      <span>{errorCount}</span>
-                      <StatusThumbIcon tone="error" direction="down" />
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                      <span>{queuedCount} Queue</span>
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                      <span className="h-2.5 w-2.5 rounded-full bg-[#00A6F4] ring-2 ring-[#00A6F4]/35" />
-                      <span>{completedGenerationCount} Done</span>
-                    </div>
-                    <span
-                      role="button"
-                      tabIndex={hasAnyLoadedImages ? 0 : -1}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!hasAnyLoadedImages) return;
-                        clearPreviewWorkspace();
-                      }}
-                      onKeyDown={(e) => {
-                        e.stopPropagation();
-                        if (!hasAnyLoadedImages) return;
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          clearPreviewWorkspace();
-                        }
-                      }}
-                      className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none text-white hover:text-white focus:text-white active:text-white sm:text-xs ${hasAnyLoadedImages ? "cursor-pointer" : "cursor-default"}`}
-                    >
-                      <span className="h-2.5 w-2.5 rounded-full bg-[#7F22FE] ring-2 ring-[#7F22FE]/35" />
-                      Clear
-                    </span>
-                </div>
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] rounded-full bg-slate-800">
+            </div>
+
+            {isWorkspaceConfigured ? (
+              <>
+                <div className="mt-3 border-t border-slate-800 pt-3">
                   <div
-                    className={`h-full transition-all duration-500 ${processingCount > 0 ? "bg-[#7F22FE]" : "bg-[#00A6F4]"}`}
-                    style={{ width: `${generationProgressPct}%` }}
-                  />
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      void addFiles(e.dataTransfer.files);
+                    }}
+                    onClick={() => fileRef.current?.click()}
+                    className={`rounded-[22px] border border-dashed px-4 py-3.5 text-sm text-slate-200 transition-all duration-500 cursor-pointer hover:bg-[#0b1024] ${guidanceStep === "import" ? "border-[#7F22FE]/80 bg-[#7F22FE]/10 shadow-[0_0_0_1px_rgba(127,34,254,0.16),0_18px_50px_-30px_rgba(127,34,254,0.45)]" : "border-slate-700 bg-[#020616]/82"} ${hasAnyLoadedImages ? "ring-1 ring-[#00BC7D]/20" : ""} ${attentionTarget === "import" ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.22),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
+                  >
+                    {guidanceStep === "import" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
+                    <div className="truncate pt-0.5 font-medium text-white">Click to Add Images</div>
+
+                    {sortedImages.length > 0 ? (
+                      <div className="mt-3">
+                        <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
+                          {sortedImages.map((img, index) => {
+                            const isSelected = selectedImage?.id === img.id;
+                            const isProcessing = img.aiProcessing || img.status === "pending";
+                            const previewFrameTone = isProcessing
+                              ? "border-[#7F22FE]/55"
+                              : img.status === "ready"
+                                ? "border-[#00BC7D]/55"
+                                : img.status === "error"
+                                  ? "border-[#FF2056]/55"
+                                  : "border-slate-700";
+                            const previewAlignRight = (index + 1) % 10 === 0 || (index + 1) % 10 === 9;
+                            const previewOpenUp = sortedImages.length - index <= 10;
+
+                            return (
+                              <div
+                                key={img.id}
+                                onClick={() => setSelectedId(img.id)}
+                                className={`rounded-lg transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
+                              >
+                                <div className="relative">
+                                  {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
+                                  <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border bg-[#020616] transition-all duration-500 ${previewFrameTone}`}>
+                                    {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
+                                    <div className="absolute bottom-2 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1">
+                                      {(["ready", "error"] as const).map((status) => {
+                                        const isActive = img.status === status;
+                                        const activeToneClass = status === "ready"
+                                          ? "border-[#00BC7D]/65 bg-[#00BC7D]/10"
+                                          : "border-[#FF2056]/65 bg-[#FF2056]/10";
+
+                                        return (
+                                          <button
+                                            key={status}
+                                            type="button"
+                                            aria-label={status}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              updatePreviewStatus(img.id, status);
+                                            }}
+                                            className={`inline-flex h-5 w-5 items-center justify-center rounded-full border transition-all ${isActive ? activeToneClass : "border-slate-700 bg-[#020616]/92 hover:border-slate-500"}`}
+                                          >
+                                            <StatusThumbIcon tone={status} direction={status === "ready" ? "up" : "down"} />
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      aria-label="remove"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        removePreviewItem(img.id);
+                                      }}
+                                      className="absolute right-1 top-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#020616]/92 p-0 text-[8px] font-normal leading-none text-slate-300 shadow-sm transition-colors hover:text-[#FF2056]"
+                                    >
+                                      x
+                                    </button>
+                                    <div
+                                      className="absolute inset-0 flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit]"
+                                      style={{ backgroundColor: img.previewBackground }}
+                                    >
+                                      {img.preview ? <img src={img.preview} alt={img.final} className="h-full w-full object-contain" /> : null}
+                                    </div>
+                                    {img.preview ? (
+                                      <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-xl group-hover:block ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
+                                        <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            </div>
-          </div>
-          {sortedImages.length > 0 ? (
-            <div className="mt-3">
-              <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
-                {sortedImages.map((img, index) => {
-                  const isSelected = selectedImage?.id === img.id;
-                  const isProcessing = img.aiProcessing || img.status === "pending";
-                  const previewFrameTone = isProcessing
-                    ? "border-[#7F22FE]/55"
-                    : img.status === "ready"
-                      ? "border-[#00BC7D]/55"
-                      : img.status === "error"
-                        ? "border-[#FF2056]/55"
-                        : "border-slate-700";
-                  const previewAlignRight = (index + 1) % 10 === 0 || (index + 1) % 10 === 9;
-                  const previewOpenUp = sortedImages.length - index <= 10;
-                  return (
-                    <div
-                      key={img.id}
-                      onClick={() => setSelectedId(img.id)}
-                      className={`rounded-lg transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
-                    >
-                      <div className="relative">
-                        {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
-                        <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border bg-[#020616] transition-all duration-500 ${previewFrameTone}`}>
-                          {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
-                          <div className="absolute bottom-2 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1">
-                            {(["ready", "error"] as const).map((status) => {
-                              const isActive = img.status === status;
-                              return (
-                                <button
-                                  key={status}
-                                  type="button"
-                                  aria-label={status}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    updatePreviewStatus(img.id, status);
-                                  }}
-                                  className={`${getStatusIndicatorClass(isActive ? status : "pending")} transition-transform hover:scale-105`}
-                                />
-                              );
-                            })}
-                          </div>
-                          <button
-                            type="button"
-                            aria-label="remove"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removePreviewItem(img.id);
-                            }}
-                            className="absolute right-1 top-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#020616]/92 p-0 text-[8px] font-normal leading-none text-slate-300 shadow-sm transition-colors hover:text-[#FF2056]"
-                          >
-                            x
-                          </button>
-                          <div
-                            className="absolute inset-0 flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit]"
-                            style={{ backgroundColor: img.previewBackground }}
-                          >
-                            {img.preview ? <img src={img.preview} alt={img.final} className="h-full w-full object-contain" /> : null}
-                          </div>
-                          {img.preview ? (
-                            <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-xl group-hover:block ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
-                              <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
+
+                <div className="mt-3 border-t border-slate-800 pt-3">
+                  {!canShowDetailPanel ? null : (
+                    <div className="space-y-3" onPointerDownCapture={() => nudgeWorkflow(true)}>
+                      <div className="grid items-stretch gap-3 lg:grid-cols-[296px_minmax(0,1fr)]">
+                        <div className="flex h-full flex-col">
+                          <div className="space-y-1.5">
+                            <div className="flex min-h-[20px] items-center text-sm font-medium leading-5 tracking-tight text-slate-200">Uploaded Artwork</div>
+                            <div className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-[#020616] lg:h-[19rem]">
+                              {selectedImage?.preview ? (
+                                <div
+                                  className="absolute inset-0 overflow-hidden rounded-[inherit]"
+                                  style={{ backgroundColor: selectedImage.previewBackground || DISPLAY_NEUTRAL_BACKGROUND }}
+                                >
+                                  <img src={selectedImage.preview} alt={selectedImage.final} className="h-full w-full object-contain" />
+                                </div>
+                              ) : (
+                                <div className="flex h-full w-full p-4">
+                                  <button
+                                    type="button"
+                                    onClick={() => fileRef.current?.click()}
+                                    className="flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-6 text-center transition-colors hover:bg-[#0b1024]"
+                                  >
+                                    <span className="text-sm font-medium text-white">Drag images here</span>
+                                    <span className="mt-1 text-xs text-slate-400">or click Add Images</span>
+                                  </button>
+                                </div>
+                              )}
+
+                              <div className="absolute inset-x-3 bottom-3 z-20 rounded-xl border border-slate-700/80 bg-[#020616]/92 px-3 py-2 shadow-lg backdrop-blur-sm">
+                                <div className="flex min-w-0 flex-nowrap items-center gap-x-2.5 overflow-x-auto overflow-y-hidden px-0.5 pb-1.5 pt-0.5 text-[11px] font-medium text-white sm:text-xs">
+                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                    <span>{readyCount}</span>
+                                    <StatusThumbIcon tone="ready" direction="up" />
+                                  </div>
+                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                    <span>{errorCount}</span>
+                                    <StatusThumbIcon tone="error" direction="down" />
+                                  </div>
+                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                    <span>{queuedCount} Queue</span>
+                                  </div>
+                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                    <span className="h-2.5 w-2.5 rounded-full bg-[#00A6F4] ring-2 ring-[#00A6F4]/35" />
+                                    <span>{completedGenerationCount} Done</span>
+                                  </div>
+                                  <span
+                                    role="button"
+                                    tabIndex={hasAnyLoadedImages ? 0 : -1}
+                                    onClick={() => {
+                                      if (!hasAnyLoadedImages) return;
+                                      clearPreviewWorkspace();
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (!hasAnyLoadedImages) return;
+                                      if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        clearPreviewWorkspace();
+                                      }
+                                    }}
+                                    className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none text-white hover:text-white focus:text-white active:text-white sm:text-xs ${hasAnyLoadedImages ? "cursor-pointer" : "cursor-default"}`}
+                                  >
+                                    <span className="h-2.5 w-2.5 rounded-full bg-[#7F22FE] ring-2 ring-[#7F22FE]/35" />
+                                    Clear
+                                  </span>
+                                </div>
+                                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] rounded-full bg-slate-800">
+                                  <div
+                                    className={`h-full transition-all duration-500 ${processingCount > 0 ? "bg-[#7F22FE]" : "bg-[#00A6F4]"}`}
+                                    style={{ width: `${generationProgressPct}%` }}
+                                  />
+                                </div>
+                              </div>
                             </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
-
-          {demoControlsVisible ? (
-          <div className="mt-3 border-t border-slate-800 pt-3">
-            <div className="grid items-stretch gap-3 md:grid-cols-2">
-              <Select
-                value={demoShopId}
-                className={demoShopId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
-                onChange={(e) => setDemoShopId(e.target.value)}
-              >
-                <option value="">Select Shop</option>
-                {DEMO_SHOPS.map((shop) => (
-                  <option key={shop.id} value={shop.id}>
-                    {shop.label}
-                  </option>
-                ))}
-              </Select>
-
-              <Select
-                value={demoTemplateId}
-                className={demoTemplateId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
-                onChange={(e) => {
-                  const nextDemo = DEMO_LISTINGS.find((entry) => entry.id === e.target.value);
-                  setDemoTemplateId(e.target.value);
-                  if (nextDemo) playDemoListing(nextDemo);
-                }}
-              >
-                <option value="">Choose Product Template</option>
-                {DEMO_LISTINGS.map((demo) => (
-                  <option key={demo.id} value={demo.id}>
-                    {demo.label}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          </div>
-          ) : connected || !isDemoState ? (
-          <div className="mt-3 border-t border-slate-800 pt-3">
-          <div
-            onPointerDownCapture={() => nudgeWorkflow(false)}
-            className={`relative grid gap-3 rounded-xl transition-all duration-500 ${guidanceStep === "template" ? "border border-[#7F22FE]/40 bg-[#7F22FE]/10 p-3 shadow-[0_18px_50px_-32px_rgba(127,34,254,0.38)]" : ""}`}
-          >
-            {guidanceStep === "template" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
-            <div className="grid items-stretch gap-3 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)]">
-                <div className={attentionTarget === "shop" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}>
-                  <Select
-                    value={shopId}
-                    className={shopId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
-                    disabled={!availableShops.length}
-                    onChange={(e) => {
-                    const nextShopId = e.target.value;
-                    setShopId(nextShopId);
-                    setProductId("");
-                    setTemplate(null);
-                  }}
-                >
-                  <option value="">
-                    {loadingApi
-                      ? "Loading shops..."
-                      : connected && isLiveProvider && availableShops.length === 0
-                        ? "No shops returned"
-                        : "Select Shop"}
-                  </option>
-                  {availableShops.map((shop) => (
-                    <option key={shop.id} value={shop.id}>
-                      {shop.title}
-                    </option>
-                  ))}
-                  </Select>
-                </div>
-
-                <div className={attentionTarget === "template" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}>
-                  <Select
-                    value={productId}
-                    className={productId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
-                    disabled={!shopId || loadingProducts}
-                    onChange={(e) => setProductId(e.target.value)}
-                >
-                  <option value="">
-                    {loadingProducts
-                      ? "Loading products..."
-                      : connected && isLiveProvider && shopId && visibleProducts.length === 0
-                        ? "No products found"
-                        : "Choose Product Template"}
-                  </option>
-                  {visibleProducts.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.title}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-
-              <div>
-                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search My Products" />
-              </div>
-            </div>
-          </div>
-          </div>
-          ) : null}
-
-          <div className="mt-3 border-t border-slate-800 pt-3">
-          {!canShowDetailPanel ? null : (
-            <div className="space-y-3" onPointerDownCapture={() => nudgeWorkflow(true)}>
-              <div className="grid items-stretch gap-3 lg:grid-cols-[296px_minmax(0,1fr)]">
-              <div className="flex h-full flex-col">
-                <div className="space-y-1.5">
-                  <div className="flex min-h-[20px] items-center text-sm font-medium leading-5 tracking-tight text-slate-200">Uploaded Artwork</div>
-                  <div className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-[#020616] lg:h-[19rem]">
-                    {selectedImage?.preview ? (
-                      <div
-                        className="absolute inset-0 overflow-hidden rounded-[inherit]"
-                        style={{ backgroundColor: selectedImage.previewBackground || DISPLAY_NEUTRAL_BACKGROUND }}
-                      >
-                        <img src={selectedImage.preview} alt={selectedImage.final} className="h-full w-full object-contain" />
-                      </div>
-                    ) : (
-                      <div className="flex h-full w-full p-4">
-                        <button
-                          type="button"
-                          onClick={() => fileRef.current?.click()}
-                          className="flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-6 text-center transition-colors hover:bg-[#0b1024]"
-                        >
-                          <span className="text-sm font-medium text-white">Drag images here</span>
-                          <span className="mt-1 text-xs text-slate-400">or click Add Images</span>
-                        </button>
-                      </div>
-                    )}
-                    <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg bg-[#020616]/92 px-2.5 py-1 text-[11px] font-medium text-slate-400 shadow-sm">
-                      Draft upload only. Ready items can be uploaded.
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-3 space-y-3">
-                <Button
-                  className="w-full !bg-[#7F22FE] !text-white hover:!bg-[#6d1ee0]"
-                  disabled={uploadDisabled}
-                  onClick={() => { void runDraftBatch(); }}
-                >
-                  {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
-                </Button>
-                  {runStatus ? <p className="text-sm text-slate-300">{runStatus}</p> : null}
-                  {batchResults.length > 0 ? (
-                    <div className="max-h-[14rem] overflow-auto rounded-xl border border-slate-800 bg-[#020616] p-3 text-sm">
-                      <div className="space-y-1.5">
-                        {batchResults.map((result) => (
-                          <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-800 p-2.5">
-                            <div className="font-medium">{result.title}</div>
-                            <div className="text-xs text-slate-400">{result.fileName}</div>
-                            <div className="mt-1 text-sm">{result.message}</div>
-                            {result.productId ? <div className="mt-1 text-xs text-slate-400">Product ID: {result.productId}</div> : null}
                           </div>
-                        ))}
+                          <div className="mt-3 space-y-3">
+                            <Button
+                              className="w-full !bg-[#7F22FE] !text-white hover:!bg-[#6d1ee0]"
+                              disabled={uploadDisabled}
+                              onClick={() => { void runDraftBatch(); }}
+                            >
+                              {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
+                            </Button>
+                            {runStatus ? <p className="text-sm text-slate-300">{runStatus}</p> : null}
+                            {batchResults.length > 0 ? (
+                              <div className="max-h-[14rem] overflow-auto rounded-xl border border-slate-800 bg-[#020616] p-3 text-sm">
+                                <div className="space-y-1.5">
+                                  {batchResults.map((result) => (
+                                    <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-800 p-2.5">
+                                      <div className="font-medium">{result.title}</div>
+                                      <div className="text-xs text-slate-400">{result.fileName}</div>
+                                      <div className="mt-1 text-sm">{result.message}</div>
+                                      {result.productId ? <div className="mt-1 text-xs text-slate-400">Product ID: {result.productId}</div> : null}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="flex h-full flex-col space-y-3">
+                          <Field label="Final Title">
+                            <div className="flex min-h-[44px] items-center rounded-xl border border-slate-700 bg-[#020616] px-3 py-0 text-left text-sm font-normal leading-5 text-white">
+                              {detailTitle}
+                            </div>
+                          </Field>
+
+                          <Field label="Final Description">
+                            <div className="min-h-[264px] rounded-xl border border-slate-700 bg-[#020616] px-3 py-2 text-sm font-normal leading-6 text-white lg:h-[17rem] lg:overflow-y-auto">
+                              <div className="flex min-h-full items-center">
+                                {isDetailDescriptionLoading ? (
+                                  <div className="flex w-full items-center justify-center gap-2 text-sm font-medium text-slate-300">
+                                    <span className={`${getLoadingIndicatorClass()} animate-pulse`} />
+                                    <span>Loading description...</span>
+                                  </div>
+                                ) : (
+                                  <div className="w-full whitespace-pre-wrap text-left">
+                                    {htmlToEditableText(detailDescription)}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </Field>
+                        </div>
                       </div>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
 
-              <div className="flex h-full flex-col space-y-3">
-                <Field label="Final Title">
-                  <div className="flex min-h-[44px] items-center rounded-xl border border-slate-700 bg-[#020616] px-3 py-0 text-left text-sm font-normal leading-5 text-white">
-                    {detailTitle}
-                  </div>
-                </Field>
-
-                <Field label="Final Description">
-                  <div className="min-h-[264px] rounded-xl border border-slate-700 bg-[#020616] px-3 py-2 text-sm font-normal leading-6 text-white lg:h-[17rem] lg:overflow-y-auto">
-                    <div className={`flex min-h-full ${isDemoState && !isDetailDescriptionLoading ? "items-start" : "items-center"}`}>
-                      {isDetailDescriptionLoading ? (
-                        <div className="flex w-full items-center justify-center gap-2 text-sm font-medium text-slate-300">
-                          <span className={`${getLoadingIndicatorClass()} animate-pulse`} />
-                          <span>Loading description...</span>
+                      {canShowReviewDetail ? (
+                        <div className="pt-0.5">
+                          <div className="grid gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+                            <div className="flex min-h-[34px] items-center justify-center rounded-xl border border-slate-800 bg-[#020616] px-2.5 py-1.5 text-center text-sm">
+                              <span className="font-semibold text-[#7F22FE]">Quantum</span>
+                              <span className="ml-1 font-semibold text-white">AI</span>
+                              <span className="ml-1 font-semibold text-[#00BC7D]">Tags</span>
+                            </div>
+                            {detailTags.map((tag, index) => (
+                              <div
+                                key={`${selectedImage?.id || productId}-tag-${index}`}
+                                title={tag}
+                                className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-white"
+                              >
+                                <span className="truncate">{tag}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      ) : (
-                        <div className="w-full whitespace-pre-wrap text-left">
-                          {htmlToEditableText(detailDescription)}
-                        </div>
-                      )}
+                      ) : null}
                     </div>
-                  </div>
-                </Field>
-              </div>
-              </div>
-
-              {canShowReviewDetail ? (
-              <div className="pt-0.5">
-                <div className="grid gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
-                  <div className="flex min-h-[34px] items-center justify-center rounded-xl border border-slate-800 bg-[#020616] px-2.5 py-1.5 text-center text-sm">
-                    <span className="font-semibold text-[#7F22FE]">Quantum</span>
-                    <span className="ml-1 font-semibold text-white">AI</span>
-                    <span className="ml-1 font-semibold text-[#00BC7D]">Tags</span>
-                  </div>
-                  {detailTags.map((tag, index) => (
-                    <div
-                      key={`${selectedImage?.id || productId}-tag-${index}`}
-                      title={tag}
-                      className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-white"
-                    >
-                      <span className="truncate">{tag}</span>
-                    </div>
-                  ))}
+                  )}
                 </div>
-              </div>
-              ) : null}
-            </div>
-          )}
-          </div>
-        </Box>
+              </>
+            ) : null}
+          </Box>
+        ) : null}
       </div>
     </div>
   );
