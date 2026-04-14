@@ -463,23 +463,17 @@ const GEMINI_RESPONSE_SCHEMA = {
       },
       required: ["grade", "confidence", "reasonFlags", "complianceFlags"],
     },
-    finalTitle: { type: "STRING" },
-    finalDescription: { type: "STRING" },
+    generatedTitle: { type: "STRING" },
+    generatedParagraph1: { type: "STRING" },
+    generatedParagraph2: { type: "STRING" },
     tags: { type: "ARRAY", items: { type: "STRING" } },
-    canonicalTitle: { type: "STRING" },
-    canonicalLeadParagraphs: { type: "ARRAY", items: { type: "STRING" } },
   },
   required: [
     "imageTruth",
-    "filenameAssessment",
-    "semanticRecord",
-    "marketplaceDrafts",
-    "validator",
-    "finalTitle",
-    "finalDescription",
+    "generatedTitle",
+    "generatedParagraph1",
+    "generatedParagraph2",
     "tags",
-    "canonicalTitle",
-    "canonicalLeadParagraphs",
   ],
 };
 
@@ -838,6 +832,23 @@ function normalizeDescriptionText(rawDescription: unknown, title: string, fallba
   const paragraphs = normalizeDescriptionParagraphs(rawDescription, title);
   const resolved = paragraphs.length ? paragraphs : unique(fallbackParagraphs).slice(0, 3);
   return resolved.join("\n\n").slice(0, MAX_DESCRIPTION_CHARS).trim();
+}
+
+function assembleMarketingDescription(paragraphs: string[]) {
+  return unique(
+    paragraphs
+      .map((paragraph) => stripMarkdownFences(String(paragraph || "")))
+      .map((paragraph) => removeLeadingLabel(paragraph, ["generatedParagraph1", "generatedParagraph2", "paragraph1", "paragraph2"]))
+      .map((paragraph) => paragraph.replace(/^[-*•]+\s*/, ""))
+      .map((paragraph) => cleanSpaces(paragraph))
+      .filter(Boolean)
+      .map((paragraph) => trimSentence(normalizeSentenceEnding(paragraph), Math.min(MAX_DESCRIPTION_CHARS, 340)))
+      .filter(Boolean)
+  )
+    .slice(0, 2)
+    .join("\n\n")
+    .slice(0, MAX_DESCRIPTION_CHARS)
+    .trim();
 }
 
 function normalizeTagLabel(tag: string) {
@@ -1630,6 +1641,23 @@ function buildDefaultLead(semantic: SemanticRecord, localeProfile: LocaleProfile
       `The design stays clear enough to sell the mood on first impression, giving ${semantic.likelyAudience} shoppers a better sense of the artwork than a spec-led opener would.`,
     ]),
   ];
+}
+
+function hasTemplateSpecLeakage(paragraph: string) {
+  return /\b(?:\d+%\s+ring-spun\s+cotton|ring-spun\s+cotton|garment-dyed|heavyweight|midweight|fleece|machine\s+wash|tumble\s+dry|double-needle|twill\s+tape|care\s+instructions?|product\s+features?|size\s+chart|materials?|relaxed\s+fit|shoulder-to-shoulder|shoulder\s+to\s+shoulder|cotton)\b/i.test(
+    cleanSpaces(paragraph)
+  );
+}
+
+function sanitizeMarketingLeadParagraphs(
+  paragraphs: string[],
+  semantic: SemanticRecord,
+  localeProfile: LocaleProfile
+) {
+  const defaultLead = buildDefaultLead(semantic, localeProfile);
+  return paragraphs.map((paragraph, index) =>
+    hasTemplateSpecLeakage(paragraph) ? defaultLead[index] || paragraph : paragraph
+  );
 }
 
 export function normalizeLeadParagraphs(
@@ -2542,44 +2570,48 @@ function buildMasterPrompt(
   const productFamily = cleanSpaces(input.productFamily || "product");
 
   return [
-    "You are an elite e-commerce copywriter and visual analyst specializing in merchandise (t-shirts, hoodies, mugs). Analyze the provided image.",
+    "You are an elite e-commerce copywriter and visual analyst. Analyze this merchandise design.",
     "",
     "VISION INSTRUCTION",
-    "This image is likely a transparent PNG or an isolated vector graphic meant to be printed on merchandise.",
-    "Ignore any background rendering artifacts, including solid black or white canvases caused by alpha channels.",
-    "Focus exclusively on the typography, illustrations, iconography, and core aesthetic of the foreground design.",
+    "This image may be a transparent PNG or isolated vector graphic intended for merchandise printing.",
+    "If the image has been composited on a solid background for visibility, ignore the artificial background and focus only on the foreground typography, artwork, symbols, illustration, linework, and aesthetic.",
     "If multiple renders are provided, treat them as alternate views of the same design and trust the clearest render over the filename.",
     "If you receive black-backed, white-backed, cropped, or helper renders, use them only to understand sparse or transparent artwork while preserving the untouched upload as the source of truth.",
     visionPromptHint ? visionPromptHint : "",
     "",
-    "PRIMARY OUTPUTS",
-    "- finalTitle: a highly marketable, click-driven SEO title for this merchandise.",
-    "- finalDescription: a compelling product description for a shopper.",
+    "STRUCTURED OUTPUT",
+    "Return structured JSON with:",
+    "- generatedTitle: a highly marketable, SEO-optimized title for merchandise featuring this design.",
+    "- generatedParagraph1: the first buyer-facing marketing paragraph.",
+    "- generatedParagraph2: the second buyer-facing marketing paragraph.",
     "- tags: exactly 15 high-value SEO tags for niche, style, subject matter, and buyer intent.",
     "",
     "CRITICAL SEO RULES",
-    "- Rule A: finalDescription must never directly repeat, copy, or start with finalTitle.",
-    "- Rule B: identify the highest-value search keywords from finalTitle and weave them organically into the first paragraph of finalDescription.",
-    "- Rule C: write the description to sell the vibe, message, and aesthetic of the design to a consumer.",
-    "- Rule D: keep the description image-first and merchandise-aware; do not dump raw template specs into the opening copy.",
-    "- Rule E: tags must be specific, readable, and non-redundant.",
+    "- Do not include generic product specs, care instructions, material weights, or template information in the generated paragraphs.",
+    "- The generated paragraphs must sell the design, vibe, symbolism, and customer appeal of the artwork itself.",
+    "- generatedParagraph1 must naturally weave in the strongest search keywords from generatedTitle.",
+    "- generatedParagraph2 must continue the buyer-facing sales message and must end in a complete sentence.",
+    "- Do not repeat the full generatedTitle verbatim at the start of the description.",
+    "- Tags must be specific, readable, and non-redundant.",
     "",
     "ANALYSIS RULES",
     "- Image truth is primary. Visible text outranks filename text.",
     "- Separate visible facts from inferred meaning.",
     "- Do not hallucinate unsupported claims, official licensing, or hidden artwork details.",
-    "- Use filename only as support. If the artwork is clear, do not let the filename write the title or opening copy for you.",
+    "- Use filename only as support. If the artwork is clear, do not let the filename write the title or marketing copy for you.",
     "- Strong transparent PNG artwork with clean readable text or simple legible iconography still counts as meaningful visual evidence even when the canvas is sparse.",
     `- Current local filename assessment hint: ${filenameAssessment.classification} (${filenameAssessment.reason})`,
     `- Conflict severity hint: ${filenameAssessment.conflictSeverity}; ignore filename: ${filenameAssessment.shouldIgnore ? "yes" : "no"}`,
     "",
     "INTERNAL STRUCTURE REQUIREMENTS",
-    "- Populate imageTruth, filenameAssessment, semanticRecord, marketplaceDrafts, validator, canonicalTitle, and canonicalLeadParagraphs as strict structured fields.",
-    "- canonicalLeadParagraphs should stay concise, complete, and non-repetitive.",
-    "- marketplaceDrafts should remain channel-aware for Etsy, Amazon, eBay, and TikTok Shop.",
+    "- Populate imageTruth as strict structured analysis.",
+    "- Keep generatedParagraph1 and generatedParagraph2 concise, complete, and non-repetitive.",
+    "- Return only machine-safe fields with no wrapper prose.",
     "",
     "OUTPUT FORMAT",
-    "Return strict JSON only, with no markdown fences, no commentary, and no extra wrapper text.",
+    "Return ONLY valid structured JSON.",
+    "No conversational filler.",
+    "No markdown fences.",
     "",
     "INPUT CONTEXT",
     `productFamily: ${productFamily}`,
@@ -2627,12 +2659,11 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
   const semantic = buildSemanticRecord(input, imageTruth, filenameAssessment);
   const leadParagraphs = normalizeLeadParagraphs(
     semantic.titleCore,
-    buildTemplateAwareLead(input.templateContext || "", semantic, localeProfile),
+    buildDefaultLead(semantic, localeProfile),
     semantic,
-    localeProfile,
-    input.templateContext || ""
+    localeProfile
   );
-  const marketplaceDrafts = buildMarketplaceDrafts(semantic, leadParagraphs, localeProfile, input.templateContext || "");
+  const marketplaceDrafts = buildMarketplaceDrafts(semantic, leadParagraphs, localeProfile);
   const validator = gradeListing(
     imageTruth,
     semantic,
@@ -2642,8 +2673,12 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
     marketplaceDrafts.etsy.discoveryTerms
   );
   const canonicalTitle = marketplaceDrafts.etsy.title || semantic.titleCore || "Product";
-  const canonicalLeadParagraphs = marketplaceDrafts.etsy.leadParagraphs;
-  const canonicalDescription = normalizeDescriptionText("", canonicalTitle, canonicalLeadParagraphs);
+  const canonicalLeadParagraphs = sanitizeMarketingLeadParagraphs(
+    marketplaceDrafts.etsy.leadParagraphs,
+    semantic,
+    localeProfile
+  );
+  const canonicalDescription = assembleMarketingDescription(canonicalLeadParagraphs);
   const seoTags = buildFallbackTags(canonicalTitle, canonicalDescription, semantic, marketplaceDrafts);
 
   return {
@@ -2733,7 +2768,9 @@ async function callGeminiRecord(
   const semantic = normalizeSemantic(parsedObj.semanticRecord, semanticFallback);
 
   const finalTitleCandidate =
-    parsedObj.finalTitle
+    parsedObj.generatedTitle
+    || parsedObj.generated_title
+    || parsedObj.finalTitle
     || parsedObj.final_title
     || parsedObj.canonicalTitle
     || parsedObj.title
@@ -2745,26 +2782,52 @@ async function callGeminiRecord(
     input.fileName || explicitTitleSeed
   );
 
-  const canonicalLeads = normalizeLeadParagraphs(
-    canonicalTitle,
-    (() => {
-      const suppliedLeads = normalizeArray(parsedObj.canonicalLeadParagraphs || parsedObj.leadParagraphs);
-      return suppliedLeads.length
-        ? suppliedLeads
-        : buildTemplateAwareLead(input.templateContext || "", semantic, options.localeProfile);
-    })(),
+  const suppliedLeadCandidates = [
+    parsedObj.generatedParagraph1,
+    parsedObj.generated_paragraph_1,
+    parsedObj.generatedParagraph2,
+    parsedObj.generated_paragraph_2,
+    ...normalizeArray(parsedObj.canonicalLeadParagraphs || parsedObj.leadParagraphs),
+    ...normalizeDescriptionParagraphs(
+      parsedObj.finalDescription || parsedObj.final_description || parsedObj.description,
+      canonicalTitle
+    ),
+  ]
+    .map((value) => stripMarkdownFences(String(value || "")))
+    .map((value) =>
+      removeLeadingLabel(value, [
+        "generatedParagraph1",
+        "generatedParagraph2",
+        "generated_paragraph_1",
+        "generated_paragraph_2",
+        "paragraph1",
+        "paragraph2",
+      ])
+    )
+    .map((value) => value.replace(/^[-*•]+\s*/, "").trim())
+    .filter(Boolean);
+
+  const canonicalLeads = sanitizeMarketingLeadParagraphs(
+    normalizeLeadParagraphs(
+      canonicalTitle,
+      suppliedLeadCandidates.length
+        ? suppliedLeadCandidates
+        : buildDefaultLead(semantic, options.localeProfile),
+      semantic,
+      options.localeProfile
+    ),
     semantic,
-    options.localeProfile,
-    input.templateContext || ""
+    options.localeProfile
   );
 
-  const marketplaceDrafts = normalizeMarketplaceDrafts(
-    parsedObj.marketplaceDrafts,
-    semantic,
-    canonicalLeads,
-    options.localeProfile,
-    input.templateContext || ""
-  );
+  const marketplaceDrafts = parsedObj.marketplaceDrafts
+    ? normalizeMarketplaceDrafts(
+        parsedObj.marketplaceDrafts,
+        semantic,
+        canonicalLeads,
+        options.localeProfile
+      )
+    : buildMarketplaceDrafts(semantic, canonicalLeads, options.localeProfile);
   const gradedFallback = gradeListing(
     imageTruth,
     semantic,
@@ -2778,11 +2841,7 @@ async function callGeminiRecord(
     leadParagraphs: canonicalLeads,
     imageTruth,
   });
-  const canonicalDescription = normalizeDescriptionText(
-    parsedObj.finalDescription || parsedObj.final_description || parsedObj.description,
-    canonicalTitle,
-    canonicalLeads
-  );
+  const canonicalDescription = assembleMarketingDescription(canonicalLeads);
   const seoTags = normalizeTagsOutput(
     parsedObj.tags,
     canonicalTitle,

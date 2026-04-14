@@ -992,29 +992,28 @@ function formatProductDescriptionWithSections(leadParagraphs: string[], template
 
   const formattedTemplate = formatTemplateDescription(templateDescription);
   const parsed = parseTemplateDescription(formattedTemplate);
-  const detailSectionHeadings = new Set(["Product features", "Care instructions", "Size chart"]);
+  const detailPieces: string[] = [];
 
-  const detailSections = parsed.sections.filter((section) => detailSectionHeadings.has(section.heading));
+  for (const paragraph of parsed.introParagraphs) {
+    detailPieces.push(`<p>${escapeHtml(paragraph)}</p>`);
+  }
 
-  if (detailSections.length === 0) {
+  for (const section of parsed.sections) {
+    detailPieces.push(`<h3>${escapeHtml(section.heading)}</h3>`);
+    for (const paragraph of section.paragraphs) {
+      detailPieces.push(`<p>${escapeHtml(paragraph)}</p>`);
+    }
+    if (section.bullets.length > 0) {
+      const items = section.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join("");
+      detailPieces.push(`<ul>${items}</ul>`);
+    }
+  }
+
+  if (detailPieces.length === 0) {
     return leadHtml;
   }
 
-  const detailHtml = detailSections
-    .map((section) => {
-      const pieces: string[] = [`<h3>${escapeHtml(section.heading)}</h3>`];
-      for (const paragraph of section.paragraphs) {
-        pieces.push(`<p>${escapeHtml(paragraph)}</p>`);
-      }
-      if (section.bullets.length > 0) {
-        const items = section.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join("");
-        pieces.push(`<ul>${items}</ul>`);
-      }
-      return pieces.join("");
-    })
-    .join("");
-
-  return `${leadHtml}${detailHtml}`;
+  return `${leadHtml}${detailPieces.join("")}`;
 }
 
 function buildLeadOnlyDescription(leadParagraphs: string[]) {
@@ -1166,7 +1165,6 @@ async function requestAiListingDraft({
 }): Promise<AiListingDraft | null> {
   try {
     const imageDataUrl = await fileToDataUrl(image.file);
-    const templateContext = buildTemplateContext(templateDescription);
     const productFamily = resolveProductFamily(image.final, templateDescription);
 
     const response = await fetch("/api/ai/listing", {
@@ -1179,7 +1177,7 @@ async function requestAiListingDraft({
         fileName: image.name,
         provider,
         productFamily,
-        templateContext,
+        templateContext: templateDescription,
       }),
     });
 
@@ -1660,7 +1658,11 @@ export default function MerchQuantumApp() {
         const titleFromApi = typeof data?.title === "string" ? data.title : "";
         const finalTitle = safeTitle(titleFromApi, fallbackTitle);
         const descriptionText = normalizeDescriptionText(data?.description);
-        const descriptionParagraphs = descriptionTextToParagraphs(descriptionText);
+        const descriptionParagraphs = normalizeAiLeadParagraphs(
+          Array.isArray(data?.leadParagraphs)
+            ? data.leadParagraphs
+            : descriptionTextToParagraphs(descriptionText)
+        );
         const finalDescription = descriptionParagraphs.length
           ? (
             requestTemplateDescription.trim()
@@ -1669,10 +1671,13 @@ export default function MerchQuantumApp() {
           )
           : "";
         const tags = normalizeTagsFromPayload(data?.tags);
-        const finalLead = normalizeAiLeadParagraphs(
-          Array.isArray(data?.leadParagraphs) ? data.leadParagraphs : descriptionParagraphs
-        );
-        if (!finalTitle || !finalDescription || tags.length === 0) {
+        const finalLead = descriptionParagraphs;
+        const nextFieldStates: AiFieldStates = {
+          title: finalTitle ? "ready" : "error",
+          description: finalDescription ? "ready" : "error",
+          tags: tags.length > 0 ? "ready" : "error",
+        };
+        if (nextFieldStates.title !== "ready" || nextFieldStates.description !== "ready" || nextFieldStates.tags !== "ready") {
           throw new Error("Quantum AI returned incomplete structured output.");
         }
         const confidence = Number.isFinite(data?.confidence) ? clamp(Number(data.confidence), 0, 1) : 0;
@@ -1708,11 +1713,7 @@ export default function MerchQuantumApp() {
                   finalDescription,
                   tags,
                   aiProcessing: false,
-                  aiFieldStates: {
-                    title: "ready",
-                    description: "ready",
-                    tags: "ready",
-                  },
+                  aiFieldStates: nextFieldStates,
                   status,
                   statusReason,
                   processedTemplateKey: requestTemplateKey,

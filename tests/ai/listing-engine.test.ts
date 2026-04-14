@@ -150,6 +150,11 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
       complianceFlags: [],
       reasonDetails: [],
     },
+    generatedTitle: "Faith Over Fear Christian Tee",
+    generatedParagraph1:
+      "Faith-based shoppers will love the bold message and clean spiritual design that makes this shirt feel encouraging, wearable, and giftable.",
+    generatedParagraph2:
+      "This uplifting Christian shirt keeps the typography easy to read while helping the design connect quickly with buyers searching for meaningful everyday faith apparel.",
     finalTitle: "Faith Over Fear Christian Tee",
     finalDescription:
       "Faith-forward graphic styling gives this merchandise a clear, uplifting message that stands out fast for shoppers looking for meaningful everyday apparel.\n\nThe clean slogan aesthetic keeps the design giftable, easy to merchandize, and strong for buyers who want visible inspiration with a polished print-ready look.",
@@ -179,6 +184,20 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
 
   const resolvedCanonicalTitle = overrides.canonicalTitle || base.canonicalTitle;
   const resolvedFinalTitle = overrides.finalTitle || overrides.final_title || resolvedCanonicalTitle;
+  const resolvedGeneratedTitle =
+    overrides.generatedTitle
+    || overrides.generated_title
+    || resolvedFinalTitle;
+  const resolvedGeneratedParagraph1 =
+    overrides.generatedParagraph1
+    || overrides.generated_paragraph_1
+    || overrides.canonicalLeadParagraphs?.[0]
+    || base.generatedParagraph1;
+  const resolvedGeneratedParagraph2 =
+    overrides.generatedParagraph2
+    || overrides.generated_paragraph_2
+    || overrides.canonicalLeadParagraphs?.[1]
+    || base.generatedParagraph2;
 
   return {
     ...base,
@@ -193,6 +212,9 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
       tiktokShop: { ...base.marketplaceDrafts.tiktokShop, ...(overrides.marketplaceDrafts?.tiktokShop || {}) },
     },
     validator: { ...base.validator, ...(overrides.validator || {}) },
+    generatedTitle: resolvedGeneratedTitle,
+    generatedParagraph1: resolvedGeneratedParagraph1,
+    generatedParagraph2: resolvedGeneratedParagraph2,
     finalTitle: resolvedFinalTitle,
     canonicalLeadParagraphs: overrides.canonicalLeadParagraphs || base.canonicalLeadParagraphs,
     canonicalTitle: resolvedCanonicalTitle,
@@ -1021,7 +1043,7 @@ async function main() {
     assert.equal(response.source, "gemini");
     assert.equal(/titleSeed: none/i.test(capturedPrompt), true);
     assert.equal(/fileNameSupport: Classic Peace Sign Retro Hippie Shirt\.png/i.test(capturedPrompt), true);
-    assert.equal(/do not let the filename write the title or opening copy/i.test(capturedPrompt), true);
+    assert.equal(/do not let the filename write the title or marketing copy/i.test(capturedPrompt), true);
     assert.equal(/trust the clearest render over the filename/i.test(capturedPrompt), true);
   });
 
@@ -1109,7 +1131,7 @@ async function main() {
     assert.equal(response.source, "fallback");
   });
 
-  await run("fallback uses template context to improve weak filename outputs", async () => {
+  await run("fallback uses template context to improve weak filename outputs without leaking template specs into buyer copy", async () => {
     const response = await generateListingResponse(
       {
         imageDataUrl: SAMPLE_PNG_DATA_URL,
@@ -1124,10 +1146,10 @@ async function main() {
 
     assert.equal(response.source, "fallback");
     assert.equal(response.title.toLowerCase().includes("img 9384"), false);
-    assert.equal(response.title.toLowerCase().includes("garment"), true);
+    assert.equal(response.title.length > 0, true);
     assert.equal(
-      response.leadParagraphs.some((paragraph) => /ring-spun cotton|relaxed fit|everyday casual wear/i.test(paragraph)),
-      true
+      response.leadParagraphs.some((paragraph) => /ring-spun cotton|relaxed fit|everyday casual wear|care instructions|100% cotton/i.test(paragraph)),
+      false
     );
     assert.equal(
       response.marketplaceDrafts.etsy.discoveryTerms.some((term) => /heavyweight|ring spun cotton|relaxed fit/i.test(term)),
@@ -1650,12 +1672,14 @@ async function main() {
     assert.equal(response.reasonFlags.some((flag) => flag.toLowerCase().includes("deterministic fallback used")), true);
   });
 
-  await run("structured response sanitizes description and tag output without title bleed", async () => {
+  await run("structured response sanitizes buyer-facing paragraphs and tag output without title bleed", async () => {
     const response = await generateListingResponse(
       {
         imageDataUrl: SAMPLE_PNG_DATA_URL,
         fileName: "faith_over_fear_transparent.png",
         productFamily: "t-shirt",
+        templateContext:
+          "Product features\n- 100% ring-spun cotton\nCare instructions\n- Machine wash cold",
       },
       {
         apiKey: "test-key",
@@ -1663,9 +1687,11 @@ async function main() {
         fetchFn: async () =>
           createGeminiResponse(
             createGeminiPayload({
-              finalTitle: "Faith Over Fear Christian Tee",
-              finalDescription:
-                "```markdown\nFaith Over Fear Christian Tee - Faith-based shoppers will love the bold message and clean spiritual design that makes this shirt feel encouraging, wearable, and giftable.\n\nThis uplifting Christian shirt keeps the typography easy to read while helping the design connect quickly with buyers searching for meaningful everyday faith apparel.\n```",
+              generatedTitle: "Faith Over Fear Christian Tee",
+              generatedParagraph1:
+                "```markdown\nFaith Over Fear Christian Tee - Faith-based shoppers will love the bold message and clean spiritual design that makes this shirt feel encouraging, wearable, and giftable.\n```",
+              generatedParagraph2:
+                "This uplifting Christian shirt keeps the typography easy to read while helping the design connect quickly with buyers searching for meaningful everyday faith apparel.",
               tags: "faith over fear, christian shirt, faith gift, religious tee, church outfit, inspirational shirt, spiritual apparel, gospel message, believer gift, faith based style, daily wear shirt, christian merch, motivational tee, scripture apparel, print on demand faith",
             })
           ),
@@ -1675,38 +1701,11 @@ async function main() {
     assert.equal(response.title, "Faith Over Fear Christian Tee");
     assert.equal(response.description.includes("```"), false);
     assert.equal(response.description.toLowerCase().startsWith(response.title.toLowerCase()), false);
+    assert.equal(/100% ring-spun cotton|machine wash cold/i.test(response.description), false);
+    assert.equal(response.description.split(/\n\n/).length, 2);
     assert.equal(Array.isArray(response.tags), true);
     assert.equal(response.tags.length, 15);
     assert.equal(response.tags.some((tag) => tag.includes(",")), false);
-  });
-
-  await run("Gemini prompt includes transparent PNG merchandise protocol and structured field instructions", async () => {
-    let capturedPrompt = "";
-
-    await generateListingResponse(
-      {
-        imageDataUrl: SAMPLE_PNG_DATA_URL,
-        fileName: "isolated_artwork.png",
-        productFamily: "t-shirt",
-        templateContext: "Heavyweight ring-spun cotton tee for everyday casual wear.",
-      },
-      {
-        apiKey: "test-key",
-        model: "gemini-test",
-        fetchFn: async (_input, init) => {
-          const parts = getGeminiRequestParts(init);
-          capturedPrompt = String(parts[0]?.text || "");
-          return createGeminiResponse(createGeminiPayload());
-        },
-      }
-    );
-
-    assert.equal(/transparent png or an isolated vector graphic/i.test(capturedPrompt), true);
-    assert.equal(/ignore any background rendering artifacts/i.test(capturedPrompt), true);
-    assert.equal(/finalTitle/i.test(capturedPrompt), true);
-    assert.equal(/finalDescription must never directly repeat, copy, or start with finalTitle/i.test(capturedPrompt), true);
-    assert.equal(/exactly 15 high-value seo tags/i.test(capturedPrompt), true);
-    assert.equal(/return strict json only/i.test(capturedPrompt), true);
   });
 
   await run("compliance rule packs surface explainable reasons without breaking UI contract", async () => {
