@@ -1368,6 +1368,8 @@ export default function MerchQuantumApp() {
   const completedGenerationCount = readyCount + errorCount;
   const generationProgressPct = images.length > 0 ? Math.round((completedGenerationCount / images.length) * 100) : 0;
   const isWorkspaceConfigured = connected && !!shopId && !!template;
+  const searchNudgeTarget = !shopId ? "shop" : !template ? "template" : null;
+  const isSearchLocked = searchNudgeTarget !== null;
   const uploadDisabled = !isWorkspaceConfigured || images.length === 0 || isRunningBatch || processingCount > 0;
   const canShowReviewDetail = isWorkspaceConfigured;
   const canShowDetailPanel = canShowReviewDetail || !!selectedImage;
@@ -2159,27 +2161,29 @@ export default function MerchQuantumApp() {
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Search My Products"
-                      disabled={!shopId}
-                      readOnly={!shopId}
-                      aria-disabled={!shopId}
-                      className={!shopId ? "cursor-not-allowed select-none" : ""}
+                      disabled={isSearchLocked}
+                      readOnly={isSearchLocked}
+                      aria-disabled={isSearchLocked}
+                      className={isSearchLocked ? "cursor-not-allowed select-none" : ""}
                     />
-                    {!shopId ? (
+                    {isSearchLocked ? (
                       <button
                         type="button"
-                        aria-label="Select Shop first"
+                        aria-label={searchNudgeTarget === "shop" ? "Select Shop first" : "Choose Product Template first"}
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          triggerAttentionCue("shop");
+                          if (searchNudgeTarget) triggerAttentionCue(searchNudgeTarget);
                         }}
                         onClick={(e) => {
                           e.preventDefault();
-                          triggerAttentionCue("shop");
+                          if (searchNudgeTarget) triggerAttentionCue(searchNudgeTarget);
                         }}
-                        onFocus={() => triggerAttentionCue("shop")}
+                        onFocus={() => {
+                          if (searchNudgeTarget) triggerAttentionCue(searchNudgeTarget);
+                        }}
                         onKeyDown={(e) => {
                           e.preventDefault();
-                          triggerAttentionCue("shop");
+                          if (searchNudgeTarget) triggerAttentionCue(searchNudgeTarget);
                         }}
                         className="absolute inset-0 z-10 cursor-not-allowed rounded-xl bg-transparent outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-0"
                       />
@@ -2191,96 +2195,6 @@ export default function MerchQuantumApp() {
 
             {isWorkspaceConfigured ? (
               <>
-                <div className="mt-3 border-t border-slate-800 pt-3">
-                  <div
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      void addFiles(e.dataTransfer.files);
-                    }}
-                    onClick={() => fileRef.current?.click()}
-                    className={`rounded-[22px] border border-dashed px-4 py-3.5 text-sm text-slate-200 transition-all duration-500 cursor-pointer hover:bg-[#0b1024] ${guidanceStep === "import" ? "border-[#7F22FE]/80 bg-[#7F22FE]/10 shadow-[0_0_0_1px_rgba(127,34,254,0.16),0_18px_50px_-30px_rgba(127,34,254,0.45)]" : "border-slate-700 bg-[#020616]/82"} ${hasAnyLoadedImages ? "ring-1 ring-[#00BC7D]/20" : ""} ${attentionTarget === "import" ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.22),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
-                  >
-                    {guidanceStep === "import" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
-                    <div className="truncate pt-0.5 font-medium text-white">Click to Add Images</div>
-
-                    {sortedImages.length > 0 ? (
-                      <div className="mt-3">
-                        <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
-                          {sortedImages.map((img, index) => {
-                            const isSelected = selectedImage?.id === img.id;
-                            const isProcessing = img.aiProcessing || img.status === "pending";
-                            const previewFrameTone = isProcessing
-                              ? "border-[#7F22FE]/55"
-                              : img.status === "ready"
-                                ? "border-[#00BC7D]/55"
-                                : img.status === "error"
-                                  ? "border-[#FF2056]/55"
-                                  : "border-slate-700";
-                            const previewAlignRight = (index + 1) % 10 === 0 || (index + 1) % 10 === 9;
-                            const previewOpenUp = sortedImages.length - index <= 10;
-                            const statusIndicator = img.status === "ready"
-                              ? { tone: "ready" as const, direction: "up" as const }
-                              : img.status === "error"
-                                ? { tone: "error" as const, direction: "down" as const }
-                                : null;
-
-                            return (
-                              <div
-                                key={img.id}
-                                onClick={() => setSelectedId(img.id)}
-                                className={`rounded-lg transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
-                              >
-                                <div className="relative">
-                                  {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
-                                  <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border bg-[#020616] transition-all duration-500 ${previewFrameTone}`}>
-                                    {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
-                                    {statusIndicator ? (
-                                      <button
-                                        type="button"
-                                        aria-label={statusIndicator.tone}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          updatePreviewStatus(img.id, statusIndicator.tone);
-                                        }}
-                                        className="absolute bottom-2 left-1/2 z-20 inline-flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full bg-black"
-                                      >
-                                        <StatusThumbIcon tone={statusIndicator.tone} direction={statusIndicator.direction} />
-                                      </button>
-                                    ) : null}
-                                    <button
-                                      type="button"
-                                      aria-label="remove"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        removePreviewItem(img.id);
-                                      }}
-                                      className="absolute right-1 top-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#020616]/92 p-0 text-[8px] font-normal leading-none text-slate-300 shadow-sm transition-colors hover:text-[#FF2056]"
-                                    >
-                                      x
-                                    </button>
-                                    <div
-                                      className="absolute inset-0 flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit]"
-                                      style={{ backgroundColor: img.previewBackground }}
-                                    >
-                                      {img.preview ? <img src={img.preview} alt={img.final} className="h-full w-full object-contain" /> : null}
-                                    </div>
-                                    {img.preview ? (
-                                      <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-xl group-hover:block ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
-                                        <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
                 <div className="mt-3 border-t border-slate-800 pt-3">
                   {!canShowDetailPanel ? null : (
                     <div className="space-y-3" onPointerDownCapture={() => nudgeWorkflow(true)}>
@@ -2406,6 +2320,81 @@ export default function MerchQuantumApp() {
                           </Field>
                         </div>
                       </div>
+
+                      {sortedImages.length > 0 ? (
+                        <div className="pt-0.5">
+                          <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
+                            {sortedImages.map((img, index) => {
+                              const isSelected = selectedImage?.id === img.id;
+                              const isProcessing = img.aiProcessing || img.status === "pending";
+                              const previewFrameTone = isProcessing
+                                ? "border-[#7F22FE]/55"
+                                : img.status === "ready"
+                                  ? "border-[#00BC7D]/55"
+                                  : img.status === "error"
+                                    ? "border-[#FF2056]/55"
+                                    : "border-slate-700";
+                              const previewAlignRight = (index + 1) % 10 === 0 || (index + 1) % 10 === 9;
+                              const previewOpenUp = sortedImages.length - index <= 10;
+                              const statusIndicator = img.status === "ready"
+                                ? { tone: "ready" as const, direction: "up" as const }
+                                : img.status === "error"
+                                  ? { tone: "error" as const, direction: "down" as const }
+                                  : null;
+
+                              return (
+                                <div
+                                  key={img.id}
+                                  onClick={() => setSelectedId(img.id)}
+                                  className={`rounded-lg transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
+                                >
+                                  <div className="relative">
+                                    {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
+                                    <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border bg-[#020616] transition-all duration-500 ${previewFrameTone}`}>
+                                      {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
+                                      {statusIndicator ? (
+                                        <button
+                                          type="button"
+                                          aria-label={statusIndicator.tone}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            updatePreviewStatus(img.id, statusIndicator.tone);
+                                          }}
+                                          className="absolute bottom-2 left-1/2 z-20 inline-flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full bg-black"
+                                        >
+                                          <StatusThumbIcon tone={statusIndicator.tone} direction={statusIndicator.direction} />
+                                        </button>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        aria-label="remove"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          removePreviewItem(img.id);
+                                        }}
+                                        className="absolute right-1 top-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#020616]/92 p-0 text-[8px] font-normal leading-none text-slate-300 shadow-sm transition-colors hover:text-[#FF2056]"
+                                      >
+                                        x
+                                      </button>
+                                      <div
+                                        className="absolute inset-0 flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit]"
+                                        style={{ backgroundColor: img.previewBackground }}
+                                      >
+                                        {img.preview ? <img src={img.preview} alt={img.final} className="h-full w-full object-contain" /> : null}
+                                      </div>
+                                      {img.preview ? (
+                                        <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-xl group-hover:block ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
+                                          <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
 
                       {canShowReviewDetail ? (
                         <div className="pt-0.5">
