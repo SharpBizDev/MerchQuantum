@@ -1173,7 +1173,7 @@ async function main() {
     assert.equal(response.source, "fallback");
   });
 
-  await run("fallback uses template context to improve weak filename outputs without leaking template specs into buyer copy", async () => {
+  await run("fallback keeps sterile product context for weak filenames without leaking template specs into buyer copy", async () => {
     const response = await generateListingResponse(
       {
         imageDataUrl: SAMPLE_PNG_DATA_URL,
@@ -1195,7 +1195,7 @@ async function main() {
     );
     assert.equal(
       response.marketplaceDrafts.etsy.discoveryTerms.some((term) => /heavyweight|ring spun cotton|relaxed fit/i.test(term)),
-      true
+      false
     );
   });
 
@@ -1264,11 +1264,8 @@ async function main() {
               true,
               `${fixture.name}: prompt should include request filename as support context`
             );
-            assert.equal(
-              prompt.includes(`productFamily: ${fixture.request.productFamily}`),
-              true,
-              `${fixture.name}: prompt should include product family`
-            );
+            assert.equal(/sterileProductType:\s*/.test(prompt), true, `${fixture.name}: prompt should include sterile product type`);
+            assert.equal(prompt.includes("productFamily:"), false, `${fixture.name}: prompt should no longer include raw product family`);
 
             return createGeminiResponse(createGeminiPayload(fixture.payloadOverrides));
           },
@@ -1478,6 +1475,61 @@ async function main() {
         delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
       }
     }
+  });
+
+  await run("Gemini prompt strips provider theme bleed down to sterile product type context", async () => {
+    let capturedPrompt = "";
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        fileName: "minimal_mountain.png",
+        productFamily: "t-shirt",
+        templateContext:
+          "Vintage faith boutique favorite &mdash; Unisex Heavy Cotton Tee with uplifting Christian gift angle, washed texture, and soft everyday style&rsquo;s familiar comfort.",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_url, init) => {
+          capturedPrompt = String(getGeminiRequestParts(init)[0]?.text || "");
+          return createGeminiResponse(
+            createGeminiPayload({
+              seo_title: "Minimal Mountain Graphic Tee",
+              seo_paragraph_1:
+                "Outdoor-minded shoppers will appreciate the calm scenic mood and minimalist energy that make this design feel easy to wear, gift, and style.",
+              seo_paragraph_2:
+                "Clean mountain linework and balanced composition give the artwork a versatile look that pairs naturally with layered outfits, casual denim, and everyday rotation.",
+              seo_tags: [
+                "mountain graphic tee",
+                "minimal mountain shirt",
+                "outdoor vibe apparel",
+                "nature lover tee",
+                "scenic line art shirt",
+                "hiking graphic shirt",
+                "camping gift tee",
+                "minimalist outdoor style",
+                "mountain lover gift",
+                "adventure graphic tee",
+                "neutral aesthetic shirt",
+                "graphic hiking apparel",
+                "casual outdoors tee",
+                "alpine line art top",
+                "giftable nature shirt",
+              ],
+            })
+          );
+        },
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    assert.equal(/sterileProductType:\s*Unisex Heavy Cotton Tee/i.test(capturedPrompt), true);
+    assert.equal(/faith boutique|christian gift|uplifting/i.test(capturedPrompt), false);
+    assert.equal(/&mdash;|&rsquo;|&sup2;/i.test(capturedPrompt), false);
+    assert.equal(/40 to 60 words/i.test(capturedPrompt), true);
+    assert.equal(/emotional hook, vibe, and audience/i.test(capturedPrompt), true);
+    assert.equal(/design details, styling suggestions, and aesthetic fit/i.test(capturedPrompt), true);
   });
 
   await run("Gemini validator output cannot stay green when reasons or compliance flags are present", async () => {

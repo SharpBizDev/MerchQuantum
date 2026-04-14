@@ -356,6 +356,134 @@ function cleanSpaces(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+const HTML_ENTITY_MAP: Record<string, string> = {
+  nbsp: " ",
+  amp: "&",
+  quot: '"',
+  apos: "'",
+  lt: "<",
+  gt: ">",
+  sup2: "²",
+  mdash: "—",
+  ndash: "–",
+  rsquo: "’",
+  lsquo: "‘",
+  rdquo: "”",
+  ldquo: "“",
+  hellip: "…",
+  copy: "©",
+  reg: "®",
+  trade: "™",
+};
+
+const STERILE_PRODUCT_TYPE_RULES: Array<{ pattern: RegExp }> = [
+  { pattern: /\b(unisex(?: [a-z0-9&/+'-]+){0,5} (?:tee|t-shirt|t shirt))\b/i },
+  { pattern: /\b((?:heavy cotton|garment-dyed|ring-spun cotton|classic|premium|softstyle|oversized|women's|youth)(?: [a-z0-9&/+'-]+){0,4} (?:tee|t-shirt|t shirt))\b/i },
+  { pattern: /\b((?:unisex|pullover|zip|heavy blend|midweight|premium)(?: [a-z0-9&/+'-]+){0,4} hoodie)\b/i },
+  { pattern: /\b((?:unisex|crewneck|heavy blend|fleece|classic)(?: [a-z0-9&/+'-]+){0,4} sweatshirt)\b/i },
+  { pattern: /\b((?:racerback|muscle|women's|unisex)(?: [a-z0-9&/+'-]+){0,4} tank top)\b/i },
+  { pattern: /\b((?:ceramic|accent|travel|camping|latte)(?: [a-z0-9&/+'-]+){0,3} mug)\b/i },
+  { pattern: /\b((?:dad|trucker|snapback|bucket|beanie)(?: [a-z0-9&/+'-]+){0,3} hat)\b/i },
+  { pattern: /\b((?:vinyl|kiss-cut|die-cut|transparent)(?: [a-z0-9&/+'-]+){0,3} sticker)\b/i },
+  { pattern: /\b((?:tote|duffel|drawstring|crossbody)(?: [a-z0-9&/+'-]+){0,3} bag)\b/i },
+  { pattern: /\b((?:soy|scented|jar)(?: [a-z0-9&/+'-]+){0,3} candle)\b/i },
+  { pattern: /\b((?:canvas print|art print|poster|wall art)(?: [a-z0-9&/+'-]+){0,2})\b/i },
+];
+
+function decodeHtmlEntities(value: string) {
+  return String(value || "")
+    .replace(/&#(\d+);/g, (match, decimal) => {
+      const codePoint = Number.parseInt(decimal, 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match;
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (match, hex) => {
+      const codePoint = Number.parseInt(hex, 16);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match;
+    })
+    .replace(/&([a-z][a-z0-9]+);/gi, (match, entity) => HTML_ENTITY_MAP[entity.toLowerCase()] ?? match);
+}
+
+function stripHtmlForAi(value: string) {
+  return decodeHtmlEntities(value)
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/p>/gi, " ")
+    .replace(/<li[^>]*>/gi, " ")
+    .replace(/<\/li>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\u00a0/g, " ");
+}
+
+function normalizeSterileProductTypeLabel(value: string) {
+  return cleanSpaces(value)
+    .replace(/\bt[- ]shirt\b/gi, "T-Shirt")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      if (/^t-shirt$/i.test(word)) return "T-Shirt";
+      if (/^tee$/i.test(word)) return "Tee";
+      if (/^(DTG|DTF|POD|UV)$/i.test(word)) return word.toUpperCase();
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(" ");
+}
+
+function getFallbackSterileProductType(productFamily?: string) {
+  const family = cleanSpaces(productFamily || "").toLowerCase();
+  switch (family) {
+    case "t-shirt":
+      return "Unisex Heavy Cotton Tee";
+    case "hoodie":
+      return "Unisex Hoodie";
+    case "sweatshirt":
+      return "Crewneck Sweatshirt";
+    case "tank top":
+      return "Tank Top";
+    case "hat":
+      return "Hat";
+    case "drinkware":
+      return "Ceramic Mug";
+    case "candle":
+      return "Scented Candle";
+    case "bath-body":
+      return "Bath and Body Product";
+    case "home-kitchen":
+      return "Home and Kitchen Product";
+    case "wall-art":
+      return "Wall Art Print";
+    case "sticker":
+      return "Sticker";
+    case "bag":
+      return "Tote Bag";
+    case "accessory":
+      return "Accessory";
+    case "footwear":
+      return "Footwear";
+    default:
+      return "Product";
+  }
+}
+
+function sanitizeTemplateContextForAi(templateContext: string, productFamily?: string) {
+  const normalized = cleanSpaces(stripHtmlForAi(templateContext).replace(/[•:]+/g, " "));
+  if (normalized) {
+    for (const rule of STERILE_PRODUCT_TYPE_RULES) {
+      const match = normalized.match(rule.pattern);
+      if (match?.[1] || match?.[0]) {
+        return normalizeSterileProductTypeLabel((match[1] || match[0]).trim());
+      }
+    }
+  }
+
+  return getFallbackSterileProductType(productFamily);
+}
+
+function sanitizeListingRequest(input: ListingRequest): ListingRequest {
+  return {
+    ...input,
+    templateContext: sanitizeTemplateContextForAi(String(input.templateContext || ""), input.productFamily),
+  };
+}
+
 function stripExtension(value: string) {
   return value.replace(/\.[a-z0-9]{2,5}$/i, "");
 }
@@ -2517,7 +2645,7 @@ function buildMasterPrompt(
   localeProfile: LocaleProfile,
   visionPromptHint?: string
 ) {
-  const productFamily = cleanSpaces(input.productFamily || "product");
+  const sterileProductType = cleanSpaces(input.templateContext || getFallbackSterileProductType(input.productFamily));
 
   return [
     "You are an elite e-commerce copywriter and Quality Control gatekeeper. Analyze the provided merchandise graphic.",
@@ -2528,6 +2656,9 @@ function buildMasterPrompt(
     "If multiple renders are provided, treat them as alternate views of the same design and trust the clearest render over the filename.",
     "If you receive black-backed, white-backed, cropped, or helper renders, use them only to understand sparse or transparent artwork while preserving the untouched upload as the source of truth.",
     visionPromptHint ? visionPromptHint : "",
+    "",
+    "CONTEXT RULE",
+    `You are writing copy for a ${sterileProductType}. Do NOT reference any other themes, religions, or subjects other than what is visibly present in the image scan.`,
     "",
     "STEP 1: QC GATE",
     "If the image is completely illegible, a blank square, or highly distorted, set qc_approved to false and leave all other fields blank.",
@@ -2541,9 +2672,13 @@ function buildMasterPrompt(
     "- seo_tags: an array of exactly 15 high-value SEO tags.",
     "",
     "CRITICAL RULES",
+    "- seo_paragraph_1 and seo_paragraph_2 must each be 40 to 60 words.",
+    "- seo_paragraph_1 focuses on the emotional hook, vibe, and audience.",
+    "- seo_paragraph_2 focuses on design details, styling suggestions, and aesthetic fit.",
     "- Do not include generic garment specs, care instructions, fit, cotton weight, or template text.",
     "- Focus only on the art/design and its customer appeal.",
     "- Weave the strongest keywords from seo_title naturally into seo_paragraph_1.",
+    "- Do not repeat the full seo_title verbatim at the start of seo_paragraph_1.",
     "- seo_paragraph_2 must end in a complete sentence.",
     "- Provider template/spec content is application-owned and must never be rewritten, summarized, or paraphrased.",
     "",
@@ -2565,7 +2700,7 @@ function buildMasterPrompt(
     "No markdown fences.",
     "",
     "INPUT CONTEXT",
-    `productFamily: ${productFamily}`,
+    `sterileProductType: ${sterileProductType}`,
     `titleSeed: ${explicitTitleSeed || "none"}`,
     `fileNameSupport: ${input.fileName || "none"}`,
     `locale: ${localeProfile.locale}`,
@@ -2929,10 +3064,12 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
     throw new Error("Image data is required.");
   }
 
+  const normalizedInput = sanitizeListingRequest(input);
+
   if (apiKey) {
     for (let attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS; attempt += 1) {
       try {
-        const geminiRecord = await callGeminiRecord(input, {
+        const geminiRecord = await callGeminiRecord(normalizedInput, {
           fetchFn,
           apiKey,
           model,
@@ -2958,5 +3095,9 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
     }
   }
 
-  return mapRecordToUiResponse(buildFallbackRecord(input, localeProfile, apiKey ? MAX_GEMINI_ATTEMPTS : 0), model, localeProfile);
+  return mapRecordToUiResponse(
+    buildFallbackRecord(normalizedInput, localeProfile, apiKey ? MAX_GEMINI_ATTEMPTS : 0),
+    model,
+    localeProfile
+  );
 }

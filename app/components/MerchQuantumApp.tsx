@@ -276,6 +276,41 @@ const FAMILY_RULES: Array<{
   },
 ];
 
+const HTML_ENTITY_MAP: Record<string, string> = {
+  nbsp: " ",
+  amp: "&",
+  quot: '"',
+  apos: "'",
+  lt: "<",
+  gt: ">",
+  sup2: "²",
+  mdash: "—",
+  ndash: "–",
+  rsquo: "’",
+  lsquo: "‘",
+  rdquo: "”",
+  ldquo: "“",
+  hellip: "…",
+  copy: "©",
+  reg: "®",
+  trade: "™",
+};
+
+const STERILE_PRODUCT_TYPE_RULES: Array<{ pattern: RegExp }> = [
+  { pattern: /\b(unisex(?: [a-z0-9&/+'-]+){0,5} (?:tee|t-shirt|t shirt))\b/i },
+  { pattern: /\b((?:heavy cotton|garment-dyed|ring-spun cotton|classic|premium|softstyle|oversized|women's|youth)(?: [a-z0-9&/+'-]+){0,4} (?:tee|t-shirt|t shirt))\b/i },
+  { pattern: /\b((?:unisex|pullover|zip|heavy blend|midweight|premium)(?: [a-z0-9&/+'-]+){0,4} hoodie)\b/i },
+  { pattern: /\b((?:unisex|crewneck|heavy blend|fleece|classic)(?: [a-z0-9&/+'-]+){0,4} sweatshirt)\b/i },
+  { pattern: /\b((?:racerback|muscle|women's|unisex)(?: [a-z0-9&/+'-]+){0,4} tank top)\b/i },
+  { pattern: /\b((?:ceramic|accent|travel|camping|latte)(?: [a-z0-9&/+'-]+){0,3} mug)\b/i },
+  { pattern: /\b((?:dad|trucker|snapback|bucket|beanie)(?: [a-z0-9&/+'-]+){0,3} hat)\b/i },
+  { pattern: /\b((?:vinyl|kiss-cut|die-cut|transparent)(?: [a-z0-9&/+'-]+){0,3} sticker)\b/i },
+  { pattern: /\b((?:tote|duffel|drawstring|crossbody)(?: [a-z0-9&/+'-]+){0,3} bag)\b/i },
+  { pattern: /\b((?:soy|scented|jar)(?: [a-z0-9&/+'-]+){0,3} candle)\b/i },
+  { pattern: /\b((?:cutting board|serving board|throw pillow|area rug|tea towel|journal|notebook)(?: [a-z0-9&/+'-]+){0,2})\b/i },
+  { pattern: /\b((?:canvas print|art print|poster|wall art)(?: [a-z0-9&/+'-]+){0,2})\b/i },
+];
+
 function makeId() {
   return typeof crypto !== "undefined" && crypto.randomUUID
     ? crypto.randomUUID()
@@ -417,6 +452,35 @@ function getContrastRatio(firstLuminance: number, secondLuminance: number) {
   const lighter = Math.max(firstLuminance, secondLuminance);
   const darker = Math.min(firstLuminance, secondLuminance);
   return (lighter + 0.05) / (darker + 0.05);
+}
+
+function parseHexColor(value: string | null | undefined) {
+  const normalized = String(value || "").trim().replace(/^#/, "");
+  if (!normalized) return null;
+
+  const expanded =
+    normalized.length === 3
+      ? normalized
+          .split("")
+          .map((char) => `${char}${char}`)
+          .join("")
+      : normalized.length >= 6
+        ? normalized.slice(0, 6)
+        : "";
+
+  if (!/^[0-9a-f]{6}$/i.test(expanded)) return null;
+
+  return {
+    red: Number.parseInt(expanded.slice(0, 2), 16),
+    green: Number.parseInt(expanded.slice(2, 4), 16),
+    blue: Number.parseInt(expanded.slice(4, 6), 16),
+  };
+}
+
+function shouldUseLightPreviewText(background: string | null | undefined) {
+  const rgb = parseHexColor(background);
+  if (!rgb) return true;
+  return getRelativeLuminance(rgb.red, rgb.green, rgb.blue) < 0.44;
 }
 
 function choosePreviewBackground(artworkLuminance: number | null) {
@@ -604,15 +668,16 @@ async function createContrastSafePreview(file: File): Promise<{ src: string; bac
 }
 
 function decodeHtmlEntities(value: string) {
-  return value
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#x27;/gi, "'")
-    .replace(/&#x2F;/gi, "/");
+  return String(value || "")
+    .replace(/&#(\d+);/g, (_match, decimal) => {
+      const codePoint = Number.parseInt(decimal, 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : _match;
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (_match, hex) => {
+      const codePoint = Number.parseInt(hex, 16);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : _match;
+    })
+    .replace(/&([a-z][a-z0-9]+);/gi, (match, entity) => HTML_ENTITY_MAP[entity.toLowerCase()] ?? match);
 }
 
 function stripHtml(value: string) {
@@ -807,10 +872,68 @@ function parseTemplateDescription(formattedDescription: string) {
   return { introParagraphs, sections };
 }
 
-function buildTemplateContext(templateDescription: string) {
+function normalizeSterileProductTypeLabel(value: string) {
+  return value
+    .replace(/\bt[- ]shirt\b/gi, "T-Shirt")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      if (/^t-shirt$/i.test(word)) return "T-Shirt";
+      if (/^tee$/i.test(word)) return "Tee";
+      if (/^(DTG|DTF|POD|UV)$/i.test(word)) return word.toUpperCase();
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(" ");
+}
+
+function getFallbackSterileProductType(family: ProductFamily) {
+  switch (family) {
+    case "t-shirt":
+      return "Unisex Heavy Cotton Tee";
+    case "hoodie":
+      return "Unisex Hoodie";
+    case "sweatshirt":
+      return "Crewneck Sweatshirt";
+    case "tank top":
+      return "Tank Top";
+    case "hat":
+      return "Hat";
+    case "drinkware":
+      return "Ceramic Mug";
+    case "candle":
+      return "Scented Candle";
+    case "bath-body":
+      return "Bath and Body Product";
+    case "home-kitchen":
+      return "Home and Kitchen Product";
+    case "wall-art":
+      return "Wall Art Print";
+    case "sticker":
+      return "Sticker";
+    case "bag":
+      return "Tote Bag";
+    case "accessory":
+      return "Accessory";
+    case "footwear":
+      return "Footwear";
+    default:
+      return "Product";
+  }
+}
+
+function buildTemplateContext(templateDescription: string, productFamily?: ProductFamily) {
   const formatted = formatTemplateDescription(templateDescription);
-  const parsed = parseTemplateDescription(formatted);
-  return parsed.introParagraphs.join(" ").replace(/\s+/g, " ").trim();
+  const normalized = stripHtml(formatted).replace(/[•:]+/g, " ").replace(/\s+/g, " ").trim();
+
+  for (const rule of STERILE_PRODUCT_TYPE_RULES) {
+    const match = normalized.match(rule.pattern);
+    if (match?.[1] || match?.[0]) {
+      return normalizeSterileProductTypeLabel((match[1] || match[0]).trim());
+    }
+  }
+
+  const detectedFamily = productFamily || detectProductFamilyFromText(normalized) || "product";
+  return getFallbackSterileProductType(detectedFamily);
 }
 
 function dedupeParagraphs(paragraphs: string[]) {
@@ -1167,6 +1290,7 @@ async function requestAiListingDraft({
   try {
     const imageDataUrl = await fileToDataUrl(image.file);
     const productFamily = resolveProductFamily(image.final, templateDescription);
+    const sterileTemplateContext = buildTemplateContext(templateDescription, productFamily);
 
     const response = await fetch("/api/ai/listing", {
       method: "POST",
@@ -1178,7 +1302,7 @@ async function requestAiListingDraft({
         fileName: image.name,
         provider,
         productFamily,
-        templateContext: templateDescription,
+        templateContext: sterileTemplateContext,
       }),
     });
 
@@ -1443,6 +1567,8 @@ export default function MerchQuantumApp() {
   const canShowReviewDetail = isWorkspaceConfigured;
   const canShowDetailPanel = canShowReviewDetail || !!selectedImage;
   const selectedImageFieldStates = selectedImage?.aiFieldStates ?? createAiFieldStates("idle");
+  const previewOverlayUsesLightText = shouldUseLightPreviewText(selectedImage?.previewBackground || DISPLAY_NEUTRAL_BACKGROUND);
+  const previewOverlayTextClass = previewOverlayUsesLightText ? "text-white" : "text-slate-950";
   const isImageAwaitingStructuredOutput =
     !!(selectedImage && templateReadyForAi && selectedImage.processedTemplateKey !== templateKey);
   const isDetailTitleLoading =
@@ -1640,6 +1766,8 @@ export default function MerchQuantumApp() {
     void (async () => {
       try {
         const imageDataUrl = await readDataUrl(nextImage.file);
+        const requestProductFamily = resolveProductFamily(nextImage.cleaned, requestTemplateDescription);
+        const sterileTemplateContext = buildTemplateContext(requestTemplateDescription, requestProductFamily);
         const response = await fetchWithTimeout(
           "/api/ai/listing",
           {
@@ -1648,8 +1776,8 @@ export default function MerchQuantumApp() {
             body: JSON.stringify({
               imageDataUrl,
               fileName: nextImage.name,
-              templateContext: requestTemplateDescription,
-              productFamily: resolveProductFamily(nextImage.cleaned, requestTemplateDescription),
+              templateContext: sterileTemplateContext,
+              productFamily: requestProductFamily,
             }),
           },
           60000
@@ -2396,7 +2524,7 @@ export default function MerchQuantumApp() {
                                 onClick={(e) => e.stopPropagation()}
                                 onPointerDown={(e) => e.stopPropagation()}
                               >
-                                <div className="flex min-w-0 flex-nowrap items-center gap-x-2.5 overflow-x-auto overflow-y-hidden px-0.5 pb-1.5 pt-0.5 text-[11px] font-medium text-white sm:text-xs">
+                                <div className={`flex min-w-0 flex-nowrap items-center gap-x-2.5 overflow-x-auto overflow-y-hidden px-0.5 pb-1.5 pt-0.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
                                   <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                                     <span>{readyCount}</span>
                                     <StatusThumbIcon tone="ready" direction="up" />
@@ -2426,7 +2554,7 @@ export default function MerchQuantumApp() {
                                         clearPreviewWorkspace();
                                       }
                                     }}
-                                    className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none text-white hover:text-white focus:text-white active:text-white sm:text-xs ${hasAnyLoadedImages ? "cursor-pointer" : "cursor-default"}`}
+                                    className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none sm:text-xs ${previewOverlayTextClass} ${hasAnyLoadedImages ? "cursor-pointer opacity-100 hover:opacity-90 focus:opacity-90 active:opacity-90" : "cursor-default opacity-100"}`}
                                   >
                                     <span className="h-2.5 w-2.5 rounded-full bg-[#7F22FE] ring-2 ring-[#7F22FE]/35" />
                                     Clear
