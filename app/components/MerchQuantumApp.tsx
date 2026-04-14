@@ -6,7 +6,7 @@ import { PROVIDER_OPTIONS, type ProviderChoiceId } from "../../lib/providers/cli
 const APP_TAGLINE = "Bulk product creation, simplified";
 const ACTIVE_BATCH_FILES = 50;
 const CONNECTED_TOTAL_BATCH_FILES = 300;
-const FIXED_TAG_COUNT = 13;
+const FIXED_TAG_COUNT = 15;
 
 type ProviderId =
   | "printify"
@@ -51,6 +51,9 @@ type PlacementGuide = {
 };
 
 type ReviewStatus = "pending" | "ready" | "error";
+type AiFieldKey = "title" | "description" | "tags";
+type AiFieldStatus = "idle" | "loading" | "ready" | "error";
+type AiFieldStates = Record<AiFieldKey, AiFieldStatus>;
 
 type AiListingDraft = {
   title: string;
@@ -76,6 +79,7 @@ type Img = {
   status: ReviewStatus;
   statusReason: string;
   aiProcessing?: boolean;
+  aiFieldStates: AiFieldStates;
   processedTemplateKey?: string;
   artworkBounds?: ArtworkBounds;
   aiDraft?: AiListingDraft;
@@ -1028,6 +1032,68 @@ function buildTags(title: string, description: string, count: number) {
   return deriveTags(title, description).slice(0, count);
 }
 
+function createAiFieldStates(status: AiFieldStatus = "idle"): AiFieldStates {
+  return {
+    title: status,
+    description: status,
+    tags: status,
+  };
+}
+
+function stripMarkdownFences(value: string) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+
+  return trimmed
+    .replace(/^```[a-z0-9_-]*\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function normalizeTagsFromPayload(input: unknown) {
+  const values = Array.isArray(input)
+    ? input.map((value) => String(value || ""))
+    : typeof input === "string"
+      ? input.split(/[,\n;|]/g)
+      : [];
+
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const rawTag of values) {
+    const cleaned = stripMarkdownFences(rawTag)
+      .replace(/^tags?\s*:\s*/i, "")
+      .replace(/^[-*•]+\s*/, "")
+      .replace(/^["'`]+|["'`]+$/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!cleaned) continue;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(cleaned);
+  }
+
+  return result.slice(0, FIXED_TAG_COUNT);
+}
+
+function normalizeDescriptionText(value: unknown) {
+  return stripMarkdownFences(String(value || ""))
+    .replace(/\r\n?/g, "\n")
+    .replace(/^\s*description\s*:\s*/i, "")
+    .replace(/^\s*final[_ ]description\s*:\s*/i, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function descriptionTextToParagraphs(value: string) {
+  return value
+    .split(/\n{2,}/)
+    .flatMap((block) => block.split(/\n/))
+    .map((paragraph) => paragraph.replace(/^[-*•]+\s*/, "").trim())
+    .filter(Boolean);
+}
+
 function isImage(file: File) {
   if (file.type.startsWith("image/")) return true;
   const ext = file.name.split(".").pop()?.toLowerCase() || "";
@@ -1373,27 +1439,42 @@ export default function MerchQuantumApp() {
   const uploadDisabled = !isWorkspaceConfigured || images.length === 0 || isRunningBatch || processingCount > 0;
   const canShowReviewDetail = isWorkspaceConfigured;
   const canShowDetailPanel = canShowReviewDetail || !!selectedImage;
-  const detailTitle = selectedImage?.final
-    || template?.nickname
-    || selectedProduct?.title
-    || "Loading selected product...";
-  const detailDescription = selectedImage?.finalDescription
-    || (templateDescription
+  const selectedImageFieldStates = selectedImage?.aiFieldStates ?? createAiFieldStates("idle");
+  const isImageAwaitingStructuredOutput =
+    !!(selectedImage && templateReadyForAi && selectedImage.processedTemplateKey !== templateKey);
+  const isDetailTitleLoading =
+    selectedImageFieldStates.title === "loading"
+    || !!selectedImage?.aiProcessing
+    || isImageAwaitingStructuredOutput;
+  const isDetailDescriptionLoading =
+    selectedImageFieldStates.description === "loading"
+    || !!selectedImage?.aiProcessing
+    || isImageAwaitingStructuredOutput;
+  const isDetailTagsLoading =
+    selectedImageFieldStates.tags === "loading"
+    || !!selectedImage?.aiProcessing
+    || isImageAwaitingStructuredOutput;
+  const detailTitle = selectedImage
+    ? selectedImageFieldStates.title === "ready"
+      ? selectedImage.final
+      : ""
+    : template?.nickname
+      || selectedProduct?.title
+      || "Loading selected product...";
+  const detailDescription = selectedImage
+    ? selectedImageFieldStates.description === "ready"
+      ? selectedImage.finalDescription
+      : ""
+    : (templateDescription
       ? templateDescription
       : canShowReviewDetail
         ? "Select or add artwork to generate image-based listing copy."
         : selectedImage
           ? "Add a shop and product template when you're ready. Quantum AI will build the final listing copy here."
           : "");
-  const detailTags = selectedImage?.tags?.length
+  const detailTags = selectedImage && selectedImageFieldStates.tags === "ready"
     ? selectedImage.tags
-    : canShowReviewDetail
-      ? buildTags(detailTitle, detailDescription, FIXED_TAG_COUNT)
-      : [];
-  const isDetailDescriptionLoading =
-    loadingTemplateDetails
-    || !!selectedImage?.aiProcessing
-    || !!(selectedImage && templateReadyForAi && selectedImage.processedTemplateKey !== templateKey);
+    : [];
   const guidanceStep = !connected
     ? "connect"
     : !shopId || !template
@@ -1471,6 +1552,7 @@ export default function MerchQuantumApp() {
               processedTemplateKey: undefined,
               aiDraft: undefined,
               aiProcessing: false,
+              aiFieldStates: createAiFieldStates("idle"),
               status: "pending",
               statusReason: "Quantum AI is preparing listing copy.",
             }
@@ -1485,6 +1567,7 @@ export default function MerchQuantumApp() {
               processedTemplateKey: undefined,
               aiDraft: undefined,
               aiProcessing: false,
+              aiFieldStates: createAiFieldStates("idle"),
               status: "pending",
               statusReason: "Quantum AI is preparing listing copy.",
             }
@@ -1540,7 +1623,13 @@ export default function MerchQuantumApp() {
     setImages((current) =>
       current.map((img) =>
         img.id === nextImage.id
-          ? { ...img, aiProcessing: true, status: "pending", statusReason: "Quantum AI is analyzing artwork." }
+          ? {
+              ...img,
+              aiProcessing: true,
+              aiFieldStates: createAiFieldStates("loading"),
+              status: "pending",
+              statusReason: "Quantum AI is analyzing artwork.",
+            }
           : img
       )
     );
@@ -1567,16 +1656,25 @@ export default function MerchQuantumApp() {
         if (!response.ok) throw new Error(data?.error || `AI request failed with status ${response.status}.`);
         if (activeTemplateKeyRef.current !== requestTemplateKey) return;
 
-        const leadParagraphs = normalizeAiLeadParagraphs(Array.isArray(data?.leadParagraphs) ? data.leadParagraphs : []);
-        const fallbackLead = buildLeadParagraphs(nextImage.cleaned, requestTemplateDescription);
-        const finalLead = leadParagraphs.length ? leadParagraphs : fallbackLead;
         const fallbackTitle = safeTitle(nextImage.final, nextImage.cleaned);
-        const titleFromApi = typeof data?.title === "string" ? data.title : fallbackTitle;
+        const titleFromApi = typeof data?.title === "string" ? data.title : "";
         const finalTitle = safeTitle(titleFromApi, fallbackTitle);
-        const finalDescription = requestTemplateDescription.trim()
-          ? buildDescription(finalTitle, requestTemplateDescription, finalLead)
-          : buildLeadOnlyDescription(finalLead);
-        const tags = buildTags(finalTitle, finalDescription, FIXED_TAG_COUNT);
+        const descriptionText = normalizeDescriptionText(data?.description);
+        const descriptionParagraphs = descriptionTextToParagraphs(descriptionText);
+        const finalDescription = descriptionParagraphs.length
+          ? (
+            requestTemplateDescription.trim()
+              ? formatProductDescriptionWithSections(descriptionParagraphs, requestTemplateDescription)
+              : buildLeadOnlyDescription(descriptionParagraphs)
+          )
+          : "";
+        const tags = normalizeTagsFromPayload(data?.tags);
+        const finalLead = normalizeAiLeadParagraphs(
+          Array.isArray(data?.leadParagraphs) ? data.leadParagraphs : descriptionParagraphs
+        );
+        if (!finalTitle || !finalDescription || tags.length === 0) {
+          throw new Error("Quantum AI returned incomplete structured output.");
+        }
         const confidence = Number.isFinite(data?.confidence) ? clamp(Number(data.confidence), 0, 1) : 0;
         const reasonFlags = Array.isArray(data?.reasonFlags)
           ? data.reasonFlags.filter((flag: unknown) => typeof flag === "string")
@@ -1610,12 +1708,17 @@ export default function MerchQuantumApp() {
                   finalDescription,
                   tags,
                   aiProcessing: false,
+                  aiFieldStates: {
+                    title: "ready",
+                    description: "ready",
+                    tags: "ready",
+                  },
                   status,
                   statusReason,
                   processedTemplateKey: requestTemplateKey,
                   aiDraft: {
                     title: finalTitle,
-                    leadParagraphs,
+                    leadParagraphs: finalLead,
                     model: typeof data?.model === "string" ? data.model : AI_MODEL_LABEL,
                     confidence,
                     templateReference: requestTemplateReference,
@@ -1632,13 +1735,18 @@ export default function MerchQuantumApp() {
         const message = formatApiError(error instanceof Error ? error.message : "Quantum AI could not process this item.");
         setImages((current) =>
           current.map((img) =>
-            img.id === nextImage.id
-              ? {
-                  ...img,
-                  aiProcessing: false,
-                  status: "error",
-                  statusReason: message,
-                  processedTemplateKey: requestTemplateKey,
+                img.id === nextImage.id
+                  ? {
+                      ...img,
+                      aiProcessing: false,
+                      aiFieldStates: {
+                        title: "error",
+                        description: "error",
+                        tags: "error",
+                      },
+                      status: "error",
+                      statusReason: message,
+                      processedTemplateKey: requestTemplateKey,
                   aiDraft: undefined,
                 }
               : img
@@ -1691,9 +1799,6 @@ export default function MerchQuantumApp() {
 
     const good = await Promise.all(accepted.map(async (file) => {
       const cleaned = cleanTitle(file.name);
-      const leadDescription = templateDescription.trim()
-        ? buildDescription(cleaned, templateDescription)
-        : buildLeadOnlyDescription(buildLeadParagraphs(cleaned, templateDescription));
       const preview = await createContrastSafePreview(file);
       return {
         id: makeId(),
@@ -1703,10 +1808,11 @@ export default function MerchQuantumApp() {
         previewBackground: preview.background,
         cleaned,
         final: cleaned,
-        finalDescription: leadDescription,
-        tags: buildTags(cleaned, leadDescription, FIXED_TAG_COUNT),
+        finalDescription: "",
+        tags: [],
         status: "pending" as ReviewStatus,
         statusReason: "Quantum AI is preparing listing copy.",
+        aiFieldStates: createAiFieldStates("idle"),
       } satisfies Img;
     }));
 
@@ -2305,7 +2411,14 @@ export default function MerchQuantumApp() {
                         <div className="flex h-full flex-col space-y-3">
                           <Field label="Final Title">
                             <div className="flex min-h-[44px] items-center rounded-xl border border-slate-700 bg-[#020616] px-3 py-0 text-left text-sm font-normal leading-5 text-white">
-                              {detailTitle}
+                              {isDetailTitleLoading ? (
+                                <div className="flex w-full items-center justify-center gap-2 text-sm font-medium text-slate-300">
+                                  <span className={`${getLoadingIndicatorClass()} animate-pulse`} />
+                                  <span>Loading title...</span>
+                                </div>
+                              ) : (
+                                detailTitle || <span className="text-slate-400">Awaiting Quantum AI title...</span>
+                              )}
                             </div>
                           </Field>
 
@@ -2319,7 +2432,9 @@ export default function MerchQuantumApp() {
                                   </div>
                                 ) : (
                                   <div className="w-full whitespace-pre-wrap text-left">
-                                    {htmlToEditableText(detailDescription)}
+                                    {detailDescription
+                                      ? htmlToEditableText(detailDescription)
+                                      : "Awaiting Quantum AI description..."}
                                   </div>
                                 )}
                               </div>
@@ -2411,15 +2526,30 @@ export default function MerchQuantumApp() {
                               <span className="ml-1 font-semibold text-white">AI</span>
                               <span className="ml-1 font-semibold text-[#00BC7D]">Tags</span>
                             </div>
-                            {detailTags.map((tag, index) => (
-                              <div
-                                key={`${selectedImage?.id || productId}-tag-${index}`}
-                                title={tag}
-                                className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-white"
-                              >
-                                <span className="truncate">{tag}</span>
+                            {isDetailTagsLoading ? (
+                              Array.from({ length: 6 }).map((_, index) => (
+                                <div
+                                  key={`loading-tag-${index}`}
+                                  className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-300"
+                                >
+                                  <span className={`${getLoadingIndicatorClass()} animate-pulse`} />
+                                </div>
+                              ))
+                            ) : detailTags.length > 0 ? (
+                              detailTags.map((tag, index) => (
+                                <div
+                                  key={`${selectedImage?.id || productId}-tag-${index}`}
+                                  title={tag}
+                                  className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-white"
+                                >
+                                  <span className="truncate">{tag}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-400 sm:col-span-2 md:col-span-3 lg:col-span-6">
+                                Tags will appear when Quantum AI finishes this artwork.
                               </div>
-                            ))}
+                            )}
                           </div>
                         </div>
                       ) : null}

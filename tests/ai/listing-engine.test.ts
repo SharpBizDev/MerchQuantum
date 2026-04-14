@@ -150,12 +150,35 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
       complianceFlags: [],
       reasonDetails: [],
     },
+    finalTitle: "Faith Over Fear Christian Tee",
+    finalDescription:
+      "Faith-forward graphic styling gives this merchandise a clear, uplifting message that stands out fast for shoppers looking for meaningful everyday apparel.\n\nThe clean slogan aesthetic keeps the design giftable, easy to merchandize, and strong for buyers who want visible inspiration with a polished print-ready look.",
+    tags: [
+      "faith over fear",
+      "christian shirt",
+      "faith gift",
+      "religious tee",
+      "scripture apparel",
+      "church outfit",
+      "uplifting graphic",
+      "inspirational shirt",
+      "believer gift",
+      "gospel message",
+      "faith based style",
+      "motivational tee",
+      "daily wear shirt",
+      "christian merch",
+      "print on demand faith",
+    ],
     canonicalTitle: "Faith Over Fear Christian Tee",
     canonicalLeadParagraphs: [
       "Faith-forward graphic styling helps this listing communicate its core message quickly.",
       "Use this as opening persuasion copy, then keep your imported factual template details below.",
     ],
   };
+
+  const resolvedCanonicalTitle = overrides.canonicalTitle || base.canonicalTitle;
+  const resolvedFinalTitle = overrides.finalTitle || overrides.final_title || resolvedCanonicalTitle;
 
   return {
     ...base,
@@ -170,7 +193,9 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
       tiktokShop: { ...base.marketplaceDrafts.tiktokShop, ...(overrides.marketplaceDrafts?.tiktokShop || {}) },
     },
     validator: { ...base.validator, ...(overrides.validator || {}) },
+    finalTitle: resolvedFinalTitle,
     canonicalLeadParagraphs: overrides.canonicalLeadParagraphs || base.canonicalLeadParagraphs,
+    canonicalTitle: resolvedCanonicalTitle,
   };
 }
 
@@ -1623,6 +1648,65 @@ async function main() {
     assert.equal(sequence.getCallCount(), 2);
     assert.equal(response.source, "fallback");
     assert.equal(response.reasonFlags.some((flag) => flag.toLowerCase().includes("deterministic fallback used")), true);
+  });
+
+  await run("structured response sanitizes description and tag output without title bleed", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        fileName: "faith_over_fear_transparent.png",
+        productFamily: "t-shirt",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async () =>
+          createGeminiResponse(
+            createGeminiPayload({
+              finalTitle: "Faith Over Fear Christian Tee",
+              finalDescription:
+                "```markdown\nFaith Over Fear Christian Tee - Faith-based shoppers will love the bold message and clean spiritual design that makes this shirt feel encouraging, wearable, and giftable.\n\nThis uplifting Christian shirt keeps the typography easy to read while helping the design connect quickly with buyers searching for meaningful everyday faith apparel.\n```",
+              tags: "faith over fear, christian shirt, faith gift, religious tee, church outfit, inspirational shirt, spiritual apparel, gospel message, believer gift, faith based style, daily wear shirt, christian merch, motivational tee, scripture apparel, print on demand faith",
+            })
+          ),
+      }
+    );
+
+    assert.equal(response.title, "Faith Over Fear Christian Tee");
+    assert.equal(response.description.includes("```"), false);
+    assert.equal(response.description.toLowerCase().startsWith(response.title.toLowerCase()), false);
+    assert.equal(Array.isArray(response.tags), true);
+    assert.equal(response.tags.length, 15);
+    assert.equal(response.tags.some((tag) => tag.includes(",")), false);
+  });
+
+  await run("Gemini prompt includes transparent PNG merchandise protocol and structured field instructions", async () => {
+    let capturedPrompt = "";
+
+    await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        fileName: "isolated_artwork.png",
+        productFamily: "t-shirt",
+        templateContext: "Heavyweight ring-spun cotton tee for everyday casual wear.",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_input, init) => {
+          const parts = getGeminiRequestParts(init);
+          capturedPrompt = String(parts[0]?.text || "");
+          return createGeminiResponse(createGeminiPayload());
+        },
+      }
+    );
+
+    assert.equal(/transparent png or an isolated vector graphic/i.test(capturedPrompt), true);
+    assert.equal(/ignore any background rendering artifacts/i.test(capturedPrompt), true);
+    assert.equal(/finalTitle/i.test(capturedPrompt), true);
+    assert.equal(/finalDescription must never directly repeat, copy, or start with finalTitle/i.test(capturedPrompt), true);
+    assert.equal(/exactly 15 high-value seo tags/i.test(capturedPrompt), true);
+    assert.equal(/return strict json only/i.test(capturedPrompt), true);
   });
 
   await run("compliance rule packs surface explainable reasons without breaking UI contract", async () => {
