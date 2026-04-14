@@ -1785,6 +1785,15 @@ export default function MerchQuantumApp() {
     setRunStatus("");
   }
 
+  function openArtworkPicker() {
+    if (!connected || !isWorkspaceConfigured) {
+      nudgeWorkflow(true);
+      return;
+    }
+
+    fileRef.current?.click();
+  }
+
   async function addFiles(list: FileList | null) {
     if (!list) return;
     if (!connected) return;
@@ -2308,10 +2317,23 @@ export default function MerchQuantumApp() {
                         <div className="flex h-full flex-col">
                           <div
                             className="space-y-1.5 cursor-pointer"
-                            onClick={() => fileRef.current?.click()}
+                            onClick={openArtworkPicker}
                           >
                             <div className="flex min-h-[20px] items-center text-sm font-medium leading-5 tracking-tight text-slate-200">Upload Artwork</div>
-                            <div className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-[#020616] lg:h-[19rem]">
+                            <div
+                              className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-[#020616] lg:h-[19rem]"
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                if (!connected || !isWorkspaceConfigured) {
+                                  nudgeWorkflow(true);
+                                  return;
+                                }
+                                void addFiles(e.dataTransfer.files);
+                              }}
+                            >
                               {selectedImage?.preview ? (
                                 <div
                                   className="absolute inset-0 overflow-hidden rounded-[inherit]"
@@ -2321,14 +2343,10 @@ export default function MerchQuantumApp() {
                                 </div>
                               ) : (
                                 <div className="flex h-full w-full p-4">
-                                  <button
-                                    type="button"
-                                    onClick={() => fileRef.current?.click()}
-                                    className="flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-6 text-center transition-colors hover:bg-[#0b1024]"
-                                  >
+                                  <div className="flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-6 text-center transition-colors hover:bg-[#0b1024]">
                                     <span className="text-sm font-medium text-white">Drag images here</span>
                                     <span className="mt-1 text-xs text-slate-400">or click Add Images</span>
-                                  </button>
+                                  </div>
                                 </div>
                               )}
 
