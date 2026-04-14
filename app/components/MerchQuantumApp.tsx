@@ -64,6 +64,7 @@ type AiListingDraft = {
   reasonFlags: string[];
   source: "gemini" | "fallback";
   grade: "green" | "orange" | "red";
+  qcApproved?: boolean;
 };
 
 type Img = {
@@ -1186,6 +1187,9 @@ async function requestAiListingDraft({
     }
 
     const payload = await response.json();
+    if (payload?.qcApproved === false) {
+      return null;
+    }
     const title = safeTitle(payload?.title || "", image.final);
     const leadParagraphs = normalizeAiLeadParagraphs(Array.isArray(payload?.leadParagraphs) ? payload.leadParagraphs : []);
     const reasonFlags = Array.isArray(payload?.reasonFlags)
@@ -1201,6 +1205,7 @@ async function requestAiListingDraft({
       reasonFlags,
       source: payload?.source === "gemini" || payload?.source === "fallback" ? payload.source : "fallback",
       grade: payload?.grade === "green" || payload?.grade === "orange" || payload?.grade === "red" ? payload.grade : "orange",
+      qcApproved: payload?.qcApproved !== false,
     };
   } catch {
     return null;
@@ -1434,7 +1439,7 @@ export default function MerchQuantumApp() {
   const isWorkspaceConfigured = connected && !!shopId && !!template;
   const searchNudgeTarget = !shopId ? "shop" : !template ? "template" : null;
   const isSearchLocked = searchNudgeTarget !== null;
-  const uploadDisabled = !isWorkspaceConfigured || images.length === 0 || isRunningBatch || processingCount > 0;
+  const uploadDisabled = !isWorkspaceConfigured || readyCount === 0 || isRunningBatch || processingCount > 0;
   const canShowReviewDetail = isWorkspaceConfigured;
   const canShowDetailPanel = canShowReviewDetail || !!selectedImage;
   const selectedImageFieldStates = selectedImage?.aiFieldStates ?? createAiFieldStates("idle");
@@ -1654,6 +1659,40 @@ export default function MerchQuantumApp() {
         if (!response.ok) throw new Error(data?.error || `AI request failed with status ${response.status}.`);
         if (activeTemplateKeyRef.current !== requestTemplateKey) return;
 
+        const qcApproved = data?.qcApproved !== false;
+        if (!qcApproved) {
+          const qcFlags = Array.isArray(data?.reasonFlags)
+            ? data.reasonFlags.filter((flag: unknown): flag is string => typeof flag === "string")
+            : [];
+          const message = qcFlags.length
+            ? qcFlags.join(" • ")
+            : "Quantum AI QC flagged this artwork for manual review.";
+
+          setImages((current) =>
+            current.map((img) =>
+              img.id === nextImage.id
+                ? {
+                    ...img,
+                    final: "",
+                    finalDescription: "",
+                    tags: [],
+                    aiProcessing: false,
+                    aiFieldStates: {
+                      title: "error",
+                      description: "error",
+                      tags: "error",
+                    },
+                    status: "error",
+                    statusReason: message,
+                    processedTemplateKey: requestTemplateKey,
+                    aiDraft: undefined,
+                  }
+                : img
+            )
+          );
+          return;
+        }
+
         const fallbackTitle = safeTitle(nextImage.final, nextImage.cleaned);
         const titleFromApi = typeof data?.title === "string" ? data.title : "";
         const finalTitle = safeTitle(titleFromApi, fallbackTitle);
@@ -1726,6 +1765,7 @@ export default function MerchQuantumApp() {
                     reasonFlags,
                     source,
                     grade,
+                    qcApproved,
                   },
                 }
               : img
@@ -1996,9 +2036,9 @@ export default function MerchQuantumApp() {
   }
 
   async function runDraftBatch() {
-    if (!template || !shopId || images.length === 0 || !isLiveProvider || !resolvedProviderId) return;
+    if (!template || !shopId || readyCount === 0 || !isLiveProvider || !resolvedProviderId) return;
 
-    const activeImages = images;
+    const activeImages = images.filter((img) => img.status === "ready");
     setIsRunningBatch(true);
     setRunStatus("");
     setBatchResults([]);

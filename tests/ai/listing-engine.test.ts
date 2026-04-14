@@ -150,6 +150,29 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
       complianceFlags: [],
       reasonDetails: [],
     },
+    qc_approved: true,
+    seo_title: "Faith Over Fear Christian Tee",
+    seo_paragraph_1:
+      "Faith-based shoppers will love the bold message and clean spiritual design that makes this shirt feel encouraging, wearable, and giftable.",
+    seo_paragraph_2:
+      "This uplifting Christian shirt keeps the typography easy to read while helping the design connect quickly with buyers searching for meaningful everyday faith apparel.",
+    seo_tags: [
+      "faith over fear",
+      "christian shirt",
+      "faith gift",
+      "religious tee",
+      "scripture apparel",
+      "church outfit",
+      "uplifting graphic",
+      "inspirational shirt",
+      "believer gift",
+      "gospel message",
+      "faith based style",
+      "motivational tee",
+      "daily wear shirt",
+      "christian merch",
+      "print on demand faith",
+    ],
     generatedTitle: "Faith Over Fear Christian Tee",
     generatedParagraph1:
       "Faith-based shoppers will love the bold message and clean spiritual design that makes this shirt feel encouraging, wearable, and giftable.",
@@ -185,19 +208,32 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
   const resolvedCanonicalTitle = overrides.canonicalTitle || base.canonicalTitle;
   const resolvedFinalTitle = overrides.finalTitle || overrides.final_title || resolvedCanonicalTitle;
   const resolvedGeneratedTitle =
-    overrides.generatedTitle
+    overrides.seo_title
+    || overrides.seoTitle
+    || overrides.generatedTitle
     || overrides.generated_title
     || resolvedFinalTitle;
   const resolvedGeneratedParagraph1 =
-    overrides.generatedParagraph1
+    overrides.seo_paragraph_1
+    || overrides.seoParagraph1
+    || overrides.generatedParagraph1
     || overrides.generated_paragraph_1
     || overrides.canonicalLeadParagraphs?.[0]
     || base.generatedParagraph1;
   const resolvedGeneratedParagraph2 =
-    overrides.generatedParagraph2
+    overrides.seo_paragraph_2
+    || overrides.seoParagraph2
+    || overrides.generatedParagraph2
     || overrides.generated_paragraph_2
     || overrides.canonicalLeadParagraphs?.[1]
     || base.generatedParagraph2;
+  const resolvedTags = overrides.seo_tags || overrides.seoTags || overrides.tags || base.tags;
+  const resolvedQcApproved =
+    typeof overrides.qc_approved === "boolean"
+      ? overrides.qc_approved
+      : typeof overrides.qcApproved === "boolean"
+        ? overrides.qcApproved
+        : true;
 
   return {
     ...base,
@@ -212,9 +248,15 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
       tiktokShop: { ...base.marketplaceDrafts.tiktokShop, ...(overrides.marketplaceDrafts?.tiktokShop || {}) },
     },
     validator: { ...base.validator, ...(overrides.validator || {}) },
+    qc_approved: resolvedQcApproved,
+    seo_title: resolvedGeneratedTitle,
+    seo_paragraph_1: resolvedGeneratedParagraph1,
+    seo_paragraph_2: resolvedGeneratedParagraph2,
+    seo_tags: resolvedTags,
     generatedTitle: resolvedGeneratedTitle,
     generatedParagraph1: resolvedGeneratedParagraph1,
     generatedParagraph2: resolvedGeneratedParagraph2,
+    tags: resolvedTags,
     finalTitle: resolvedFinalTitle,
     canonicalLeadParagraphs: overrides.canonicalLeadParagraphs || base.canonicalLeadParagraphs,
     canonicalTitle: resolvedCanonicalTitle,
@@ -1197,6 +1239,8 @@ async function main() {
             const helperInlineData = imageParts[imageParts.length - 1] || {};
 
             assert.equal(inlineData.mimeType, "image/png", `${fixture.name}: image mime type`);
+            assert.equal(/qc_approved/i.test(prompt), true, `${fixture.name}: prompt should demand qc_approved`);
+            assert.equal(/seo_paragraph_1/i.test(prompt), true, `${fixture.name}: prompt should demand seo paragraphs`);
             if (fixture.name === "transparent png weak contrast") {
               assert.equal(imageParts.length >= 4, true, `${fixture.name}: should send multi-render helper bundle`);
               assert.notEqual(inlineData.data, image.base64, `${fixture.name}: should use derived analysis image as primary`);
@@ -1698,6 +1742,7 @@ async function main() {
       }
     );
 
+    assert.equal(response.qcApproved, true);
     assert.equal(response.title, "Faith Over Fear Christian Tee");
     assert.equal(response.description.includes("```"), false);
     assert.equal(response.description.toLowerCase().startsWith(response.title.toLowerCase()), false);
@@ -1706,6 +1751,40 @@ async function main() {
     assert.equal(Array.isArray(response.tags), true);
     assert.equal(response.tags.length, 15);
     assert.equal(response.tags.some((tag) => tag.includes(",")), false);
+  });
+
+  await run("qc false path blanks structured fields and flags the item for manual review", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        fileName: "illegible_scan.png",
+        productFamily: "t-shirt",
+        templateContext:
+          "Product features\n- 100% ring-spun cotton\nCare instructions\n- Machine wash cold",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async () =>
+          createGeminiResponse(
+            createGeminiPayload({
+              qc_approved: false,
+              seo_title: "",
+              seo_paragraph_1: "",
+              seo_paragraph_2: "",
+              seo_tags: [],
+            })
+          ),
+      }
+    );
+
+    assert.equal(response.qcApproved, false);
+    assert.equal(response.title, "");
+    assert.equal(response.description, "");
+    assert.deepEqual(response.leadParagraphs, []);
+    assert.deepEqual(response.tags, []);
+    assert.equal(response.grade, "red");
+    assert.equal(response.reasonFlags.some((flag) => /manual review|qc/i.test(flag)), true);
   });
 
   await run("compliance rule packs surface explainable reasons without breaking UI contract", async () => {

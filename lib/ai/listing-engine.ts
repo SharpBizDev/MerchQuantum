@@ -9,6 +9,7 @@ export type ListingRequest = {
 };
 
 export type ListingUiResponse = {
+  qcApproved: boolean;
   title: string;
   description: string;
   tags: string[];
@@ -111,6 +112,7 @@ type GeminiRecord = {
 
 type EngineRecord = GeminiRecord & {
   source: "gemini" | "fallback";
+  qcApproved: boolean;
 };
 
 type GenerateOptions = {
@@ -335,145 +337,18 @@ const COMPLIANCE_RULE_PACKS = [
 const GEMINI_RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
-    imageTruth: {
-      type: "OBJECT",
-      properties: {
-        visibleText: { type: "ARRAY", items: { type: "STRING" } },
-        visibleFacts: { type: "ARRAY", items: { type: "STRING" } },
-        inferredMeaning: { type: "ARRAY", items: { type: "STRING" } },
-        dominantTheme: { type: "STRING" },
-        likelyAudience: { type: "STRING" },
-        likelyOccasion: { type: "STRING" },
-        uncertainty: { type: "ARRAY", items: { type: "STRING" } },
-        ocrWeakness: { type: "STRING" },
-        meaningClarity: { type: "NUMBER" },
-        hasReadableText: { type: "BOOLEAN" },
-      },
-      required: [
-        "visibleText",
-        "visibleFacts",
-        "inferredMeaning",
-        "dominantTheme",
-        "likelyAudience",
-        "likelyOccasion",
-        "uncertainty",
-        "ocrWeakness",
-        "meaningClarity",
-        "hasReadableText",
-      ],
-    },
-    filenameAssessment: {
-      type: "OBJECT",
-      properties: {
-        classification: { type: "STRING" },
-        usefulness: { type: "NUMBER" },
-        usefulTokens: { type: "ARRAY", items: { type: "STRING" } },
-        ignoredTokens: { type: "ARRAY", items: { type: "STRING" } },
-        conflictSeverity: { type: "STRING" },
-        shouldIgnore: { type: "BOOLEAN" },
-        reason: { type: "STRING" },
-      },
-      required: ["classification", "usefulness", "usefulTokens", "ignoredTokens", "reason"],
-    },
-    semanticRecord: {
-      type: "OBJECT",
-      properties: {
-        productNoun: { type: "STRING" },
-        titleCore: { type: "STRING" },
-        benefitCore: { type: "STRING" },
-        likelyAudience: { type: "STRING" },
-        styleOccasion: { type: "STRING" },
-        visibleKeywords: { type: "ARRAY", items: { type: "STRING" } },
-        inferredKeywords: { type: "ARRAY", items: { type: "STRING" } },
-        forbiddenClaims: { type: "ARRAY", items: { type: "STRING" } },
-      },
-      required: [
-        "productNoun",
-        "titleCore",
-        "benefitCore",
-        "likelyAudience",
-        "styleOccasion",
-        "visibleKeywords",
-        "inferredKeywords",
-        "forbiddenClaims",
-      ],
-    },
-    marketplaceDrafts: {
-      type: "OBJECT",
-      properties: {
-        etsy: {
-          type: "OBJECT",
-          properties: {
-            title: { type: "STRING" },
-            leadParagraphs: { type: "ARRAY", items: { type: "STRING" } },
-            discoveryTerms: { type: "ARRAY", items: { type: "STRING" } },
-          },
-          required: ["title", "leadParagraphs", "discoveryTerms"],
-        },
-        amazon: {
-          type: "OBJECT",
-          properties: {
-            title: { type: "STRING" },
-            leadParagraphs: { type: "ARRAY", items: { type: "STRING" } },
-            discoveryTerms: { type: "ARRAY", items: { type: "STRING" } },
-          },
-          required: ["title", "leadParagraphs", "discoveryTerms"],
-        },
-        ebay: {
-          type: "OBJECT",
-          properties: {
-            title: { type: "STRING" },
-            leadParagraphs: { type: "ARRAY", items: { type: "STRING" } },
-            discoveryTerms: { type: "ARRAY", items: { type: "STRING" } },
-          },
-          required: ["title", "leadParagraphs", "discoveryTerms"],
-        },
-        tiktokShop: {
-          type: "OBJECT",
-          properties: {
-            title: { type: "STRING" },
-            leadParagraphs: { type: "ARRAY", items: { type: "STRING" } },
-            discoveryTerms: { type: "ARRAY", items: { type: "STRING" } },
-          },
-          required: ["title", "leadParagraphs", "discoveryTerms"],
-        },
-      },
-      required: ["etsy", "amazon", "ebay", "tiktokShop"],
-    },
-    validator: {
-      type: "OBJECT",
-      properties: {
-        grade: { type: "STRING" },
-        confidence: { type: "NUMBER" },
-        reasonFlags: { type: "ARRAY", items: { type: "STRING" } },
-        complianceFlags: { type: "ARRAY", items: { type: "STRING" } },
-        reasonDetails: {
-          type: "ARRAY",
-          items: {
-            type: "OBJECT",
-            properties: {
-              code: { type: "STRING" },
-              severity: { type: "STRING" },
-              stage: { type: "STRING" },
-              summary: { type: "STRING" },
-            },
-            required: ["code", "severity", "stage", "summary"],
-          },
-        },
-      },
-      required: ["grade", "confidence", "reasonFlags", "complianceFlags"],
-    },
-    generatedTitle: { type: "STRING" },
-    generatedParagraph1: { type: "STRING" },
-    generatedParagraph2: { type: "STRING" },
-    tags: { type: "ARRAY", items: { type: "STRING" } },
+    qc_approved: { type: "BOOLEAN" },
+    seo_title: { type: "STRING" },
+    seo_paragraph_1: { type: "STRING" },
+    seo_paragraph_2: { type: "STRING" },
+    seo_tags: { type: "ARRAY", items: { type: "STRING" } },
   },
   required: [
-    "imageTruth",
-    "generatedTitle",
-    "generatedParagraph1",
-    "generatedParagraph2",
-    "tags",
+    "qc_approved",
+    "seo_title",
+    "seo_paragraph_1",
+    "seo_paragraph_2",
+    "seo_tags",
   ],
 };
 
@@ -838,7 +713,18 @@ function assembleMarketingDescription(paragraphs: string[]) {
   return unique(
     paragraphs
       .map((paragraph) => stripMarkdownFences(String(paragraph || "")))
-      .map((paragraph) => removeLeadingLabel(paragraph, ["generatedParagraph1", "generatedParagraph2", "paragraph1", "paragraph2"]))
+      .map((paragraph) =>
+        removeLeadingLabel(paragraph, [
+          "seoParagraph1",
+          "seoParagraph2",
+          "seo_paragraph_1",
+          "seo_paragraph_2",
+          "generatedParagraph1",
+          "generatedParagraph2",
+          "paragraph1",
+          "paragraph2",
+        ])
+      )
       .map((paragraph) => paragraph.replace(/^[-*•]+\s*/, ""))
       .map((paragraph) => cleanSpaces(paragraph))
       .filter(Boolean)
@@ -1787,6 +1673,21 @@ function buildMarketplaceDrafts(
   } satisfies MarketplaceDrafts;
 }
 
+function buildEmptyMarketplaceDrafts(): MarketplaceDrafts {
+  const blankDraft: ChannelDraft = {
+    title: "",
+    leadParagraphs: [],
+    discoveryTerms: [],
+  };
+
+  return {
+    etsy: { ...blankDraft },
+    amazon: { ...blankDraft },
+    ebay: { ...blankDraft },
+    tiktokShop: { ...blankDraft },
+  };
+}
+
 export function gradeListing(
   imageTruth: ImageTruthRecord,
   semantic: SemanticRecord,
@@ -1929,6 +1830,56 @@ export function gradeListing(
     complianceFlags: dedupedCompliance,
     reasonDetails: polishedReasonDetails,
   } satisfies ValidatorResult;
+}
+
+function buildQcDerivedImageTruth(input: ListingRequest, titleSeed: string, qcApproved: boolean): ImageTruthRecord {
+  const productFamily = cleanSpaces(input.productFamily || "merchandise");
+  const dominantTheme = detectTheme(`${titleSeed} ${input.fileName || ""} ${productFamily}`);
+
+  if (!qcApproved) {
+    return {
+      visibleText: [],
+      visibleFacts: [],
+      inferredMeaning: [],
+      dominantTheme: "unknown",
+      likelyAudience: "manual review required",
+      likelyOccasion: "manual review required",
+      uncertainty: ["Image is blank, illegible, or too distorted for reliable listing generation."],
+      ocrWeakness: "qc-rejected-illegible-or-distorted",
+      meaningClarity: 0.08,
+      hasReadableText: false,
+    };
+  }
+
+  return {
+    visibleText: [],
+    visibleFacts: [`clear ${productFamily} artwork detected on an isolated print-ready canvas`],
+    inferredMeaning: [dominantTheme],
+    dominantTheme,
+    likelyAudience: "merchandise shoppers",
+    likelyOccasion: dominantTheme,
+    uncertainty: [],
+    ocrWeakness: cleanSpaces(titleSeed) ? "structured-qc-approved" : "design-only-qc-approved",
+    meaningClarity: 0.88,
+    hasReadableText: cleanSpaces(titleSeed).length >= 8,
+  };
+}
+
+function buildQcRejectedValidator(): ValidatorResult {
+  return {
+    grade: "red",
+    confidence: 0.08,
+    reasonFlags: ["Quantum AI QC flagged this artwork for manual review before draft publishing."],
+    complianceFlags: [],
+    reasonDetails: [
+      makeReason(
+        "qc_rejected_visual_signal",
+        "critical",
+        "validator",
+        "Quantum AI QC rejected this artwork because the design appears blank, illegible, or too distorted for safe listing generation."
+      ),
+    ],
+  };
 }
 
 function summarizeTemplateContext(templateContext: string) {
@@ -2566,11 +2517,10 @@ function buildMasterPrompt(
   localeProfile: LocaleProfile,
   visionPromptHint?: string
 ) {
-  const templateContext = summarizeTemplateContext(input.templateContext || "");
   const productFamily = cleanSpaces(input.productFamily || "product");
 
   return [
-    "You are an elite e-commerce copywriter and visual analyst. Analyze this merchandise design.",
+    "You are an elite e-commerce copywriter and Quality Control gatekeeper. Analyze the provided merchandise graphic.",
     "",
     "VISION INSTRUCTION",
     "This image may be a transparent PNG or isolated vector graphic intended for merchandise printing.",
@@ -2579,34 +2529,35 @@ function buildMasterPrompt(
     "If you receive black-backed, white-backed, cropped, or helper renders, use them only to understand sparse or transparent artwork while preserving the untouched upload as the source of truth.",
     visionPromptHint ? visionPromptHint : "",
     "",
-    "STRUCTURED OUTPUT",
-    "Return structured JSON with:",
-    "- generatedTitle: a highly marketable, SEO-optimized title for merchandise featuring this design.",
-    "- generatedParagraph1: the first buyer-facing marketing paragraph.",
-    "- generatedParagraph2: the second buyer-facing marketing paragraph.",
-    "- tags: exactly 15 high-value SEO tags for niche, style, subject matter, and buyer intent.",
+    "STEP 1: QC GATE",
+    "If the image is completely illegible, a blank square, or highly distorted, set qc_approved to false and leave all other fields blank.",
+    "If the design is legible and clear, set qc_approved to true.",
     "",
-    "CRITICAL SEO RULES",
-    "- Do not include generic product specs, care instructions, material weights, or template information in the generated paragraphs.",
-    "- The generated paragraphs must sell the design, vibe, symbolism, and customer appeal of the artwork itself.",
-    "- generatedParagraph1 must naturally weave in the strongest search keywords from generatedTitle.",
-    "- generatedParagraph2 must continue the buyer-facing sales message and must end in a complete sentence.",
-    "- Do not repeat the full generatedTitle verbatim at the start of the description.",
-    "- Tags must be specific, readable, and non-redundant.",
+    "STEP 2: SEO GENERATION (IF APPROVED)",
+    "Based purely on the visual aesthetic, typography, and vibe of the design, generate:",
+    "- seo_title: a highly clickable, keyword-optimized title.",
+    "- seo_paragraph_1: the first marketing paragraph.",
+    "- seo_paragraph_2: the second marketing paragraph.",
+    "- seo_tags: an array of exactly 15 high-value SEO tags.",
+    "",
+    "CRITICAL RULES",
+    "- Do not include generic garment specs, care instructions, fit, cotton weight, or template text.",
+    "- Focus only on the art/design and its customer appeal.",
+    "- Weave the strongest keywords from seo_title naturally into seo_paragraph_1.",
+    "- seo_paragraph_2 must end in a complete sentence.",
+    "- Provider template/spec content is application-owned and must never be rewritten, summarized, or paraphrased.",
     "",
     "ANALYSIS RULES",
     "- Image truth is primary. Visible text outranks filename text.",
-    "- Separate visible facts from inferred meaning.",
+    "- Ignore artificial helper backgrounds and focus only on the foreground design.",
     "- Do not hallucinate unsupported claims, official licensing, or hidden artwork details.",
     "- Use filename only as support. If the artwork is clear, do not let the filename write the title or marketing copy for you.",
     "- Strong transparent PNG artwork with clean readable text or simple legible iconography still counts as meaningful visual evidence even when the canvas is sparse.",
     `- Current local filename assessment hint: ${filenameAssessment.classification} (${filenameAssessment.reason})`,
     `- Conflict severity hint: ${filenameAssessment.conflictSeverity}; ignore filename: ${filenameAssessment.shouldIgnore ? "yes" : "no"}`,
     "",
-    "INTERNAL STRUCTURE REQUIREMENTS",
-    "- Populate imageTruth as strict structured analysis.",
-    "- Keep generatedParagraph1 and generatedParagraph2 concise, complete, and non-repetitive.",
-    "- Return only machine-safe fields with no wrapper prose.",
+    "JSON SCHEMA",
+    '{"qc_approved": boolean, "seo_title": string, "seo_paragraph_1": string, "seo_paragraph_2": string, "seo_tags": string[]}',
     "",
     "OUTPUT FORMAT",
     "Return ONLY valid structured JSON.",
@@ -2617,7 +2568,6 @@ function buildMasterPrompt(
     `productFamily: ${productFamily}`,
     `titleSeed: ${explicitTitleSeed || "none"}`,
     `fileNameSupport: ${input.fileName || "none"}`,
-    `templateContext: ${templateContext}`,
     `locale: ${localeProfile.locale}`,
     `retryAttempt: ${retryContext.attempt}`,
     retryContext.retryInstruction ? `retryInstruction: ${retryContext.retryInstruction}` : "",
@@ -2680,9 +2630,11 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
   );
   const canonicalDescription = assembleMarketingDescription(canonicalLeadParagraphs);
   const seoTags = buildFallbackTags(canonicalTitle, canonicalDescription, semantic, marketplaceDrafts);
+  const qcApproved = validator.grade !== "red";
 
   return {
     source: "fallback",
+    qcApproved,
     imageTruth,
     filenameAssessment,
     semanticRecord: semantic,
@@ -2762,13 +2714,75 @@ async function callGeminiRecord(
   if (!parsed || typeof parsed !== "object") return null;
 
   const parsedObj = parsed as Record<string, unknown>;
-  const imageTruth = normalizeImageTruth(parsedObj.imageTruth, explicitTitleSeed);
+  const qcApproved =
+    typeof parsedObj.qc_approved === "boolean"
+      ? parsedObj.qc_approved
+      : typeof parsedObj.qcApproved === "boolean"
+        ? parsedObj.qcApproved
+        : true;
+
+  const titleSeedCandidate =
+    parsedObj.seo_title
+    || parsedObj.seoTitle
+    || parsedObj.generatedTitle
+    || parsedObj.generated_title
+    || parsedObj.finalTitle
+    || parsedObj.final_title
+    || parsedObj.canonicalTitle
+    || parsedObj.title
+    || explicitTitleSeed
+    || input.fileName
+    || "Product";
+
+  const provisionalTitle = normalizeTitle(String(titleSeedCandidate), input.fileName || explicitTitleSeed);
+  const fallbackImageTruth = buildQcDerivedImageTruth(input, provisionalTitle, qcApproved);
+  const imageTruth = parsedObj.imageTruth
+    ? normalizeImageTruth(parsedObj.imageTruth, provisionalTitle || explicitTitleSeed)
+    : fallbackImageTruth;
   const filenameAssessment = assessFilenameRelevance(input.fileName || "", imageTruth.visibleText);
-  const semanticFallback = buildSemanticRecord(input, imageTruth, filenameAssessment);
-  const semantic = normalizeSemantic(parsedObj.semanticRecord, semanticFallback);
+  const semanticFallback = buildSemanticRecord(
+    {
+      ...input,
+      title: provisionalTitle || input.title,
+    },
+    imageTruth,
+    filenameAssessment
+  );
+  const semantic = parsedObj.semanticRecord
+    ? normalizeSemantic(parsedObj.semanticRecord, semanticFallback)
+    : {
+        ...semanticFallback,
+        titleCore: provisionalTitle || semanticFallback.titleCore,
+        benefitCore: cleanSpaces(
+          String(
+            parsedObj.seo_paragraph_1
+            || parsedObj.seoParagraph1
+            || parsedObj.generatedParagraph1
+            || semanticFallback.benefitCore
+          )
+        ),
+      };
+
+  if (!qcApproved) {
+    return {
+      source: "gemini",
+      qcApproved: false,
+      imageTruth,
+      filenameAssessment,
+      semanticRecord: semantic,
+      marketplaceDrafts: buildEmptyMarketplaceDrafts(),
+      validator: buildQcRejectedValidator(),
+      canonicalTitle: "",
+      canonicalDescription: "",
+      seoTags: [],
+      canonicalLeadParagraphs: [],
+    } satisfies EngineRecord;
+  }
 
   const finalTitleCandidate =
-    parsedObj.generatedTitle
+    parsedObj.seo_title
+    || parsedObj.seoTitle
+    || parsedObj.generatedTitle
     || parsedObj.generated_title
     || parsedObj.finalTitle
     || parsedObj.final_title
@@ -2783,6 +2797,10 @@ async function callGeminiRecord(
   );
 
   const suppliedLeadCandidates = [
+    parsedObj.seo_paragraph_1,
+    parsedObj.seoParagraph1,
+    parsedObj.seo_paragraph_2,
+    parsedObj.seoParagraph2,
     parsedObj.generatedParagraph1,
     parsedObj.generated_paragraph_1,
     parsedObj.generatedParagraph2,
@@ -2796,6 +2814,10 @@ async function callGeminiRecord(
     .map((value) => stripMarkdownFences(String(value || "")))
     .map((value) =>
       removeLeadingLabel(value, [
+        "seoParagraph1",
+        "seoParagraph2",
+        "seo_paragraph_1",
+        "seo_paragraph_2",
         "generatedParagraph1",
         "generatedParagraph2",
         "generated_paragraph_1",
@@ -2843,7 +2865,7 @@ async function callGeminiRecord(
   });
   const canonicalDescription = assembleMarketingDescription(canonicalLeads);
   const seoTags = normalizeTagsOutput(
-    parsedObj.tags,
+    parsedObj.seo_tags ?? parsedObj.seoTags ?? parsedObj.tags,
     canonicalTitle,
     canonicalDescription,
     semantic,
@@ -2855,6 +2877,7 @@ async function callGeminiRecord(
 
   return {
     source: "gemini",
+    qcApproved: true,
     imageTruth,
     filenameAssessment,
     semanticRecord: semantic,
@@ -2879,12 +2902,13 @@ function mapRecordToUiResponse(record: EngineRecord, model: string, localeProfil
   );
 
   return {
-    title: normalizeTitle(record.canonicalTitle, record.semanticRecord.titleCore || "Product"),
-    description: record.canonicalDescription,
-    tags: unique(record.seoTags).slice(0, FINAL_TAG_COUNT),
-    leadParagraphs,
-    leadParagraph1: leadParagraphs[0] || "",
-    leadParagraph2: leadParagraphs[1] || "",
+    qcApproved: record.qcApproved,
+    title: record.qcApproved ? normalizeTitle(record.canonicalTitle, record.semanticRecord.titleCore || "Product") : "",
+    description: record.qcApproved ? record.canonicalDescription : "",
+    tags: record.qcApproved ? unique(record.seoTags).slice(0, FINAL_TAG_COUNT) : [],
+    leadParagraphs: record.qcApproved ? leadParagraphs : [],
+    leadParagraph1: record.qcApproved ? leadParagraphs[0] || "" : "",
+    leadParagraph2: record.qcApproved ? leadParagraphs[1] || "" : "",
     model,
     confidence: clamp(Number(record.validator.confidence || 0.7), 0, 1),
     reasonFlags: unique(record.validator.reasonFlags).slice(0, 6),
