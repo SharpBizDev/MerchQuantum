@@ -10,6 +10,7 @@ import {
   normalizeLeadParagraphs,
   type SemanticRecord,
 } from "../../lib/ai/listing-engine";
+import { validateReadyDraftItem } from "../../app/api/providers/batch-create/route";
 import { GOLDEN_CORPUS_FIXTURES } from "./fixtures/golden-corpus";
 
 const SAMPLE_PNG_DATA_URL =
@@ -1331,6 +1332,7 @@ async function main() {
     assert.equal(response.title.length > 0, true);
     assert.equal(response.leadParagraphs.length, 2);
     assert.equal(typeof response.confidence, "number");
+    assert.equal(response.publishReady, true);
     assert.ok(Array.isArray(response.reasonFlags));
     assert.ok(response.marketplaceDrafts.etsy.title.length > 0);
     assert.equal(response.leadParagraphs[0].toLowerCase().startsWith(response.title.toLowerCase()), false);
@@ -1561,6 +1563,7 @@ async function main() {
 
     assert.equal(response.source, "gemini");
     assert.equal(response.grade, "orange");
+    assert.equal(response.publishReady, true);
     assert.equal(
       response.reasonFlags.some((flag) => flag.toLowerCase().includes("filename strongly conflicts")),
       true
@@ -1631,7 +1634,51 @@ async function main() {
 
     assert.equal(response.source, "gemini");
     assert.equal(response.grade, "green");
+    assert.equal(response.publishReady, true);
     assert.equal(response.reasonFlags.length, 0);
+  });
+
+  await run("Gemini blocking image-truth reasons keep the item out of the Good publish path", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "ambiguous_scan.png",
+        productFamily: "t-shirt",
+        templateContext: "Comfort Colors 1717 garment-dyed heavyweight tee with relaxed fit and ring-spun cotton.",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async () =>
+          createGeminiResponse(
+            createGeminiPayload({
+              validator: {
+                grade: "orange",
+                confidence: 0.62,
+                reasonFlags: ["Visible artwork remains too ambiguous for a trustworthy listing title."],
+                complianceFlags: [],
+                reasonDetails: [
+                  {
+                    code: "ambiguous_image_truth",
+                    severity: "warning",
+                    stage: "image_truth",
+                    summary: "Visible artwork remains too ambiguous for a trustworthy listing title.",
+                  },
+                ],
+              },
+            })
+          ),
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    assert.equal(response.grade, "orange");
+    assert.equal(response.publishReady, false);
+    assert.equal(
+      response.reasonFlags.some((flag) => flag.toLowerCase().includes("too ambiguous")),
+      true
+    );
   });
 
   await run("Gemini validator filters unsupported compliance flags on faith conflict cases", async () => {
@@ -1714,6 +1761,7 @@ async function main() {
       false
     );
     assert.equal(response.grade, "orange");
+    assert.equal(response.publishReady, true);
   });
 
   await run("Gemini retry ladder succeeds on second structured attempt", async () => {
@@ -1796,6 +1844,7 @@ async function main() {
 
     assert.equal(response.qcApproved, true);
     assert.equal(response.title, "Faith Over Fear Christian Tee");
+    assert.equal(response.publishReady, true);
     assert.equal(response.description.includes("```"), false);
     assert.equal(response.description.toLowerCase().startsWith(response.title.toLowerCase()), false);
     assert.equal(/100% ring-spun cotton|machine wash cold/i.test(response.description), false);
@@ -1831,6 +1880,7 @@ async function main() {
     );
 
     assert.equal(response.qcApproved, false);
+    assert.equal(response.publishReady, false);
     assert.equal(response.title, "");
     assert.equal(response.description, "");
     assert.deepEqual(response.leadParagraphs, []);
@@ -1879,6 +1929,34 @@ async function main() {
       "confidence",
       "reasonFlags",
     ]);
+  });
+
+  await run("server-side draft publish guard rejects non-ready items and accepts Good items", async () => {
+    assert.equal(
+      validateReadyDraftItem({
+        fileName: "soft-warning.png",
+        title: "Usable Listing",
+        description: "Buyer-facing paragraph one.\n\nBuyer-facing paragraph two.",
+        tags: ["tag-one", "tag-two"],
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        publishReady: false,
+        qcApproved: true,
+      }),
+      "Only Good items can be published. Re-run or remove failed artwork before uploading drafts."
+    );
+
+    assert.equal(
+      validateReadyDraftItem({
+        fileName: "ready-item.png",
+        title: "Ready Listing",
+        description: "Buyer-facing paragraph one.\n\nBuyer-facing paragraph two.",
+        tags: ["tag-one", "tag-two"],
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        publishReady: true,
+        qcApproved: true,
+      }),
+      null
+    );
   });
 
   console.log("listing-engine tests passed");

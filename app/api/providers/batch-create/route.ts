@@ -22,7 +22,29 @@ type IncomingItem = {
   tags: string[];
   imageDataUrl: string;
   artworkBounds?: ArtworkBounds;
+  publishReady?: boolean;
+  qcApproved?: boolean;
 };
+
+export function validateReadyDraftItem(item: IncomingItem) {
+  const title = String(item?.title || "").trim();
+  const description = String(item?.description || "").trim();
+  const tags = Array.isArray(item?.tags) ? item.tags.filter((tag): tag is string => typeof tag === "string" && !!tag.trim()) : [];
+
+  if (item?.publishReady !== true) {
+    return "Only Good items can be published. Re-run or remove failed artwork before uploading drafts.";
+  }
+
+  if (item?.qcApproved === false) {
+    return "QC-rejected artwork cannot be published.";
+  }
+
+  if (!title || !description || tags.length === 0) {
+    return "Only fully generated Good items with title, description, and tags can be published.";
+  }
+
+  return null;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -74,6 +96,16 @@ export async function POST(req: NextRequest) {
     const results = [];
     for (const item of items) {
       try {
+        const validationMessage = validateReadyDraftItem(item);
+        if (validationMessage) {
+          throw new ProviderError({
+            providerId,
+            code: "validation_error",
+            status: 400,
+            message: validationMessage,
+          });
+        }
+
         const hostedArtwork = adapter.capabilities.requiresHostedArtwork
           ? await publishHostedArtwork({
               providerId,

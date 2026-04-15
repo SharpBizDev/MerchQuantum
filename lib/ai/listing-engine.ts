@@ -10,6 +10,7 @@ export type ListingRequest = {
 
 export type ListingUiResponse = {
   qcApproved: boolean;
+  publishReady: boolean;
   title: string;
   description: string;
   tags: string[];
@@ -1095,9 +1096,8 @@ function polishReasonDetails(reasonDetails: ListingReason[], imageTruth: ImageTr
 function isSoftReviewReason(detail: ListingReason, imageTruth: ImageTruthRecord) {
   if (detail.severity === "info") return true;
   if (!hasStrongReadyGrounding(imageTruth)) return false;
-  if (detail.stage !== "image_truth") return false;
-
   const normalized = detail.summary.toLowerCase();
+  if (detail.stage !== "image_truth") return false;
   return /specific symbolic meaning|exact interpretation|open to interpretation|exact number|specific features|stylized/.test(
     normalized
   );
@@ -1105,6 +1105,19 @@ function isSoftReviewReason(detail: ListingReason, imageTruth: ImageTruthRecord)
 
 function getReviewBlockingReasonDetails(reasonDetails: ListingReason[], imageTruth: ImageTruthRecord) {
   return reasonDetails.filter((detail) => !isSoftReviewReason(detail, imageTruth));
+}
+
+function isSoftBinaryFailureReason(detail: ListingReason, imageTruth: ImageTruthRecord) {
+  if (isSoftReviewReason(detail, imageTruth)) return true;
+  if (!hasStrongReadyGrounding(imageTruth)) return false;
+  if (detail.stage !== "filename") return false;
+
+  const normalized = detail.summary.toLowerCase();
+  return /filename conflicts with visible image signal|filename strongly conflicts|should be ignored/.test(normalized);
+}
+
+function getBinaryBlockingReasonDetails(reasonDetails: ListingReason[], imageTruth: ImageTruthRecord) {
+  return reasonDetails.filter((detail) => !isSoftBinaryFailureReason(detail, imageTruth));
 }
 
 function reasonFlagsFromDetails(reasonDetails: ListingReason[], complianceFlags: string[]) {
@@ -3035,9 +3048,22 @@ function mapRecordToUiResponse(record: EngineRecord, model: string, localeProfil
     record.semanticRecord,
     localeProfile
   );
+  const blockingReasonDetails = getBinaryBlockingReasonDetails(record.validator.reasonDetails, record.imageTruth);
+  const blockingReasonFlags = reasonFlagsFromDetails(blockingReasonDetails, record.validator.complianceFlags);
+  const publishReady =
+    record.qcApproved
+    && record.validator.grade !== "red"
+    && blockingReasonFlags.length === 0
+    && record.validator.complianceFlags.length === 0
+    && cleanSpaces(record.canonicalTitle).length > 0
+    && leadParagraphs.length === 2
+    && leadParagraphs.every((paragraph) => cleanSpaces(paragraph).length > 0)
+    && cleanSpaces(record.canonicalDescription).length > 0
+    && unique(record.seoTags).slice(0, FINAL_TAG_COUNT).length > 0;
 
   return {
     qcApproved: record.qcApproved,
+    publishReady,
     title: record.qcApproved ? normalizeTitle(record.canonicalTitle, record.semanticRecord.titleCore || "Product") : "",
     description: record.qcApproved ? record.canonicalDescription : "",
     tags: record.qcApproved ? unique(record.seoTags).slice(0, FINAL_TAG_COUNT) : [],

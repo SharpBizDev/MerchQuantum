@@ -65,6 +65,7 @@ type AiListingDraft = {
   source: "gemini" | "fallback";
   grade: "green" | "orange" | "red";
   qcApproved?: boolean;
+  publishReady?: boolean;
 };
 
 type Img = {
@@ -1330,6 +1331,7 @@ async function requestAiListingDraft({
       source: payload?.source === "gemini" || payload?.source === "fallback" ? payload.source : "fallback",
       grade: payload?.grade === "green" || payload?.grade === "orange" || payload?.grade === "red" ? payload.grade : "orange",
       qcApproved: payload?.qcApproved !== false,
+      publishReady: payload?.publishReady === true,
     };
   } catch {
     return null;
@@ -1839,14 +1841,6 @@ export default function MerchQuantumApp() {
           : "";
         const tags = normalizeTagsFromPayload(data?.tags);
         const finalLead = descriptionParagraphs;
-        const nextFieldStates: AiFieldStates = {
-          title: finalTitle ? "ready" : "error",
-          description: finalDescription ? "ready" : "error",
-          tags: tags.length > 0 ? "ready" : "error",
-        };
-        if (nextFieldStates.title !== "ready" || nextFieldStates.description !== "ready" || nextFieldStates.tags !== "ready") {
-          throw new Error("Quantum AI returned incomplete structured output.");
-        }
         const confidence = Number.isFinite(data?.confidence) ? clamp(Number(data.confidence), 0, 1) : 0;
         const reasonFlags = Array.isArray(data?.reasonFlags)
           ? data.reasonFlags.filter((flag: unknown) => typeof flag === "string")
@@ -1859,26 +1853,50 @@ export default function MerchQuantumApp() {
         const source = data?.source === "gemini" || data?.source === "fallback"
           ? data.source
           : "fallback";
+        const publishReady =
+          typeof data?.publishReady === "boolean"
+            ? data.publishReady
+            : qcApproved && grade === "green";
+        const hasCompleteStructuredOutput = !!finalTitle && !!finalDescription && tags.length > 0;
+        if (!hasCompleteStructuredOutput) {
+          throw new Error("Quantum AI returned incomplete structured output.");
+        }
+        const nextFieldStates: AiFieldStates = publishReady
+          ? {
+              title: "ready",
+              description: "ready",
+              tags: "ready",
+            }
+          : {
+              title: "error",
+              description: "error",
+              tags: "error",
+            };
         const status: ReviewStatus =
-          grade === "green"
+          publishReady
             ? "ready"
             : "error";
-        const statusReason = status === "ready"
-          ? "AI draft looks solid."
-          : reasonFlags.length
-            ? reasonFlags.join(" • ")
+        const statusReason = reasonFlags.length
+          ? reasonFlags.join(" • ")
+          : status === "ready"
+            ? source === "fallback"
+              ? "Quantum AI produced a publish-ready fallback draft."
+              : "AI draft passed publish checks."
             : source === "fallback"
-              ? "Quantum AI completed this item with fallback output, but it did not pass ready checks."
-              : "Quantum AI could not generate a ready draft for this image.";
+              ? "Quantum AI completed a fallback draft, but it did not pass publish checks."
+              : "Quantum AI could not generate a publish-ready draft for this image.";
+        const visibleTitle = publishReady ? finalTitle : "";
+        const visibleDescription = publishReady ? finalDescription : "";
+        const visibleTags = publishReady ? tags : [];
 
         setImages((current) =>
           current.map((img) =>
             img.id === nextImage.id
               ? {
                   ...img,
-                  final: finalTitle,
-                  finalDescription,
-                  tags,
+                  final: visibleTitle,
+                  finalDescription: visibleDescription,
+                  tags: visibleTags,
                   aiProcessing: false,
                   aiFieldStates: nextFieldStates,
                   status,
@@ -1894,6 +1912,7 @@ export default function MerchQuantumApp() {
                     source,
                     grade,
                     qcApproved,
+                    publishReady,
                   },
                 }
               : img
@@ -2202,6 +2221,8 @@ export default function MerchQuantumApp() {
                 tags,
                 imageDataUrl,
                 artworkBounds,
+                publishReady: img.aiDraft?.publishReady === true,
+                qcApproved: img.aiDraft?.qcApproved !== false,
               },
             }),
           });
@@ -2250,10 +2271,7 @@ export default function MerchQuantumApp() {
           ? {
               ...entry,
               status,
-              statusReason:
-                status === "ready"
-                  ? "Approved and ready."
-                  : "Marked failed.",
+              statusReason: entry.statusReason,
             }
           : entry
       )
