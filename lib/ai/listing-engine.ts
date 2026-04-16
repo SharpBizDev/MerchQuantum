@@ -182,13 +182,16 @@ const TRANSPARENT_ANALYSIS_TRIM_GAIN_THRESHOLD = 24;
 const LIGHT_ARTWORK_LUMINANCE_THRESHOLD = 0.72;
 const DARK_ARTWORK_LUMINANCE_THRESHOLD = 0.28;
 const MIXED_ARTWORK_SHARE_THRESHOLD = 0.18;
-const MIN_ANALYSIS_PANEL_SIZE = 960;
+const MIN_ANALYSIS_PANEL_SIZE = 1024;
 const MAX_ANALYSIS_PANEL_SIZE = 1600;
 const ANALYSIS_ARTWORK_FILL_RATIO = 0.88;
 const CROPPED_ANALYSIS_ARTWORK_FILL_RATIO = 0.96;
 const TEXT_PRIORITY_ANALYSIS_ARTWORK_FILL_RATIO = 0.985;
 const ANALYSIS_LIGHT_BACKGROUND = { r: 255, g: 255, b: 255, alpha: 1 } as const;
 const ANALYSIS_DARK_BACKGROUND = { r: 0, g: 0, b: 0, alpha: 1 } as const;
+const ANALYSIS_NEUTRAL_BACKGROUND = { r: 229, g: 229, b: 229, alpha: 1 } as const;
+const NEUTRAL_HELPER_MIN_CONTRAST_RATIO = 2.6;
+const NEUTRAL_HELPER_CONTRAST_DELTA_THRESHOLD = 1.35;
 
 const WEAK_FILENAME_TOKENS = new Set([
   "img",
@@ -1107,17 +1110,57 @@ function getReviewBlockingReasonDetails(reasonDetails: ListingReason[], imageTru
   return reasonDetails.filter((detail) => !isSoftReviewReason(detail, imageTruth));
 }
 
-function isSoftBinaryFailureReason(detail: ListingReason, imageTruth: ImageTruthRecord) {
+function isRecoverableBinaryCautionReason(
+  detail: ListingReason,
+  imageTruth: ImageTruthRecord,
+  title: string,
+  leadParagraphs: string[]
+) {
+  if (!hasRecoverableReviewGrounding(imageTruth, title, leadParagraphs)) return false;
+  if (detail.stage !== "image_truth") return false;
+
+  const normalized = detail.summary.toLowerCase();
+  if (
+    /too ambiguous|meaning unclear|too unclear|unable to read|cannot read|unreadable|illegible|blank|distorted|unusable|no meaningful signal/.test(
+      normalized
+    )
+  ) {
+    return false;
+  }
+
+  if (detail.code === "ocr_weakness") return true;
+  if (/^image_uncertainty_\d+$/.test(detail.code)) return true;
+
+  return /specific symbolic meaning|exact interpretation|open to interpretation|exact number|specific features|stylized|decorative|flourishes|soften|badge|interior logo details|low contrast|partial lettering|raw transparent view|untouched transparent render/.test(
+    normalized
+  );
+}
+
+function isSoftBinaryFailureReason(
+  detail: ListingReason,
+  imageTruth: ImageTruthRecord,
+  title: string,
+  leadParagraphs: string[]
+) {
   if (isSoftReviewReason(detail, imageTruth)) return true;
-  if (!hasStrongReadyGrounding(imageTruth)) return false;
+  if (isRecoverableBinaryCautionReason(detail, imageTruth, title, leadParagraphs)) return true;
+
+  const hasRecoverableBinaryGrounding =
+    hasStrongReadyGrounding(imageTruth) || hasRecoverableReviewGrounding(imageTruth, title, leadParagraphs);
+  if (!hasRecoverableBinaryGrounding) return false;
   if (detail.stage !== "filename") return false;
 
   const normalized = detail.summary.toLowerCase();
   return /filename conflicts with visible image signal|filename strongly conflicts|should be ignored/.test(normalized);
 }
 
-function getBinaryBlockingReasonDetails(reasonDetails: ListingReason[], imageTruth: ImageTruthRecord) {
-  return reasonDetails.filter((detail) => !isSoftBinaryFailureReason(detail, imageTruth));
+function getBinaryBlockingReasonDetails(
+  reasonDetails: ListingReason[],
+  imageTruth: ImageTruthRecord,
+  title: string,
+  leadParagraphs: string[]
+) {
+  return reasonDetails.filter((detail) => !isSoftBinaryFailureReason(detail, imageTruth, title, leadParagraphs));
 }
 
 function reasonFlagsFromDetails(reasonDetails: ListingReason[], complianceFlags: string[]) {
@@ -2279,7 +2322,10 @@ async function analyzeTransparencySurface(sourceImage: sharp.Sharp) {
 async function buildDerivedAnalysisImage(
   artworkBuffer: Buffer,
   panelSize: number,
-  background: (typeof ANALYSIS_LIGHT_BACKGROUND) | (typeof ANALYSIS_DARK_BACKGROUND),
+  background:
+    | (typeof ANALYSIS_LIGHT_BACKGROUND)
+    | (typeof ANALYSIS_DARK_BACKGROUND)
+    | (typeof ANALYSIS_NEUTRAL_BACKGROUND),
   options: {
     fillRatio?: number;
   } = {}
@@ -2444,11 +2490,26 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
     );
     const contrastOnLight = getContrastRatio(resolvedArtworkLuminance, lightBackgroundLuminance);
     const contrastOnDark = getContrastRatio(resolvedArtworkLuminance, darkBackgroundLuminance);
+    const neutralBackgroundLuminance = getRelativeLuminance(
+      ANALYSIS_NEUTRAL_BACKGROUND.r,
+      ANALYSIS_NEUTRAL_BACKGROUND.g,
+      ANALYSIS_NEUTRAL_BACKGROUND.b
+    );
+    const contrastOnNeutral = getContrastRatio(resolvedArtworkLuminance, neutralBackgroundLuminance);
     const useDarkBackground = contrastOnDark >= contrastOnLight;
     const analysisBackground = useDarkBackground ? ANALYSIS_DARK_BACKGROUND : ANALYSIS_LIGHT_BACKGROUND;
     const analysisBackgroundLabel = useDarkBackground ? "black" : "white";
+    const shouldIncludeNeutralGrayRender =
+      hasMixedContrastArtwork ||
+      (!hasStrongLuminanceBias &&
+        Math.abs(contrastOnLight - contrastOnDark) <= NEUTRAL_HELPER_CONTRAST_DELTA_THRESHOLD) ||
+      (contrastOnLight < NEUTRAL_HELPER_MIN_CONTRAST_RATIO && contrastOnDark < NEUTRAL_HELPER_MIN_CONTRAST_RATIO) ||
+      contrastOnNeutral > Math.max(contrastOnLight, contrastOnDark) + 0.18;
     const blackBackedRender = await buildDerivedAnalysisImage(sourceBuffer, panelSize, ANALYSIS_DARK_BACKGROUND);
     const whiteBackedRender = await buildDerivedAnalysisImage(sourceBuffer, panelSize, ANALYSIS_LIGHT_BACKGROUND);
+    const neutralGrayRender = shouldIncludeNeutralGrayRender
+      ? await buildDerivedAnalysisImage(sourceBuffer, panelSize, ANALYSIS_NEUTRAL_BACKGROUND)
+      : null;
     const croppedCloseRender = shouldIncludeCroppedCloseRender
       ? await buildDerivedAnalysisImage(trimmedBuffer, panelSize, analysisBackground, {
           fillRatio: CROPPED_ANALYSIS_ARTWORK_FILL_RATIO,
@@ -2472,6 +2533,9 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
     if (primary !== whiteBackedRender) {
       helpers.push(whiteBackedRender);
     }
+    if (neutralGrayRender && primary !== neutralGrayRender) {
+      helpers.push(neutralGrayRender);
+    }
     if (croppedCloseRender && primary !== croppedCloseRender) {
       helpers.push(croppedCloseRender);
     }
@@ -2487,7 +2551,7 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
       primary,
       helpers,
       promptHint:
-        `The provided images all show the same artwork. The strongest temporary high-contrast analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background. Additional helper renders may show the same transparent design on both black and white garment-neutral backgrounds, and a cropped close view around the visible artwork bounds may be included when the full canvas leaves too much empty space. A single-ink text-prioritized helper render may also appear to emphasize letters, symbols, and linework shape without changing the original design. A later helper image may show the untouched original transparent upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`,
+        `The provided images all show the same artwork. The strongest temporary high-contrast analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background. Additional helper renders may show the same transparent design on both black and white garment-neutral backgrounds, and a neutral-gray garment-neutral helper view may appear when mixed contrast or sparse transparency makes that easier to read. A cropped close view around the visible artwork bounds may be included when the full canvas leaves too much empty space. A single-ink text-prioritized helper render may also appear to emphasize letters, symbols, and linework shape without changing the original design. A later helper image may show the untouched original transparent upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`,
     };
   } catch (error) {
     if (error instanceof ListingInputGuardError) {
@@ -2675,7 +2739,8 @@ function buildMasterPrompt(
     "",
     "STEP 1: QC GATE",
     "If the image is completely illegible, a blank square, or highly distorted, set qc_approved to false and leave all other fields blank.",
-    "If the design is legible and clear, set qc_approved to true.",
+    "Default to qc_approved true for commercially usable artwork. Minor ambiguity, stylization, or low-contrast transparent edges should not fail the item on their own.",
+    "If the design is legible and clear enough to sell, set qc_approved to true.",
     "",
     "STEP 2: SEO GENERATION (IF APPROVED)",
     "Based purely on the visual aesthetic, typography, and vibe of the design, generate:",
@@ -2697,7 +2762,7 @@ function buildMasterPrompt(
     "",
     "ANALYSIS RULES",
     "- Image truth is primary. Visible text outranks filename text.",
-    "- Ignore artificial helper backgrounds and focus only on the foreground design.",
+    "- Ignore artificial helper backgrounds, including neutral-gray helper canvases, and focus only on the foreground design.",
     "- Do not hallucinate unsupported claims, official licensing, or hidden artwork details.",
     "- Use filename only as support. If the artwork is clear, do not let the filename write the title or marketing copy for you.",
     "- Strong transparent PNG artwork with clean readable text or simple legible iconography still counts as meaningful visual evidence even when the canvas is sparse.",
@@ -3048,7 +3113,12 @@ function mapRecordToUiResponse(record: EngineRecord, model: string, localeProfil
     record.semanticRecord,
     localeProfile
   );
-  const blockingReasonDetails = getBinaryBlockingReasonDetails(record.validator.reasonDetails, record.imageTruth);
+  const blockingReasonDetails = getBinaryBlockingReasonDetails(
+    record.validator.reasonDetails,
+    record.imageTruth,
+    record.canonicalTitle,
+    leadParagraphs
+  );
   const blockingReasonFlags = reasonFlagsFromDetails(blockingReasonDetails, record.validator.complianceFlags);
   const publishReady =
     record.qcApproved

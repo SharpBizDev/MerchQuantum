@@ -1046,16 +1046,18 @@ async function main() {
     );
 
     assert.equal(/black and white garment-neutral backgrounds/i.test(capturedPrompt), true);
+    assert.equal(/neutral-gray garment-neutral helper view/i.test(capturedPrompt), true);
     assert.equal(/cropped close view around the visible artwork bounds/i.test(capturedPrompt), true);
-    assert.equal(capturedImages.length >= 4, true);
+    assert.equal(capturedImages.length >= 5, true);
     assert.equal(capturedImages.some((part) => part.data === image.base64), true);
 
     const derivedImages = capturedImages.filter((part) => part.data && part.data !== image.base64);
-    assert.equal(derivedImages.length >= 3, true);
+    assert.equal(derivedImages.length >= 4, true);
 
     const derivedPixels = await Promise.all(derivedImages.map((part) => readCornerPixel(String(part.data || ""))));
     assert.equal(derivedPixels.some((pixel) => isNearPixel(pixel, { r: 0, g: 0, b: 0, a: 255 })), true);
     assert.equal(derivedPixels.some((pixel) => isNearPixel(pixel, { r: 255, g: 255, b: 255, a: 255 })), true);
+    assert.equal(derivedPixels.some((pixel) => isNearPixel(pixel, { r: 229, g: 229, b: 229, a: 255 })), true);
   });
 
   await run("Gemini prompt keeps filename as support-only context when no explicit title is supplied", async () => {
@@ -1636,6 +1638,93 @@ async function main() {
     assert.equal(response.grade, "green");
     assert.equal(response.publishReady, true);
     assert.equal(response.reasonFlags.length, 0);
+  });
+
+  await run("Gemini recoverable transparent-art caution can stay Good on the binary publish path", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "arcade_logo_transparent.png",
+        productFamily: "t-shirt",
+        templateContext: "Comfort Colors 1717 garment-dyed heavyweight tee with relaxed fit and ring-spun cotton.",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async () =>
+          createGeminiResponse(
+            createGeminiPayload({
+              imageTruth: {
+                visibleText: [],
+                visibleFacts: ["dark monochrome arcade-style logo on transparent background"],
+                inferredMeaning: ["retro gamer identity", "minimal arcade brand look"],
+                dominantTheme: "retro arcade",
+                likelyAudience: "retro gaming fans",
+                likelyOccasion: "casual wear",
+                uncertainty: ["Small interior logo details remain stylized rather than fully literal."],
+                ocrWeakness: "low contrast on the untouched transparent render",
+                meaningClarity: 0.33,
+                hasReadableText: false,
+              },
+              filenameAssessment: {
+                classification: "partial_support",
+                usefulness: 0.58,
+                usefulTokens: ["arcade", "logo", "gamer"],
+                ignoredTokens: [],
+                conflictSeverity: "none",
+                shouldIgnore: false,
+                reason: "filename supports the visible logo direction",
+              },
+              semanticRecord: {
+                titleCore: "Classic Arcade Logo Minimalist Gamer Shirt",
+                benefitCore: "Readable minimalist arcade logo styling for retro gaming buyers.",
+                likelyAudience: "retro gaming fans",
+                styleOccasion: "minimal gamer",
+                visibleKeywords: ["arcade logo", "gamer"],
+                inferredKeywords: ["retro gaming shirt", "minimalist gamer tee"],
+                forbiddenClaims: [],
+              },
+              canonicalTitle: "Classic Arcade Logo Minimalist Gamer Shirt",
+              canonicalLeadParagraphs: [
+                "The monochrome arcade logo keeps the design clean and recognizable for buyers who want a simple retro gaming look.",
+                "It reads as a usable gamer tee even when the smallest interior details stay stylized instead of perfectly literal.",
+              ],
+              validator: {
+                grade: "orange",
+                confidence: 0.52,
+                reasonFlags: [
+                  "Small interior logo details remain stylized rather than fully literal.",
+                  "OCR/text legibility is weak or partial.",
+                ],
+                complianceFlags: [],
+                reasonDetails: [
+                  {
+                    code: "image_uncertainty_1",
+                    severity: "warning",
+                    stage: "image_truth",
+                    summary: "Small interior logo details remain stylized rather than fully literal.",
+                  },
+                  {
+                    code: "ocr_weakness",
+                    severity: "warning",
+                    stage: "image_truth",
+                    summary: "OCR/text legibility is weak or partial.",
+                  },
+                ],
+              },
+            })
+          ),
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    assert.equal(response.grade, "orange");
+    assert.equal(response.publishReady, true);
+    assert.equal(
+      response.reasonFlags.some((flag) => flag.toLowerCase().includes("stylized")),
+      true
+    );
   });
 
   await run("Gemini blocking image-truth reasons keep the item out of the Good publish path", async () => {
