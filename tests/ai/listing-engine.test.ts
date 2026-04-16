@@ -151,7 +151,8 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
       complianceFlags: [],
       reasonDetails: [],
     },
-    qc_approved: true,
+    qc_status: "PASS",
+    extracted_text: "FAITH OVER FEAR",
     seo_title: "Faith Over Fear Christian Tee",
     seo_paragraph_1:
       "Faith-based shoppers will love the bold message and clean spiritual design that makes this shirt feel encouraging, wearable, and giftable.",
@@ -229,12 +230,28 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
     || overrides.canonicalLeadParagraphs?.[1]
     || base.generatedParagraph2;
   const resolvedTags = overrides.seo_tags || overrides.seoTags || overrides.tags || base.tags;
-  const resolvedQcApproved =
-    typeof overrides.qc_approved === "boolean"
-      ? overrides.qc_approved
-      : typeof overrides.qcApproved === "boolean"
-        ? overrides.qcApproved
-        : true;
+  const resolvedQcStatus =
+    typeof overrides.qc_status === "string"
+      ? String(overrides.qc_status).toUpperCase() === "FAIL"
+        ? "FAIL"
+        : "PASS"
+      : typeof overrides.qcStatus === "string"
+        ? String(overrides.qcStatus).toUpperCase() === "FAIL"
+          ? "FAIL"
+          : "PASS"
+        : typeof overrides.qc_approved === "boolean"
+          ? overrides.qc_approved
+            ? "PASS"
+            : "FAIL"
+          : typeof overrides.qcApproved === "boolean"
+            ? overrides.qcApproved
+              ? "PASS"
+              : "FAIL"
+            : "PASS";
+  const resolvedExtractedText =
+    overrides.extracted_text
+    || overrides.extractedText
+    || (overrides.imageTruth?.visibleText || base.imageTruth.visibleText).join("\n");
 
   return {
     ...base,
@@ -249,7 +266,8 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
       tiktokShop: { ...base.marketplaceDrafts.tiktokShop, ...(overrides.marketplaceDrafts?.tiktokShop || {}) },
     },
     validator: { ...base.validator, ...(overrides.validator || {}) },
-    qc_approved: resolvedQcApproved,
+    qc_status: resolvedQcStatus,
+    extracted_text: resolvedExtractedText,
     seo_title: resolvedGeneratedTitle,
     seo_paragraph_1: resolvedGeneratedParagraph1,
     seo_paragraph_2: resolvedGeneratedParagraph2,
@@ -1242,7 +1260,8 @@ async function main() {
             const helperInlineData = imageParts[imageParts.length - 1] || {};
 
             assert.equal(inlineData.mimeType, "image/png", `${fixture.name}: image mime type`);
-            assert.equal(/qc_approved/i.test(prompt), true, `${fixture.name}: prompt should demand qc_approved`);
+            assert.equal(/qc_status/i.test(prompt), true, `${fixture.name}: prompt should demand qc_status`);
+            assert.equal(/extracted_text/i.test(prompt), true, `${fixture.name}: prompt should demand extracted_text`);
             assert.equal(/seo_paragraph_1/i.test(prompt), true, `${fixture.name}: prompt should demand seo paragraphs`);
             if (fixture.name === "transparent png weak contrast") {
               assert.equal(imageParts.length >= 4, true, `${fixture.name}: should send multi-render helper bundle`);
@@ -1943,7 +1962,7 @@ async function main() {
     assert.equal(response.tags.some((tag) => tag.includes(",")), false);
   });
 
-  await run("qc false path blanks structured fields and flags the item for manual review", async () => {
+  await run("qc FAIL path blanks structured fields and keeps the item out of the Good publish path", async () => {
     const response = await generateListingResponse(
       {
         imageDataUrl: SAMPLE_PNG_DATA_URL,
@@ -1958,7 +1977,8 @@ async function main() {
         fetchFn: async () =>
           createGeminiResponse(
             createGeminiPayload({
-              qc_approved: false,
+              qc_status: "FAIL",
+              extracted_text: "",
               seo_title: "",
               seo_paragraph_1: "",
               seo_paragraph_2: "",
@@ -1975,7 +1995,7 @@ async function main() {
     assert.deepEqual(response.leadParagraphs, []);
     assert.deepEqual(response.tags, []);
     assert.equal(response.grade, "red");
-    assert.equal(response.reasonFlags.some((flag) => /manual review|qc/i.test(flag)), true);
+    assert.equal(response.reasonFlags.some((flag) => /rejected|blank|illegible|distorted|qc/i.test(flag)), true);
   });
 
   await run("compliance rule packs surface explainable reasons without breaking UI contract", async () => {

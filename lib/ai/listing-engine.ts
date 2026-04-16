@@ -341,14 +341,16 @@ const COMPLIANCE_RULE_PACKS = [
 const GEMINI_RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
-    qc_approved: { type: "BOOLEAN" },
+    qc_status: { type: "STRING", enum: ["PASS", "FAIL"] },
+    extracted_text: { type: "STRING" },
     seo_title: { type: "STRING" },
     seo_paragraph_1: { type: "STRING" },
     seo_paragraph_2: { type: "STRING" },
     seo_tags: { type: "ARRAY", items: { type: "STRING" } },
   },
   required: [
-    "qc_approved",
+    "qc_status",
+    "extracted_text",
     "seo_title",
     "seo_paragraph_1",
     "seo_paragraph_2",
@@ -783,6 +785,19 @@ function stripMarkdownFences(value: string) {
 function removeLeadingLabel(value: string, labels: string[]) {
   const escaped = labels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   return value.replace(new RegExp(`^(?:${escaped.join("|")})\\s*:\\s*`, "i"), "").trim();
+}
+
+function normalizeExtractedTextLines(raw: unknown) {
+  return unique(
+    String(raw || "")
+      .replace(/\r\n?/g, "\n")
+      .split(/\n+/)
+      .map((line) => stripMarkdownFences(line))
+      .map((line) => removeLeadingLabel(line, ["extractedText", "extracted_text", "ocr", "ocrText", "visibleText"]))
+      .map((line) => line.replace(/^[-*•]+\s*/, ""))
+      .map((line) => cleanSpaces(line))
+      .filter(Boolean)
+  ).slice(0, 8);
 }
 
 function buildComparableText(value: string) {
@@ -2010,13 +2025,18 @@ export function gradeListing(
   return {
     grade: "orange",
     confidence,
-    reasonFlags: dedupedReasons.length ? dedupedReasons : ["Usable draft detected but manual review is recommended."],
+    reasonFlags: dedupedReasons.length ? dedupedReasons : ["Usable draft detected with minor caution flags that do not block publishing."],
     complianceFlags: dedupedCompliance,
     reasonDetails: polishedReasonDetails,
   } satisfies ValidatorResult;
 }
 
-function buildQcDerivedImageTruth(input: ListingRequest, titleSeed: string, qcApproved: boolean): ImageTruthRecord {
+function buildQcDerivedImageTruth(
+  input: ListingRequest,
+  titleSeed: string,
+  qcApproved: boolean,
+  extractedTextLines: string[] = []
+): ImageTruthRecord {
   const productFamily = cleanSpaces(input.productFamily || "merchandise");
   const dominantTheme = detectTheme(`${titleSeed} ${input.fileName || ""} ${productFamily}`);
 
@@ -2026,8 +2046,8 @@ function buildQcDerivedImageTruth(input: ListingRequest, titleSeed: string, qcAp
       visibleFacts: [],
       inferredMeaning: [],
       dominantTheme: "unknown",
-      likelyAudience: "manual review required",
-      likelyOccasion: "manual review required",
+      likelyAudience: "quality control failure",
+      likelyOccasion: "quality control failure",
       uncertainty: ["Image is blank, illegible, or too distorted for reliable listing generation."],
       ocrWeakness: "qc-rejected-illegible-or-distorted",
       meaningClarity: 0.08,
@@ -2036,16 +2056,20 @@ function buildQcDerivedImageTruth(input: ListingRequest, titleSeed: string, qcAp
   }
 
   return {
-    visibleText: [],
+    visibleText: extractedTextLines,
     visibleFacts: [`clear ${productFamily} artwork detected on an isolated print-ready canvas`],
     inferredMeaning: [dominantTheme],
     dominantTheme,
     likelyAudience: "merchandise shoppers",
     likelyOccasion: dominantTheme,
     uncertainty: [],
-    ocrWeakness: cleanSpaces(titleSeed) ? "structured-qc-approved" : "design-only-qc-approved",
-    meaningClarity: 0.88,
-    hasReadableText: cleanSpaces(titleSeed).length >= 8,
+    ocrWeakness: extractedTextLines.length > 0
+      ? "structured-qc-approved-with-ocr"
+      : cleanSpaces(titleSeed)
+        ? "structured-qc-approved"
+        : "design-only-qc-approved",
+    meaningClarity: extractedTextLines.length > 0 ? 0.92 : 0.88,
+    hasReadableText: extractedTextLines.length > 0 || cleanSpaces(titleSeed).length >= 8,
   };
 }
 
@@ -2053,7 +2077,7 @@ function buildQcRejectedValidator(): ValidatorResult {
   return {
     grade: "red",
     confidence: 0.08,
-    reasonFlags: ["Quantum AI QC flagged this artwork for manual review before draft publishing."],
+    reasonFlags: ["Quantum AI rejected this artwork because the design appears blank, illegible, or too distorted for safe listing generation."],
     complianceFlags: [],
     reasonDetails: [
       makeReason(
@@ -2725,7 +2749,9 @@ function buildMasterPrompt(
   const sterileProductType = cleanSpaces(input.templateContext || getFallbackSterileProductType(input.productFamily));
 
   return [
-    "You are an elite e-commerce copywriter and Quality Control gatekeeper. Analyze the provided merchandise graphic.",
+    "You are an elite e-commerce visual analyst and Quality Control gatekeeper for a Print-On-Demand platform.",
+    "",
+    "Analyze the provided merchandise design.",
     "",
     "VISION INSTRUCTION",
     "This image may be a transparent PNG or isolated vector graphic intended for merchandise printing.",
@@ -2737,13 +2763,17 @@ function buildMasterPrompt(
     "CONTEXT RULE",
     `You are writing copy for a ${sterileProductType}. Do NOT reference any other themes, religions, or subjects other than what is visibly present in the image scan.`,
     "",
-    "STEP 1: QC GATE",
-    "If the image is completely illegible, a blank square, or highly distorted, set qc_approved to false and leave all other fields blank.",
-    "Default to qc_approved true for commercially usable artwork. Minor ambiguity, stylization, or low-contrast transparent edges should not fail the item on their own.",
-    "If the design is legible and clear enough to sell, set qc_approved to true.",
+    "PHASE 1: OCR & Analysis",
+    "Read the visible text and identify the key visual elements.",
+    "Include extracted_text as a concise OCR capture of readable wording, or an empty string if no readable text is present.",
     "",
-    "STEP 2: SEO GENERATION (IF APPROVED)",
-    "Based purely on the visual aesthetic, typography, and vibe of the design, generate:",
+    "PHASE 2: Quality Control Gate",
+    "If the image is blank, deeply distorted, or truly illegible, set qc_status to FAIL and leave the other fields blank.",
+    "If the design is legible and commercially usable, set qc_status to PASS.",
+    "Default to PASS for usable POD artwork. Minor ambiguity, stylization, soft OCR uncertainty, or low-contrast transparent edges should not fail the item on their own.",
+    "",
+    "PHASE 3: SEO Generation (If PASS)",
+    "Generate:",
     "- seo_title: a highly clickable, keyword-optimized title.",
     "- seo_paragraph_1: the first marketing paragraph.",
     "- seo_paragraph_2: the second marketing paragraph.",
@@ -2770,7 +2800,7 @@ function buildMasterPrompt(
     `- Conflict severity hint: ${filenameAssessment.conflictSeverity}; ignore filename: ${filenameAssessment.shouldIgnore ? "yes" : "no"}`,
     "",
     "JSON SCHEMA",
-    '{"qc_approved": boolean, "seo_title": string, "seo_paragraph_1": string, "seo_paragraph_2": string, "seo_tags": string[]}',
+    '{"qc_status": "PASS" | "FAIL", "extracted_text": string, "seo_title": string, "seo_paragraph_1": string, "seo_paragraph_2": string, "seo_tags": string[]}',
     "",
     "OUTPUT FORMAT",
     "Return ONLY valid structured JSON.",
@@ -2927,12 +2957,27 @@ async function callGeminiRecord(
   if (!parsed || typeof parsed !== "object") return null;
 
   const parsedObj = parsed as Record<string, unknown>;
-  const qcApproved =
-    typeof parsedObj.qc_approved === "boolean"
-      ? parsedObj.qc_approved
-      : typeof parsedObj.qcApproved === "boolean"
-        ? parsedObj.qcApproved
-        : true;
+  const qcStatusRaw =
+    typeof parsedObj.qc_status === "string"
+      ? parsedObj.qc_status
+      : typeof parsedObj.qcStatus === "string"
+        ? parsedObj.qcStatus
+        : typeof parsedObj.qc_approved === "boolean"
+          ? parsedObj.qc_approved
+            ? "PASS"
+            : "FAIL"
+          : typeof parsedObj.qcApproved === "boolean"
+            ? parsedObj.qcApproved
+              ? "PASS"
+              : "FAIL"
+            : "PASS";
+  const qcApproved = cleanSpaces(String(qcStatusRaw)).toUpperCase() !== "FAIL";
+  const extractedTextLines = normalizeExtractedTextLines(
+    parsedObj.extracted_text
+    ?? parsedObj.extractedText
+    ?? parsedObj.ocr_text
+    ?? parsedObj.ocrText
+  );
 
   const titleSeedCandidate =
     parsedObj.seo_title
@@ -2948,10 +2993,18 @@ async function callGeminiRecord(
     || "Product";
 
   const provisionalTitle = normalizeTitle(String(titleSeedCandidate), input.fileName || explicitTitleSeed);
-  const fallbackImageTruth = buildQcDerivedImageTruth(input, provisionalTitle, qcApproved);
-  const imageTruth = parsedObj.imageTruth
+  const fallbackImageTruth = buildQcDerivedImageTruth(input, provisionalTitle, qcApproved, extractedTextLines);
+  const baseImageTruth = parsedObj.imageTruth
     ? normalizeImageTruth(parsedObj.imageTruth, provisionalTitle || explicitTitleSeed)
     : fallbackImageTruth;
+  const imageTruth = qcApproved && extractedTextLines.length > 0
+    ? {
+        ...baseImageTruth,
+        visibleText: unique([...extractedTextLines, ...baseImageTruth.visibleText]).slice(0, 20),
+        hasReadableText: true,
+        meaningClarity: Math.max(baseImageTruth.meaningClarity, 0.78),
+      }
+    : baseImageTruth;
   const filenameAssessment = assessFilenameRelevance(input.fileName || "", imageTruth.visibleText);
   const semanticFallback = buildSemanticRecord(
     {

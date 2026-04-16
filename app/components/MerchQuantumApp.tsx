@@ -1796,7 +1796,7 @@ export default function MerchQuantumApp() {
             : [];
           const message = qcFlags.length
             ? qcFlags.join(" • ")
-            : "Quantum AI QC flagged this artwork for manual review.";
+            : "Quantum AI rejected this artwork because the design appears blank, illegible, or too distorted for safe listing generation.";
 
           setImages((current) =>
             current.map((img) =>
