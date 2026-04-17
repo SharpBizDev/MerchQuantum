@@ -2161,6 +2161,44 @@ async function main() {
       null
     );
 
+    assert.equal(
+      validateReadyDraftItem({
+        fileName: "ready-html-item.png",
+        title: "Ready Listing",
+        description: "<p>Buyer-facing paragraph one with enough detail to read like real marketing copy.</p><p>Buyer-facing paragraph two with styling context and a complete closing sentence.</p><h3>Product features</h3><ul><li>Exact provider template text remains appended separately.</li></ul>",
+        tags: ["tag-one", "tag-two"],
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        publishReady: true,
+        qcApproved: true,
+      }),
+      null
+    );
+
+    assert.equal(
+      validateReadyDraftItem({
+        fileName: "raw-output.png",
+        title: "Ready Listing",
+        description: "```json\n{\"seo_title\":\"Ready Listing\"}\n```",
+        tags: ["tag-one", "tag-two"],
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        publishReady: true,
+        qcApproved: true,
+      }),
+      "Only sanitized Good items can be published. Re-run artwork that still contains raw AI output."
+    );
+
+    assert.equal(
+      validateReadyDraftItem({
+        fileName: "half-assembled.png",
+        title: "Ready Listing",
+        description: "Only one paragraph is present here.",
+        tags: ["tag-one", "tag-two"],
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        publishReady: true,
+        qcApproved: true,
+      }),
+      "Only fully assembled Good items with buyer-facing marketing paragraphs can be published."
+    );
   });
 
   console.log("listing-engine tests passed");

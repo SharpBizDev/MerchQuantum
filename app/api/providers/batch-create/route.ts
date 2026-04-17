@@ -26,6 +26,32 @@ type IncomingItem = {
   qcApproved?: boolean;
 };
 
+function containsRawAiArtifacts(value: string) {
+  return /```|^\s*json\b|seo_(title|paragraph_1|paragraph_2|tags)\b|qc_status\b|^\s*[\[{]/i.test(value);
+}
+
+function stripHtmlForValidation(value: string) {
+  return String(value || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/h[1-6]>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "- ")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\u00a0/g, " ");
+}
+
+function hasStructuredMarketingDescription(description: string) {
+  const paragraphs = stripHtmlForValidation(description)
+    .replace(/\r\n?/g, "\n")
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  return paragraphs.length >= 2 && paragraphs[0].length >= 24 && paragraphs[1].length >= 24;
+}
+
 export function validateReadyDraftItem(item: IncomingItem) {
   const title = String(item?.title || "").trim();
   const description = String(item?.description || "").trim();
@@ -35,12 +61,20 @@ export function validateReadyDraftItem(item: IncomingItem) {
     return "Only Good items can be published. Re-run or remove failed artwork before uploading drafts.";
   }
 
-  if (item?.qcApproved === false) {
+  if (item?.qcApproved !== true) {
     return "QC-rejected artwork cannot be published.";
   }
 
   if (!title || !description || tags.length === 0) {
     return "Only fully generated Good items with title, description, and tags can be published.";
+  }
+
+  if (containsRawAiArtifacts(title) || containsRawAiArtifacts(description) || tags.some((tag) => containsRawAiArtifacts(tag))) {
+    return "Only sanitized Good items can be published. Re-run artwork that still contains raw AI output.";
+  }
+
+  if (!hasStructuredMarketingDescription(description)) {
+    return "Only fully assembled Good items with buyer-facing marketing paragraphs can be published.";
   }
 
   return null;

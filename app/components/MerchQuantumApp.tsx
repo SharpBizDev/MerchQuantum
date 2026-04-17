@@ -1491,6 +1491,27 @@ function getStatusSortValue(status: ReviewStatus) {
   }
 }
 
+function getResolvedReviewStatus(image: Img): ReviewStatus {
+  if (image.aiProcessing || image.status === "pending") {
+    return "pending";
+  }
+
+  if (!image.aiDraft) {
+    return image.status;
+  }
+
+  const hasCompleteVisibleOutput =
+    !!image.final.trim() &&
+    !!image.finalDescription.trim() &&
+    image.tags.some((tag) => !!String(tag || "").trim());
+
+  if (image.aiDraft.qcApproved === false) {
+    return "error";
+  }
+
+  return image.aiDraft.publishReady === true && hasCompleteVisibleOutput ? "ready" : "error";
+}
+
 export default function MerchQuantumApp() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const previousPreviewUrlsRef = useRef<string[]>([]);
@@ -1542,7 +1563,7 @@ export default function MerchQuantumApp() {
 
   const sortedImages = useMemo(() => {
     return [...images].sort((a, b) => {
-      const statusDelta = getStatusSortValue(a.status) - getStatusSortValue(b.status);
+      const statusDelta = getStatusSortValue(getResolvedReviewStatus(a)) - getStatusSortValue(getResolvedReviewStatus(b));
       if (statusDelta !== 0) return statusDelta;
       return a.name.localeCompare(b.name);
     });
@@ -1555,9 +1576,9 @@ export default function MerchQuantumApp() {
     () => productSource.find((product) => product.id === productId && product.shopId === shopId) || productSource.find((product) => product.id === productId) || null,
     [productId, productSource, shopId]
   );
-  const readyCount = images.filter((img) => img.status === "ready").length;
-  const errorCount = images.filter((img) => img.status === "error").length;
-  const processingCount = images.filter((img) => img.status === "pending" || img.aiProcessing).length;
+  const readyCount = images.filter((img) => getResolvedReviewStatus(img) === "ready").length;
+  const errorCount = images.filter((img) => getResolvedReviewStatus(img) === "error").length;
+  const processingCount = images.filter((img) => getResolvedReviewStatus(img) === "pending").length;
   const queuedCount = queuedImages.length;
   const hasAnyLoadedImages = images.length > 0 || queuedImages.length > 0;
   const completedGenerationCount = readyCount + errorCount;
@@ -2185,7 +2206,7 @@ export default function MerchQuantumApp() {
   async function runDraftBatch() {
     if (!template || !shopId || readyCount === 0 || !isLiveProvider || !resolvedProviderId) return;
 
-    const activeImages = images.filter((img) => img.status === "ready");
+    const activeImages = images.filter((img) => getResolvedReviewStatus(img) === "ready");
     setIsRunningBatch(true);
     setRunStatus("");
     setBatchResults([]);
@@ -2194,13 +2215,19 @@ export default function MerchQuantumApp() {
     try {
       for (let index = 0; index < activeImages.length; index += 1) {
         const img = activeImages[index];
-        const titleForUpload = safeTitle(img.final, img.cleaned);
-        const description = img.finalDescription || buildDescription(titleForUpload, templateDescription, img.aiDraft?.leadParagraphs);
-        const tags = img.tags.length ? img.tags : buildTags(titleForUpload, description, FIXED_TAG_COUNT);
+        const titleForUpload = String(img.final || "").trim();
+        const description = String(img.finalDescription || "").trim();
+        const tags = img.tags
+          .map((tag) => String(tag || "").trim())
+          .filter(Boolean);
 
         setRunStatus(`Uploading draft ${index + 1} of ${activeImages.length}...`);
 
         try {
+          if (!titleForUpload || !description || tags.length === 0 || img.aiDraft?.publishReady !== true || img.aiDraft?.qcApproved === false) {
+            throw new Error("Only Good items with complete Quantum AI output can be uploaded.");
+          }
+
           const imageDataUrl = await readDataUrl(img.file);
           const artworkBounds = img.artworkBounds || (await analyzeArtworkBounds(img.file));
           if (!img.artworkBounds) {
@@ -2222,7 +2249,7 @@ export default function MerchQuantumApp() {
                 imageDataUrl,
                 artworkBounds,
                 publishReady: img.aiDraft?.publishReady === true,
-                qcApproved: img.aiDraft?.qcApproved !== false,
+                qcApproved: true,
               },
             }),
           });
@@ -2262,20 +2289,6 @@ export default function MerchQuantumApp() {
     } finally {
       setIsRunningBatch(false);
     }
-  }
-
-  function updatePreviewStatus(targetId: string, status: Exclude<ReviewStatus, "pending">) {
-    setImages((current) =>
-      current.map((entry) =>
-        entry.id === targetId
-          ? {
-              ...entry,
-              status,
-              statusReason: entry.statusReason,
-            }
-          : entry
-      )
-    );
   }
 
   function removePreviewItem(targetId: string) {
@@ -2653,19 +2666,20 @@ export default function MerchQuantumApp() {
                           <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
                             {sortedImages.map((img, index) => {
                               const isSelected = selectedImage?.id === img.id;
-                              const isProcessing = img.aiProcessing || img.status === "pending";
+                              const resolvedStatus = getResolvedReviewStatus(img);
+                              const isProcessing = resolvedStatus === "pending";
                               const previewFrameTone = isProcessing
                                 ? "border-[#7F22FE]/55"
-                                : img.status === "ready"
+                                : resolvedStatus === "ready"
                                   ? "border-[#00BC7D]/55"
-                                  : img.status === "error"
+                                  : resolvedStatus === "error"
                                     ? "border-[#FF2056]/55"
                                     : "border-slate-700";
                               const previewAlignRight = (index + 1) % 10 === 0 || (index + 1) % 10 === 9;
                               const previewOpenUp = sortedImages.length - index <= 10;
-                              const statusIndicator = img.status === "ready"
+                              const statusIndicator = resolvedStatus === "ready"
                                 ? { tone: "ready" as const, direction: "up" as const }
-                                : img.status === "error"
+                                : resolvedStatus === "error"
                                   ? { tone: "error" as const, direction: "down" as const }
                                   : null;
 
@@ -2680,17 +2694,12 @@ export default function MerchQuantumApp() {
                                     <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border bg-[#020616] transition-all duration-500 ${previewFrameTone}`}>
                                       {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
                                       {statusIndicator ? (
-                                        <button
-                                          type="button"
+                                        <div
                                           aria-label={statusIndicator.tone}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            updatePreviewStatus(img.id, statusIndicator.tone);
-                                          }}
                                           className="absolute bottom-2 left-1/2 z-20 inline-flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full bg-black"
                                         >
                                           <StatusThumbIcon tone={statusIndicator.tone} direction={statusIndicator.direction} />
-                                        </button>
+                                        </div>
                                       ) : null}
                                       <button
                                         type="button"
