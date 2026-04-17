@@ -1078,6 +1078,98 @@ async function main() {
     assert.equal(derivedPixels.some((pixel) => isNearPixel(pixel, { r: 229, g: 229, b: 229, a: 255 })), true);
   });
 
+  await run("small opaque artwork gets an upscaled helper-render bundle while preserving the untouched upload", async () => {
+    const image = await createTransparentSvgDataUrl(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180">
+        <rect width="180" height="180" fill="#F5F5F5"/>
+        <text x="20" y="102" font-size="42" font-family="Arial, sans-serif" font-weight="700" fill="#111111">GO</text>
+      </svg>
+    `);
+    let capturedPrompt = "";
+    let capturedImages: Array<{ mimeType?: string; data?: string }> = [];
+
+    await generateListingResponse(
+      {
+        imageDataUrl: image.dataUrl,
+        fileName: "small-opaque-go.png",
+        title: "",
+        productFamily: "t-shirt",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_url, init) => {
+          const parts = getGeminiRequestParts(init);
+          capturedPrompt = String(parts[0]?.text || "");
+          capturedImages = getGeminiInlineImageParts(init);
+          return createGeminiResponse(createGeminiPayload());
+        },
+      }
+    );
+
+    assert.equal(/temporary upscaled analysis render/i.test(capturedPrompt), true);
+    assert.equal(capturedImages.length >= 2, true);
+    assert.equal(capturedImages.some((part) => part.data === image.base64), true);
+    assert.equal(capturedImages.some((part) => part.data && part.data !== image.base64), true);
+  });
+
+  await run("OCR-heavy transparent artwork escalates to the stronger Gemini model route", async () => {
+    const image = await createTransparentSvgDataUrl(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="520" viewBox="0 0 1600 520">
+        <rect width="1600" height="520" fill="transparent"/>
+        <text x="80" y="250" font-size="148" font-family="Arial, sans-serif" font-weight="700" fill="#111111">MERCY OVER FEAR</text>
+        <text x="140" y="390" font-size="110" font-family="Arial, sans-serif" font-weight="700" fill="#111111">GRACE WINS DAILY</text>
+      </svg>
+    `);
+    let capturedUrl = "";
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: image.dataUrl,
+        fileName: "mercy-over-fear-transparent-typography.png",
+        title: "",
+        productFamily: "t-shirt",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-fast-test",
+        ocrModel: "gemini-ocr-test",
+        fetchFn: async (url) => {
+          capturedUrl = String(url || "");
+          return createGeminiResponse(createGeminiPayload());
+        },
+      }
+    );
+
+    assert.equal(/models\/gemini-ocr-test:generateContent/i.test(capturedUrl), true);
+    assert.equal(response.model, "gemini-ocr-test");
+  });
+
+  await run("non-OCR artwork stays on the default Gemini model route", async () => {
+    let capturedUrl = "";
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        fileName: "simple-badge.png",
+        title: "",
+        productFamily: "t-shirt",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-fast-test",
+        ocrModel: "gemini-ocr-test",
+        fetchFn: async (url) => {
+          capturedUrl = String(url || "");
+          return createGeminiResponse(createGeminiPayload());
+        },
+      }
+    );
+
+    assert.equal(/models\/gemini-fast-test:generateContent/i.test(capturedUrl), true);
+    assert.equal(response.model, "gemini-fast-test");
+  });
+
   await run("Gemini prompt keeps filename as support-only context when no explicit title is supplied", async () => {
     let capturedPrompt = "";
 
@@ -1553,6 +1645,8 @@ async function main() {
     assert.equal(/40 to 60 words/i.test(capturedPrompt), true);
     assert.equal(/emotional hook, vibe, and audience/i.test(capturedPrompt), true);
     assert.equal(/design details, styling suggestions, and aesthetic fit/i.test(capturedPrompt), true);
+    assert.equal(/do not judge dpi, metadata, file headers, or upload-constraint validity/i.test(capturedPrompt), true);
+    assert.equal(/model should verify dpi|model should verify metadata|check file headers/i.test(capturedPrompt), false);
   });
 
   await run("Gemini validator output cannot stay green when reasons or compliance flags are present", async () => {
@@ -2066,6 +2160,7 @@ async function main() {
       }),
       null
     );
+
   });
 
   console.log("listing-engine tests passed");

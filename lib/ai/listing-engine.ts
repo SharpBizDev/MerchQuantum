@@ -120,12 +120,18 @@ type GenerateOptions = {
   fetchFn?: typeof fetch;
   apiKey?: string;
   model?: string;
+  ocrModel?: string;
   locale?: string;
 };
 
 type RetryContext = {
   attempt: number;
   retryInstruction?: string;
+};
+
+type VisionRoutingHint = {
+  ocrCritical: boolean;
+  helperStrategy: "raw" | "transparent-normalized" | "upscaled-normalized";
 };
 
 type LocaleProfile = {
@@ -151,6 +157,7 @@ type VisionInputSet = {
   primary: ParsedImageData;
   helpers?: ParsedImageData[];
   promptHint?: string;
+  routingHint: VisionRoutingHint;
 };
 
 export class ListingInputGuardError extends Error {
@@ -164,6 +171,11 @@ export class ListingInputGuardError extends Error {
 }
 
 const DEFAULT_MODEL = process.env.GEMINI_LISTING_MODEL || "gemini-2.5-flash";
+const DEFAULT_OCR_MODEL =
+  process.env.GEMINI_LISTING_OCR_MODEL ||
+  process.env.GEMINI_LISTING_STRONG_MODEL ||
+  process.env.GEMINI_LISTING_MODEL_OCR ||
+  DEFAULT_MODEL;
 const GEMINI_ENDPOINT_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const MAX_TEMPLATE_CONTEXT = 1400;
 const MAX_TITLE_CHARS = 120;
@@ -187,6 +199,13 @@ const MAX_ANALYSIS_PANEL_SIZE = 1600;
 const ANALYSIS_ARTWORK_FILL_RATIO = 0.88;
 const CROPPED_ANALYSIS_ARTWORK_FILL_RATIO = 0.96;
 const TEXT_PRIORITY_ANALYSIS_ARTWORK_FILL_RATIO = 0.985;
+const MIN_OPAQUE_ANALYSIS_LONGEST_EDGE = 1024;
+const MIN_OPAQUE_ANALYSIS_SHORTEST_EDGE = 720;
+const MIN_OPAQUE_ANALYSIS_PIXELS = 700_000;
+const OCR_WIDE_ARTWORK_ASPECT_THRESHOLD = 1.65;
+const OCR_COMPACT_HEIGHT_RATIO_THRESHOLD = 0.58;
+const OCR_SPARSE_CANVAS_COVERAGE_THRESHOLD = 0.56;
+const OCR_TRIM_GAIN_THRESHOLD = 72;
 const ANALYSIS_LIGHT_BACKGROUND = { r: 255, g: 255, b: 255, alpha: 1 } as const;
 const ANALYSIS_DARK_BACKGROUND = { r: 0, g: 0, b: 0, alpha: 1 } as const;
 const ANALYSIS_NEUTRAL_BACKGROUND = { r: 229, g: 229, b: 229, alpha: 1 } as const;
@@ -2183,6 +2202,18 @@ function resolveApiKey(explicitApiKey?: string) {
   return process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || "";
 }
 
+function resolveGeminiModelRoute(options: GenerateOptions, routingHint?: VisionRoutingHint) {
+  const defaultModel = cleanSpaces(options.model || DEFAULT_MODEL) || DEFAULT_MODEL;
+  const ocrModel = cleanSpaces(options.ocrModel || DEFAULT_OCR_MODEL) || defaultModel;
+  const useOcrModel = Boolean(routingHint?.ocrCritical) && Boolean(ocrModel);
+
+  return {
+    defaultModel,
+    ocrModel,
+    selectedModel: useOcrModel ? ocrModel : defaultModel,
+  };
+}
+
 function parseImageData(imageDataUrl: string): ParsedImageData | null {
   const match = imageDataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
   if (!match) return null;
@@ -2430,8 +2461,14 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
   const parsed = parseImageData(imageDataUrl);
   if (!parsed) return null;
 
-  if (!/^image\/(png|webp)$/i.test(parsed.mimeType)) {
-    return { primary: parsed };
+  if (!/^image\/(png|webp|jpe?g)$/i.test(parsed.mimeType)) {
+    return {
+      primary: parsed,
+      routingHint: {
+        ocrCritical: false,
+        helperStrategy: "raw",
+      },
+    };
   }
 
   try {
@@ -2446,9 +2483,16 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
       limitInputPixels: MAX_VISION_ANALYSIS_PIXELS,
     }).ensureAlpha();
     const metadata = await sourceImage.metadata();
+    const hasAlphaChannel = Boolean(metadata.hasAlpha);
 
-    if (!metadata.hasAlpha || !metadata.width || !metadata.height) {
-      return { primary: parsed };
+    if (!metadata.width || !metadata.height) {
+      return {
+        primary: parsed,
+        routingHint: {
+          ocrCritical: false,
+          helperStrategy: "raw",
+        },
+      };
     }
 
     const sourcePixels = metadata.width * metadata.height;
@@ -2468,14 +2512,29 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
 
     const transparencySurface = await analyzeTransparencySurface(sourceImage);
     if (transparencySurface.visiblePixelCount === 0) {
-      return { primary: parsed };
+      return {
+        primary: parsed,
+        routingHint: {
+          ocrCritical: false,
+          helperStrategy: "raw",
+        },
+      };
     }
 
     const coverage = (trimmedInfo.width * trimmedInfo.height) / (metadata.width * metadata.height);
     const trimGain = (metadata.width - trimmedInfo.width) + (metadata.height - trimmedInfo.height);
+    const trimmedAspectRatio = trimmedInfo.height > 0 ? trimmedInfo.width / trimmedInfo.height : 1;
     const hasMeaningfulTransparency =
-      transparencySurface.transparentPixelRatio >= MEANINGFUL_TRANSPARENCY_RATIO_THRESHOLD;
-    const artworkLuminance = transparencySurface.artworkLuminance ?? (await getAlphaWeightedArtworkLuminance(trimmedBuffer));
+      hasAlphaChannel && transparencySurface.transparentPixelRatio >= MEANINGFUL_TRANSPARENCY_RATIO_THRESHOLD;
+    const hasWeakOpaqueSignal =
+      !hasMeaningfulTransparency
+      && (
+        Math.max(metadata.width, metadata.height) < MIN_OPAQUE_ANALYSIS_LONGEST_EDGE
+        || Math.min(metadata.width, metadata.height) < MIN_OPAQUE_ANALYSIS_SHORTEST_EDGE
+        || sourcePixels < MIN_OPAQUE_ANALYSIS_PIXELS
+      );
+    const artworkLuminance = transparencySurface.artworkLuminance
+      ?? (await getAlphaWeightedArtworkLuminance(hasMeaningfulTransparency ? trimmedBuffer : sourceBuffer));
     const resolvedArtworkLuminance = artworkLuminance ?? 0.5;
     const hasStrongLuminanceBias =
       resolvedArtworkLuminance >= LIGHT_ARTWORK_LUMINANCE_THRESHOLD ||
@@ -2483,21 +2542,55 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
     const hasMixedContrastArtwork =
       transparencySurface.lightVisibleRatio >= MIXED_ARTWORK_SHARE_THRESHOLD &&
       transparencySurface.darkVisibleRatio >= MIXED_ARTWORK_SHARE_THRESHOLD;
+    const hasWideTextGeometry =
+      trimmedAspectRatio >= OCR_WIDE_ARTWORK_ASPECT_THRESHOLD &&
+      trimmedInfo.width >= 180;
+    const hasCompactTextHeight =
+      metadata.height > 0 &&
+      trimmedInfo.height / metadata.height <= OCR_COMPACT_HEIGHT_RATIO_THRESHOLD;
+    const hasSparseCanvasDominance =
+      coverage <= OCR_SPARSE_CANVAS_COVERAGE_THRESHOLD ||
+      trimGain >= OCR_TRIM_GAIN_THRESHOLD;
+    const ocrCritical =
+      (hasMeaningfulTransparency && (hasSparseCanvasDominance || hasStrongLuminanceBias || hasMixedContrastArtwork)) ||
+      (hasWeakOpaqueSignal && (hasWideTextGeometry || hasCompactTextHeight));
     const shouldIncludeCroppedCloseRender =
-      coverage < TRANSPARENT_ANALYSIS_COVERAGE_THRESHOLD || trimGain >= TRANSPARENT_ANALYSIS_TRIM_GAIN_THRESHOLD;
-    const shouldUseDerivedAnalysis = hasMeaningfulTransparency;
+      (hasMeaningfulTransparency || (hasWeakOpaqueSignal && trimGain >= MIN_TRIM_GAIN_PX))
+      && (
+        coverage < TRANSPARENT_ANALYSIS_COVERAGE_THRESHOLD ||
+        trimGain >= TRANSPARENT_ANALYSIS_TRIM_GAIN_THRESHOLD ||
+        hasSparseCanvasDominance
+      );
+    const shouldUseDerivedAnalysis = hasMeaningfulTransparency || hasWeakOpaqueSignal;
 
     if (!Number.isFinite(coverage)) {
-      return { primary: parsed };
+      return {
+        primary: parsed,
+        routingHint: {
+          ocrCritical: false,
+          helperStrategy: "raw",
+        },
+      };
     }
 
     if (!shouldUseDerivedAnalysis) {
-      return { primary: parsed };
+      return {
+        primary: parsed,
+        routingHint: {
+          ocrCritical: false,
+          helperStrategy: "raw",
+        },
+      };
     }
 
     const trimmedLongestEdge = Math.max(trimmedInfo.width, trimmedInfo.height);
     const panelSize = clamp(
-      Math.round(Math.max(trimmedLongestEdge * 1.18, MIN_ANALYSIS_PANEL_SIZE)),
+      Math.round(
+        Math.max(
+          trimmedLongestEdge * (ocrCritical ? 1.34 : 1.18),
+          ocrCritical ? MIN_ANALYSIS_PANEL_SIZE + 192 : MIN_ANALYSIS_PANEL_SIZE
+        )
+      ),
       MIN_ANALYSIS_PANEL_SIZE,
       MAX_ANALYSIS_PANEL_SIZE
     );
@@ -2540,7 +2633,8 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
         })
       : null;
     const shouldIncludeTextPriorityRender =
-      hasStrongLuminanceBias || hasMixedContrastArtwork || shouldIncludeCroppedCloseRender;
+      hasMeaningfulTransparency &&
+      (hasStrongLuminanceBias || hasMixedContrastArtwork || shouldIncludeCroppedCloseRender || ocrCritical);
     const textPriorityRender = shouldIncludeTextPriorityRender
       ? await buildTextPriorityAnalysisImage(
           croppedCloseRender ? trimmedBuffer : sourceBuffer,
@@ -2574,15 +2668,26 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
     return {
       primary,
       helpers,
-      promptHint:
-        `The provided images all show the same artwork. The strongest temporary high-contrast analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background. Additional helper renders may show the same transparent design on both black and white garment-neutral backgrounds, and a neutral-gray garment-neutral helper view may appear when mixed contrast or sparse transparency makes that easier to read. A cropped close view around the visible artwork bounds may be included when the full canvas leaves too much empty space. A single-ink text-prioritized helper render may also appear to emphasize letters, symbols, and linework shape without changing the original design. A later helper image may show the untouched original transparent upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`,
+      promptHint: hasMeaningfulTransparency
+        ? `The provided images all show the same artwork. The strongest temporary high-contrast analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background. Additional helper renders may show the same transparent design on both black and white garment-neutral backgrounds, and a neutral-gray garment-neutral helper view may appear when mixed contrast or sparse transparency makes that easier to read. A cropped close view around the visible artwork bounds may be included when the full canvas leaves too much empty space. A single-ink text-prioritized helper render may also appear to emphasize letters, symbols, and linework shape without changing the original design. A later helper image may show the untouched original transparent upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`
+        : `The provided images all show the same artwork. The strongest temporary upscaled analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background to improve readability for a small or low-signal source image. Additional helper renders may show the same design on black and white garment-neutral backgrounds, and a neutral-gray garment-neutral helper view may appear when mixed contrast or weak source detail makes that easier to read. A later helper image may show the untouched original upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`,
+      routingHint: {
+        ocrCritical,
+        helperStrategy: hasMeaningfulTransparency ? "transparent-normalized" : "upscaled-normalized",
+      },
     };
   } catch (error) {
     if (error instanceof ListingInputGuardError) {
       throw error;
     }
 
-    return { primary: parsed };
+    return {
+      primary: parsed,
+      routingHint: {
+        ocrCritical: false,
+        helperStrategy: "raw",
+      },
+    };
   }
 }
 
@@ -2793,6 +2898,7 @@ function buildMasterPrompt(
     "ANALYSIS RULES",
     "- Image truth is primary. Visible text outranks filename text.",
     "- Ignore artificial helper backgrounds, including neutral-gray helper canvases, and focus only on the foreground design.",
+    "- Do not judge DPI, metadata, file headers, or upload-constraint validity. Technical checks are handled by application code, not the model.",
     "- Do not hallucinate unsupported claims, official licensing, or hidden artwork details.",
     "- Use filename only as support. If the artwork is clear, do not let the filename write the title or marketing copy for you.",
     "- Strong transparent PNG artwork with clean readable text or simple legible iconography still counts as meaningful visual evidence even when the canvas is sparse.",
@@ -2895,11 +3001,9 @@ async function callGeminiRecord(
   options: Required<Pick<GenerateOptions, "apiKey" | "model" | "fetchFn">> & {
     localeProfile: LocaleProfile;
     retryContext: RetryContext;
+    visionInputs: VisionInputSet;
   }
 ) {
-  const visionInputs = await prepareVisionInputs(String(input.imageDataUrl || ""));
-  if (!visionInputs) return null;
-
   const explicitTitleSeed = cleanSpaces(input.title || "") ? normalizeTitle(input.title || "", "") : "";
   const filenameAssessmentSeed = assessFilenameRelevance(input.fileName || "", []);
   const prompt = buildMasterPrompt(
@@ -2908,7 +3012,7 @@ async function callGeminiRecord(
     explicitTitleSeed,
     options.retryContext,
     options.localeProfile,
-    visionInputs.promptHint
+    options.visionInputs.promptHint
   );
   const endpoint = `${GEMINI_ENDPOINT_BASE}/${encodeURIComponent(options.model)}:generateContent`;
 
@@ -2926,11 +3030,11 @@ async function callGeminiRecord(
             { text: prompt },
             {
               inlineData: {
-                mimeType: visionInputs.primary.mimeType,
-                data: visionInputs.primary.inlineData,
+                mimeType: options.visionInputs.primary.mimeType,
+                data: options.visionInputs.primary.inlineData,
               },
             },
-            ...(visionInputs.helpers || []).map((helperInput) => ({
+            ...(options.visionInputs.helpers || []).map((helperInput) => ({
               inlineData: {
                 mimeType: helperInput.mimeType,
                 data: helperInput.inlineData,
@@ -3205,7 +3309,6 @@ function mapRecordToUiResponse(record: EngineRecord, model: string, localeProfil
 
 export async function generateListingResponse(input: ListingRequest, options: GenerateOptions = {}): Promise<ListingUiResponse> {
   const fetchFn = options.fetchFn || fetch;
-  const model = options.model || DEFAULT_MODEL;
   const apiKey = resolveApiKey(options.apiKey);
   const localeProfile = getLocaleProfile(options.locale);
 
@@ -3214,15 +3317,19 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
   }
 
   const normalizedInput = sanitizeListingRequest(input);
+  const preparedVisionInputs = await prepareVisionInputs(String(normalizedInput.imageDataUrl || ""));
+  const modelRoute = resolveGeminiModelRoute(options, preparedVisionInputs?.routingHint);
+  const selectedModel = modelRoute.selectedModel;
 
-  if (apiKey) {
+  if (apiKey && preparedVisionInputs) {
     for (let attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS; attempt += 1) {
       try {
         const geminiRecord = await callGeminiRecord(normalizedInput, {
           fetchFn,
           apiKey,
-          model,
+          model: selectedModel,
           localeProfile,
+          visionInputs: preparedVisionInputs,
           retryContext: {
             attempt,
             retryInstruction:
@@ -3232,7 +3339,7 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
           },
         });
         if (geminiRecord) {
-          return mapRecordToUiResponse(geminiRecord, model, localeProfile);
+          return mapRecordToUiResponse(geminiRecord, selectedModel, localeProfile);
         }
       } catch (error) {
         if (error instanceof ListingInputGuardError) {
@@ -3246,7 +3353,7 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
 
   return mapRecordToUiResponse(
     buildFallbackRecord(normalizedInput, localeProfile, apiKey ? MAX_GEMINI_ATTEMPTS : 0),
-    model,
+    selectedModel,
     localeProfile
   );
 }
