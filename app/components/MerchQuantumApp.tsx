@@ -7,6 +7,8 @@ const APP_TAGLINE = "Bulk product creation, simplified";
 const ACTIVE_BATCH_FILES = 50;
 const CONNECTED_TOTAL_BATCH_FILES = 300;
 const FIXED_TAG_COUNT = 15;
+export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
+export const QUANTUM_DESCRIPTION_AWAITING_TEXT = "Awaiting Quantum AI description...";
 
 type ProviderId =
   | "printify"
@@ -50,7 +52,7 @@ type PlacementGuide = {
   decorationMethod?: string;
 };
 
-type ReviewStatus = "pending" | "ready" | "error";
+type ItemStatus = "pending" | "ready" | "error";
 type AiFieldKey = "title" | "description" | "tags";
 type AiFieldStatus = "idle" | "loading" | "ready" | "error";
 type AiFieldStates = Record<AiFieldKey, AiFieldStatus>;
@@ -63,7 +65,7 @@ type AiListingDraft = {
   templateReference: string;
   reasonFlags: string[];
   source: "gemini" | "fallback";
-  grade: "green" | "orange" | "red";
+  grade: "green" | "red";
   qcApproved?: boolean;
   publishReady?: boolean;
 };
@@ -78,7 +80,7 @@ type Img = {
   final: string;
   finalDescription: string;
   tags: string[];
-  status: ReviewStatus;
+  status: ItemStatus;
   statusReason: string;
   aiProcessing?: boolean;
   aiFieldStates: AiFieldStates;
@@ -296,6 +298,22 @@ const HTML_ENTITY_MAP: Record<string, string> = {
   reg: "®",
   trade: "™",
 };
+
+const TEMPLATE_SPEC_SECTION_HEADERS = new Set([
+  "Product features",
+  "Care instructions",
+  "Size chart",
+  "Product details",
+  "Materials",
+  "Sizing",
+  "Dimensions",
+]);
+
+const TEMPLATE_SPEC_SIGNAL =
+  /\b(unisex|tee|t-shirt|hoodie|sweatshirt|tank top|hat|beanie|mug|candle|canvas|poster|sticker|bag|accessory|footwear|cotton|polyester|ring-spun|garment-dyed|relaxed fit|classic fit|double-needle|twill tape|stitched|ribbed|neck tape|fleece|ceramic|soy|wax|jar|burn time|stainless|microwave|dishwasher|capacity|oz\b|ml\b|inches?\b|inch\b|cm\b|dimensions?\b|material|care instructions|machine wash|tumble dry|wash cold|dry low|paper|matte|gloss|frame|lining|preshrunk)\b/i;
+
+const TEMPLATE_THEME_FLUFF_SIGNAL =
+  /\b(gift(?:able|ing)?|perfect for|great for|ideal for|buyers?|shoppers?|boutique|message-led|statement|conversation-starting|style|vibe|mood|weekend|casual wear|daily wear|everyday wear|show your|share your|uplifting|encouraging|inspiring)\b/i;
 
 const STERILE_PRODUCT_TYPE_RULES: Array<{ pattern: RegExp }> = [
   { pattern: /\b(unisex(?: [a-z0-9&/+'-]+){0,5} (?:tee|t-shirt|t shirt))\b/i },
@@ -717,16 +735,6 @@ function formatTemplateDescription(templateDescription: string) {
     .replace(/<[^>]+>/g, "")
     .replace(/\u00a0/g, " ");
 
-  const headers = new Set([
-    "Product features",
-    "Care instructions",
-    "Size chart",
-    "Product details",
-    "Materials",
-    "Sizing",
-    "Dimensions",
-  ]);
-
   const rawLines = normalized.split("\n");
   const out: string[] = [];
 
@@ -742,7 +750,7 @@ function formatTemplateDescription(templateDescription: string) {
       : trimmed.replace(/\s+/g, " ");
     const header = cleaned.replace(/:$/, "");
 
-    if (headers.has(header) && out.length && out[out.length - 1] !== "") out.push("");
+    if (TEMPLATE_SPEC_SECTION_HEADERS.has(header) && out.length && out[out.length - 1] !== "") out.push("");
     out.push(cleaned);
   }
 
@@ -821,16 +829,6 @@ type TemplateSection = {
 };
 
 function parseTemplateDescription(formattedDescription: string) {
-  const headers = new Set([
-    "Product features",
-    "Care instructions",
-    "Size chart",
-    "Product details",
-    "Materials",
-    "Sizing",
-    "Dimensions",
-  ]);
-
   const introParagraphs: string[] = [];
   const sections: TemplateSection[] = [];
   let currentSection: TemplateSection | null = null;
@@ -843,7 +841,7 @@ function parseTemplateDescription(formattedDescription: string) {
   for (const line of lines) {
     const normalizedHeader = line.replace(/:$/, "");
 
-    if (headers.has(normalizedHeader)) {
+    if (TEMPLATE_SPEC_SECTION_HEADERS.has(normalizedHeader)) {
       currentSection = {
         heading: normalizedHeader,
         paragraphs: [],
@@ -871,6 +869,91 @@ function parseTemplateDescription(formattedDescription: string) {
   }
 
   return { introParagraphs, sections };
+}
+
+function normalizeTemplateComparableValue(value: string) {
+  return stripHtml(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function isStaticTemplateSpecLine(line: string, templateTitle = "") {
+  const cleaned = decodeHtmlEntities(String(line || ""))
+    .replace(/^[-–—]\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return false;
+
+  const normalizedHeader = cleaned.replace(/:$/, "");
+  if (TEMPLATE_SPEC_SECTION_HEADERS.has(normalizedHeader)) return true;
+
+  const normalizedLine = normalizeTemplateComparableValue(cleaned);
+  const normalizedTitle = normalizeTemplateComparableValue(templateTitle);
+  if (normalizedTitle && normalizedLine === normalizedTitle) return false;
+
+  if (!TEMPLATE_SPEC_SIGNAL.test(cleaned)) return false;
+
+  if (TEMPLATE_THEME_FLUFF_SIGNAL.test(cleaned) && !TEMPLATE_SPEC_SECTION_HEADERS.has(normalizedHeader)) {
+    return false;
+  }
+
+  return true;
+}
+
+function joinTemplateSpecLines(lines: string[]) {
+  const out: string[] = [];
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      if (out.length && out[out.length - 1] !== "") out.push("");
+      continue;
+    }
+    out.push(line);
+  }
+  while (out.length && out[out.length - 1] === "") out.pop();
+  return out.join("\n");
+}
+
+export function sanitizeTemplateDescriptionForPrebuffer(templateDescription: string, templateTitle = "") {
+  const formatted = formatTemplateDescription(templateDescription);
+  if (!formatted.trim()) return "";
+
+  const parsed = parseTemplateDescription(formatted);
+  const lines: string[] = [];
+
+  const introParagraphs = parsed.introParagraphs.filter((paragraph) => isStaticTemplateSpecLine(paragraph, templateTitle));
+  for (const paragraph of introParagraphs) {
+    lines.push(paragraph);
+  }
+  if (introParagraphs.length > 0) {
+    lines.push("");
+  }
+
+  for (const section of parsed.sections) {
+    const keptParagraphs = section.paragraphs.filter((paragraph) => isStaticTemplateSpecLine(paragraph, templateTitle));
+    const keptBullets = section.bullets.filter((bullet) => isStaticTemplateSpecLine(bullet, templateTitle));
+    if (keptParagraphs.length === 0 && keptBullets.length === 0) continue;
+
+    lines.push(section.heading);
+    for (const paragraph of keptParagraphs) {
+      lines.push(paragraph);
+    }
+    for (const bullet of keptBullets) {
+      lines.push(`- ${bullet}`);
+    }
+    lines.push("");
+  }
+
+  const sanitized = joinTemplateSpecLines(lines);
+  if (sanitized) return sanitized;
+
+  const looseLines = formatted
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => isStaticTemplateSpecLine(line, templateTitle));
+
+  return joinTemplateSpecLines(looseLines);
 }
 
 function normalizeSterileProductTypeLabel(value: string) {
@@ -1111,6 +1194,21 @@ function htmlToEditableText(value: string) {
     .trim();
 }
 
+export function splitDetailDescriptionForDisplay(
+  templateDescription: string,
+  leadParagraphs: string[] = [],
+  fallbackDescription = ""
+) {
+  const buyerFacingParagraphs = dedupeParagraphs(normalizeAiLeadParagraphs(leadParagraphs));
+
+  return {
+    buyerFacingDescription: buyerFacingParagraphs.length > 0
+      ? buyerFacingParagraphs.join("\n\n")
+      : htmlToEditableText(fallbackDescription),
+    templateSpecBlock: formatTemplateDescription(templateDescription).trim(),
+  };
+}
+
 function formatProductDescriptionWithSections(leadParagraphs: string[], templateDescription: string) {
   const paragraphs = dedupeParagraphs(normalizeAiLeadParagraphs(leadParagraphs));
   const leadHtml = leadToHtml(paragraphs);
@@ -1329,7 +1427,7 @@ async function requestAiListingDraft({
       templateReference: typeof payload?.templateReference === "string" ? payload.templateReference : "",
       reasonFlags,
       source: payload?.source === "gemini" || payload?.source === "fallback" ? payload.source : "fallback",
-      grade: payload?.grade === "green" || payload?.grade === "orange" || payload?.grade === "red" ? payload.grade : "orange",
+      grade: payload?.grade === "green" || payload?.grade === "red" ? payload.grade : payload?.publishReady === true ? "green" : "red",
       qcApproved: payload?.qcApproved !== false,
       publishReady: payload?.publishReady === true,
     };
@@ -1339,7 +1437,7 @@ async function requestAiListingDraft({
 }
 
 function compareByStatus(a: Img, b: Img) {
-  const order: Record<ReviewStatus, number> = {
+  const order: Record<ItemStatus, number> = {
     ready: 0,
     error: 1,
     pending: 2,
@@ -1442,7 +1540,7 @@ function BrandMark() {
   );
 }
 
-function getStatusTone(status: ReviewStatus) {
+function getStatusTone(status: ItemStatus) {
   switch (status) {
     case "ready":
       return "bg-[#00BC7D] ring-[#00BC7D]/35";
@@ -1480,7 +1578,7 @@ function StatusThumbIcon({ tone, direction }: { tone: "ready" | "error"; directi
   );
 }
 
-function getStatusSortValue(status: ReviewStatus) {
+function getStatusSortValue(status: ItemStatus) {
   switch (status) {
     case "ready":
       return 0;
@@ -1491,7 +1589,7 @@ function getStatusSortValue(status: ReviewStatus) {
   }
 }
 
-function getResolvedReviewStatus(image: Img): ReviewStatus {
+function getResolvedItemStatus(image: Img): ItemStatus {
   if (image.aiProcessing || image.status === "pending") {
     return "pending";
   }
@@ -1550,7 +1648,7 @@ export default function MerchQuantumApp() {
   const availableShops = connected && isLiveProvider ? apiShops : [];
   const productSource = connected && isLiveProvider ? apiProducts : [];
   const templateKey = useMemo(() => `${template?.reference || "no-template"}::${templateDescription.trim()}`, [template?.reference, templateDescription]);
-  const templateReadyForAi = !!template && !!templateDescription.trim() && !loadingTemplateDetails;
+  const templateReadyForAi = !!template && !loadingTemplateDetails;
 
   const visibleProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1563,7 +1661,7 @@ export default function MerchQuantumApp() {
 
   const sortedImages = useMemo(() => {
     return [...images].sort((a, b) => {
-      const statusDelta = getStatusSortValue(getResolvedReviewStatus(a)) - getStatusSortValue(getResolvedReviewStatus(b));
+      const statusDelta = getStatusSortValue(getResolvedItemStatus(a)) - getStatusSortValue(getResolvedItemStatus(b));
       if (statusDelta !== 0) return statusDelta;
       return a.name.localeCompare(b.name);
     });
@@ -1576,9 +1674,9 @@ export default function MerchQuantumApp() {
     () => productSource.find((product) => product.id === productId && product.shopId === shopId) || productSource.find((product) => product.id === productId) || null,
     [productId, productSource, shopId]
   );
-  const readyCount = images.filter((img) => getResolvedReviewStatus(img) === "ready").length;
-  const errorCount = images.filter((img) => getResolvedReviewStatus(img) === "error").length;
-  const processingCount = images.filter((img) => getResolvedReviewStatus(img) === "pending").length;
+  const readyCount = images.filter((img) => getResolvedItemStatus(img) === "ready").length;
+  const errorCount = images.filter((img) => getResolvedItemStatus(img) === "error").length;
+  const processingCount = images.filter((img) => getResolvedItemStatus(img) === "pending").length;
   const queuedCount = queuedImages.length;
   const hasAnyLoadedImages = images.length > 0 || queuedImages.length > 0;
   const completedGenerationCount = readyCount + errorCount;
@@ -1587,8 +1685,8 @@ export default function MerchQuantumApp() {
   const searchNudgeTarget = !shopId ? "shop" : !template ? "template" : null;
   const isSearchLocked = searchNudgeTarget !== null;
   const uploadDisabled = !isWorkspaceConfigured || readyCount === 0 || isRunningBatch || processingCount > 0;
-  const canShowReviewDetail = isWorkspaceConfigured;
-  const canShowDetailPanel = canShowReviewDetail || !!selectedImage;
+  const canShowDetailWorkspace = isWorkspaceConfigured;
+  const canShowDetailPanel = canShowDetailWorkspace || !!selectedImage;
   const selectedImageFieldStates = selectedImage?.aiFieldStates ?? createAiFieldStates("idle");
   const previewOverlayUsesLightText = shouldUseLightPreviewText(selectedImage?.previewBackground || DISPLAY_NEUTRAL_BACKGROUND);
   const previewOverlayTextClass = previewOverlayUsesLightText ? "text-white" : "text-slate-950";
@@ -1606,24 +1704,38 @@ export default function MerchQuantumApp() {
     selectedImageFieldStates.tags === "loading"
     || !!selectedImage?.aiProcessing
     || isImageAwaitingStructuredOutput;
+  const isTemplatePrebufferState = templateReadyForAi && !selectedImage;
+  const shouldAwaitQuantumTitle = isTemplatePrebufferState || isDetailTitleLoading;
+  const shouldAwaitQuantumDescription = isTemplatePrebufferState || isDetailDescriptionLoading;
   const detailTitle = selectedImage
     ? selectedImageFieldStates.title === "ready"
       ? selectedImage.final
       : ""
-    : template?.nickname
+    : !templateReadyForAi
+      ? template?.nickname
       || selectedProduct?.title
-      || "Loading selected product...";
+      || "Loading selected product..."
+      : "";
   const detailDescription = selectedImage
     ? selectedImageFieldStates.description === "ready"
       ? selectedImage.finalDescription
       : ""
-    : (templateDescription
+    : (!templateReadyForAi
+      ? (templateDescription
       ? templateDescription
-      : canShowReviewDetail
+      : canShowDetailWorkspace
         ? "Select or add artwork to generate image-based listing copy."
         : selectedImage
           ? "Add a shop and product template when you're ready. Quantum AI will build the final listing copy here."
-          : "");
+          : "")
+      : "");
+  const detailDescriptionSections = splitDetailDescriptionForDisplay(
+    templateDescription,
+    selectedImage?.aiDraft?.leadParagraphs || [],
+    detailDescription
+  );
+  const detailBuyerDescription = detailDescriptionSections.buyerFacingDescription;
+  const detailTemplateSpecBlock = detailDescriptionSections.templateSpecBlock;
   const detailTags = selectedImage && selectedImageFieldStates.tags === "ready"
     ? selectedImage.tags
     : [];
@@ -1866,9 +1978,9 @@ export default function MerchQuantumApp() {
         const reasonFlags = Array.isArray(data?.reasonFlags)
           ? data.reasonFlags.filter((flag: unknown) => typeof flag === "string")
           : [];
-        const grade = data?.grade === "green" || data?.grade === "orange" || data?.grade === "red"
+        const grade = data?.grade === "green" || data?.grade === "red"
           ? data.grade
-          : confidence >= 0.8 && reasonFlags.length === 0
+          : data?.publishReady === true
             ? "green"
             : "red";
         const source = data?.source === "gemini" || data?.source === "fallback"
@@ -1893,7 +2005,7 @@ export default function MerchQuantumApp() {
               description: "error",
               tags: "error",
             };
-        const status: ReviewStatus =
+        const status: ItemStatus =
           publishReady
             ? "ready"
             : "error";
@@ -2028,7 +2140,7 @@ export default function MerchQuantumApp() {
         final: cleaned,
         finalDescription: "",
         tags: [],
-        status: "pending" as ReviewStatus,
+        status: "pending" as ItemStatus,
         statusReason: "Quantum AI is preparing listing copy.",
         aiFieldStates: createAiFieldStates("idle"),
       } satisfies Img;
@@ -2164,11 +2276,11 @@ export default function MerchQuantumApp() {
       const chosen = responseData.product || fallback;
       const title = chosen?.title || fallback.title;
       const usingFallbackDescription = !chosen?.description?.trim();
-      const base = formatTemplateDescription(
+      const rawTemplateDescription =
         chosen?.description?.trim() ||
           fallback.description?.trim() ||
-          `${title}. This is the base description from your saved template. Live product descriptions from ${selectedProvider?.label || "the provider"} will replace this placeholder after API wiring.`
-      );
+          "";
+      const base = sanitizeTemplateDescriptionForPrebuffer(rawTemplateDescription, title);
       const nextPlacementGuide = responseData.placementGuide || template?.placementGuide || DEFAULT_PLACEMENT_GUIDE;
 
       setTemplate({
@@ -2180,13 +2292,16 @@ export default function MerchQuantumApp() {
         placementGuide: nextPlacementGuide,
       });
       setTemplateDescription(base);
-      setApiStatus(usingFallbackDescription ? "Live template description is unavailable here, so MerchQuantum is using the saved product summary from this provider response." : "");
+      setApiStatus(
+        !base
+          ? "Static provider product specs were not available in this template response."
+          : usingFallbackDescription
+            ? "Live template specs are unavailable here, so MerchQuantum is preserving the saved provider spec block from this response."
+            : ""
+      );
     } catch (error) {
       const title = fallback.title;
-      const base = formatTemplateDescription(
-        fallback.description?.trim() ||
-          `${title}. This is the base description from your saved template. Live product descriptions from ${selectedProvider?.label || "the connected provider"} will replace this placeholder when available.`
-      );
+      const base = sanitizeTemplateDescriptionForPrebuffer(fallback.description?.trim() || "", title);
 
       setTemplate({
         reference: fallback.id,
@@ -2197,7 +2312,8 @@ export default function MerchQuantumApp() {
         placementGuide: template?.placementGuide || DEFAULT_PLACEMENT_GUIDE,
       });
       setTemplateDescription(base);
-      setApiStatus(formatApiError(error instanceof Error ? error.message : "Unable to load template product."));
+      const baseStatus = formatApiError(error instanceof Error ? error.message : "Unable to load template product.");
+      setApiStatus(base ? baseStatus : `${baseStatus} Static provider product specs were not available in this template response.`);
     } finally {
       setLoadingTemplateDetails(false);
     }
@@ -2206,7 +2322,7 @@ export default function MerchQuantumApp() {
   async function runDraftBatch() {
     if (!template || !shopId || readyCount === 0 || !isLiveProvider || !resolvedProviderId) return;
 
-    const activeImages = images.filter((img) => getResolvedReviewStatus(img) === "ready");
+    const activeImages = images.filter((img) => getResolvedItemStatus(img) === "ready");
     setIsRunningBatch(true);
     setRunStatus("");
     setBatchResults([]);
@@ -2629,30 +2745,42 @@ export default function MerchQuantumApp() {
                         <div className="flex h-full flex-col space-y-3">
                           <Field label="Final Title">
                             <div className="flex min-h-[44px] items-center rounded-xl border border-slate-700 bg-[#020616] px-3 py-0 text-left text-sm font-normal leading-5 text-white">
-                              {isDetailTitleLoading ? (
+                              {shouldAwaitQuantumTitle ? (
                                 <div className="flex w-full items-center justify-center gap-2 text-sm font-medium text-slate-300">
                                   <span className={`${getLoadingIndicatorClass()} animate-pulse`} />
-                                  <span>Loading title...</span>
+                                  <span>{QUANTUM_TITLE_AWAITING_TEXT}</span>
                                 </div>
                               ) : (
-                                detailTitle || <span className="text-slate-400">Awaiting Quantum AI title...</span>
+                                detailTitle || <span className="text-slate-400" />
                               )}
                             </div>
                           </Field>
 
                           <Field label="Final Description">
                             <div className="min-h-[264px] rounded-xl border border-slate-700 bg-[#020616] px-3 py-2 text-sm font-normal leading-6 text-white lg:h-[17rem] lg:overflow-y-auto">
-                              <div className="flex min-h-full items-center">
-                                {isDetailDescriptionLoading ? (
-                                  <div className="flex w-full items-center justify-center gap-2 text-sm font-medium text-slate-300">
+                              <div className="flex min-h-full">
+                                {shouldAwaitQuantumDescription ? (
+                                  <div className="flex w-full flex-col gap-3">
+                                    <div className="flex items-center justify-center gap-2 text-sm font-medium text-slate-300">
                                     <span className={`${getLoadingIndicatorClass()} animate-pulse`} />
-                                    <span>Loading description...</span>
+                                      <span>{QUANTUM_DESCRIPTION_AWAITING_TEXT}</span>
+                                    </div>
+                                    {detailTemplateSpecBlock ? (
+                                      <div className="w-full border-t border-slate-800 pt-3 whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
+                                        {detailTemplateSpecBlock}
+                                      </div>
+                                    ) : null}
                                   </div>
                                 ) : (
-                                  <div className="w-full whitespace-pre-wrap text-left">
-                                    {detailDescription
-                                      ? htmlToEditableText(detailDescription)
-                                      : "Awaiting Quantum AI description..."}
+                                  <div className="flex w-full flex-col gap-3">
+                                    <div className="w-full whitespace-pre-wrap text-left">
+                                      {detailBuyerDescription}
+                                    </div>
+                                    {detailTemplateSpecBlock ? (
+                                      <div className="w-full border-t border-slate-800 pt-3 whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
+                                        {detailTemplateSpecBlock}
+                                      </div>
+                                    ) : null}
                                   </div>
                                 )}
                               </div>
@@ -2666,7 +2794,7 @@ export default function MerchQuantumApp() {
                           <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
                             {sortedImages.map((img, index) => {
                               const isSelected = selectedImage?.id === img.id;
-                              const resolvedStatus = getResolvedReviewStatus(img);
+                              const resolvedStatus = getResolvedItemStatus(img);
                               const isProcessing = resolvedStatus === "pending";
                               const previewFrameTone = isProcessing
                                 ? "border-[#7F22FE]/55"
@@ -2732,7 +2860,7 @@ export default function MerchQuantumApp() {
                         </div>
                       ) : null}
 
-                      {canShowReviewDetail ? (
+                      {canShowDetailWorkspace ? (
                         <div className="pt-0.5">
                           <div className="grid gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
                             <div className="flex min-h-[34px] items-center justify-center rounded-xl border border-slate-800 bg-[#020616] px-2.5 py-1.5 text-center text-sm">
