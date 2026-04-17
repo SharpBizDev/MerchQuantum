@@ -27,7 +27,7 @@ type IncomingItem = {
 };
 
 function containsRawAiArtifacts(value: string) {
-  return /```|^\s*json\b|seo_(title|paragraph_1|paragraph_2|tags)\b|qc_status\b|^\s*[\[{]/i.test(value);
+  return /```|^\s*json\b|(?:seo_(?:title|paragraph_1|paragraph_2|tags)|generated_(?:title|paragraph_1|paragraph_2)|generatedTitle|generatedParagraph1|generatedParagraph2)\b|qc_status\b|^\s*[\[{]/i.test(value);
 }
 
 function stripHtmlForValidation(value: string) {

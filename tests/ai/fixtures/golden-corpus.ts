@@ -9,7 +9,7 @@ export type GoldenCorpusFixture = {
   };
   payloadOverrides: Record<string, any>;
   expected: {
-    grade: "green" | "orange" | "red";
+    grade: "green" | "red";
     titleMustInclude: string[];
     titleMustExclude?: string[];
     leadMustInclude?: string[];
@@ -84,7 +84,7 @@ export const GOLDEN_CORPUS_FIXTURES: GoldenCorpusFixture[] = [
           discoveryTerms: ["hiking shirt", "mountain tee", "outdoor gift", "trail style", "nature design"],
         },
       },
-      validator: { grade: "orange", confidence: 0.67, reasonFlags: [], complianceFlags: [], reasonDetails: [] },
+      validator: { grade: "green", confidence: 0.67, reasonFlags: [], complianceFlags: [], reasonDetails: [] },
       canonicalTitle: "Mountain Adventure Hiking Tee",
       canonicalLeadParagraphs: [
         "Outdoor-focused design for trail-minded shoppers and gift-ready discovery.",
@@ -92,7 +92,7 @@ export const GOLDEN_CORPUS_FIXTURES: GoldenCorpusFixture[] = [
       ],
     },
     expected: {
-      grade: "orange",
+      grade: "green",
       titleMustInclude: ["Mountain Adventure"],
       leadMustInclude: ["Outdoor-focused design"],
       reasonIncludes: ["OCR/text legibility"],
@@ -134,7 +134,7 @@ export const GOLDEN_CORPUS_FIXTURES: GoldenCorpusFixture[] = [
         inferredKeywords: ["encouragement shirt", "simple gift"],
         forbiddenClaims: [],
       },
-      validator: { grade: "orange", confidence: 0.63, reasonFlags: [], complianceFlags: [], reasonDetails: [] },
+      validator: { grade: "green", confidence: 0.63, reasonFlags: [], complianceFlags: [], reasonDetails: [] },
       canonicalTitle: "Be Kind Minimal Graphic Tee",
       canonicalLeadParagraphs: [
         "Minimal encouragement styling keeps the message readable without overloading the listing.",
@@ -142,7 +142,7 @@ export const GOLDEN_CORPUS_FIXTURES: GoldenCorpusFixture[] = [
       ],
     },
     expected: {
-      grade: "orange",
+      grade: "green",
       titleMustInclude: ["Be Kind"],
       reasonIncludes: ["OCR/text legibility"],
       filename: {
@@ -183,7 +183,7 @@ export const GOLDEN_CORPUS_FIXTURES: GoldenCorpusFixture[] = [
         inferredKeywords: ["faith shirt", "christian tee"],
         forbiddenClaims: [],
       },
-      validator: { grade: "orange", confidence: 0.56, reasonFlags: [], complianceFlags: [], reasonDetails: [] },
+      validator: { grade: "green", confidence: 0.56, reasonFlags: [], complianceFlags: [], reasonDetails: [] },
       canonicalTitle: "Faith Message Graphic Tee",
       canonicalLeadParagraphs: [
         "Faith-forward styling is clear, but the cropped slogan means this listing should stay cautious.",
@@ -191,7 +191,7 @@ export const GOLDEN_CORPUS_FIXTURES: GoldenCorpusFixture[] = [
       ],
     },
     expected: {
-      grade: "orange",
+      grade: "green",
       titleMustInclude: ["Faith Message"],
       reasonIncludes: ["cropped"],
       filename: {
@@ -232,7 +232,7 @@ export const GOLDEN_CORPUS_FIXTURES: GoldenCorpusFixture[] = [
         inferredKeywords: ["faith shirt", "christian tee"],
         forbiddenClaims: [],
       },
-      validator: { grade: "orange", confidence: 0.74, reasonFlags: [], complianceFlags: [], reasonDetails: [] },
+      validator: { grade: "green", confidence: 0.74, reasonFlags: [], complianceFlags: [], reasonDetails: [] },
       canonicalTitle: "Jesus Saves Faith Graphic Tee",
       canonicalLeadParagraphs: [
         "Bold faith-forward messaging keeps the visible slogan clear for shoppers.",
@@ -240,7 +240,7 @@ export const GOLDEN_CORPUS_FIXTURES: GoldenCorpusFixture[] = [
       ],
     },
     expected: {
-      grade: "orange",
+      grade: "green",
       titleMustInclude: ["Jesus Saves"],
       titleMustExclude: ["Cat", "Mom", "Meow"],
       reasonIncludes: ["Filename"],
@@ -330,15 +330,15 @@ export const GOLDEN_CORPUS_FIXTURES: GoldenCorpusFixture[] = [
         inferredKeywords: ["beach shirt", "summer gift"],
         forbiddenClaims: [],
       },
-      validator: { grade: "orange", confidence: 0.7, reasonFlags: [], complianceFlags: [], reasonDetails: [] },
+      validator: { grade: "green", confidence: 0.7, reasonFlags: [], complianceFlags: [], reasonDetails: [] },
       canonicalTitle: "Sunset Palm Beach Graphic Tee",
       canonicalLeadParagraphs: [
         "Image-led summer styling gives this listing a clean beach-lifestyle angle.",
-        "The design reads clearly even without text, but still benefits from review.",
+        "The design reads clearly even without text, but still benefits from cautious copy framing.",
       ],
     },
     expected: {
-      grade: "orange",
+      grade: "green",
       titleMustInclude: ["Sunset Palm"],
       filename: {
         classification: "partial_support",
@@ -382,7 +382,7 @@ export const GOLDEN_CORPUS_FIXTURES: GoldenCorpusFixture[] = [
       canonicalTitle: "Minimal Abstract Graphic Tee",
       canonicalLeadParagraphs: [
         "The visual is extremely minimal, so the listing should stay cautious.",
-        "More review is needed before this should move to a ready state.",
+        "More caution is needed before this should be treated as a strong ready state.",
       ],
     },
     expected: {
@@ -427,15 +427,15 @@ export const GOLDEN_CORPUS_FIXTURES: GoldenCorpusFixture[] = [
         inferredKeywords: ["abstract tee"],
         forbiddenClaims: [],
       },
-      validator: { grade: "orange", confidence: 0.42, reasonFlags: [], complianceFlags: [], reasonDetails: [] },
+      validator: { grade: "green", confidence: 0.42, reasonFlags: [], complianceFlags: [], reasonDetails: [] },
       canonicalTitle: "Abstract Mark Graphic Tee",
       canonicalLeadParagraphs: [
         "The visual is quiet and abstract, so the listing needs a cautious tone.",
-        "Review is recommended before treating this as a strong ready-to-publish draft.",
+        "Extra caution is recommended before treating this as a strong ready-to-publish draft.",
       ],
     },
     expected: {
-      grade: "orange",
+      grade: "green",
       titleMustInclude: ["Abstract Mark"],
       reasonIncludes: ["low-information"],
       filename: {

@@ -21,7 +21,7 @@ export type ListingUiResponse = {
   confidence: number;
   reasonFlags: string[];
   source: "gemini" | "fallback";
-  grade: "green" | "orange" | "red";
+  grade: "green" | "red";
   marketplaceDrafts: MarketplaceDrafts;
   semanticRecord: SemanticRecord;
 };
@@ -92,7 +92,7 @@ export type MarketplaceDrafts = {
 };
 
 export type ValidatorResult = {
-  grade: "green" | "orange" | "red";
+  grade: "green" | "red";
   confidence: number;
   reasonFlags: string[];
   complianceFlags: string[];
@@ -171,11 +171,12 @@ export class ListingInputGuardError extends Error {
 }
 
 const DEFAULT_MODEL = process.env.GEMINI_LISTING_MODEL || "gemini-2.5-flash";
+const DEFAULT_STRONG_OCR_MODEL = "gemini-2.5-pro";
 const DEFAULT_OCR_MODEL =
   process.env.GEMINI_LISTING_OCR_MODEL ||
   process.env.GEMINI_LISTING_STRONG_MODEL ||
   process.env.GEMINI_LISTING_MODEL_OCR ||
-  DEFAULT_MODEL;
+  DEFAULT_STRONG_OCR_MODEL;
 const GEMINI_ENDPOINT_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const MAX_TEMPLATE_CONTEXT = 1400;
 const MAX_TITLE_CHARS = 120;
@@ -206,8 +207,8 @@ const OCR_WIDE_ARTWORK_ASPECT_THRESHOLD = 1.65;
 const OCR_COMPACT_HEIGHT_RATIO_THRESHOLD = 0.58;
 const OCR_SPARSE_CANVAS_COVERAGE_THRESHOLD = 0.56;
 const OCR_TRIM_GAIN_THRESHOLD = 72;
-const ANALYSIS_LIGHT_BACKGROUND = { r: 255, g: 255, b: 255, alpha: 1 } as const;
-const ANALYSIS_DARK_BACKGROUND = { r: 0, g: 0, b: 0, alpha: 1 } as const;
+const ANALYSIS_LIGHT_BACKGROUND = { r: 245, g: 245, b: 245, alpha: 1 } as const;
+const ANALYSIS_DARK_BACKGROUND = { r: 26, g: 26, b: 26, alpha: 1 } as const;
 const ANALYSIS_NEUTRAL_BACKGROUND = { r: 229, g: 229, b: 229, alpha: 1 } as const;
 const NEUTRAL_HELPER_MIN_CONTRAST_RATIO = 2.6;
 const NEUTRAL_HELPER_CONTRAST_DELTA_THRESHOLD = 1.35;
@@ -362,17 +363,17 @@ const GEMINI_RESPONSE_SCHEMA = {
   properties: {
     qc_status: { type: "STRING", enum: ["PASS", "FAIL"] },
     extracted_text: { type: "STRING" },
-    seo_title: { type: "STRING" },
-    seo_paragraph_1: { type: "STRING" },
-    seo_paragraph_2: { type: "STRING" },
+    generated_title: { type: "STRING" },
+    generated_paragraph_1: { type: "STRING" },
+    generated_paragraph_2: { type: "STRING" },
     seo_tags: { type: "ARRAY", items: { type: "STRING" } },
   },
   required: [
     "qc_status",
     "extracted_text",
-    "seo_title",
-    "seo_paragraph_1",
-    "seo_paragraph_2",
+    "generated_title",
+    "generated_paragraph_1",
+    "generated_paragraph_2",
     "seo_tags",
   ],
 };
@@ -889,6 +890,8 @@ function assembleMarketingDescription(paragraphs: string[]) {
           "generatedParagraph2",
           "paragraph1",
           "paragraph2",
+          "generated_paragraph_1",
+          "generated_paragraph_2",
         ])
       )
       .map((paragraph) => paragraph.replace(/^[-*•]+\s*/, ""))
@@ -1130,7 +1133,7 @@ function polishReasonDetails(reasonDetails: ListingReason[], imageTruth: ImageTr
   return mergeReasonDetails(polished);
 }
 
-function isSoftReviewReason(detail: ListingReason, imageTruth: ImageTruthRecord) {
+function isSoftCautionReason(detail: ListingReason, imageTruth: ImageTruthRecord) {
   if (detail.severity === "info") return true;
   if (!hasStrongReadyGrounding(imageTruth)) return false;
   const normalized = detail.summary.toLowerCase();
@@ -1140,22 +1143,18 @@ function isSoftReviewReason(detail: ListingReason, imageTruth: ImageTruthRecord)
   );
 }
 
-function getReviewBlockingReasonDetails(reasonDetails: ListingReason[], imageTruth: ImageTruthRecord) {
-  return reasonDetails.filter((detail) => !isSoftReviewReason(detail, imageTruth));
-}
-
 function isRecoverableBinaryCautionReason(
   detail: ListingReason,
   imageTruth: ImageTruthRecord,
   title: string,
   leadParagraphs: string[]
 ) {
-  if (!hasRecoverableReviewGrounding(imageTruth, title, leadParagraphs)) return false;
+  if (!hasRecoverableCautionGrounding(imageTruth, title, leadParagraphs)) return false;
   if (detail.stage !== "image_truth") return false;
 
   const normalized = detail.summary.toLowerCase();
   if (
-    /too ambiguous|meaning unclear|too unclear|unable to read|cannot read|unreadable|illegible|blank|distorted|unusable|no meaningful signal/.test(
+    /highly ambiguous|too ambiguous|meaning unclear|too unclear|unable to read|cannot read|unreadable|illegible|blank|distorted|unusable|no meaningful signal/.test(
       normalized
     )
   ) {
@@ -1176,11 +1175,19 @@ function isSoftBinaryFailureReason(
   title: string,
   leadParagraphs: string[]
 ) {
-  if (isSoftReviewReason(detail, imageTruth)) return true;
+  if (isSoftCautionReason(detail, imageTruth)) return true;
   if (isRecoverableBinaryCautionReason(detail, imageTruth, title, leadParagraphs)) return true;
+  if (
+    detail.code === "lead_phrase_overlap"
+    && (hasStrongReadyGrounding(imageTruth) || hasRecoverableCautionGrounding(imageTruth, title, leadParagraphs))
+    && leadParagraphs.length === 2
+    && leadParagraphs.every((paragraph) => tokenizeForVariety(paragraph).length >= 8)
+  ) {
+    return true;
+  }
 
   const hasRecoverableBinaryGrounding =
-    hasStrongReadyGrounding(imageTruth) || hasRecoverableReviewGrounding(imageTruth, title, leadParagraphs);
+    hasStrongReadyGrounding(imageTruth) || hasRecoverableCautionGrounding(imageTruth, title, leadParagraphs);
   if (!hasRecoverableBinaryGrounding) return false;
   if (detail.stage !== "filename") return false;
 
@@ -1418,14 +1425,22 @@ function inferReasonStage(summary: string): ListingReasonStage {
 function inferReasonSeverity(summary: string): ListingReasonSeverity {
   const normalized = summary.toLowerCase();
   if (/critical|unsafe|non-compliant|strongly conflicts/.test(normalized)) return "critical";
-  if (/warning|weak|partial|review|clipped|conflict|fallback|detected|repetitive|unclear|should be ignored/.test(normalized)) {
+  if (/warning|weak|partial|clipped|conflict|fallback|detected|repetitive|unclear|should be ignored/.test(normalized)) {
     return "warning";
   }
   return "info";
 }
 
+function filterReadableReasonFlags(flags: string[]) {
+  const uniqueFlags = unique(flags);
+  const hasReadableFlag = uniqueFlags.some((flag) => !isCodeLikeReasonSummary(flag));
+  return hasReadableFlag
+    ? uniqueFlags.filter((flag) => !isCodeLikeReasonSummary(flag))
+    : uniqueFlags;
+}
+
 function reasonDetailsFromFlags(flags: string[]) {
-  return unique(flags)
+  return filterReadableReasonFlags(flags)
     .map((summary, index) =>
       makeReason(
         `validator_flag_${index + 1}`,
@@ -1466,42 +1481,35 @@ function sanitizeValidatorSignals(
   );
 
   const polishedReasonDetails = polishReasonDetails(filteredReasonDetails, imageTruth);
-  const blockingReasonDetails = getReviewBlockingReasonDetails(polishedReasonDetails, imageTruth);
+  const blockingReasonDetails = getBinaryBlockingReasonDetails(polishedReasonDetails, imageTruth, title, leadParagraphs);
   const rebuiltReasonFlags = reasonFlagsFromDetails(polishedReasonDetails, filteredComplianceFlags);
   const blockingReasonFlags = reasonFlagsFromDetails(blockingReasonDetails, filteredComplianceFlags);
-  const readyThreshold = getReadyConfidenceThreshold(imageTruth);
-  const recoverableForReview = hasRecoverableReviewGrounding(imageTruth, title, leadParagraphs);
-  let grade = validator.grade;
-
-  if (validator.confidence < 0.38 && !recoverableForReview) {
-    grade = "red";
-  } else if (grade === "red" && recoverableForReview && filteredComplianceFlags.length === 0) {
-    grade = "orange";
-  } else if (blockingReasonFlags.length === 0 && filteredComplianceFlags.length === 0 && validator.confidence >= readyThreshold) {
-    grade = "green";
-  } else if (
-    grade === "green" &&
-    (blockingReasonFlags.length > 0 || filteredComplianceFlags.length > 0 || validator.confidence < readyThreshold)
-  ) {
-    grade = "orange";
-  }
+  const recoverableForCaution = hasRecoverableCautionGrounding(imageTruth, title, leadParagraphs);
+  const grade: ValidatorResult["grade"] =
+    ((validator.confidence < 0.38 && !recoverableForCaution) ||
+      blockingReasonFlags.length > 0 ||
+      filteredComplianceFlags.length > 0)
+      ? "red"
+      : "green";
 
   if (grade === "green") {
     return {
       ...validator,
       grade,
-      reasonFlags: [],
+      reasonFlags: rebuiltReasonFlags,
       complianceFlags: [],
-      reasonDetails: [],
+      reasonDetails: polishedReasonDetails,
     } satisfies ValidatorResult;
   }
 
   return {
     ...validator,
     grade,
-    reasonFlags: rebuiltReasonFlags,
+    reasonFlags: blockingReasonFlags.length
+      ? blockingReasonFlags
+      : ["Quantum AI rejected this artwork because the design appears blank, illegible, or too distorted for safe listing generation."],
     complianceFlags: filteredComplianceFlags,
-    reasonDetails: polishedReasonDetails,
+    reasonDetails: blockingReasonDetails.length ? blockingReasonDetails : polishedReasonDetails,
   } satisfies ValidatorResult;
 }
 
@@ -1983,7 +1991,7 @@ export function gradeListing(
   if (!effectiveTitle || effectiveTitle.length < 12 || isLowSignalTitle(effectiveTitle)) {
     confidence -= 0.1;
     reasonDetails.push(
-      makeReason("weak_title_core", "warning", "semantic", "Generated title core is too weak and needs review.")
+      makeReason("weak_title_core", "warning", "semantic", "Generated title core is too weak and needs stronger clarification.")
     );
   }
 
@@ -2014,39 +2022,44 @@ export function gradeListing(
   const dedupedCompliance = unique(complianceFlags).slice(0, 4);
   const mergedReasonDetails = mergeReasonDetails(reasonDetails);
   const polishedReasonDetails = polishReasonDetails(mergedReasonDetails, imageTruth);
-  const blockingReasonDetails = getReviewBlockingReasonDetails(polishedReasonDetails, imageTruth);
+  const blockingReasonDetails = getBinaryBlockingReasonDetails(
+    polishedReasonDetails,
+    imageTruth,
+    effectiveTitle,
+    leadParagraphs
+  );
   const dedupedReasons = reasonFlagsFromDetails(polishedReasonDetails, dedupedCompliance);
-  const readyThreshold = getReadyConfidenceThreshold(imageTruth);
-  const recoverableForReview = hasRecoverableReviewGrounding(imageTruth, effectiveTitle, leadParagraphs);
+  const blockingReasonFlags = reasonFlagsFromDetails(blockingReasonDetails, dedupedCompliance);
+  const recoverableForCaution = hasRecoverableCautionGrounding(imageTruth, effectiveTitle, leadParagraphs);
 
-  if ((confidence < 0.38 || imageTruth.meaningClarity < 0.35) && !recoverableForReview) {
+  if ((confidence < 0.38 || imageTruth.meaningClarity < 0.35) && !recoverableForCaution) {
     return {
       grade: "red",
       confidence,
-      reasonFlags: dedupedReasons.length ? dedupedReasons : ["Image meaning is too unclear for safe listing generation."],
+      reasonFlags: blockingReasonFlags.length ? blockingReasonFlags : ["Image meaning is too unclear for safe listing generation."],
       complianceFlags: dedupedCompliance,
-      reasonDetails: polishedReasonDetails.length
-        ? polishedReasonDetails
+      reasonDetails: blockingReasonDetails.length
+        ? blockingReasonDetails
         : [makeReason("image_unclear", "critical", "validator", "Image meaning is too unclear for safe listing generation.")],
     } satisfies ValidatorResult;
   }
 
-  if (confidence >= readyThreshold && blockingReasonDetails.length === 0 && dedupedCompliance.length === 0) {
+  if (blockingReasonDetails.length === 0 && dedupedCompliance.length === 0) {
     return {
       grade: "green",
       confidence,
-      reasonFlags: [],
+      reasonFlags: dedupedReasons,
       complianceFlags: [],
-      reasonDetails: [],
+      reasonDetails: polishedReasonDetails,
     } satisfies ValidatorResult;
   }
 
   return {
-    grade: "orange",
+    grade: "red",
     confidence,
-    reasonFlags: dedupedReasons.length ? dedupedReasons : ["Usable draft detected with minor caution flags that do not block publishing."],
+    reasonFlags: blockingReasonFlags.length ? blockingReasonFlags : dedupedReasons,
     complianceFlags: dedupedCompliance,
-    reasonDetails: polishedReasonDetails,
+    reasonDetails: blockingReasonDetails.length ? blockingReasonDetails : polishedReasonDetails,
   } satisfies ValidatorResult;
 }
 
@@ -2234,7 +2247,7 @@ function hasStrongReadyGrounding(imageTruth: ImageTruthRecord) {
   );
 }
 
-function hasRecoverableReviewGrounding(
+function hasRecoverableCautionGrounding(
   imageTruth: ImageTruthRecord,
   title: string,
   leadParagraphs: string[]
@@ -2253,7 +2266,7 @@ function hasRecoverableReviewGrounding(
     .map((value) => cleanSpaces(value).toLowerCase())
     .join(" ");
   const hardUncertainty = imageTruth.uncertainty.some((summary) =>
-    /meaning unclear|too unclear|unable to read|cannot read|unreadable|illegible|no meaningful signal/i.test(summary)
+    /highly ambiguous|meaning unclear|too unclear|unable to read|cannot read|unreadable|illegible|no meaningful signal/i.test(summary)
   );
   const weakTitle = !cleanSpaces(title) || isLowSignalTitle(title);
   const clippedLead = leadParagraphs.some((paragraph) => looksClippedLeadParagraph(paragraph));
@@ -2615,7 +2628,7 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
     const contrastOnNeutral = getContrastRatio(resolvedArtworkLuminance, neutralBackgroundLuminance);
     const useDarkBackground = contrastOnDark >= contrastOnLight;
     const analysisBackground = useDarkBackground ? ANALYSIS_DARK_BACKGROUND : ANALYSIS_LIGHT_BACKGROUND;
-    const analysisBackgroundLabel = useDarkBackground ? "black" : "white";
+    const analysisBackgroundLabel = useDarkBackground ? "dark" : "light";
     const shouldIncludeNeutralGrayRender =
       hasMixedContrastArtwork ||
       (!hasStrongLuminanceBias &&
@@ -2669,8 +2682,8 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
       primary,
       helpers,
       promptHint: hasMeaningfulTransparency
-        ? `The provided images all show the same artwork. The strongest temporary high-contrast analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background. Additional helper renders may show the same transparent design on both black and white garment-neutral backgrounds, and a neutral-gray garment-neutral helper view may appear when mixed contrast or sparse transparency makes that easier to read. A cropped close view around the visible artwork bounds may be included when the full canvas leaves too much empty space. A single-ink text-prioritized helper render may also appear to emphasize letters, symbols, and linework shape without changing the original design. A later helper image may show the untouched original transparent upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`
-        : `The provided images all show the same artwork. The strongest temporary upscaled analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background to improve readability for a small or low-signal source image. Additional helper renders may show the same design on black and white garment-neutral backgrounds, and a neutral-gray garment-neutral helper view may appear when mixed contrast or weak source detail makes that easier to read. A later helper image may show the untouched original upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`,
+        ? `The provided images all show the same artwork. The strongest temporary high-contrast analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background. Additional helper renders may show the same transparent design on both dark and light garment-neutral backgrounds, and a neutral-gray garment-neutral helper view may appear when mixed contrast or sparse transparency makes that easier to read. A cropped close view around the visible artwork bounds may be included when the full canvas leaves too much empty space. A single-ink text-prioritized helper render may also appear to emphasize letters, symbols, and linework shape without changing the original design. A later helper image may show the untouched original transparent upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`
+        : `The provided images all show the same artwork. The strongest temporary upscaled analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background to improve readability for a small or low-signal source image. Additional helper renders may show the same design on dark and light garment-neutral backgrounds, and a neutral-gray garment-neutral helper view may appear when mixed contrast or weak source detail makes that easier to read. A later helper image may show the untouched original upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`,
       routingHint: {
         ocrCritical,
         helperStrategy: hasMeaningfulTransparency ? "transparent-normalized" : "upscaled-normalized",
@@ -2806,41 +2819,63 @@ function normalizeValidator(
 ): ValidatorResult {
   const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const gradeRaw = String(obj.grade || fallback.grade).toLowerCase();
-  let grade = gradeRaw === "green" || gradeRaw === "orange" || gradeRaw === "red" ? gradeRaw : fallback.grade;
+  const gradeHint: ValidatorResult["grade"] =
+    gradeRaw === "red" ? "red" : gradeRaw === "green" ? "green" : fallback.grade;
   const reasonFlags = normalizeArray(obj.reasonFlags).slice(0, 8);
+  const explicitReasonDetails = normalizeReasonDetails(obj.reasonDetails);
+  const flaggedReasonDetails = explicitReasonDetails.length === 0 ? reasonDetailsFromFlags(reasonFlags) : [];
+  const hasExplicitValidatorReasons = explicitReasonDetails.length > 0 || flaggedReasonDetails.length > 0;
   const reasonDetails = mergeReasonDetails(
-    normalizeReasonDetails(obj.reasonDetails),
-    reasonDetailsFromFlags(reasonFlags),
-    fallback.reasonDetails
+    explicitReasonDetails,
+    flaggedReasonDetails,
+    hasExplicitValidatorReasons ? [] : fallback.reasonDetails
   );
   const complianceFlags = normalizeArray(obj.complianceFlags).slice(0, 8);
   const confidence = clamp(Number(obj.confidence ?? fallback.confidence) || fallback.confidence, 0, 1);
   const effectiveComplianceFlags = complianceFlags.length ? complianceFlags : fallback.complianceFlags;
   const effectiveReasonFlags = reasonFlagsFromDetails(reasonDetails, effectiveComplianceFlags);
-  const readyThreshold = context ? getReadyConfidenceThreshold(context.imageTruth) : 0.78;
-  const blockingReasonDetails = context ? getReviewBlockingReasonDetails(reasonDetails, context.imageTruth) : reasonDetails;
+  const blockingReasonDetails = context
+    ? getBinaryBlockingReasonDetails(reasonDetails, context.imageTruth, context.title, context.leadParagraphs)
+    : reasonDetails;
   const blockingReasonFlags = reasonFlagsFromDetails(blockingReasonDetails, effectiveComplianceFlags);
-
-  if (grade === "green" && (blockingReasonFlags.length > 0 || effectiveComplianceFlags.length > 0 || confidence < readyThreshold)) {
-    grade = "orange";
-  }
+  const hardVisualFailure = context
+    ? (confidence < 0.38 || context.imageTruth.meaningClarity < 0.35) &&
+      !hasRecoverableCautionGrounding(context.imageTruth, context.title, context.leadParagraphs)
+    : false;
+  const grade: ValidatorResult["grade"] =
+    hardVisualFailure || blockingReasonFlags.length > 0 || effectiveComplianceFlags.length > 0
+      ? "red"
+      : gradeHint === "red" && !context
+        ? "red"
+        : "green";
 
   const normalizedValidator = {
     grade,
     confidence,
-    reasonFlags: effectiveReasonFlags,
-    complianceFlags: effectiveComplianceFlags,
-    reasonDetails,
+    reasonFlags: grade === "green" ? effectiveReasonFlags : blockingReasonFlags.length ? blockingReasonFlags : effectiveReasonFlags,
+    complianceFlags: grade === "green" ? [] : effectiveComplianceFlags,
+    reasonDetails: grade === "green" ? reasonDetails : blockingReasonDetails.length ? blockingReasonDetails : reasonDetails,
   } satisfies ValidatorResult;
 
   if (!context) return normalizedValidator;
 
-  return sanitizeValidatorSignals(
+  const sanitizedValidator = sanitizeValidatorSignals(
     normalizedValidator,
     context.title,
     context.leadParagraphs,
     context.imageTruth
   );
+
+  if (sanitizedValidator.grade === "green" && reasonFlags.length > 0) {
+    const supplementalGreenReasonFlags = filterReadableReasonFlags(reasonFlags)
+      .filter((flag) => inferReasonStage(flag) !== "compliance");
+    return {
+      ...sanitizedValidator,
+      reasonFlags: unique([...sanitizedValidator.reasonFlags, ...supplementalGreenReasonFlags]).slice(0, 6),
+    } satisfies ValidatorResult;
+  }
+
+  return sanitizedValidator;
 }
 
 function buildMasterPrompt(
@@ -2869,7 +2904,7 @@ function buildMasterPrompt(
     `You are writing copy for a ${sterileProductType}. Do NOT reference any other themes, religions, or subjects other than what is visibly present in the image scan.`,
     "",
     "PHASE 1: OCR & Analysis",
-    "Read the visible text and identify the key visual elements.",
+    "Read every word on this design exactly as written. Identify all key visual elements.",
     "Include extracted_text as a concise OCR capture of readable wording, or an empty string if no readable text is present.",
     "",
     "PHASE 2: Quality Control Gate",
@@ -2879,20 +2914,20 @@ function buildMasterPrompt(
     "",
     "PHASE 3: SEO Generation (If PASS)",
     "Generate:",
-    "- seo_title: a highly clickable, keyword-optimized title.",
-    "- seo_paragraph_1: the first marketing paragraph.",
-    "- seo_paragraph_2: the second marketing paragraph.",
+    "- generated_title: a highly clickable, keyword-optimized title.",
+    "- generated_paragraph_1: the first marketing paragraph.",
+    "- generated_paragraph_2: the second marketing paragraph.",
     "- seo_tags: an array of exactly 15 high-value SEO tags.",
     "",
     "CRITICAL RULES",
-    "- seo_paragraph_1 and seo_paragraph_2 must each be 40 to 60 words.",
-    "- seo_paragraph_1 focuses on the emotional hook, vibe, and audience.",
-    "- seo_paragraph_2 focuses on design details, styling suggestions, and aesthetic fit.",
+    "- generated_paragraph_1 and generated_paragraph_2 must each be 40 to 60 words.",
+    "- generated_paragraph_1 focuses on the emotional hook, vibe, and audience.",
+    "- generated_paragraph_2 focuses on design details, styling suggestions, and aesthetic fit.",
     "- Do not include generic garment specs, care instructions, fit, cotton weight, or template text.",
     "- Focus only on the art/design and its customer appeal.",
-    "- Weave the strongest keywords from seo_title naturally into seo_paragraph_1.",
-    "- Do not repeat the full seo_title verbatim at the start of seo_paragraph_1.",
-    "- seo_paragraph_2 must end in a complete sentence.",
+    "- Weave the strongest keywords from generated_title naturally into generated_paragraph_1.",
+    "- Do not repeat the full generated_title verbatim at the start of generated_paragraph_1.",
+    "- generated_paragraph_2 must end in a complete sentence.",
     "- Provider template/spec content is application-owned and must never be rewritten, summarized, or paraphrased.",
     "",
     "ANALYSIS RULES",
@@ -2906,7 +2941,7 @@ function buildMasterPrompt(
     `- Conflict severity hint: ${filenameAssessment.conflictSeverity}; ignore filename: ${filenameAssessment.shouldIgnore ? "yes" : "no"}`,
     "",
     "JSON SCHEMA",
-    '{"qc_status": "PASS" | "FAIL", "extracted_text": string, "seo_title": string, "seo_paragraph_1": string, "seo_paragraph_2": string, "seo_tags": string[]}',
+    '{"qc_status": "PASS" | "FAIL", "extracted_text": string, "generated_title": string, "generated_paragraph_1": string, "generated_paragraph_2": string, "seo_tags": string[]}',
     "",
     "OUTPUT FORMAT",
     "Return ONLY valid structured JSON.",
@@ -3084,10 +3119,10 @@ async function callGeminiRecord(
   );
 
   const titleSeedCandidate =
-    parsedObj.seo_title
-    || parsedObj.seoTitle
+    parsedObj.generated_title
     || parsedObj.generatedTitle
-    || parsedObj.generated_title
+    || parsedObj.seo_title
+    || parsedObj.seoTitle
     || parsedObj.finalTitle
     || parsedObj.final_title
     || parsedObj.canonicalTitle
@@ -3125,9 +3160,10 @@ async function callGeminiRecord(
         titleCore: provisionalTitle || semanticFallback.titleCore,
         benefitCore: cleanSpaces(
           String(
-            parsedObj.seo_paragraph_1
-            || parsedObj.seoParagraph1
+            parsedObj.generated_paragraph_1
             || parsedObj.generatedParagraph1
+            || parsedObj.seo_paragraph_1
+            || parsedObj.seoParagraph1
             || semanticFallback.benefitCore
           )
         ),
@@ -3150,10 +3186,10 @@ async function callGeminiRecord(
   }
 
   const finalTitleCandidate =
-    parsedObj.seo_title
-    || parsedObj.seoTitle
+    parsedObj.generated_title
     || parsedObj.generatedTitle
-    || parsedObj.generated_title
+    || parsedObj.seo_title
+    || parsedObj.seoTitle
     || parsedObj.finalTitle
     || parsedObj.final_title
     || parsedObj.canonicalTitle
@@ -3167,14 +3203,14 @@ async function callGeminiRecord(
   );
 
   const suppliedLeadCandidates = [
+    parsedObj.generated_paragraph_1,
+    parsedObj.generatedParagraph1,
+    parsedObj.generated_paragraph_2,
+    parsedObj.generatedParagraph2,
     parsedObj.seo_paragraph_1,
     parsedObj.seoParagraph1,
     parsedObj.seo_paragraph_2,
     parsedObj.seoParagraph2,
-    parsedObj.generatedParagraph1,
-    parsedObj.generated_paragraph_1,
-    parsedObj.generatedParagraph2,
-    parsedObj.generated_paragraph_2,
     ...normalizeArray(parsedObj.canonicalLeadParagraphs || parsedObj.leadParagraphs),
     ...normalizeDescriptionParagraphs(
       parsedObj.finalDescription || parsedObj.final_description || parsedObj.description,
