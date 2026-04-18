@@ -485,6 +485,7 @@ async function main() {
         "Product features",
         "- 100% ring-spun cotton",
         "- Relaxed fit with double-needle stitching",
+        "- Printed labels avoid scratchy neck tags",
         "",
         "Care instructions",
         "- Machine wash cold",
@@ -497,6 +498,7 @@ async function main() {
     assert.equal(/Product features/i.test(sanitized), true);
     assert.equal(/100% ring-spun cotton/i.test(sanitized), true);
     assert.equal(/Relaxed fit with double-needle stitching/i.test(sanitized), true);
+    assert.equal(/Printed labels avoid scratchy neck tags/i.test(sanitized), true);
     assert.equal(/Care instructions/i.test(sanitized), true);
     assert.equal(/Machine wash cold/i.test(sanitized), true);
   });

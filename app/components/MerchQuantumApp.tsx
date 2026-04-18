@@ -920,33 +920,26 @@ export function sanitizeTemplateDescriptionForPrebuffer(templateDescription: str
   if (!formatted.trim()) return "";
 
   const parsed = parseTemplateDescription(formatted);
-  const lines: string[] = [];
-
-  const introParagraphs = parsed.introParagraphs.filter((paragraph) => isStaticTemplateSpecLine(paragraph, templateTitle));
-  for (const paragraph of introParagraphs) {
-    lines.push(paragraph);
-  }
-  if (introParagraphs.length > 0) {
-    lines.push("");
-  }
-
-  for (const section of parsed.sections) {
-    const keptParagraphs = section.paragraphs.filter((paragraph) => isStaticTemplateSpecLine(paragraph, templateTitle));
-    const keptBullets = section.bullets.filter((bullet) => isStaticTemplateSpecLine(bullet, templateTitle));
-    if (keptParagraphs.length === 0 && keptBullets.length === 0) continue;
-
-    lines.push(section.heading);
-    for (const paragraph of keptParagraphs) {
-      lines.push(paragraph);
+  if (parsed.sections.length > 0) {
+    const anchoredSectionLines: string[] = [];
+    for (const section of parsed.sections) {
+      anchoredSectionLines.push(section.heading);
+      for (const paragraph of section.paragraphs) {
+        anchoredSectionLines.push(paragraph);
+      }
+      for (const bullet of section.bullets) {
+        anchoredSectionLines.push(`- ${bullet}`);
+      }
+      anchoredSectionLines.push("");
     }
-    for (const bullet of keptBullets) {
-      lines.push(`- ${bullet}`);
-    }
-    lines.push("");
+
+    const sanitizedFromSections = joinTemplateSpecLines(anchoredSectionLines);
+    if (sanitizedFromSections) return sanitizedFromSections;
   }
 
-  const sanitized = joinTemplateSpecLines(lines);
-  if (sanitized) return sanitized;
+  const introLines = parsed.introParagraphs.filter((paragraph) => isStaticTemplateSpecLine(paragraph, templateTitle));
+  const sanitizedIntro = joinTemplateSpecLines(introLines);
+  if (sanitizedIntro) return sanitizedIntro;
 
   const looseLines = formatted
     .split("\n")
@@ -2531,12 +2524,11 @@ export default function MerchQuantumApp() {
               }}
             />
 
-            <div className="mt-3 border-t border-slate-800 pt-3">
+            <div className="mt-3">
               <div
                 onPointerDownCapture={() => nudgeWorkflow(false)}
                 className={`relative grid gap-3 rounded-xl transition-all duration-500 ${guidanceStep === "template" ? "border border-[#7F22FE]/40 bg-[#7F22FE]/10 p-3 shadow-[0_18px_50px_-32px_rgba(127,34,254,0.38)]" : ""}`}
               >
-                {guidanceStep === "template" ? <div className="pointer-events-none absolute inset-x-4 top-0 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
                 <div className="grid items-stretch gap-3 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)]">
                   <div className={attentionTarget === "shop" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}>
                     <Select
@@ -2626,7 +2618,7 @@ export default function MerchQuantumApp() {
 
             {isWorkspaceConfigured ? (
               <>
-                <div className="mt-3 border-t border-slate-800 pt-3">
+                <div className="mt-3">
                   {!canShowDetailPanel ? null : (
                     <div className="space-y-3" onPointerDownCapture={() => nudgeWorkflow(true)}>
                       <div className="grid items-stretch gap-3 lg:grid-cols-[296px_minmax(0,1fr)]">
@@ -2746,7 +2738,7 @@ export default function MerchQuantumApp() {
                           <Field label="Final Title">
                             <div className="flex min-h-[44px] items-center rounded-xl border border-slate-700 bg-[#020616] px-3 py-0 text-left text-sm font-normal leading-5 text-white">
                               {shouldAwaitQuantumTitle ? (
-                                <div className="flex w-full items-center justify-center gap-2 text-sm font-medium text-slate-300">
+                                <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
                                   <span className={`${getLoadingIndicatorClass()} animate-pulse`} />
                                   <span>{QUANTUM_TITLE_AWAITING_TEXT}</span>
                                 </div>
@@ -2761,12 +2753,12 @@ export default function MerchQuantumApp() {
                               <div className="flex min-h-full">
                                 {shouldAwaitQuantumDescription ? (
                                   <div className="flex w-full flex-col gap-3">
-                                    <div className="flex items-center justify-center gap-2 text-sm font-medium text-slate-300">
-                                    <span className={`${getLoadingIndicatorClass()} animate-pulse`} />
+                                    <div className="flex items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
+                                      <span className={`${getLoadingIndicatorClass()} animate-pulse`} />
                                       <span>{QUANTUM_DESCRIPTION_AWAITING_TEXT}</span>
                                     </div>
                                     {detailTemplateSpecBlock ? (
-                                      <div className="w-full border-t border-slate-800 pt-3 whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
+                                      <div className="w-full whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
                                         {detailTemplateSpecBlock}
                                       </div>
                                     ) : null}
@@ -2777,7 +2769,7 @@ export default function MerchQuantumApp() {
                                       {detailBuyerDescription}
                                     </div>
                                     {detailTemplateSpecBlock ? (
-                                      <div className="w-full border-t border-slate-800 pt-3 whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
+                                      <div className="w-full whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
                                         {detailTemplateSpecBlock}
                                       </div>
                                     ) : null}
@@ -2889,7 +2881,7 @@ export default function MerchQuantumApp() {
                               ))
                             ) : (
                               <div className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-400 sm:col-span-2 md:col-span-3 lg:col-span-6">
-                                Tags will appear when Quantum AI finishes this artwork.
+                                Tags will appear after Quantum AI processing completes.
                               </div>
                             )}
                           </div>
