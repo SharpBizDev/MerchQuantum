@@ -418,14 +418,14 @@ const COMPLIANCE_RULE_PACKS = [
 ] as const;
 
 const GEMINI_RESPONSE_SCHEMA = {
-  type: "OBJECT",
+  type: "object",
   properties: {
-    qc_status: { type: "STRING", enum: ["PASS", "FAIL"] },
-    extracted_text: { type: "STRING" },
-    generated_title: { type: "STRING" },
-    generated_paragraph_1: { type: "STRING" },
-    generated_paragraph_2: { type: "STRING" },
-    seo_tags: { type: "ARRAY", items: { type: "STRING" } },
+    qc_status: { type: "string", enum: ["PASS", "FAIL"] },
+    extracted_text: { type: "string" },
+    generated_title: { type: "string" },
+    generated_paragraph_1: { type: "string" },
+    generated_paragraph_2: { type: "string" },
+    seo_tags: { type: "array", items: { type: "string" } },
   },
   required: [
     "qc_status",
@@ -3712,7 +3712,7 @@ async function callGeminiRecord(
       generationConfig: {
         temperature: 0.1,
         responseMimeType: "application/json",
-        responseSchema: GEMINI_RESPONSE_SCHEMA,
+        responseJsonSchema: GEMINI_RESPONSE_SCHEMA,
       },
       safetySettings: GEMINI_SAFETY_SETTINGS,
     }),

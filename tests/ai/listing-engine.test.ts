@@ -1453,6 +1453,7 @@ async function main() {
     let capturedPrompt = "";
     let capturedSafetySettings: Array<{ category?: string; threshold?: string }> = [];
     let capturedTemperature = Number.NaN;
+    let capturedGenerationConfig: Record<string, unknown> = {};
 
     const response = await generateListingResponse(
       {
@@ -1471,7 +1472,8 @@ async function main() {
           const parts = requestBody?.contents?.[0]?.parts || [];
           capturedPrompt = String(parts[0]?.text || "");
           capturedSafetySettings = requestBody?.safetySettings || [];
-          capturedTemperature = Number(requestBody?.generationConfig?.temperature);
+          capturedGenerationConfig = requestBody?.generationConfig || {};
+          capturedTemperature = Number(capturedGenerationConfig?.temperature);
 
           return createGeminiResponse(createGeminiPayload());
         },
@@ -1494,6 +1496,27 @@ async function main() {
     assert.equal(/threshold-mask OCR/i.test(capturedPrompt), true);
     assert.equal(/generated_title should lead with the strongest exact visible wording that a shopper would search for/i.test(capturedPrompt), true);
     assert.equal(capturedTemperature, 0.1);
+    assert.equal(capturedGenerationConfig?.responseMimeType, "application/json");
+    assert.equal("responseSchema" in capturedGenerationConfig, false);
+    assert.deepEqual(capturedGenerationConfig?.responseJsonSchema, {
+      type: "object",
+      properties: {
+        qc_status: { type: "string", enum: ["PASS", "FAIL"] },
+        extracted_text: { type: "string" },
+        generated_title: { type: "string" },
+        generated_paragraph_1: { type: "string" },
+        generated_paragraph_2: { type: "string" },
+        seo_tags: { type: "array", items: { type: "string" } },
+      },
+      required: [
+        "qc_status",
+        "extracted_text",
+        "generated_title",
+        "generated_paragraph_1",
+        "generated_paragraph_2",
+        "seo_tags",
+      ],
+    });
     assert.deepEqual(capturedSafetySettings, [
       { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
       { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
