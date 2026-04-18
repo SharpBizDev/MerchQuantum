@@ -1405,6 +1405,7 @@ async function main() {
 
   await run("Gemini prompt keeps filename as support-only context when no explicit title is supplied", async () => {
     let capturedPrompt = "";
+    let capturedSafetySettings: Array<{ category?: string; threshold?: string }> = [];
 
     const response = await generateListingResponse(
       {
@@ -1422,6 +1423,7 @@ async function main() {
           const requestBody = JSON.parse(String(init?.body || "{}"));
           const parts = requestBody?.contents?.[0]?.parts || [];
           capturedPrompt = String(parts[0]?.text || "");
+          capturedSafetySettings = requestBody?.safetySettings || [];
 
           return createGeminiResponse(createGeminiPayload());
         },
@@ -1433,6 +1435,16 @@ async function main() {
     assert.equal(/fileNameSupport: Classic Peace Sign Retro Hippie Shirt\.png/i.test(capturedPrompt), true);
     assert.equal(/do not let the filename write the title or marketing copy/i.test(capturedPrompt), true);
     assert.equal(/trust the clearest render over the filename/i.test(capturedPrompt), true);
+    assert.equal(/ACT AS: A Senior E-commerce Metadata Indexer and SEO Strategist\./i.test(capturedPrompt), true);
+    assert.equal(/VERBATIM EXTRACTION/i.test(capturedPrompt), true);
+    assert.equal(/do not use placeholder phrases such as "Faith Forward", "Inspirational Graphic", "General Design", or "General Religious Theme"/i.test(capturedPrompt), true);
+    assert.equal(/generated_title should lead with the strongest exact visible wording that a shopper would search for/i.test(capturedPrompt), true);
+    assert.deepEqual(capturedSafetySettings, [
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+    ]);
   });
 
   await run("validator keeps the strongest ambiguity warning while preserving real OCR clarity concerns", () => {

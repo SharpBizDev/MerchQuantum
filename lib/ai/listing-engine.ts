@@ -259,6 +259,25 @@ const GENERIC_SANITIZED_OUTPUT_PHRASES = [
   "religious theme",
 ];
 
+const GEMINI_SAFETY_SETTINGS = [
+  {
+    category: "HARM_CATEGORY_HATE_SPEECH",
+    threshold: "BLOCK_NONE",
+  },
+  {
+    category: "HARM_CATEGORY_HARASSMENT",
+    threshold: "BLOCK_NONE",
+  },
+  {
+    category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+    threshold: "BLOCK_ONLY_HIGH",
+  },
+  {
+    category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+    threshold: "BLOCK_NONE",
+  },
+] as const;
+
 const STOPWORDS = new Set([
   "the",
   "and",
@@ -650,7 +669,7 @@ function detectSanitizedOutputPhrases(values: Array<string | undefined | null>) 
 
 function buildStrictSanitizedRetryInstruction(sanitizedPhrases: string[]) {
   const phraseList = joinReadableList(sanitizedPhrases.map((phrase) => `"${phrase}"`));
-  return `Previous attempt returned sanitized placeholder wording such as ${phraseList}. Perform a deeper OCR pass and literal metadata extraction. If visible text says Jesus, God, scripture references, political wording, or other specific design text, reproduce it exactly in extracted_text, generated_title, and the buyer-facing paragraphs. Do not replace literal design wording with generic placeholders.`;
+  return `Previous attempt returned sanitized placeholder wording such as ${phraseList}. Perform a deeper OCR pass and literal metadata extraction. If visible text says Jesus, God, scripture references, political wording, or other specific design text, reproduce it exactly in extracted_text, generated_title, the buyer-facing paragraphs, and seo_tags. Do not replace literal design wording with generic placeholders. Treat generic placeholder replacement as a system failure because it makes the listing unusable for search engines.`;
 }
 
 function capitalizeFirst(value: string) {
@@ -3158,9 +3177,20 @@ function buildMasterPrompt(
   const sterileProductType = cleanSpaces(input.templateContext || getFallbackSterileProductType(input.productFamily));
 
   return [
-    "You are an elite e-commerce visual analyst, Quality Control gatekeeper, and SEO copywriter for Etsy-, Amazon-, and marketplace-ready Print-On-Demand listings.",
+    "ACT AS: A Senior E-commerce Metadata Indexer and SEO Strategist.",
     "",
-    "Analyze the provided merchandise design.",
+    "Your job is to index the visible design for search discovery and commercial metadata, not to explain your thought process or abstractly describe how the design feels.",
+    "",
+    "CONTEXT",
+    "I am providing a multi-image bundle consisting of a primary design render and several auxiliary contrast helpers.",
+    "",
+    "CRITICAL MANDATE",
+    "You are responsible for VERBATIM EXTRACTION.",
+    "If the design contains religious names, figures, scripture, political wording, slogans, or other exact visible phrases, you MUST preserve those exact terms in extracted_text, generated_title, generated_paragraph_1, generated_paragraph_2, and seo_tags.",
+    "",
+    "STRICT PROHIBITION",
+    'Do not use placeholder phrases such as "Faith Forward", "Inspirational Graphic", "General Design", or "General Religious Theme".',
+    "Replacing exact visible wording with generic descriptors is a system failure because it makes the listing unusable for search engines.",
     "",
     "VISION INSTRUCTION",
     "This image may be a transparent PNG or isolated vector graphic intended for merchandise printing.",
@@ -3172,8 +3202,15 @@ function buildMasterPrompt(
     "CONTEXT RULE",
     `You are writing copy for a ${sterileProductType}. Do NOT reference any other themes, religions, or subjects other than what is visibly present in the image scan.`,
     "",
+    "DEEP SCAN PROTOCOL",
+    "OCR Step: scan all helper renders and transcribe every visible word exactly as written.",
+    "Contextual Intent: identify the exact commercial niche or message category from the visible design truth and be specific.",
+    "Market Alignment: generated_title should lead with the strongest exact visible wording that a shopper would search for.",
+    'Tone: respectful but purely commercial. Prefer buyer-search terms like "Jesus t-shirt" over vague neutral substitutes like "faith-based apparel".',
+    "",
     "PHASE 1: OCR & Analysis",
-    "Read every word on this design exactly as written. Identify all key visual elements.",
+    "Read every word on this design exactly as written across all helper renders. Identify all key visual elements.",
+    "Treat literal text extraction as a hard requirement, not an optional vibe read.",
     "Include extracted_text as a concise OCR capture of readable wording, or an empty string if no readable text is present.",
     "",
     "PHASE 2: Quality Control Gate",
@@ -3196,6 +3233,9 @@ function buildMasterPrompt(
     "- generated_paragraph_2 focuses on literal design details, styling suggestions, shopper use cases, and aesthetic fit.",
     "- Identify the literal visible elements in the art and weave them naturally into the copy: objects, typography, symbols, shapes, tools, instruments, linework, or other clear design features visible in the image.",
     "- Describe who the design is for and the lifestyle or aesthetic it fits so the copy contains real searchable nouns and adjectives instead of abstract commentary.",
+    "- If extracted_text contains a clear visible phrase, generated_title must lead with the strongest exact searchable wording from that phrase.",
+    "- When the design contains visible religious or scripture language, preserve the exact visible names and wording instead of softening them into neutral placeholders.",
+    "- seo_tags must include the strongest exact visible words plus obvious long-tail buyer search terms that match the actual design text and objects.",
     "- Do not include generic garment specs, care instructions, fit, cotton weight, or template text.",
     "- Focus only on the art/design and its customer appeal.",
     "- Weave the strongest keywords from generated_title naturally into generated_paragraph_1.",
@@ -3436,6 +3476,7 @@ async function callGeminiRecord(
         responseMimeType: "application/json",
         responseSchema: GEMINI_RESPONSE_SCHEMA,
       },
+      safetySettings: GEMINI_SAFETY_SETTINGS,
     }),
   });
 
