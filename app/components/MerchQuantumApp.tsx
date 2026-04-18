@@ -1675,6 +1675,7 @@ export default function MerchQuantumApp() {
   const completedGenerationCount = readyCount + errorCount;
   const generationProgressPct = images.length > 0 ? Math.round((completedGenerationCount / images.length) * 100) : 0;
   const isWorkspaceConfigured = connected && !!shopId && !!template;
+  const canSubmitProviderConnection = Boolean(provider && isLiveProvider && token.trim() && !loadingApi && !connected);
   const searchNudgeTarget = !shopId ? "shop" : !template ? "template" : null;
   const isSearchLocked = searchNudgeTarget !== null;
   const uploadDisabled = !isWorkspaceConfigured || readyCount === 0 || isRunningBatch || processingCount > 0;
@@ -2200,8 +2201,9 @@ export default function MerchQuantumApp() {
     }
   }
 
-  async function connectPrintify() {
-    if (!provider || !resolvedProviderId || !token.trim() || !isLiveProvider) return;
+  async function connectPrintify(tokenOverride?: string) {
+    const submittedToken = String(tokenOverride ?? token).trim();
+    if (!provider || !resolvedProviderId || !submittedToken || !isLiveProvider) return;
     setLoadingApi(true);
     setApiStatus("");
 
@@ -2209,7 +2211,7 @@ export default function MerchQuantumApp() {
       const response = await fetchWithTimeout(getProviderRoute("connect"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: resolvedProviderId, token }),
+        body: JSON.stringify({ provider: resolvedProviderId, token: submittedToken }),
       });
 
       const data = await parseResponsePayload(response);
@@ -2219,6 +2221,7 @@ export default function MerchQuantumApp() {
         ? data.shops.map((shop: ApiShop) => ({ id: String(shop.id), title: shop.title || `Shop ${shop.id}` }))
         : [];
 
+      setToken(submittedToken);
       setApiShops(shopsFromApi);
       setConnected(true);
       setShopId("");
@@ -2251,6 +2254,14 @@ export default function MerchQuantumApp() {
       resetProviderState(true);
       setApiStatus("");
     }
+  }
+
+  function handleProviderTokenKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    const submittedToken = event.currentTarget.value.trim();
+    if (!provider || !isLiveProvider || loadingApi || connected || !submittedToken) return;
+    void connectPrintify(submittedToken);
   }
 
   async function loadProductTemplate(nextProductId = productId) {
@@ -2481,12 +2492,13 @@ export default function MerchQuantumApp() {
                 readOnly={connected}
                 placeholder="Provider API Key"
                 onChange={(e) => setToken(e.target.value)}
+                onKeyDown={handleProviderTokenKeyDown}
                 className={`pr-32 ${connected ? "pr-52" : ""} disabled:cursor-not-allowed`}
               />
               <button
                 type="button"
                 onClick={() => { void connectPrintify(); }}
-                disabled={!provider || !isLiveProvider || !token.trim() || loadingApi || connected}
+                disabled={!canSubmitProviderConnection}
                 className={`absolute top-1.5 min-h-[32px] rounded-lg px-3 text-sm font-medium transition-colors ${connected ? "right-24 bg-[#00BC7D] text-white" : "right-1.5 bg-[#7F22FE] text-white hover:bg-[#6d1ee0] disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"}`}
               >
                 {loadingApi ? "Connecting..." : connected ? "Connected" : "Connect"}
@@ -2659,11 +2671,11 @@ export default function MerchQuantumApp() {
                               )}
 
                               <div
-                                className="absolute bottom-3 left-1/2 z-20 w-max max-w-[calc(100%-1.5rem)] -translate-x-1/2 px-3 py-2"
+                                className="absolute bottom-3 left-1/2 z-20 w-[calc(100%-1.5rem)] max-w-[calc(100%-1.5rem)] -translate-x-1/2 px-3 py-2"
                                 onClick={(e) => e.stopPropagation()}
                                 onPointerDown={(e) => e.stopPropagation()}
                               >
-                                <div className={`flex min-w-0 flex-nowrap items-center gap-x-2.5 overflow-x-auto overflow-y-hidden px-0.5 pb-1.5 pt-0.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
+                                <div className={`flex min-w-0 flex-wrap items-center justify-center gap-x-2.5 gap-y-1.5 overflow-hidden px-0.5 pb-1.5 pt-0.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
                                   <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                                     <span>{readyCount}</span>
                                     <StatusThumbIcon tone="ready" direction="up" />
@@ -2676,7 +2688,6 @@ export default function MerchQuantumApp() {
                                     <span>{queuedCount} Queue</span>
                                   </div>
                                   <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                    <span className="h-2.5 w-2.5 rounded-full bg-[#00A6F4] ring-2 ring-[#00A6F4]/35" />
                                     <span>{completedGenerationCount} Done</span>
                                   </div>
                                   <span
@@ -2695,7 +2706,6 @@ export default function MerchQuantumApp() {
                                     }}
                                     className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none sm:text-xs ${previewOverlayTextClass} ${hasAnyLoadedImages ? "cursor-pointer opacity-100 hover:opacity-90 focus:opacity-90 active:opacity-90" : "cursor-default opacity-100"}`}
                                   >
-                                    <span className="h-2.5 w-2.5 rounded-full bg-[#7F22FE] ring-2 ring-[#7F22FE]/35" />
                                     Clear
                                   </span>
                                 </div>

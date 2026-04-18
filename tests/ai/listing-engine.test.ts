@@ -55,11 +55,32 @@ function isNearPixel(
 }
 
 function getGeminiRequestParts(init?: RequestInit) {
-  const requestBody = JSON.parse(String(init?.body || "{}"));
+  const requestBody = getGeminiRequestBody(init);
   return (requestBody?.contents?.[0]?.parts || []) as Array<{
     text?: string;
     inlineData?: { mimeType?: string; data?: string };
   }>;
+}
+
+function getGeminiRequestBody(init?: RequestInit) {
+  return JSON.parse(String(init?.body || "{}")) as Record<string, any>;
+}
+
+function getGeminiSystemInstructionText(init?: RequestInit) {
+  const requestBody = getGeminiRequestBody(init);
+  return String(requestBody?.system_instruction?.parts?.[0]?.text || "");
+}
+
+function getPromptFilenameHint(fileName: string) {
+  return fileName
+    .replace(/\bawaiting quantum ai(?:\s+(?:title|description))?\.{0,3}\b/gi, " ")
+    .replace(/\bprintify\b/gi, " ")
+    .replace(/\[store_name\]/gi, " ")
+    .replace(/\.[a-z0-9]{2,5}$/i, "")
+    .replace(/[_|]+/g, " ")
+    .replace(/\s*[-–—]\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function getGeminiInlineImageParts(init?: RequestInit) {
@@ -1434,8 +1455,8 @@ async function main() {
     );
 
     assert.equal(response.source, "gemini");
-    assert.equal(/titleSeed: none/i.test(capturedPrompt), true);
-    assert.equal(/fileNameSupport: Classic Peace Sign Retro Hippie Shirt\.png/i.test(capturedPrompt), true);
+    assert.equal(/titleSeed: null/i.test(capturedPrompt), true);
+    assert.equal(/fileNameSupport: Classic Peace Sign Retro Hippie Shirt/i.test(capturedPrompt), true);
     assert.equal(/do not let the filename write the title or marketing copy/i.test(capturedPrompt), true);
     assert.equal(/trust the clearest render over the filename/i.test(capturedPrompt), true);
     assert.equal(/ACT AS: A Senior E-commerce Metadata Indexer and SEO Strategist\./i.test(capturedPrompt), true);
@@ -1447,8 +1468,8 @@ async function main() {
     assert.equal(/generated_title should lead with the strongest exact visible wording that a shopper would search for/i.test(capturedPrompt), true);
     assert.equal(capturedTemperature, 0.1);
     assert.deepEqual(capturedSafetySettings, [
-      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
       { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
       { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
     ]);
@@ -1583,6 +1604,128 @@ async function main() {
     assert.equal(/Minimal Red Circle/i.test(response.title), true);
   });
 
+  await run("fallback keeps literal religious filename wording instead of collapsing into a generic faith placeholder", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "Life Begins With Jesus Christian Faith Shirt.png",
+        productFamily: "t-shirt",
+        templateContext: "Unisex Heavy Cotton Tee. Product features. Care instructions.",
+      },
+      { apiKey: "" }
+    );
+
+    assert.equal(response.source, "fallback");
+    assert.equal(response.qcApproved, true);
+    assert.equal(response.publishReady, true);
+    assert.equal(/Life Begins With Jesus/i.test(response.title), true);
+    assert.equal(/faith forward/i.test(response.title), false);
+    assert.equal(/jesus/i.test(response.description), true);
+    assert.equal(/faith forward/i.test(response.description), false);
+    assert.equal(response.tags.some((tag) => /Life Begins With Jesus|Jesus/i.test(tag)), true);
+    assert.equal(response.tags.some((tag) => /Faith Forward/i.test(tag)), false);
+  });
+
+  await run("Gemini request strips system placeholders and sends commercial religious indexing instructions", async () => {
+    let capturedInit: RequestInit | undefined;
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "Awaiting Quantum AI title...",
+        fileName: "Printify Life Begins With Jesus Christian Faith Shirt [Store_Name].png",
+        productFamily: "t-shirt",
+        templateContext: "Awaiting Quantum AI description... Printify [Store_Name] Unisex Heavy Cotton Tee",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_url, init) => {
+          capturedInit = init;
+          return createGeminiResponse(
+            createGeminiPayload({
+              extracted_text: "Life Begins With Jesus",
+              generated_title: "Life Begins With Jesus Christian Faith Shirt",
+              generated_paragraph_1:
+                "Life Begins With Jesus leads this Christian faith shirt with clear searchable wording that speaks directly to believers who want Jesus-centered apparel for church, Bible study, worship nights, and everyday witness. The bold phrase gives the design a specific message buyers can recognize fast, making it easier to shop for Christian gifts, devotional wardrobe pieces, and scripture-friendly statement shirts that stay literal instead of drifting into generic inspiration.",
+              generated_paragraph_2:
+                "The minimal layout keeps the words easy to read while the clean composition fits naturally with denim, jackets, cardigans, and relaxed casual outfits. Because the actual Jesus wording remains intact, the design feels far more useful for Christian apparel search, faith gift shopping, and believer identity than a vague religious tee, giving shoppers a stronger match for church events, fellowship gatherings, and message-led everyday wear.",
+              seo_tags: [
+                "life begins with jesus shirt",
+                "christian faith shirt",
+                "jesus message tee",
+                "church outfit tee",
+                "bible study gift",
+                "faith apparel shirt",
+                "christian gift tee",
+                "jesus quote shirt",
+                "worship night shirt",
+                "believer tee",
+                "scripture style shirt",
+                "christian boutique tee",
+                "message shirt",
+                "daily faith tee",
+                "christian graphic tee",
+              ],
+            })
+          );
+        },
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+
+    const requestBody = getGeminiRequestBody(capturedInit);
+    const prompt = String(getGeminiRequestParts(capturedInit)[0]?.text || "");
+    const systemInstruction = getGeminiSystemInstructionText(capturedInit);
+    const safetySettings = Array.isArray(requestBody?.safetySettings) ? requestBody.safetySettings : [];
+    const thresholdByCategory = Object.fromEntries(
+      safetySettings.map((setting: { category?: string; threshold?: string }) => [String(setting.category || ""), String(setting.threshold || "")])
+    );
+
+    assert.equal(systemInstruction.includes("do not sanitize or genericize the output"), true);
+    assert.equal(systemInstruction.includes('"Faith Product"'), true);
+    assert.equal(systemInstruction.includes("Filename hint weight: HIGH."), true);
+    assert.equal(systemInstruction.includes("Filename hint: Life Begins With Jesus Christian Faith Shirt."), true);
+    assert.equal(prompt.includes("Awaiting Quantum AI"), false);
+    assert.equal(prompt.includes("Printify"), false);
+    assert.equal(prompt.includes("[Store_Name]"), false);
+    assert.equal(/titleSeed:\s+null/i.test(prompt), true);
+    assert.equal(/sterileProductType:\s+Unisex Heavy Cotton Tee/i.test(prompt), true);
+    assert.equal(/fileNameSupport:\s+Life Begins With Jesus Christian Faith Shirt/i.test(prompt), true);
+    assert.equal(/fileNameWeight:\s+HIGH/i.test(prompt), true);
+    assert.equal(thresholdByCategory.HARM_CATEGORY_HATE_SPEECH, "BLOCK_ONLY_HIGH");
+    assert.equal(thresholdByCategory.HARM_CATEGORY_HARASSMENT, "BLOCK_ONLY_HIGH");
+  });
+
+  await run("Gemini request tells the model to ignore gibberish filename hints", async () => {
+    let capturedInit: RequestInit | undefined;
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "DCM_102.png",
+        productFamily: "t-shirt",
+        templateContext: "Unisex Heavy Cotton Tee",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_url, init) => {
+          capturedInit = init;
+          return createGeminiResponse(createGeminiPayload());
+        },
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    assert.equal(getGeminiSystemInstructionText(capturedInit).includes("Filename hint weight: IGNORE."), true);
+    assert.equal(/fileNameSupport:\s+DCM 102/i.test(String(getGeminiRequestParts(capturedInit)[0]?.text || "")), true);
+    assert.equal(/fileNameWeight:\s+IGNORE/i.test(String(getGeminiRequestParts(capturedInit)[0]?.text || "")), true);
+  });
+
   await run("Gemini over-fail can recover to a publishable fallback when filename support is strong and compliance is clean", async () => {
     const response = await generateListingResponse(
       {
@@ -1677,7 +1820,7 @@ async function main() {
               assert.equal(inlineData.data, image.base64, `${fixture.name}: exact image fixture should be sent to Gemini`);
             }
             assert.equal(
-              prompt.includes(`fileNameSupport: ${fixture.request.fileName}`),
+              prompt.includes(`fileNameSupport: ${getPromptFilenameHint(fixture.request.fileName) || "null"}`),
               true,
               `${fixture.name}: prompt should include request filename as support context`
             );
@@ -2576,7 +2719,7 @@ async function main() {
     assert.equal(response.reasonFlags.some((flag) => flag.toLowerCase().includes("deterministic fallback used")), true);
   });
 
-  await run("repeated sanitized placeholder output is kept out of the Good UI path", async () => {
+  await run("repeated sanitized placeholder output can recover to a literal filename-grounded fallback for searchable religious text", async () => {
     const makeSanitizedPayload = () =>
       createGeminiResponse(
         createGeminiPayload({
@@ -2602,11 +2745,13 @@ async function main() {
 
     assert.equal(sequence.getCallCount(), 2);
     assert.equal(response.source, "fallback");
-    assert.equal(response.qcApproved, false);
-    assert.equal(response.publishReady, false);
-    assert.equal(response.title, "");
-    assert.equal(response.description, "");
-    assert.equal(response.reasonFlags.some((flag) => /sanitized placeholder language/i.test(flag)), true);
+    assert.equal(response.qcApproved, true);
+    assert.equal(response.publishReady, true);
+    assert.equal(/Life Begins With Jesus/i.test(response.title), true);
+    assert.equal(/faith forward|inspirational graphic|general religious theme/i.test(response.description), false);
+    assert.equal(response.tags.some((tag) => /Jesus/i.test(tag)), true);
+    assert.equal(response.tags.some((tag) => /Faith Forward/i.test(tag)), false);
+    assert.equal(response.reasonFlags.some((flag) => /deterministic fallback used/i.test(flag)), true);
   });
 
   await run("structured response sanitizes buyer-facing paragraphs and tag output without title bleed", async () => {

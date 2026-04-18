@@ -253,10 +253,12 @@ const WEAK_FILENAME_TOKENS = new Set([
 ]);
 
 const GENERIC_SANITIZED_OUTPUT_PHRASES = [
+  "faith product",
   "faith forward",
   "inspirational graphic",
   "inspirational design",
   "general design",
+  "religious graphic",
   "religious theme",
   "general religious theme",
 ];
@@ -264,11 +266,11 @@ const GENERIC_SANITIZED_OUTPUT_PHRASES = [
 const GEMINI_SAFETY_SETTINGS = [
   {
     category: "HARM_CATEGORY_HATE_SPEECH",
-    threshold: "BLOCK_NONE",
+    threshold: "BLOCK_ONLY_HIGH",
   },
   {
     category: "HARM_CATEGORY_HARASSMENT",
-    threshold: "BLOCK_NONE",
+    threshold: "BLOCK_ONLY_HIGH",
   },
   {
     category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
@@ -278,6 +280,12 @@ const GEMINI_SAFETY_SETTINGS = [
     category: "HARM_CATEGORY_DANGEROUS_CONTENT",
     threshold: "BLOCK_NONE",
   },
+] as const;
+
+const MODEL_SERIALIZATION_NOISE_PATTERNS = [
+  /\bawaiting quantum ai(?:\s+(?:title|description))?\.{0,3}\b/gi,
+  /\bprintify\b/gi,
+  /\[store_name\]/gi,
 ] as const;
 
 const STOPWORDS = new Set([
@@ -546,11 +554,58 @@ function sanitizeTemplateContextForAi(templateContext: string, productFamily?: s
   return getFallbackSterileProductType(productFamily);
 }
 
+function stripModelSerializationNoise(value: string) {
+  let sanitized = String(value || "");
+  for (const pattern of MODEL_SERIALIZATION_NOISE_PATTERNS) {
+    sanitized = sanitized.replace(pattern, " ");
+  }
+  return cleanSpaces(sanitized);
+}
+
+function sanitizePromptSeed(value: string) {
+  const sanitized = stripModelSerializationNoise(stripHtmlForAi(String(value || "")));
+  return /^(?:awaiting quantum ai|null|undefined)$/i.test(sanitized) ? "" : sanitized;
+}
+
+function sanitizeFileNameForModel(value: string) {
+  return stripModelSerializationNoise(String(value || ""));
+}
+
 function sanitizeListingRequest(input: ListingRequest): ListingRequest {
+  const sanitizedTitle = sanitizePromptSeed(String(input.title || ""));
+  const sanitizedTemplateSource = sanitizePromptSeed(String(input.templateContext || ""));
+  const sanitizedFileName = sanitizeFileNameForModel(String(input.fileName || ""));
   return {
     ...input,
-    templateContext: sanitizeTemplateContextForAi(String(input.templateContext || ""), input.productFamily),
+    title: sanitizedTitle || undefined,
+    fileName: sanitizedFileName || undefined,
+    templateContext: sanitizeTemplateContextForAi(sanitizedTemplateSource, input.productFamily),
   };
+}
+
+type FilenamePromptWeight = "HIGH" | "SUPPORT_ONLY" | "IGNORE";
+
+function getSanitizedFilenameHint(fileName: string) {
+  return cleanSpaces(stripExtension(stripModelSerializationNoise(fileName)).replace(/[_|]+/g, " ").replace(/\s*[-–—]\s*/g, " "));
+}
+
+function getFilenamePromptWeight(fileName: string, filenameAssessment: FilenameAssessment): FilenamePromptWeight {
+  if (!cleanSpaces(fileName) || filenameAssessment.shouldIgnore || filenameAssessment.usefulTokens.length === 0) {
+    return "IGNORE";
+  }
+
+  if (
+    filenameAssessment.usefulTokens.length >= 4 &&
+    (filenameAssessment.classification === "partial_support" || filenameAssessment.classification === "strong_support")
+  ) {
+    return "HIGH";
+  }
+
+  if (filenameAssessment.classification === "partial_support" || filenameAssessment.classification === "strong_support") {
+    return "SUPPORT_ONLY";
+  }
+
+  return "IGNORE";
 }
 
 function stripExtension(value: string) {
@@ -666,6 +721,20 @@ function detectSanitizedOutputPhrases(values: Array<string | undefined | null>) 
 
   return GENERIC_SANITIZED_OUTPUT_PHRASES.filter((phrase) =>
     normalizedValues.some((value) => value.includes(phrase))
+  );
+}
+
+function isSanitizedPlaceholderTerm(value: string) {
+  if (!cleanSpaces(value)) return false;
+  return detectSanitizedOutputPhrases([value]).length > 0;
+}
+
+function isAbstractImageTitleSeed(value: string) {
+  const comparable = normalizeComparableText(stripLeadProductWords(value));
+  if (!comparable) return true;
+
+  return /^(?:graphic|design|artwork|art|style|look|vibe|message|slogan|minimal|minimalist|retro inspired|retro|conversation starting|pet friendly|seasonal|faith product|faith forward|christian faith|christian message|devotional|scripture inspired|inspirational|religious graphic|religious theme|general design|general religious theme)$/.test(
+    comparable
   );
 }
 
@@ -991,7 +1060,8 @@ function buildFallbackTags(title: string, description: string, semantic: Semanti
 
   const normalized = tokenPool
     .map((tag) => normalizeTagLabel(tag))
-    .filter((tag) => tag.length >= 3 && tag.length <= 48);
+    .filter((tag) => tag.length >= 3 && tag.length <= 48)
+    .filter((tag) => !isSanitizedPlaceholderTerm(tag));
 
   return unique(normalized).slice(0, FINAL_TAG_COUNT);
 }
@@ -1341,6 +1411,7 @@ function chooseTitleSeed(input: ListingRequest, imageTruth: ImageTruthRecord, fi
   const explicitTitle = cleanSpaces(input.title || "") ? normalizeTitle(input.title || "", "") : "";
   if (explicitTitle) return explicitTitle;
 
+  const filenameSupportTitle = buildFilenameSupportTitle(input, filenameAssessment);
   const imageDrivenSeed = getImageDrivenTitleSeed(imageTruth);
   if (
     imageDrivenSeed &&
@@ -1348,10 +1419,19 @@ function chooseTitleSeed(input: ListingRequest, imageTruth: ImageTruthRecord, fi
       filenameAssessment.shouldIgnore ||
       filenameAssessment.classification !== "strong_support")
   ) {
+    if (
+      filenameSupportTitle &&
+      !hasStrongImageGrounding(imageTruth) &&
+      !filenameAssessment.shouldIgnore &&
+      (filenameAssessment.classification === "partial_support" || filenameAssessment.classification === "strong_support") &&
+      (isLowSignalTitle(imageDrivenSeed) || isAbstractImageTitleSeed(imageDrivenSeed) || isSanitizedPlaceholderTerm(imageDrivenSeed))
+    ) {
+      return filenameSupportTitle;
+    }
     return imageDrivenSeed;
   }
 
-  return normalizeTitle(input.fileName || imageDrivenSeed || "Product", imageDrivenSeed || "");
+  return filenameSupportTitle || normalizeTitle(input.fileName || imageDrivenSeed || "Product", imageDrivenSeed || "");
 }
 
 function buildFilenameSupportTitle(input: ListingRequest, filenameAssessment: FilenameAssessment) {
@@ -1709,11 +1789,14 @@ function buildSemanticRecord(input: ListingRequest, imageTruth: ImageTruthRecord
     ...imageTruth.visibleText,
     ...imageTruth.visibleFacts,
     ...(filenameAssessment.classification.startsWith("strong") ? filenameAssessment.usefulTokens : []),
-  ]).slice(0, 18);
+  ])
+    .filter((keyword) => !isSanitizedPlaceholderTerm(keyword))
+    .slice(0, 18);
+  const safeStyleOccasion = isSanitizedPlaceholderTerm(styleOccasion) ? "" : styleOccasion;
   const inferredKeywords = unique([
-    ...imageTruth.inferredMeaning,
+    ...imageTruth.inferredMeaning.filter((keyword) => !isSanitizedPlaceholderTerm(keyword)),
     ...(templateSignal?.keywords || []),
-    ...toKeywordTokens(styleOccasion),
+    ...toKeywordTokens(safeStyleOccasion),
     ...toKeywordTokens(titleCore),
   ]).slice(0, 20);
   const forbiddenClaims = findComplianceMatches([
@@ -1740,10 +1823,10 @@ function buildDiscoveryTerms(semantic: SemanticRecord, maxTerms: number) {
     ...semantic.visibleKeywords,
     ...semantic.inferredKeywords,
     ...toKeywordTokens(semantic.titleCore),
-    ...toKeywordTokens(semantic.styleOccasion),
+    ...(isSanitizedPlaceholderTerm(semantic.styleOccasion) ? [] : toKeywordTokens(semantic.styleOccasion)),
   ])
     .map((term) => cleanSpaces(term.toLowerCase()))
-    .filter((term) => term.length > 2 && !STOPWORDS.has(term))
+    .filter((term) => term.length > 2 && !STOPWORDS.has(term) && !isSanitizedPlaceholderTerm(term))
     .slice(0, maxTerms);
 }
 
@@ -1767,6 +1850,7 @@ function getPrimaryDesignAnchor(semantic: SemanticRecord) {
   for (const candidate of candidates) {
     const stripped = stripLeadProductWords(candidate);
     if (!stripped) continue;
+    if (isSanitizedPlaceholderTerm(stripped)) continue;
 
     const comparable = normalizeComparableText(stripped);
     if (!comparable) continue;
@@ -1838,6 +1922,7 @@ function getConsumerFacingLeadPhrases(semantic: SemanticRecord, maxItems = 4) {
     .map((value) => cleanSpaces(value))
     .filter(Boolean)
     .filter((value) => !hasTemplateSpecLeakage(value))
+    .filter((value) => !isSanitizedPlaceholderTerm(value))
     .filter((value) => {
       const comparable = normalizeComparableText(stripLeadProductWords(value));
       if (!comparable) return false;
@@ -1855,7 +1940,11 @@ function buildFallbackSeoParagraphs(
   localeProfile: LocaleProfile = getLocaleProfile()
 ) {
   const audience = cleanSpaces(semantic.likelyAudience || "merchandise shoppers");
-  const styleOccasion = cleanSpaces(semantic.styleOccasion || "design-forward");
+  const styleOccasion = cleanSpaces(
+    isSanitizedPlaceholderTerm(semantic.styleOccasion)
+      ? "message-led"
+      : semantic.styleOccasion || "design-forward"
+  );
   const phrases = getConsumerFacingLeadPhrases(semantic, 5);
   const primaryPhrase = cleanSpaces(phrases[0] || stripLeadProductWords(semantic.titleCore) || semantic.productNoun);
   const supportPhrases = phrases
@@ -3233,6 +3322,8 @@ function buildMasterPrompt(
   visionPromptHint?: string
 ) {
   const sterileProductType = cleanSpaces(input.templateContext || getFallbackSterileProductType(input.productFamily));
+  const sanitizedFileNameHint = getSanitizedFilenameHint(input.fileName || "");
+  const filenameWeight = getFilenamePromptWeight(input.fileName || "", filenameAssessment);
 
   return [
     "ACT AS: A Senior E-commerce Metadata Indexer and SEO Strategist.",
@@ -3317,6 +3408,7 @@ function buildMasterPrompt(
     "- Use filename only as support. If the artwork is clear, do not let the filename write the title or marketing copy for you.",
     "- Strong transparent PNG artwork with clean readable text or simple legible iconography still counts as meaningful visual evidence even when the canvas is sparse.",
     `- Current local filename assessment hint: ${filenameAssessment.classification} (${filenameAssessment.reason})`,
+    `- Filename trust weight: ${filenameWeight}`,
     `- Conflict severity hint: ${filenameAssessment.conflictSeverity}; ignore filename: ${filenameAssessment.shouldIgnore ? "yes" : "no"}`,
     "",
     "JSON SCHEMA",
@@ -3329,11 +3421,45 @@ function buildMasterPrompt(
     "",
     "INPUT CONTEXT",
     `sterileProductType: ${sterileProductType}`,
-    `titleSeed: ${explicitTitleSeed || "none"}`,
-    `fileNameSupport: ${input.fileName || "none"}`,
+    `titleSeed: ${explicitTitleSeed || "null"}`,
+    `fileNameSupport: ${sanitizedFileNameHint || "null"}`,
+    `fileNameWeight: ${filenameWeight}`,
     `locale: ${localeProfile.locale}`,
     `retryAttempt: ${retryContext.attempt}`,
     retryContext.retryInstruction ? `retryInstruction: ${retryContext.retryInstruction}` : "",
+  ].join("\n");
+}
+
+function buildGeminiSystemInstruction(input: ListingRequest, filenameAssessment: FilenameAssessment) {
+  const sterileProductType = cleanSpaces(input.templateContext || getFallbackSterileProductType(input.productFamily));
+  const sanitizedFileNameHint = getSanitizedFilenameHint(input.fileName || "");
+  const filenameWeight = getFilenamePromptWeight(input.fileName || "", filenameAssessment);
+
+  return [
+    "ROLE: You are a professional E-commerce SEO Specialist and Senior Metadata Indexer for apparel and giftware.",
+    "You are also a Digital Asset Management system performing High-Fidelity Text Logging for commercial catalog indexing.",
+    "",
+    "COMMERCIAL INTENT CLAUSE",
+    "- This task is commercial metadata extraction, not public-facing safety commentary or religious neutrality analysis.",
+    "- When a design contains positive, non-violent religious wording or iconography such as Jesus, God, Church, Cross, Catholic, Christian, scripture, or Bible verses, do not sanitize or genericize the output.",
+    "- Use the exact visible denominational, theological, and religious terms found in the design when they are present.",
+    '- Do not replace specific wording with placeholders such as "Faith Product", "Faith Forward", "Inspirational Graphic", "Religious Graphic", "General Design", or "General Religious Theme".',
+    "- Placeholder substitution is a system failure because it makes the listing unusable for search discovery.",
+    "",
+    "FILENAME TRUST RULE",
+    `- Filename hint weight: ${filenameWeight}.`,
+    `- Filename hint: ${sanitizedFileNameHint || "null"}.`,
+    "- HIGH means the filename contains enough descriptive words to support literal indexing when the pixels are weak.",
+    "- SUPPORT_ONLY means the filename can assist but must remain secondary to visible image truth.",
+    "- IGNORE means rely on the image pixels and helper renders only.",
+    "",
+    "SANITIZATION RULE",
+    '- Treat strings such as "Awaiting Quantum AI", "Printify", and "[Store_Name]" as null system noise rather than real design metadata.',
+    `- Product type context: ${sterileProductType}.`,
+    "",
+    "OUTPUT DISCIPLINE",
+    "- Return only the requested JSON schema.",
+    "- Do not include meta-commentary about image safety or explain your reasoning process.",
   ].join("\n");
 }
 
@@ -3416,7 +3542,11 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
       reasonDetails: [],
     } satisfies ValidatorResult;
   }
-  const canonicalTitle = marketplaceDrafts.etsy.title || semantic.titleCore || "Product";
+  const canonicalTitleSeed = marketplaceDrafts.etsy.title || semantic.titleCore || "Product";
+  const canonicalTitle =
+    detectSanitizedOutputPhrases([canonicalTitleSeed]).length > 0 && filenameSupportTitle
+      ? filenameSupportTitle
+      : canonicalTitleSeed;
   const canonicalLeadParagraphs = sanitizeMarketingLeadParagraphs(
     marketplaceDrafts.etsy.leadParagraphs,
     semantic,
@@ -3495,6 +3625,7 @@ async function callGeminiRecord(
 ) {
   const explicitTitleSeed = cleanSpaces(input.title || "") ? normalizeTitle(input.title || "", "") : "";
   const filenameAssessmentSeed = assessFilenameRelevance(input.fileName || "", []);
+  const systemInstruction = buildGeminiSystemInstruction(input, filenameAssessmentSeed);
   const prompt = buildMasterPrompt(
     input,
     filenameAssessmentSeed,
@@ -3512,6 +3643,9 @@ async function callGeminiRecord(
       "x-goog-api-key": options.apiKey,
     },
     body: JSON.stringify({
+      system_instruction: {
+        parts: [{ text: systemInstruction }],
+      },
       contents: [
         {
           role: "user",
