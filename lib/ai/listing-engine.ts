@@ -252,6 +252,13 @@ const WEAK_FILENAME_TOKENS = new Set([
   "v3",
 ]);
 
+const GENERIC_SANITIZED_OUTPUT_PHRASES = [
+  "faith forward",
+  "inspirational graphic",
+  "general design",
+  "religious theme",
+];
+
 const STOPWORDS = new Set([
   "the",
   "and",
@@ -622,6 +629,28 @@ function joinReadableList(items: string[]) {
   if (items.length === 1) return items[0];
   if (items.length === 2) return `${items[0]} and ${items[1]}`;
   return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+function detectSanitizedOutputPhrases(values: Array<string | undefined | null>) {
+  const normalizedValues = values
+    .flatMap((value) => {
+      const clean = cleanSpaces(String(value || "")).toLowerCase();
+      if (!clean) return [];
+      const punctuationNormalized = clean.replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+      return punctuationNormalized && punctuationNormalized !== clean
+        ? [clean, punctuationNormalized]
+        : [clean];
+    })
+    .filter(Boolean);
+
+  return GENERIC_SANITIZED_OUTPUT_PHRASES.filter((phrase) =>
+    normalizedValues.some((value) => value.includes(phrase))
+  );
+}
+
+function buildStrictSanitizedRetryInstruction(sanitizedPhrases: string[]) {
+  const phraseList = joinReadableList(sanitizedPhrases.map((phrase) => `"${phrase}"`));
+  return `Previous attempt returned sanitized placeholder wording such as ${phraseList}. Perform a deeper OCR pass and literal metadata extraction. If visible text says Jesus, God, scripture references, political wording, or other specific design text, reproduce it exactly in extracted_text, generated_title, and the buyer-facing paragraphs. Do not replace literal design wording with generic placeholders.`;
 }
 
 function capitalizeFirst(value: string) {
@@ -3671,6 +3700,7 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
   const fetchFn = options.fetchFn || fetch;
   const apiKey = resolveApiKey(options.apiKey);
   const localeProfile = getLocaleProfile(options.locale);
+  let retryInstructionOverride = "";
 
   if (!input?.imageDataUrl) {
     throw new Error("Image data is required.");
@@ -3701,12 +3731,63 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
           retryContext: {
             attempt,
             retryInstruction:
-              attempt > 1
+              retryInstructionOverride
+              || (attempt > 1
                 ? "Previous attempt failed schema validation or parsing. Return strict JSON only, with all required fields populated."
-                : undefined,
+                : undefined),
           },
         });
         if (geminiRecord) {
+          const sanitizedPhrases = detectSanitizedOutputPhrases([
+            geminiRecord.canonicalTitle,
+            geminiRecord.canonicalDescription,
+            ...geminiRecord.canonicalLeadParagraphs,
+          ]);
+          if (sanitizedPhrases.length > 0) {
+            if (attempt < MAX_GEMINI_ATTEMPTS) {
+              retryInstructionOverride = buildStrictSanitizedRetryInstruction(sanitizedPhrases);
+              continue;
+            }
+
+            const filenameSupportTitle = buildFilenameSupportTitle(
+              normalizedInput,
+              assessFilenameRelevance(normalizedInput.fileName || "", [])
+            );
+            if (filenameSupportTitle) {
+              const fallbackRecord = buildFallbackRecord(
+                {
+                  ...normalizedInput,
+                  title: filenameSupportTitle,
+                },
+                localeProfile,
+                attempt
+              );
+              const fallbackResponse = mapRecordToUiResponse(fallbackRecord, selectedModel, localeProfile);
+              const fallbackSanitizedPhrases = detectSanitizedOutputPhrases([
+                fallbackResponse.title,
+                fallbackResponse.description,
+                ...fallbackResponse.leadParagraphs,
+              ]);
+              if (fallbackSanitizedPhrases.length === 0) {
+                return fallbackResponse;
+              }
+            }
+
+            return mapRecordToUiResponse(
+              buildTechnicalQcRejectedRecord(
+                normalizedInput,
+                makeReason(
+                  "qc_rejected_sanitized_placeholder_output",
+                  "critical",
+                  "validator",
+                  "Quantum AI returned generic sanitized placeholder language instead of literal searchable design text. Re-run this artwork with a stricter OCR pass."
+                )
+              ),
+              selectedModel,
+              localeProfile
+            );
+          }
+
           const geminiResponse = mapRecordToUiResponse(geminiRecord, selectedModel, localeProfile);
           if (!geminiResponse.publishReady && shouldAttemptFilenameSupportedRescue(normalizedInput, geminiRecord)) {
             const fallbackRecord = buildFallbackRecord(normalizedInput, localeProfile, attempt);

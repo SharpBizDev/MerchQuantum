@@ -91,8 +91,8 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
     imageTruth: {
       visibleText: ["faith over fear"],
       visibleFacts: ["white lettering on a clean transparent design"],
-      inferredMeaning: ["faith-forward", "giftable christian apparel"],
-      dominantTheme: "faith-forward",
+      inferredMeaning: ["faith-centered message", "giftable christian apparel"],
+      dominantTheme: "faith-centered message",
       likelyAudience: "faith-based buyers",
       likelyOccasion: "daily wear",
       uncertainty: [],
@@ -114,7 +114,7 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
       titleCore: "Faith Over Fear Christian Tee",
       benefitCore: "Clear merch-ready faith message for buyer intent.",
       likelyAudience: "faith-based buyers",
-      styleOccasion: "faith-forward",
+      styleOccasion: "faith-centered message",
       visibleKeywords: ["faith over fear", "faith"],
       inferredKeywords: ["christian shirt", "faith gift"],
       forbiddenClaims: [],
@@ -123,7 +123,7 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
       etsy: {
         title: "Faith Over Fear Christian Tee Faith Gift",
         leadParagraphs: [
-          "Clean faith-forward design for everyday wear and gift-ready discovery.",
+          "Clean faith-centered design for everyday wear and gift-ready discovery.",
           "Pair this opening copy with your imported template details for a complete listing.",
         ],
         discoveryTerms: ["faith over fear", "christian gift", "faith shirt", "religious tee", "daily wear"],
@@ -131,7 +131,7 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
       amazon: {
         title: "Faith Over Fear Christian Tee",
         leadParagraphs: [
-          "Faith-forward design for everyday confidence.",
+          "Faith-centered design for everyday confidence.",
           "Strong buyer intent keyword alignment for marketplace copy.",
         ],
         discoveryTerms: ["faith shirt", "christian tee", "daily wear", "gift shirt", "religious apparel"],
@@ -188,7 +188,7 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
       "This uplifting Christian shirt keeps the typography easy to read while helping the design connect quickly with buyers searching for meaningful everyday faith apparel.",
     finalTitle: "Faith Over Fear Christian Tee",
     finalDescription:
-      "Faith-forward graphic styling gives this merchandise a clear, uplifting message that stands out fast for shoppers looking for meaningful everyday apparel.\n\nThe clean slogan aesthetic keeps the design giftable, easy to merchandize, and strong for buyers who want visible inspiration with a polished print-ready look.",
+      "Faith-centered graphic styling gives this merchandise a clear, uplifting message that stands out fast for shoppers looking for meaningful everyday apparel.\n\nThe clean slogan aesthetic keeps the design giftable, easy to merchandize, and strong for buyers who want visible inspiration with a polished print-ready look.",
     tags: [
       "faith over fear",
       "christian shirt",
@@ -208,7 +208,7 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
     ],
     canonicalTitle: "Faith Over Fear Christian Tee",
     canonicalLeadParagraphs: [
-      "Faith-forward graphic styling helps this listing communicate its core message quickly.",
+      "Faith-centered graphic styling helps this listing communicate its core message quickly.",
       "Use this as opening persuasion copy, then keep your imported factual template details below.",
     ],
   };
@@ -2356,7 +2356,7 @@ async function main() {
         model: "gemini-test",
         fetchFn: async () =>
           createGeminiResponse(
-            createGeminiPayload({
+            {
               imageTruth: {
                 visibleText: ["jesus saves"],
                 visibleFacts: ["bold faith slogan"],
@@ -2378,6 +2378,12 @@ async function main() {
                 inferredKeywords: ["faith shirt", "christian tee"],
                 forbiddenClaims: ["Claims of healing, miracles, or specific religious dogma that could be seen as exclusive or judgmental."],
               },
+              extracted_text: "Jesus Saves",
+              generated_title: "Jesus Saves Christian Faith T Shirt",
+              generated_paragraph_1:
+                "Jesus Saves stands at the center of this Christian faith t-shirt, giving believers a direct, readable message that feels bold, wearable, and easy to recognize at a glance. The strong slogan styling keeps the artwork clear for church gatherings, everyday witness, devotional routines, and gift shopping focused on visible Jesus-centered apparel instead of vague inspirational wording.",
+              generated_paragraph_2:
+                "The clean typography and uncluttered layout give the design a modern Christian look that pairs naturally with denim, hoodies, jackets, and casual weekend outfits. Because the exact words stay visible, the shirt feels more specific to Bible study gifts, believer identity, and message-driven faith apparel than a generic religious tee, making it a strong option for shoppers who want straightforward search-friendly wording.",
               canonicalTitle: "Jesus Saves Christian Faith T Shirt",
               canonicalLeadParagraphs: [
                 "Share your faith with conviction in this Jesus Saves t-shirt. The bold visible message keeps the artwork easy to read for buyers.",
@@ -2398,7 +2404,7 @@ async function main() {
                 ],
                 reasonDetails: [],
               },
-            })
+            }
           ),
       }
     );
@@ -2451,6 +2457,76 @@ async function main() {
     assert.equal(response.title.includes("Recovered Structured Output Tee"), true);
   });
 
+  await run("Gemini sanitized placeholder output triggers a stricter OCR retry before reaching the UI", async () => {
+    let callCount = 0;
+    const capturedPrompts: string[] = [];
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "Life Begins With Jesus Christian Faith Shirt.png",
+        productFamily: "t-shirt",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_url, init) => {
+          callCount += 1;
+          capturedPrompts.push(String(getGeminiRequestParts(init)[0]?.text || ""));
+
+          if (callCount === 1) {
+            return createGeminiResponse(
+              createGeminiPayload({
+                extracted_text: "",
+                generated_title: "Faith Forward Christian Tee",
+                generated_paragraph_1:
+                  "This inspirational graphic offers a religious theme in a clean everyday format for shoppers who want simple uplifting apparel.",
+                generated_paragraph_2:
+                  "The general design stays approachable and versatile while the layout keeps the message broad for many buyers.",
+              })
+            );
+          }
+
+          return createGeminiResponse(
+            createGeminiPayload({
+              extracted_text: "Life Begins With Jesus",
+              generated_title: "Life Begins With Jesus Christian Faith Shirt",
+              generated_paragraph_1:
+                "Life Begins With Jesus takes center stage in this Christian faith shirt, giving believers a clear scripture-inspired message that feels bold, wearable, and easy to recognize at a glance. The diagonal typography keeps the wording visually distinct for church events, everyday witness, devotional routines, and gift shopping focused on Jesus-centered apparel that speaks openly instead of hiding behind vague inspiration.",
+                generated_paragraph_2:
+                  "The clean white lettering and minimalist layout give the design a modern Christian look that pairs naturally with denim, cardigans, jackets, and casual weekend outfits. Because the actual words stay visible, the shirt feels more specific to Christian living, Bible study gifts, and believer identity than a generic religious tee, making it a strong option for shoppers who want straightforward message apparel with real search-friendly wording.",
+              seo_tags: [
+                "life begins with jesus shirt",
+                "christian faith shirt",
+                "jesus message tee",
+                "bible study gift shirt",
+                "church outfit tee",
+                "believer apparel",
+                "scripture message shirt",
+                "christian gift tee",
+                "faith based clothing",
+                "jesus typography shirt",
+                "religious graphic tee",
+                "devotional apparel",
+                "witness wear shirt",
+                "modern christian tee",
+                "minimal faith shirt",
+              ],
+            })
+          );
+        },
+      }
+    );
+
+    assert.equal(callCount, 2);
+    assert.equal(response.source, "gemini");
+    assert.equal(/Jesus/i.test(response.title), true);
+    assert.equal(/faith forward|inspirational graphic|general design|religious theme/i.test(response.description), false);
+    assert.equal(/sanitized placeholder wording/i.test(capturedPrompts[1] || ""), true);
+    assert.equal(/if visible text says jesus, god, scripture references/i.test((capturedPrompts[1] || "").toLowerCase()), true);
+  });
+
   await run("Gemini retry ladder falls back deterministically after bounded failures", async () => {
     const sequence = createFetchSequence([
       new Response(
@@ -2475,6 +2551,39 @@ async function main() {
     assert.equal(sequence.getCallCount(), 2);
     assert.equal(response.source, "fallback");
     assert.equal(response.reasonFlags.some((flag) => flag.toLowerCase().includes("deterministic fallback used")), true);
+  });
+
+  await run("repeated sanitized placeholder output is kept out of the Good UI path", async () => {
+    const makeSanitizedPayload = () =>
+      createGeminiResponse(
+        createGeminiPayload({
+          extracted_text: "",
+          generated_title: "Faith Forward Christian Tee",
+          generated_paragraph_1:
+            "This inspirational graphic offers a religious theme in a clean everyday format for shoppers who want simple uplifting apparel.",
+          generated_paragraph_2:
+            "The general design stays approachable and versatile while the layout keeps the message broad for many buyers.",
+        })
+      );
+    const sequence = createFetchSequence([makeSanitizedPayload(), makeSanitizedPayload()]);
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "Life Begins With Jesus Christian Faith Shirt.png",
+        productFamily: "t-shirt",
+      },
+      { apiKey: "test-key", model: "gemini-test", fetchFn: sequence.fetchFn }
+    );
+
+    assert.equal(sequence.getCallCount(), 2);
+    assert.equal(response.source, "fallback");
+    assert.equal(response.qcApproved, false);
+    assert.equal(response.publishReady, false);
+    assert.equal(response.title, "");
+    assert.equal(response.description, "");
+    assert.equal(response.reasonFlags.some((flag) => /sanitized placeholder language/i.test(flag)), true);
   });
 
   await run("structured response sanitizes buyer-facing paragraphs and tag output without title bleed", async () => {
