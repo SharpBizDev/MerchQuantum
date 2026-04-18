@@ -141,26 +141,6 @@ type BatchResult = {
 
 const PROVIDERS = PROVIDER_OPTIONS;
 
-const FALLBACK_SHOPS: Shop[] = [
-  { id: "451293", title: "Primary Printify Shop" },
-  { id: "451294", title: "Secondary Printify Shop" },
-];
-
-const FALLBACK_PRODUCTS: Product[] = [
-  {
-    id: "12345ABCDE",
-    title: "Example Template Product 12345ABCDE",
-    type: "Apparel",
-    shopId: "451293",
-  },
-  {
-    id: "67890FGHIJ",
-    title: "Example Template Product 67890FGHIJ",
-    type: "Accessory",
-    shopId: "451294",
-  },
-];
-
 const DEFAULT_PLACEMENT_GUIDE: PlacementGuide = {
   position: "front",
   width: 3153,
@@ -2476,7 +2456,7 @@ export default function MerchQuantumApp() {
     }
   }
 
-  async function connectPrintify(tokenOverride?: string) {
+  async function connectProvider(tokenOverride?: string) {
     const submittedToken = String(tokenOverride ?? token).trim();
     if (!provider || !resolvedProviderId || !submittedToken || !isLiveProvider) return;
     setLoadingApi(true);
@@ -2519,7 +2499,7 @@ export default function MerchQuantumApp() {
     }
   }
 
-  async function disconnectPrintify() {
+  async function disconnectProvider() {
     try {
       await fetchWithTimeout(getProviderRoute("disconnect"), { method: "POST" });
     } catch {
@@ -2769,7 +2749,7 @@ export default function MerchQuantumApp() {
               />
               <button
                 type="button"
-                onClick={() => { void connectPrintify(); }}
+                onClick={() => { void connectProvider(); }}
                 disabled={!canSubmitProviderConnection}
                 className={`absolute top-1.5 min-h-[32px] rounded-lg px-3 text-sm font-medium transition-colors ${connected ? "right-24 bg-[#00BC7D] text-white" : "right-1.5 bg-[#7F22FE] text-white hover:bg-[#6d1ee0] disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"}`}
               >
@@ -2778,7 +2758,7 @@ export default function MerchQuantumApp() {
               {connected ? (
                 <button
                   type="button"
-                  onClick={() => { void disconnectPrintify(); }}
+                  onClick={() => { void disconnectProvider(); }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-white transition-opacity hover:opacity-80"
                 >
                   Disconnect
