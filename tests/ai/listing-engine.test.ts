@@ -1518,10 +1518,10 @@ async function main() {
       ],
     });
     assert.deepEqual(capturedSafetySettings, [
-      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
     ]);
   });
 
@@ -1768,9 +1768,9 @@ async function main() {
     assert.equal(/sterileProductType:\s+Unisex Heavy Cotton Tee/i.test(prompt), true);
     assert.equal(/fileNameSupport:\s+Life Begins With Jesus Christian Faith Shirt/i.test(prompt), true);
     assert.equal(/fileNameWeight:\s+HIGH/i.test(prompt), true);
-    assert.equal(thresholdByCategory.HARM_CATEGORY_HATE_SPEECH, "BLOCK_ONLY_HIGH");
-    assert.equal(thresholdByCategory.HARM_CATEGORY_HARASSMENT, "BLOCK_ONLY_HIGH");
-    assert.equal(thresholdByCategory.HARM_CATEGORY_DANGEROUS_CONTENT, "BLOCK_ONLY_HIGH");
+    assert.equal(thresholdByCategory.HARM_CATEGORY_HATE_SPEECH, "BLOCK_NONE");
+    assert.equal(thresholdByCategory.HARM_CATEGORY_HARASSMENT, "BLOCK_NONE");
+    assert.equal(thresholdByCategory.HARM_CATEGORY_DANGEROUS_CONTENT, "BLOCK_NONE");
   });
 
   await run("Gemini request tells the model to ignore gibberish filename hints", async () => {

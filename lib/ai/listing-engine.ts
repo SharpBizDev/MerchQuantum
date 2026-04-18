@@ -271,19 +271,19 @@ const GENERIC_SANITIZED_OUTPUT_PHRASES = [
 const GEMINI_SAFETY_SETTINGS = [
   {
     category: "HARM_CATEGORY_HATE_SPEECH",
-    threshold: "BLOCK_ONLY_HIGH",
+    threshold: "BLOCK_NONE",
   },
   {
     category: "HARM_CATEGORY_HARASSMENT",
-    threshold: "BLOCK_ONLY_HIGH",
+    threshold: "BLOCK_NONE",
   },
   {
     category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-    threshold: "BLOCK_ONLY_HIGH",
+    threshold: "BLOCK_NONE",
   },
   {
     category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-    threshold: "BLOCK_ONLY_HIGH",
+    threshold: "BLOCK_NONE",
   },
 ] as const;
 
@@ -3190,6 +3190,47 @@ function parseJsonLoose(raw: string) {
   }
 }
 
+function truncateForLog(value: string, maxLength = 1800) {
+  const normalized = String(value || "");
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength)}… [truncated ${normalized.length - maxLength} chars]`;
+}
+
+function buildGeminiPayloadTelemetry(payload: any) {
+  const candidates = Array.isArray(payload?.candidates)
+    ? payload.candidates.slice(0, 2).map((candidate: any, index: number) => {
+        const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+        const textPreview = truncateForLog(
+          parts
+            .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+            .filter(Boolean)
+            .join("\n"),
+          1200
+        );
+
+        return {
+          index,
+          finishReason: candidate?.finishReason ?? null,
+          safetyRatings: candidate?.safetyRatings ?? null,
+          textPreview: textPreview || null,
+        };
+      })
+    : [];
+
+  return {
+    promptFeedback: payload?.promptFeedback ?? null,
+    candidates,
+  };
+}
+
+function logGeminiFailure(event: string, details: Record<string, unknown>) {
+  try {
+    console.error("[listing-engine][gemini]", JSON.stringify({ event, ...details }));
+  } catch {
+    console.error("[listing-engine][gemini]", event, details);
+  }
+}
+
 function normalizeImageTruth(input: unknown, titleSeed: string): ImageTruthRecord {
   const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const visibleText = normalizeArray(obj.visibleText).slice(0, 20);
@@ -3678,6 +3719,15 @@ async function callGeminiRecord(
     options.visionInputs.promptHint
   );
   const endpoint = `${GEMINI_ENDPOINT_BASE}/${encodeURIComponent(options.model)}:generateContent`;
+  const helperInputs = options.visionInputs.helpers || [];
+  const requestTelemetry = {
+    model: options.model,
+    fileName: input.fileName || null,
+    primaryMimeType: options.visionInputs.primary.mimeType,
+    helperCount: helperInputs.length,
+    helperMimeTypes: helperInputs.map((helper) => helper.mimeType),
+    retryAttempt: options.retryContext.attempt,
+  };
 
   const response = await options.fetchFn(endpoint, {
     method: "POST",
@@ -3700,7 +3750,7 @@ async function callGeminiRecord(
                 data: options.visionInputs.primary.inlineData,
               },
             },
-            ...(options.visionInputs.helpers || []).map((helperInput) => ({
+            ...helperInputs.map((helperInput) => ({
               inlineData: {
                 mimeType: helperInput.mimeType,
                 data: helperInput.inlineData,
@@ -3719,13 +3769,39 @@ async function callGeminiRecord(
   });
 
   if (!response.ok) {
+    const errorBody = await response.text().catch(() => "");
+    logGeminiFailure("http_error", {
+      ...requestTelemetry,
+      status: response.status,
+      statusText: response.statusText,
+      responseBodyPreview: truncateForLog(errorBody),
+    });
     throw new Error(`Gemini request failed with status ${response.status}.`);
   }
 
-  const payload = await response.json();
+  const responseBody = await response.text();
+  let payload: any = null;
+  try {
+    payload = responseBody ? JSON.parse(responseBody) : null;
+  } catch (error) {
+    logGeminiFailure("non_json_response", {
+      ...requestTelemetry,
+      responseBodyPreview: truncateForLog(responseBody),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw new Error("Gemini returned a non-JSON HTTP payload.");
+  }
+
   const rawText = extractGeminiText(payload);
   const parsed = parseJsonLoose(rawText);
-  if (!parsed || typeof parsed !== "object") return null;
+  if (!parsed || typeof parsed !== "object") {
+    logGeminiFailure("unusable_structured_output", {
+      ...requestTelemetry,
+      rawTextPreview: truncateForLog(rawText),
+      payloadTelemetry: buildGeminiPayloadTelemetry(payload),
+    });
+    return null;
+  }
 
   const parsedObj = parsed as Record<string, unknown>;
   const qcStatusRaw =
@@ -4100,6 +4176,13 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
         if (error instanceof ListingInputGuardError) {
           throw error;
         }
+
+        logGeminiFailure("attempt_exception", {
+          model: selectedModel,
+          fileName: normalizedInput.fileName || null,
+          retryAttempt: attempt,
+          error: error instanceof Error ? error.message : String(error),
+        });
 
         if (attempt >= MAX_GEMINI_ATTEMPTS) break;
       }
