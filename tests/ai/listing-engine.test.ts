@@ -2101,6 +2101,108 @@ async function main() {
     );
   });
 
+  await run("legacy orange-style caution input is still collapsed to Good in the binary model", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "legacy-orange-caution.png",
+        productFamily: "t-shirt",
+        templateContext: "Comfort Colors 1717 garment-dyed heavyweight tee with relaxed fit and ring-spun cotton.",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async () =>
+          createGeminiResponse(
+            {
+              imageTruth: {
+                visibleText: [],
+                visibleFacts: ["dark monochrome arcade-style logo on transparent background"],
+                inferredMeaning: ["retro gamer identity", "minimal arcade brand look"],
+                dominantTheme: "retro arcade",
+                likelyAudience: "retro gaming fans",
+                likelyOccasion: "casual wear",
+                uncertainty: ["Small interior logo details remain stylized rather than fully literal."],
+                ocrWeakness: "low contrast on the untouched transparent render",
+                meaningClarity: 0.33,
+                hasReadableText: false,
+              },
+              filenameAssessment: {
+                classification: "partial_support",
+                usefulness: 0.58,
+                usefulTokens: ["arcade", "logo", "gamer"],
+                ignoredTokens: [],
+                conflictSeverity: "none",
+                shouldIgnore: false,
+                reason: "filename supports the visible logo direction",
+              },
+              semanticRecord: {
+                titleCore: "Classic Arcade Logo Minimalist Gamer Shirt",
+                benefitCore: "Readable minimalist arcade logo styling for retro gaming buyers.",
+                likelyAudience: "retro gaming fans",
+                styleOccasion: "minimal gamer",
+                visibleKeywords: ["arcade logo", "gamer"],
+                inferredKeywords: ["retro gaming shirt", "minimalist gamer tee"],
+                forbiddenClaims: [],
+              },
+              generated_title: "Classic Arcade Logo Minimalist Gamer Shirt",
+              generated_paragraph_1:
+                "The monochrome arcade logo keeps the design clean and recognizable for buyers who want a simple retro gaming look.",
+              generated_paragraph_2:
+                "Crisp linework and balanced negative space give the design a clean retro arcade feel that pairs naturally with denim, layered streetwear, and casual weekend styling for shoppers who want subtle gaming identity without a noisy full-color print.",
+              seo_tags: [
+                "arcade logo shirt",
+                "retro gamer tee",
+                "minimal arcade shirt",
+                "gaming logo apparel",
+                "monochrome gamer shirt",
+                "retro gaming gift",
+                "arcade fan tee",
+                "minimalist gamer top",
+                "video game style shirt",
+                "classic arcade graphic",
+                "clean gaming design",
+                "subtle gamer apparel",
+                "weekend gamer outfit",
+                "retro logo tee",
+                "gaming culture shirt",
+              ],
+              qc_status: "PASS",
+              extracted_text: "",
+              validator: {
+                grade: "orange",
+                confidence: 0.52,
+                reasonFlags: [
+                  "Small interior logo details remain stylized rather than fully literal.",
+                  "OCR/text legibility is weak or partial.",
+                ],
+                complianceFlags: [],
+                reasonDetails: [
+                  {
+                    code: "image_uncertainty_1",
+                    severity: "warning",
+                    stage: "image_truth",
+                    summary: "Small interior logo details remain stylized rather than fully literal.",
+                  },
+                  {
+                    code: "ocr_weakness",
+                    severity: "warning",
+                    stage: "image_truth",
+                    summary: "OCR/text legibility is weak or partial.",
+                  },
+                ],
+              },
+            }
+          ),
+      }
+    );
+
+    assert.equal(response.grade, "green");
+    assert.equal(response.publishReady, true);
+    assert.equal(response.qcApproved, true);
+  });
+
   await run("Gemini blocking image-truth reasons keep the item out of the Good publish path", async () => {
     const response = await generateListingResponse(
       {
@@ -2142,6 +2244,45 @@ async function main() {
       response.reasonFlags.some((flag) => flag.toLowerCase().includes("too ambiguous")),
       true
     );
+  });
+
+  await run("legacy orange-style blocking input is still collapsed to Fail in the binary model", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "legacy-orange-blocking.png",
+        productFamily: "t-shirt",
+        templateContext: "Comfort Colors 1717 garment-dyed heavyweight tee with relaxed fit and ring-spun cotton.",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async () =>
+          createGeminiResponse(
+            createGeminiPayload({
+              validator: {
+                grade: "orange",
+                confidence: 0.62,
+                reasonFlags: ["Visible artwork remains too ambiguous for a trustworthy listing title."],
+                complianceFlags: [],
+                reasonDetails: [
+                  {
+                    code: "ambiguous_image_truth",
+                    severity: "warning",
+                    stage: "image_truth",
+                    summary: "Visible artwork remains too ambiguous for a trustworthy listing title.",
+                  },
+                ],
+              },
+            })
+          ),
+      }
+    );
+
+    assert.equal(response.grade, "red");
+    assert.equal(response.publishReady, false);
+    assert.equal(response.qcApproved, true);
   });
 
   await run("Gemini validator filters unsupported compliance flags on faith conflict cases", async () => {
