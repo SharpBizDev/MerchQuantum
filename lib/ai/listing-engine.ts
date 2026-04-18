@@ -238,6 +238,7 @@ const WEAK_FILENAME_TOKENS = new Set([
   "graphic",
   "upload",
   "export",
+  "scan",
   "mockup",
   "transparent",
   "png",
@@ -1164,7 +1165,6 @@ function isRecoverableBinaryCautionReason(
   leadParagraphs: string[]
 ) {
   if (!hasRecoverableCautionGrounding(imageTruth, title, leadParagraphs)) return false;
-  if (detail.stage !== "image_truth") return false;
 
   const normalized = detail.summary.toLowerCase();
   if (
@@ -1174,6 +1174,16 @@ function isRecoverableBinaryCautionReason(
   ) {
     return false;
   }
+
+  if (
+    /local fallback used|deterministic fallback used|gemini attempt|unparseable structured output|failed or returned unusable structured output/.test(
+      normalized
+    )
+  ) {
+    return true;
+  }
+
+  if (detail.stage !== "image_truth" && detail.stage !== "fallback") return false;
 
   if (detail.code === "ocr_weakness") return true;
   if (/^image_uncertainty_\d+$/.test(detail.code)) return true;
@@ -1292,6 +1302,18 @@ function chooseTitleSeed(input: ListingRequest, imageTruth: ImageTruthRecord, fi
   }
 
   return normalizeTitle(input.fileName || imageDrivenSeed || "Product", imageDrivenSeed || "");
+}
+
+function buildFilenameSupportTitle(input: ListingRequest, filenameAssessment: FilenameAssessment) {
+  if (!cleanSpaces(input.fileName || "")) return "";
+  if (filenameAssessment.shouldIgnore) return "";
+  if (filenameAssessment.classification !== "partial_support" && filenameAssessment.classification !== "strong_support") {
+    return "";
+  }
+
+  const normalized = normalizeTitle(input.fileName || "", "");
+  if (!normalized || isLowSignalTitle(normalized)) return "";
+  return normalized;
 }
 
 function normalizeComparableText(value: string) {
@@ -1624,7 +1646,11 @@ function buildSemanticRecord(input: ListingRequest, imageTruth: ImageTruthRecord
   const productNoun = getProductNoun(input.productFamily || "");
   const templateSignal = extractTemplateSignal(input.templateContext || "", productNoun);
   const titleSeed = chooseTitleSeed(input, imageTruth, filenameAssessment);
-  const titleCore = templateSignal && isLowSignalTitle(titleSeed) ? templateSignal.shortLabel : titleSeed;
+  const filenameSupportTitle = buildFilenameSupportTitle(input, filenameAssessment);
+  const titleCore =
+    isLowSignalTitle(titleSeed)
+      ? filenameSupportTitle || templateSignal?.shortLabel || titleSeed
+      : titleSeed;
   const styleOccasion = imageTruth.likelyOccasion || detectTheme(`${titleCore} ${input.templateContext || ""}`);
   const benefitCore =
     templateSignal?.buyerBenefit ||
@@ -3190,7 +3216,7 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
     localeProfile
   );
   const marketplaceDrafts = buildMarketplaceDrafts(semantic, leadParagraphs, localeProfile);
-  const validator = gradeListing(
+  let validator = gradeListing(
     imageTruth,
     semantic,
     filenameAssessment,
@@ -3198,6 +3224,37 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
     leadParagraphs,
     marketplaceDrafts.etsy.discoveryTerms
   );
+  const filenameSupportTitle = buildFilenameSupportTitle(input, filenameAssessment);
+  const canPromoteRetryFallback =
+    retryCount > 0 &&
+    Boolean(filenameSupportTitle) &&
+    !isLowSignalTitle(semantic.titleCore) &&
+    validator.complianceFlags.length === 0 &&
+    validator.reasonDetails.length > 0 &&
+    validator.reasonDetails.every((detail) => {
+      const normalized = detail.summary.toLowerCase();
+      return (
+        detail.code === "ocr_weakness" ||
+        /^image_uncertainty_\d+$/.test(detail.code) ||
+        /local fallback used|deterministic fallback used|gemini attempt|unparseable structured output|failed or returned unusable structured output/.test(
+          normalized
+        )
+      );
+    });
+
+  if (canPromoteRetryFallback) {
+    const fallbackNotice = retryCount > 0
+      ? `Deterministic fallback used after ${retryCount} bounded Gemini attempt${retryCount === 1 ? "" : "s"} failed or returned unusable structured output.`
+      : "Local fallback used because Gemini output was unavailable or unparseable.";
+    validator = {
+      ...validator,
+      grade: "green",
+      confidence: Math.max(validator.confidence, 0.42),
+      reasonFlags: unique([fallbackNotice]),
+      complianceFlags: [],
+      reasonDetails: [],
+    } satisfies ValidatorResult;
+  }
   const canonicalTitle = marketplaceDrafts.etsy.title || semantic.titleCore || "Product";
   const canonicalLeadParagraphs = sanitizeMarketingLeadParagraphs(
     marketplaceDrafts.etsy.leadParagraphs,
@@ -3221,6 +3278,50 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
     seoTags,
     canonicalLeadParagraphs,
   } satisfies EngineRecord;
+}
+
+function shouldAttemptFilenameSupportedRescue(input: ListingRequest, record: EngineRecord) {
+  if (record.validator.complianceFlags.length > 0) return false;
+  if (cleanSpaces(input.title || "")) return true;
+
+  const blockingReasonDetails = getBinaryBlockingReasonDetails(
+    record.validator.reasonDetails,
+    record.imageTruth,
+    record.canonicalTitle,
+    record.canonicalLeadParagraphs
+  );
+  const genericQcRejectionOnly =
+    blockingReasonDetails.length > 0
+    && blockingReasonDetails.every(
+      (detail) =>
+        detail.code === "qc_rejected_visual_signal"
+        || /quantum ai qc rejected this artwork/i.test(detail.summary)
+    );
+  if (blockingReasonDetails.length > 0 && !genericQcRejectionOnly) return false;
+
+  const lowInformationSignal = [
+    ...record.imageTruth.visibleFacts,
+    ...record.imageTruth.inferredMeaning,
+    record.imageTruth.dominantTheme,
+    ...record.imageTruth.uncertainty,
+  ]
+    .map((value) => cleanSpaces(value).toLowerCase())
+    .join(" ");
+  if (
+    /single small dot|single dot mark|single mark|tiny mark|minimal abstract|extremely minimal|low information/i.test(
+      lowInformationSignal
+    )
+  ) {
+    return false;
+  }
+
+  const filenameAssessment = assessFilenameRelevance(input.fileName || "", []);
+  if (filenameAssessment.shouldIgnore) return false;
+
+  const filenameSupportTitle = buildFilenameSupportTitle(input, filenameAssessment);
+  if (!filenameSupportTitle) return false;
+
+  return filenameAssessment.classification === "partial_support" || filenameAssessment.classification === "strong_support";
 }
 
 async function callGeminiRecord(
@@ -3575,7 +3676,16 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
           },
         });
         if (geminiRecord) {
-          return mapRecordToUiResponse(geminiRecord, selectedModel, localeProfile);
+          const geminiResponse = mapRecordToUiResponse(geminiRecord, selectedModel, localeProfile);
+          if (!geminiResponse.publishReady && shouldAttemptFilenameSupportedRescue(normalizedInput, geminiRecord)) {
+            const fallbackRecord = buildFallbackRecord(normalizedInput, localeProfile, attempt);
+            const fallbackResponse = mapRecordToUiResponse(fallbackRecord, selectedModel, localeProfile);
+            if (fallbackResponse.publishReady) {
+              return fallbackResponse;
+            }
+          }
+
+          return geminiResponse;
         }
       } catch (error) {
         if (error instanceof ListingInputGuardError) {

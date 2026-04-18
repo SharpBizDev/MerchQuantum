@@ -1545,6 +1545,57 @@ async function main() {
     );
   });
 
+  await run("fallback keeps descriptive filename-supported minimalist art on the Good path instead of collapsing to a generic blank title", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "Minimal Red Circle Shirt, Abstract Graphic Tee, Modern Minimalist T-Shirt.png",
+        productFamily: "t-shirt",
+        templateContext: "Unisex Heavy Cotton Tee. Product features. Care instructions.",
+      },
+      { apiKey: "" }
+    );
+
+    assert.equal(response.source, "fallback");
+    assert.equal(response.qcApproved, true);
+    assert.equal(response.publishReady, true);
+    assert.equal(response.grade, "green");
+    assert.equal(/Minimal Red Circle/i.test(response.title), true);
+  });
+
+  await run("Gemini over-fail can recover to a publishable fallback when filename support is strong and compliance is clean", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "Minimalist Basketball Shirt, Line Art Sports Tee, Unisex Basketball T-Shirt.png",
+        productFamily: "t-shirt",
+        templateContext: "Unisex Heavy Cotton Tee. Product features. Care instructions.",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async () =>
+          createGeminiResponse(
+            createGeminiPayload({
+              qc_status: "FAIL",
+              extracted_text: "",
+              generated_title: "",
+              generated_paragraph_1: "",
+              generated_paragraph_2: "",
+              seo_tags: [],
+            })
+          ),
+      }
+    );
+
+    assert.equal(response.qcApproved, true);
+    assert.equal(response.publishReady, true);
+    assert.equal(response.grade, "green");
+    assert.equal(/Basketball/i.test(response.title), true);
+  });
+
   await run("image-backed golden corpus preserves grade, title, lead, and filename handling behavior", async () => {
     const seenBase64 = new Set<string>();
 
