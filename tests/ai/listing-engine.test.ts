@@ -1330,6 +1330,79 @@ async function main() {
     assert.equal(response.model, "gemini-fast-test");
   });
 
+  await run("blank transparent artwork is rejected in code before Gemini is called", async () => {
+    const image = await createTransparentSvgDataUrl(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+        <rect width="1200" height="1200" fill="transparent"/>
+      </svg>
+    `);
+    let fetchCalled = false;
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: image.dataUrl,
+        fileName: "blank-transparent-design.png",
+        title: "",
+        productFamily: "t-shirt",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async () => {
+          fetchCalled = true;
+          throw new Error("Gemini should not run for a code-rejected blank transparent upload.");
+        },
+      }
+    );
+
+    assert.equal(fetchCalled, false);
+    assert.equal(response.source, "fallback");
+    assert.equal(response.qcApproved, false);
+    assert.equal(response.publishReady, false);
+    assert.equal(response.title, "");
+    assert.equal(response.description, "");
+    assert.deepEqual(response.tags, []);
+    assert.equal(
+      response.reasonFlags.some((flag) => /blank|visible printable design signal/i.test(flag)),
+      true
+    );
+  });
+
+  await run("faint transparent haze is rejected in code before Gemini is called", async () => {
+    const image = await createTransparentSvgDataUrl(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+        <rect width="1200" height="1200" fill="transparent"/>
+        <ellipse cx="600" cy="610" rx="250" ry="180" fill="rgba(255,255,255,0.035)"/>
+      </svg>
+    `);
+    let fetchCalled = false;
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: image.dataUrl,
+        fileName: "faint-transparent-outline.png",
+        title: "",
+        productFamily: "t-shirt",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async () => {
+          fetchCalled = true;
+          throw new Error("Gemini should not run for a code-rejected faint transparent haze upload.");
+        },
+      }
+    );
+
+    assert.equal(fetchCalled, false);
+    assert.equal(response.qcApproved, false);
+    assert.equal(response.publishReady, false);
+    assert.equal(
+      response.reasonFlags.some((flag) => /faint semi-transparent residue|readable printable signal/i.test(flag)),
+      true
+    );
+  });
+
   await run("Gemini prompt keeps filename as support-only context when no explicit title is supplied", async () => {
     let capturedPrompt = "";
 
@@ -1807,6 +1880,9 @@ async function main() {
     assert.equal(/design details, styling suggestions, and aesthetic fit/i.test(capturedPrompt), true);
     assert.equal(/Read every word on this design exactly as written/i.test(capturedPrompt), true);
     assert.equal(/do not judge dpi, metadata, file headers, or upload-constraint validity/i.test(capturedPrompt), true);
+    assert.equal(/merchandise artwork, not as a generic object-detection task/i.test(capturedPrompt), true);
+    assert.equal(/intentional retro pixel art can all PASS/i.test(capturedPrompt), true);
+    assert.equal(/full rectangular poster, photographic scene, or textured background composition/i.test(capturedPrompt), true);
     assert.equal(/model should verify dpi|model should verify metadata|check file headers/i.test(capturedPrompt), false);
   });
 

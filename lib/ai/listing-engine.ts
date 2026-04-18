@@ -157,6 +157,7 @@ type VisionInputSet = {
   primary: ParsedImageData;
   helpers?: ParsedImageData[];
   promptHint?: string;
+  blockingReason?: ListingReason;
   routingHint: VisionRoutingHint;
 };
 
@@ -212,6 +213,19 @@ const ANALYSIS_DARK_BACKGROUND = { r: 26, g: 26, b: 26, alpha: 1 } as const;
 const ANALYSIS_NEUTRAL_BACKGROUND = { r: 229, g: 229, b: 229, alpha: 1 } as const;
 const NEUTRAL_HELPER_MIN_CONTRAST_RATIO = 2.6;
 const NEUTRAL_HELPER_CONTRAST_DELTA_THRESHOLD = 1.35;
+const MIN_MEANINGFUL_VISIBLE_PIXELS = 120;
+const MIN_EFFECTIVE_INK_RATIO = 0.0012;
+const MIN_TINY_TRIMMED_EDGE = 72;
+const TINY_TRIMMED_EFFECTIVE_INK_RATIO = 0.004;
+const LOW_ALPHA_FAINT_VISIBLE_THRESHOLD = 0.2;
+const LOW_ALPHA_PIXEL_THRESHOLD = 0.6;
+const OPAQUE_ALPHA_PIXEL_THRESHOLD = 0.9;
+const SOFT_ALPHA_PIXEL_RATIO_THRESHOLD = 0.84;
+const FAINT_TRANSPARENT_INK_RATIO_THRESHOLD = 0.01;
+const POSTER_LIKE_CANVAS_COVERAGE_THRESHOLD = 0.82;
+const POSTER_LIKE_MIN_EDGE = 900;
+const PIXEL_ART_GUIDANCE_MAX_EDGE = 420;
+const PIXEL_ART_GUIDANCE_MAX_PIXELS = 220_000;
 
 const WEAK_FILENAME_TOKENS = new Set([
   "img",
@@ -2105,21 +2119,54 @@ function buildQcDerivedImageTruth(
   };
 }
 
-function buildQcRejectedValidator(): ValidatorResult {
+function buildQcRejectedValidator(reason?: ListingReason): ValidatorResult {
+  const resolvedReason =
+    reason
+    || makeReason(
+      "qc_rejected_visual_signal",
+      "critical",
+      "validator",
+      "Quantum AI QC rejected this artwork because the design appears blank, illegible, or too distorted for safe listing generation."
+    );
+
   return {
     grade: "red",
     confidence: 0.08,
-    reasonFlags: ["Quantum AI rejected this artwork because the design appears blank, illegible, or too distorted for safe listing generation."],
+    reasonFlags: [resolvedReason.summary],
     complianceFlags: [],
-    reasonDetails: [
-      makeReason(
-        "qc_rejected_visual_signal",
-        "critical",
-        "validator",
-        "Quantum AI QC rejected this artwork because the design appears blank, illegible, or too distorted for safe listing generation."
-      ),
-    ],
+    reasonDetails: [resolvedReason],
   };
+}
+
+function buildTechnicalQcRejectedRecord(input: ListingRequest, reason: ListingReason): EngineRecord {
+  const imageTruth: ImageTruthRecord = {
+    visibleText: [],
+    visibleFacts: [],
+    inferredMeaning: [],
+    dominantTheme: "unknown",
+    likelyAudience: "quality control failure",
+    likelyOccasion: "quality control failure",
+    uncertainty: [reason.summary],
+    ocrWeakness: reason.code,
+    meaningClarity: 0.06,
+    hasReadableText: false,
+  };
+  const filenameAssessment = assessFilenameRelevance(input.fileName || "", []);
+  const semanticRecord = buildSemanticRecord(input, imageTruth, filenameAssessment);
+
+  return {
+    source: "fallback",
+    qcApproved: false,
+    imageTruth,
+    filenameAssessment,
+    semanticRecord,
+    marketplaceDrafts: buildEmptyMarketplaceDrafts(),
+    validator: buildQcRejectedValidator(reason),
+    canonicalTitle: "",
+    canonicalDescription: "",
+    seoTags: [],
+    canonicalLeadParagraphs: [],
+  } satisfies EngineRecord;
 }
 
 function summarizeTemplateContext(templateContext: string) {
@@ -2357,6 +2404,8 @@ async function analyzeTransparencySurface(sourceImage: sharp.Sharp) {
   let totalAlpha = 0;
   let lightVisibleAlpha = 0;
   let darkVisibleAlpha = 0;
+  let softVisiblePixelCount = 0;
+  let opaqueVisiblePixelCount = 0;
 
   for (let index = 0; index < data.length; index += channels) {
     const alphaByte = data[index + 3] || 0;
@@ -2367,6 +2416,12 @@ async function analyzeTransparencySurface(sourceImage: sharp.Sharp) {
 
     const alpha = alphaByte / 255;
     visiblePixelCount += 1;
+    if (alpha <= LOW_ALPHA_PIXEL_THRESHOLD) {
+      softVisiblePixelCount += 1;
+    }
+    if (alpha >= OPAQUE_ALPHA_PIXEL_THRESHOLD) {
+      opaqueVisiblePixelCount += 1;
+    }
     const luminance = getRelativeLuminance(data[index], data[index + 1], data[index + 2]);
     weightedLuminance += luminance * alpha;
     totalAlpha += alpha;
@@ -2382,8 +2437,112 @@ async function analyzeTransparencySurface(sourceImage: sharp.Sharp) {
     artworkLuminance: totalAlpha > 0 ? weightedLuminance / totalAlpha : null,
     transparentPixelRatio: totalPixels > 0 ? transparentPixelCount / totalPixels : 0,
     visiblePixelCount,
+    averageVisibleAlpha: visiblePixelCount > 0 ? totalAlpha / visiblePixelCount : 0,
+    effectiveInkRatio: totalPixels > 0 ? totalAlpha / totalPixels : 0,
+    softVisiblePixelRatio: visiblePixelCount > 0 ? softVisiblePixelCount / visiblePixelCount : 0,
+    opaqueVisiblePixelRatio: visiblePixelCount > 0 ? opaqueVisiblePixelCount / visiblePixelCount : 0,
     lightVisibleRatio: totalAlpha > 0 ? lightVisibleAlpha / totalAlpha : 0,
     darkVisibleRatio: totalAlpha > 0 ? darkVisibleAlpha / totalAlpha : 0,
+  };
+}
+
+function buildVisionBlockingReason(code: string, summary: string): ListingReason {
+  return makeReason(code, "critical", "validator", summary);
+}
+
+function assessVisionPreflight(args: {
+  hasMeaningfulTransparency: boolean;
+  visiblePixelCount: number;
+  averageVisibleAlpha: number;
+  effectiveInkRatio: number;
+  softVisiblePixelRatio: number;
+  trimmedWidth: number;
+  trimmedHeight: number;
+  sourceWidth: number;
+  sourceHeight: number;
+  coverage: number;
+}) {
+  const trimmedLongestEdge = Math.max(args.trimmedWidth, args.trimmedHeight);
+  const trimmedShortestEdge = Math.min(args.trimmedWidth, args.trimmedHeight);
+  const promptHints: string[] = [];
+
+  if (args.visiblePixelCount === 0) {
+    return {
+      blockingReason: buildVisionBlockingReason(
+        "qc_rejected_blank_design",
+        "Quantum AI rejected this artwork because the upload appears blank and does not contain visible printable design signal."
+      ),
+      promptHint: "",
+    };
+  }
+
+  if (
+    args.hasMeaningfulTransparency &&
+    trimmedLongestEdge < MIN_TINY_TRIMMED_EDGE &&
+    args.effectiveInkRatio <= TINY_TRIMMED_EFFECTIVE_INK_RATIO &&
+    (trimmedShortestEdge < Math.round(MIN_TINY_TRIMMED_EDGE * 0.72) || args.visiblePixelCount < MIN_MEANINGFUL_VISIBLE_PIXELS)
+  ) {
+    return {
+      blockingReason: buildVisionBlockingReason(
+        "qc_rejected_tiny_design_signal",
+        "Quantum AI rejected this artwork because the visible design signal is too tiny to support a trustworthy merchandise listing."
+      ),
+      promptHint: "",
+    };
+  }
+
+  if (
+    args.hasMeaningfulTransparency &&
+    args.averageVisibleAlpha <= LOW_ALPHA_FAINT_VISIBLE_THRESHOLD &&
+    args.softVisiblePixelRatio >= SOFT_ALPHA_PIXEL_RATIO_THRESHOLD &&
+    args.effectiveInkRatio <= FAINT_TRANSPARENT_INK_RATIO_THRESHOLD
+  ) {
+    return {
+      blockingReason: buildVisionBlockingReason(
+        "qc_rejected_faint_transparent_signal",
+        "Quantum AI rejected this artwork because the visible design is mostly faint semi-transparent residue and does not provide enough readable printable signal."
+      ),
+      promptHint: "",
+    };
+  }
+
+  if (
+    args.hasMeaningfulTransparency &&
+    args.visiblePixelCount < MIN_MEANINGFUL_VISIBLE_PIXELS &&
+    args.effectiveInkRatio < MIN_EFFECTIVE_INK_RATIO &&
+    trimmedLongestEdge < MIN_TINY_TRIMMED_EDGE
+  ) {
+    return {
+      blockingReason: buildVisionBlockingReason(
+        "qc_rejected_near_blank_signal",
+        "Quantum AI rejected this artwork because the visible design signal is too sparse to describe safely for merchandise publishing."
+      ),
+      promptHint: "",
+    };
+  }
+
+  if (
+    !args.hasMeaningfulTransparency &&
+    Math.max(args.sourceWidth, args.sourceHeight) >= POSTER_LIKE_MIN_EDGE &&
+    args.coverage >= POSTER_LIKE_CANVAS_COVERAGE_THRESHOLD
+  ) {
+    promptHints.push(
+      "If the upload reads like a full rectangular poster, photographic scene, or textured background composition instead of isolated merchandise artwork, treat that as a FAIL."
+    );
+  }
+
+  if (
+    trimmedLongestEdge <= PIXEL_ART_GUIDANCE_MAX_EDGE &&
+    args.effectiveInkRatio >= MIN_EFFECTIVE_INK_RATIO
+  ) {
+    promptHints.push(
+      "If the blocky geometry appears to be intentional retro pixel art and the core subject remains legible, treat that as a valid visual style rather than a defect."
+    );
+  }
+
+  return {
+    blockingReason: null,
+    promptHint: promptHints.join(" "),
   };
 }
 
@@ -2527,6 +2686,10 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
     if (transparencySurface.visiblePixelCount === 0) {
       return {
         primary: parsed,
+        blockingReason: buildVisionBlockingReason(
+          "qc_rejected_blank_design",
+          "Quantum AI rejected this artwork because the upload appears blank and does not contain visible printable design signal."
+        ),
         routingHint: {
           ocrCritical: false,
           helperStrategy: "raw",
@@ -2575,6 +2738,18 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
         hasSparseCanvasDominance
       );
     const shouldUseDerivedAnalysis = hasMeaningfulTransparency || hasWeakOpaqueSignal;
+    const preflightAssessment = assessVisionPreflight({
+      hasMeaningfulTransparency,
+      visiblePixelCount: transparencySurface.visiblePixelCount,
+      averageVisibleAlpha: transparencySurface.averageVisibleAlpha,
+      effectiveInkRatio: transparencySurface.effectiveInkRatio,
+      softVisiblePixelRatio: transparencySurface.softVisiblePixelRatio,
+      trimmedWidth: trimmedInfo.width,
+      trimmedHeight: trimmedInfo.height,
+      sourceWidth: metadata.width,
+      sourceHeight: metadata.height,
+      coverage,
+    });
 
     if (!Number.isFinite(coverage)) {
       return {
@@ -2586,9 +2761,21 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
       };
     }
 
+    if (preflightAssessment.blockingReason) {
+      return {
+        primary: parsed,
+        blockingReason: preflightAssessment.blockingReason,
+        routingHint: {
+          ocrCritical: false,
+          helperStrategy: "raw",
+        },
+      };
+    }
+
     if (!shouldUseDerivedAnalysis) {
       return {
         primary: parsed,
+        promptHint: preflightAssessment.promptHint || undefined,
         routingHint: {
           ocrCritical: false,
           helperStrategy: "raw",
@@ -2677,13 +2864,14 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
       mimeType: parsed.mimeType,
       inlineData: parsed.inlineData,
     });
+    const helperPromptHint = hasMeaningfulTransparency
+      ? `The provided images all show the same artwork. The strongest temporary high-contrast analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background. Additional helper renders may show the same transparent design on both dark and light garment-neutral backgrounds, and a neutral-gray garment-neutral helper view may appear when mixed contrast or sparse transparency makes that easier to read. A cropped close view around the visible artwork bounds may be included when the full canvas leaves too much empty space. A single-ink text-prioritized helper render may also appear to emphasize letters, symbols, and linework shape without changing the original design. A later helper image may show the untouched original transparent upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`
+      : `The provided images all show the same artwork. The strongest temporary upscaled analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background to improve readability for a small or low-signal source image. Additional helper renders may show the same design on dark and light garment-neutral backgrounds, and a neutral-gray garment-neutral helper view may appear when mixed contrast or weak source detail makes that easier to read. A later helper image may show the untouched original upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`;
 
     return {
       primary,
       helpers,
-      promptHint: hasMeaningfulTransparency
-        ? `The provided images all show the same artwork. The strongest temporary high-contrast analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background. Additional helper renders may show the same transparent design on both dark and light garment-neutral backgrounds, and a neutral-gray garment-neutral helper view may appear when mixed contrast or sparse transparency makes that easier to read. A cropped close view around the visible artwork bounds may be included when the full canvas leaves too much empty space. A single-ink text-prioritized helper render may also appear to emphasize letters, symbols, and linework shape without changing the original design. A later helper image may show the untouched original transparent upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`
-        : `The provided images all show the same artwork. The strongest temporary upscaled analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background to improve readability for a small or low-signal source image. Additional helper renders may show the same design on dark and light garment-neutral backgrounds, and a neutral-gray garment-neutral helper view may appear when mixed contrast or weak source detail makes that easier to read. A later helper image may show the untouched original upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`,
+      promptHint: [helperPromptHint, preflightAssessment.promptHint].filter(Boolean).join(" "),
       routingHint: {
         ocrCritical,
         helperStrategy: hasMeaningfulTransparency ? "transparent-normalized" : "upscaled-normalized",
@@ -2934,6 +3122,10 @@ function buildMasterPrompt(
     "- Image truth is primary. Visible text outranks filename text.",
     "- Ignore artificial helper backgrounds, including neutral-gray helper canvases, and focus only on the foreground design.",
     "- Do not judge DPI, metadata, file headers, or upload-constraint validity. Technical checks are handled by application code, not the model.",
+    "- Treat this upload as merchandise artwork, not as a generic object-detection task or lifestyle photo captioning task.",
+    "- Clean isolated slogans, emblem graphics, vector illustrations, silhouette art, character-face graphics, line art, and intentional retro pixel art can all PASS when they remain commercially usable.",
+    "- Do not fail a design only because it is stylized, symbolic, sparse on a transparent canvas, or intentionally pixel-based if the core subject remains readable enough for merchandise copy.",
+    "- If the upload reads like a full rectangular poster, photographic scene, or textured background composition instead of isolated merchandise artwork, FAIL it unless the foreground design itself is clearly isolated and merch-ready.",
     "- Do not hallucinate unsupported claims, official licensing, or hidden artwork details.",
     "- Use filename only as support. If the artwork is clear, do not let the filename write the title or marketing copy for you.",
     "- Strong transparent PNG artwork with clean readable text or simple legible iconography still counts as meaningful visual evidence even when the canvas is sparse.",
@@ -3356,6 +3548,14 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
   const preparedVisionInputs = await prepareVisionInputs(String(normalizedInput.imageDataUrl || ""));
   const modelRoute = resolveGeminiModelRoute(options, preparedVisionInputs?.routingHint);
   const selectedModel = modelRoute.selectedModel;
+
+  if (preparedVisionInputs?.blockingReason) {
+    return mapRecordToUiResponse(
+      buildTechnicalQcRejectedRecord(normalizedInput, preparedVisionInputs.blockingReason),
+      selectedModel,
+      localeProfile
+    );
+  }
 
   if (apiKey && preparedVisionInputs) {
     for (let attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS; attempt += 1) {
