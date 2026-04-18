@@ -181,8 +181,8 @@ const DEFAULT_OCR_MODEL =
 const GEMINI_ENDPOINT_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const MAX_TEMPLATE_CONTEXT = 1400;
 const MAX_TITLE_CHARS = 120;
-const MAX_LEAD_CHARS = 260;
-const MAX_DESCRIPTION_CHARS = 950;
+const MAX_LEAD_CHARS = 560;
+const MAX_DESCRIPTION_CHARS = 1600;
 const MAX_GEMINI_ATTEMPTS = 2;
 const FINAL_TAG_COUNT = 15;
 const MAX_VISION_ANALYSIS_BYTES = 15 * 1024 * 1024;
@@ -878,7 +878,7 @@ function normalizeDescriptionParagraphs(rawDescription: unknown, title: string) 
     stripped
       .map((paragraph, index) => (index === 0 ? removeTitleLead(paragraph, title) : paragraph))
       .filter(Boolean)
-      .map((paragraph) => trimSentence(normalizeSentenceEnding(paragraph), Math.min(MAX_DESCRIPTION_CHARS, 340)))
+      .map((paragraph) => trimSentence(normalizeSentenceEnding(paragraph), MAX_LEAD_CHARS))
       .filter(Boolean)
   );
 
@@ -912,7 +912,7 @@ function assembleMarketingDescription(paragraphs: string[]) {
       .map((paragraph) => paragraph.replace(/^[-*•]+\s*/, ""))
       .map((paragraph) => cleanSpaces(paragraph))
       .filter(Boolean)
-      .map((paragraph) => trimSentence(normalizeSentenceEnding(paragraph), Math.min(MAX_DESCRIPTION_CHARS, 340)))
+      .map((paragraph) => trimSentence(normalizeSentenceEnding(paragraph), MAX_LEAD_CHARS))
       .filter(Boolean)
   )
     .slice(0, 2)
@@ -1770,29 +1770,74 @@ function looksGenericBuyerLead(paragraph: string, semantic: SemanticRecord, temp
   const signalTokens = getSemanticLeadSignalTokens(semantic, templateSignal);
   const hasSignal = signalTokens.some((token) => comparable.includes(token));
   const genericPattern =
-    /crafted for comfort|perfect for everyday wear|ideal choice|ideal pick|thoughtful gift|versatile addition|pairs well with any outfit|casual wardrobe|share a meaningful statement|anyone seeking inspiration|powerful message|high-quality|loved one|music festivals|casual outings|or simply\b|conversation starter/i;
+    /crafted for comfort|perfect for everyday wear|ideal choice|ideal pick|thoughtful gift|versatile addition|pairs well with any outfit|casual wardrobe|share a meaningful statement|anyone seeking inspiration|powerful message|high-quality|loved one|music festivals|casual outings|or simply\b|conversation starter|this design conveys|this design communicates|the use of the word|keeps the mood|reads clearly at a glance|gives buyers a quicker read|heavy lifting|without sounding generic|thought process|writing process/i;
 
   if (genericPattern.test(clean)) return true;
   if (!hasSignal && tokenizeForVariety(clean).length < 12) return true;
   return false;
 }
 
-function buildDefaultLead(semantic: SemanticRecord, localeProfile: LocaleProfile) {
-  const designPhrase = getPrimaryDesignPhrase(semantic);
-  const seed = `${semantic.titleCore}|${semantic.styleOccasion}|${semantic.likelyAudience}|${localeProfile.locale}`;
+function getConsumerFacingLeadPhrases(semantic: SemanticRecord, maxItems = 4) {
+  return unique([
+    stripLeadProductWords(semantic.titleCore),
+    getPrimaryDesignAnchor(semantic),
+    ...semantic.visibleKeywords,
+    ...semantic.inferredKeywords,
+    semantic.styleOccasion,
+  ])
+    .map((value) => cleanSpaces(value))
+    .filter(Boolean)
+    .filter((value) => !hasTemplateSpecLeakage(value))
+    .filter((value) => {
+      const comparable = normalizeComparableText(stripLeadProductWords(value));
+      if (!comparable) return false;
+      if (/^(graphic|design|artwork|art|style|vibe|message|gift|apparel|merch|shirt|tee|t shirt|product|minimal|modern|retro|unisex|casual)$/.test(comparable)) {
+        return false;
+      }
+      return value.split(/\s+/).length <= 6;
+    })
+    .slice(0, maxItems);
+}
+
+function buildFallbackSeoParagraphs(
+  semantic: SemanticRecord,
+  templateSignal?: TemplateSignal | null,
+  localeProfile: LocaleProfile = getLocaleProfile()
+) {
+  const audience = cleanSpaces(semantic.likelyAudience || "merchandise shoppers");
+  const styleOccasion = cleanSpaces(semantic.styleOccasion || "design-forward");
+  const phrases = getConsumerFacingLeadPhrases(semantic, 5);
+  const primaryPhrase = cleanSpaces(phrases[0] || stripLeadProductWords(semantic.titleCore) || semantic.productNoun);
+  const supportPhrases = phrases
+    .slice(1)
+    .filter((value) => normalizeComparableText(value) !== normalizeComparableText(primaryPhrase))
+    .slice(0, 3);
+  const supportPhraseText = supportPhrases.length
+    ? joinReadableList(supportPhrases.map((value) => cleanSpaces(value.toLowerCase())))
+    : "";
+  const seed = `${semantic.titleCore}|${primaryPhrase}|${styleOccasion}|${audience}|${localeProfile.locale}|${templateSignal?.shortLabel || "default"}`;
+  const useCase = cleanSpaces(templateSignal?.useCase || "weekend styling, gifting, and repeat wear").toLowerCase();
+
+  const firstParagraph = pickDeterministicVariant(seed, [
+    `This ${semantic.productNoun} features ${primaryPhrase.toLowerCase()} in a ${styleOccasion} layout made for ${audience} who want artwork with immediate personality and real keyword depth. ${supportPhraseText ? `Details like ${supportPhraseText} give the print more visual specificity, helping the design feel stronger on casual outfits, layered looks, and gift-ready picks without losing its clean impact.` : `The artwork stays clear enough to feel expressive, wearable, and easy to remember, so the design lands quickly without drifting into generic filler copy.`} It is the kind of graphic piece that adds an easy focal point to everyday outfits while still feeling intentional enough for shoppers who care about distinctive design.`,
+    `This ${semantic.productNoun} puts ${primaryPhrase.toLowerCase()} front and center for ${audience} looking for a ${styleOccasion} piece that feels graphic, wearable, and easy to recognize at a glance. ${supportPhraseText ? `Touches like ${supportPhraseText} keep the artwork visually rich, giving the print more of the literal detail shoppers expect when they are searching for something specific instead of another vague novelty tee.` : `The composition keeps the visual story strong from the first look, giving shoppers a clearer sense of the artwork than a flat placeholder-style description ever could.`} That balance makes the design easy to style while still giving it the kind of personality that earns repeat wear.`,
+    `This ${semantic.productNoun} leads with ${primaryPhrase.toLowerCase()} and a ${styleOccasion} attitude that gives ${audience} something bolder and more memorable than a generic slogan-only graphic. ${supportPhraseText ? `Visual cues such as ${supportPhraseText} help the design feel fully formed, which adds more texture, recognition, and shopper appeal to the finished print.` : `The artwork still carries enough visual identity to feel expressive, giftable, and outfit-ready without needing filler language to explain why it works.`} It is an easy choice for people who want their wardrobe to show off a clearer creative point of view.`,
+  ]);
+
+  const secondParagraph = pickDeterministicVariant(`${seed}|buyer`, [
+    `The ${styleOccasion} vibe makes this ${semantic.productNoun} easy to wear with denim, jackets, sneakers, and relaxed everyday staples, while the artwork keeps enough character to stand on its own. It works especially well for ${useCase}, where shoppers want something personal, giftable, and easy to pair with the rest of a casual rotation. Whether it is picked up for personal wear or handed off as a thoughtful gift, the design keeps its visual story strong from the first glance to the final outfit.`,
+    `Because the artwork keeps its literal details visible and its ${styleOccasion} mood intact, this ${semantic.productNoun} fits naturally into casual styling, weekend plans, layered outfits, and easy gift shopping. The design feels polished enough for repeat wear, but still expressive enough to catch attention when somebody wants more than a basic filler graphic. For ${audience}, that mix of clarity, style, and recognizable visual detail is what makes the piece feel worth adding to the lineup.`,
+    `That combination of ${primaryPhrase.toLowerCase()}, a ${styleOccasion} feel, and a design-forward silhouette gives this ${semantic.productNoun} strong crossover appeal for everyday outfits, gift moments, and repeat wear. The print reads clearly whether somebody is shopping for themselves or for ${audience}, and it keeps enough visual character to feel current without turning into a trend that disappears after one season. It is a clean, wearable way to bring more identity into a casual wardrobe.`,
+  ]);
 
   return [
-    pickDeterministicVariant(seed, [
-      `${capitalizeFirst(designPhrase)} gives this ${semantic.productNoun} a ${semantic.styleOccasion} angle that reads clearly at a glance and feels specific from the first scroll.`,
-      `${capitalizeFirst(designPhrase)} keeps the mood of this ${semantic.productNoun} clear, giving it a ${semantic.styleOccasion} feel that lands quickly without sounding generic.`,
-      `This ${semantic.productNoun} uses ${designPhrase.toLowerCase()} to create a ${semantic.styleOccasion} direction that feels easy to read and easy to place.`,
-    ]),
-    pickDeterministicVariant(`${seed}|buyer`, [
-      `It gives buyers a quicker read on ${designPhrase.toLowerCase()}, so the ${semantic.productNoun} feels specific before any template details have to do the heavy lifting.`,
-      `That ${semantic.styleOccasion} direction keeps ${designPhrase.toLowerCase()} doing the work, which helps ${semantic.likelyAudience} shoppers understand the design without leaning on filler copy.`,
-      `The design stays clear enough to sell the mood on first impression, giving ${semantic.likelyAudience} shoppers a better sense of the artwork than a spec-led opener would.`,
-    ]),
+    firstParagraph,
+    secondParagraph,
   ];
+}
+
+function buildDefaultLead(semantic: SemanticRecord, localeProfile: LocaleProfile) {
+  return buildFallbackSeoParagraphs(semantic, null, localeProfile);
 }
 
 function hasTemplateSpecLeakage(paragraph: string) {
@@ -2261,26 +2306,7 @@ function buildTemplateAwareLead(
 ) {
   const templateSignal = extractTemplateSignal(templateContext, semantic.productNoun);
   if (!templateSignal) return buildDefaultLead(semantic, localeProfile);
-
-  const seed = `${semantic.titleCore}|${templateSignal.shortLabel}|${templateSignal.useCase}|${semantic.likelyAudience}`;
-  const designPhrase = getPrimaryDesignPhrase(semantic);
-  const firstParagraph = pickDeterministicVariant(seed, [
-    `${capitalizeFirst(designPhrase)} stays front and center, while the ${templateSignal.shortLabel.toLowerCase()} base gives this ${semantic.productNoun} enough real-world context to suit ${templateSignal.useCase}.`,
-    `${capitalizeFirst(designPhrase)} sets the tone immediately, and ${templateSignal.detailSummary.toLowerCase()} help the ${semantic.productNoun} feel believable for ${templateSignal.useCase} without turning the opener into a spec sheet.`,
-    `The ${templateSignal.shortLabel.toLowerCase()} base supports ${designPhrase.toLowerCase()} without burying the artwork in raw product details, so the ${semantic.productNoun} still reads design-first for ${templateSignal.useCase}.`,
-  ]);
-
-  const secondParagraph = pickDeterministicVariant(`${seed}|buyer`, [
-    `Buyers get a quicker read on ${designPhrase.toLowerCase()} first, while the product cues quietly support repeat wear, gifting, and everyday use.`,
-    `That balance keeps ${designPhrase.toLowerCase()} doing the real work up front, so the description feels specific to the artwork before the template details take over.`,
-    `It gives ${semantic.likelyAudience} shoppers a clearer sense of the ${semantic.styleOccasion} mood, while the product context backs up the listing without turning it into a spec dump.`,
-    `The opener stays centered on ${designPhrase.toLowerCase()}, which makes the ${semantic.productNoun} feel more intentional than a generic blank-product description.`,
-  ]);
-
-  return [
-    firstParagraph,
-    secondParagraph,
-  ];
+  return buildFallbackSeoParagraphs(semantic, templateSignal, localeProfile);
 }
 
 function resolveApiKey(explicitApiKey?: string) {
@@ -3103,7 +3129,7 @@ function buildMasterPrompt(
   const sterileProductType = cleanSpaces(input.templateContext || getFallbackSterileProductType(input.productFamily));
 
   return [
-    "You are an elite e-commerce visual analyst and Quality Control gatekeeper for a Print-On-Demand platform.",
+    "You are an elite e-commerce visual analyst, Quality Control gatekeeper, and SEO copywriter for Etsy-, Amazon-, and marketplace-ready Print-On-Demand listings.",
     "",
     "Analyze the provided merchandise design.",
     "",
@@ -3134,14 +3160,19 @@ function buildMasterPrompt(
     "- seo_tags: an array of exactly 15 high-value SEO tags.",
     "",
     "CRITICAL RULES",
-    "- generated_paragraph_1 and generated_paragraph_2 must each be 40 to 60 words.",
-    "- generated_paragraph_1 focuses on the emotional hook, vibe, and audience.",
-    "- generated_paragraph_2 focuses on design details, styling suggestions, and aesthetic fit.",
+    "- NO META-COMMENTARY: never explain your thought process, never critique the wording, and never describe what the design 'conveys' or how the copy was written. Write buyer-facing sales copy only.",
+    "- generated_paragraph_1 and generated_paragraph_2 must be exactly 2 substantial paragraphs totaling 150 to 250 words combined. Aim for roughly 70 to 125 words per paragraph.",
+    "- The first sentence of generated_paragraph_1 must be a strong keyword-rich SEO hook that immediately describes the actual item and visible artwork.",
+    "- generated_paragraph_1 focuses on the emotional hook, vibe, audience, and why the artwork is appealing to wear or gift.",
+    "- generated_paragraph_2 focuses on literal design details, styling suggestions, shopper use cases, and aesthetic fit.",
+    "- Identify the literal visible elements in the art and weave them naturally into the copy: objects, typography, symbols, shapes, tools, instruments, linework, or other clear design features visible in the image.",
+    "- Describe who the design is for and the lifestyle or aesthetic it fits so the copy contains real searchable nouns and adjectives instead of abstract commentary.",
     "- Do not include generic garment specs, care instructions, fit, cotton weight, or template text.",
     "- Focus only on the art/design and its customer appeal.",
     "- Weave the strongest keywords from generated_title naturally into generated_paragraph_1.",
     "- Do not repeat the full generated_title verbatim at the start of generated_paragraph_1.",
     "- generated_paragraph_2 must end in a complete sentence.",
+    "- Do not output bullet points, sign-offs, or standalone labels inside the paragraphs.",
     "- Provider template/spec content is application-owned and must never be rewritten, summarized, or paraphrased.",
     "",
     "ANALYSIS RULES",

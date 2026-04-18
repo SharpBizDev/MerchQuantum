@@ -417,7 +417,7 @@ async function main() {
     for (const lead of leads) {
       assert.equal(/(?:\.\.\.|…)\s*$/.test(lead), false);
       assert.equal(/[.!?]["')\]]*$/.test(lead), true);
-      assert.equal(lead.length <= 260, true);
+      assert.equal(lead.length <= 560, true);
     }
   });
 
@@ -1926,15 +1926,21 @@ async function main() {
     assert.equal(/sterileProductType:\s*Unisex Heavy Cotton Tee/i.test(capturedPrompt), true);
     assert.equal(/faith boutique|christian gift|uplifting/i.test(capturedPrompt), false);
     assert.equal(/&mdash;|&rsquo;|&sup2;/i.test(capturedPrompt), false);
-    assert.equal(/40 to 60 words/i.test(capturedPrompt), true);
-    assert.equal(/emotional hook, vibe, and audience/i.test(capturedPrompt), true);
-    assert.equal(/design details, styling suggestions, and aesthetic fit/i.test(capturedPrompt), true);
+    assert.equal(/150 to 250 words combined/i.test(capturedPrompt), true);
+    assert.equal(/roughly 70 to 125 words per paragraph/i.test(capturedPrompt), true);
+    assert.equal(/no meta-commentary/i.test(capturedPrompt), true);
+    assert.equal(/strong keyword-rich seo hook/i.test(capturedPrompt), true);
+    assert.equal(/literal visible elements in the art/i.test(capturedPrompt), true);
+    assert.equal(/buyer-facing sales copy only/i.test(capturedPrompt), true);
+    assert.equal(/emotional hook, vibe, audience/i.test(capturedPrompt), true);
+    assert.equal(/literal design details, styling suggestions, shopper use cases, and aesthetic fit/i.test(capturedPrompt), true);
     assert.equal(/Read every word on this design exactly as written/i.test(capturedPrompt), true);
     assert.equal(/do not judge dpi, metadata, file headers, or upload-constraint validity/i.test(capturedPrompt), true);
     assert.equal(/merchandise artwork, not as a generic object-detection task/i.test(capturedPrompt), true);
     assert.equal(/intentional retro pixel art can all PASS/i.test(capturedPrompt), true);
     assert.equal(/full rectangular poster, photographic scene, or textured background composition/i.test(capturedPrompt), true);
     assert.equal(/model should verify dpi|model should verify metadata|check file headers/i.test(capturedPrompt), false);
+    assert.equal(/40 to 60 words/i.test(capturedPrompt), false);
   });
 
   await run("Gemini validator output cannot stay green when reasons or compliance flags are present", async () => {
@@ -2507,6 +2513,60 @@ async function main() {
     assert.equal(Array.isArray(response.tags), true);
     assert.equal(response.tags.length, 15);
     assert.equal(response.tags.some((tag) => tag.includes(",")), false);
+  });
+
+  await run("structured response preserves dense literal-object copy for downstream tag fuel without meta commentary", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        fileName: "Minimal Acoustic Guitar Shirt, Musician Graphic Tee, Unplugged Music T-Shirt.png",
+        productFamily: "t-shirt",
+        templateContext:
+          "Product features\n- 100% ring-spun cotton\nCare instructions\n- Machine wash cold",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async () =>
+          createGeminiResponse(
+            createGeminiPayload({
+              qc_status: "PASS",
+              extracted_text: "",
+              generated_title: "Minimal Acoustic Guitar Graphic Tee",
+              generated_paragraph_1:
+                "Channel musician energy with this minimal acoustic guitar graphic tee, where the cutaway body, soundhole, strings, and frets create a clean instrument-driven look that stands out fast. The line art keeps the artwork easy to recognize for guitar players, songwriters, campfire strummers, and unplugged set lovers who want music apparel that feels expressive without getting cluttered. It is an easy pick for anyone who wants melody, rhythm, and creative identity to show up clearly in a wearable everyday graphic.",
+              generated_paragraph_2:
+                "The balanced guitar silhouette gives this design a modern retro feel that works with denim, flannels, boots, layered jackets, and relaxed weekend outfits. Because the instrument details stay visible, the shirt feels more specific to acoustic music, live gigs, rehearsal nights, and songwriter sessions than a generic music tee. It also makes a strong gift for guitar teachers, bandmates, folk fans, and musicians who appreciate clean line art with real stage-to-street versatility.",
+              seo_tags: [
+                "acoustic guitar shirt",
+                "musician graphic tee",
+                "guitar player gift",
+                "songwriter shirt",
+                "unplugged music tee",
+                "folk music apparel",
+                "campfire guitar shirt",
+                "minimal guitar design",
+                "line art guitar tee",
+                "band practice shirt",
+                "gig night apparel",
+                "guitar teacher gift",
+                "music lover shirt",
+                "retro instrument tee",
+                "melody graphic shirt",
+              ],
+            })
+          ),
+      }
+    );
+
+    const totalWords = response.description.split(/\s+/).filter(Boolean).length;
+    assert.equal(response.qcApproved, true);
+    assert.equal(response.publishReady, true);
+    assert.equal(totalWords >= 140, true);
+    assert.equal(response.leadParagraphs[0].length > 340, true);
+    assert.equal(/soundhole|strings|frets|cutaway/i.test(response.description), true);
+    assert.equal(/campfire|songwriter|guitar teacher|gig/i.test(response.description), true);
+    assert.equal(/keeps the mood|thought process|the use of the word|conveys/i.test(response.description), false);
   });
 
   await run("qc FAIL path blanks structured fields and keeps the item out of the Good publish path", async () => {
