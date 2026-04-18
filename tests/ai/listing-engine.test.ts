@@ -1033,7 +1033,8 @@ async function main() {
     );
 
     assert.equal(/single-ink text-prioritized helper render/i.test(capturedPrompt), true);
-    assert.equal(capturedImages.length >= 5, true);
+    assert.equal(/threshold-mask OCR helper render/i.test(capturedPrompt), true);
+    assert.equal(capturedImages.length >= 6, true);
     assert.equal(capturedImages.some((part) => part.data === image.base64), true);
   });
 
@@ -1406,6 +1407,7 @@ async function main() {
   await run("Gemini prompt keeps filename as support-only context when no explicit title is supplied", async () => {
     let capturedPrompt = "";
     let capturedSafetySettings: Array<{ category?: string; threshold?: string }> = [];
+    let capturedTemperature = Number.NaN;
 
     const response = await generateListingResponse(
       {
@@ -1424,6 +1426,7 @@ async function main() {
           const parts = requestBody?.contents?.[0]?.parts || [];
           capturedPrompt = String(parts[0]?.text || "");
           capturedSafetySettings = requestBody?.safetySettings || [];
+          capturedTemperature = Number(requestBody?.generationConfig?.temperature);
 
           return createGeminiResponse(createGeminiPayload());
         },
@@ -1436,9 +1439,13 @@ async function main() {
     assert.equal(/do not let the filename write the title or marketing copy/i.test(capturedPrompt), true);
     assert.equal(/trust the clearest render over the filename/i.test(capturedPrompt), true);
     assert.equal(/ACT AS: A Senior E-commerce Metadata Indexer and SEO Strategist\./i.test(capturedPrompt), true);
+    assert.equal(/Digital Asset Management \(DAM\) system performing High-Fidelity Text Logging/i.test(capturedPrompt), true);
     assert.equal(/VERBATIM EXTRACTION/i.test(capturedPrompt), true);
+    assert.equal(/Treat visible wording as raw searchable database data, not as content to soften, summarize, or neutralize\./i.test(capturedPrompt), true);
     assert.equal(/do not use placeholder phrases such as "Faith Forward", "Inspirational Graphic", "General Design", or "General Religious Theme"/i.test(capturedPrompt), true);
+    assert.equal(/threshold-mask OCR/i.test(capturedPrompt), true);
     assert.equal(/generated_title should lead with the strongest exact visible wording that a shopper would search for/i.test(capturedPrompt), true);
+    assert.equal(capturedTemperature, 0.1);
     assert.deepEqual(capturedSafetySettings, [
       { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
       { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -2534,8 +2541,12 @@ async function main() {
     assert.equal(callCount, 2);
     assert.equal(response.source, "gemini");
     assert.equal(/Jesus/i.test(response.title), true);
-    assert.equal(/faith forward|inspirational graphic|general design|religious theme/i.test(response.description), false);
+    assert.equal(/faith forward|inspirational graphic|inspirational design|general design|religious theme|general religious theme/i.test(response.description), false);
     assert.equal(/sanitized placeholder wording/i.test(capturedPrompts[1] || ""), true);
+    assert.equal(/discarded for being too generic/i.test(capturedPrompts[1] || ""), true);
+    assert.equal(/switch to literal mode/i.test(capturedPrompts[1] || ""), true);
+    assert.equal(/High-Fidelity Text Logging/i.test(capturedPrompts[1] || ""), true);
+    assert.equal(/threshold-mask OCR helper/i.test(capturedPrompts[1] || ""), true);
     assert.equal(/if visible text says jesus, god, scripture references/i.test((capturedPrompts[1] || "").toLowerCase()), true);
   });
 

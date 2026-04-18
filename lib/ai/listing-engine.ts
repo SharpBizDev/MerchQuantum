@@ -255,8 +255,10 @@ const WEAK_FILENAME_TOKENS = new Set([
 const GENERIC_SANITIZED_OUTPUT_PHRASES = [
   "faith forward",
   "inspirational graphic",
+  "inspirational design",
   "general design",
   "religious theme",
+  "general religious theme",
 ];
 
 const GEMINI_SAFETY_SETTINGS = [
@@ -669,7 +671,7 @@ function detectSanitizedOutputPhrases(values: Array<string | undefined | null>) 
 
 function buildStrictSanitizedRetryInstruction(sanitizedPhrases: string[]) {
   const phraseList = joinReadableList(sanitizedPhrases.map((phrase) => `"${phrase}"`));
-  return `Previous attempt returned sanitized placeholder wording such as ${phraseList}. Perform a deeper OCR pass and literal metadata extraction. If visible text says Jesus, God, scripture references, political wording, or other specific design text, reproduce it exactly in extracted_text, generated_title, the buyer-facing paragraphs, and seo_tags. Do not replace literal design wording with generic placeholders. Treat generic placeholder replacement as a system failure because it makes the listing unusable for search engines.`;
+  return `Previous response was discarded for being too generic and returned sanitized placeholder wording such as ${phraseList}. Switch to Literal Mode and perform High-Fidelity Text Logging like a Digital Asset Management system indexing raw warehouse inventory. Read the strongest high-contrast helper render or threshold-mask OCR helper first, then confirm against the untouched original upload. If visible text says Jesus, God, scripture references, political wording, or other specific design text, reproduce it exactly in extracted_text, generated_title, the buyer-facing paragraphs, and seo_tags. Do not replace literal design wording with generic placeholders. Treat generic placeholder replacement as a system failure because it makes the listing unusable for search engines.`;
 }
 
 function capitalizeFirst(value: string) {
@@ -2729,6 +2731,50 @@ async function buildTextPriorityAnalysisImage(
   );
 }
 
+async function buildThresholdOcrAnalysisImage(
+  artworkBuffer: Buffer,
+  panelSize: number,
+  useDarkBackground: boolean
+): Promise<ParsedImageData> {
+  const source = sharp(artworkBuffer, {
+    failOn: "none",
+    limitInputPixels: MAX_VISION_ANALYSIS_PIXELS,
+  }).ensureAlpha();
+  const metadata = await source.metadata();
+  const width = metadata.width || 1;
+  const height = metadata.height || 1;
+  const thresholdMask = await source
+    .clone()
+    .extractChannel("alpha")
+    .normalize()
+    .threshold(18)
+    .png()
+    .toBuffer();
+  const inkColor = useDarkBackground ? ANALYSIS_LIGHT_BACKGROUND : ANALYSIS_DARK_BACKGROUND;
+  const thresholdArtwork = await sharp({
+    create: {
+      width,
+      height,
+      channels: 3,
+      background: {
+        r: inkColor.r,
+        g: inkColor.g,
+        b: inkColor.b,
+      },
+    },
+  })
+    .joinChannel(thresholdMask)
+    .png()
+    .toBuffer();
+
+  return buildDerivedAnalysisImage(
+    thresholdArtwork,
+    panelSize,
+    useDarkBackground ? ANALYSIS_DARK_BACKGROUND : ANALYSIS_LIGHT_BACKGROUND,
+    { fillRatio: TEXT_PRIORITY_ANALYSIS_ARTWORK_FILL_RATIO }
+  );
+}
+
 async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet | null> {
   const parsed = parseImageData(imageDataUrl);
   if (!parsed) return null;
@@ -2942,6 +2988,15 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
           useDarkBackground
         )
       : null;
+    const shouldIncludeThresholdOcrRender =
+      hasMeaningfulTransparency && (ocrCritical || shouldIncludeTextPriorityRender);
+    const thresholdOcrRender = shouldIncludeThresholdOcrRender
+      ? await buildThresholdOcrAnalysisImage(
+          croppedCloseRender ? trimmedBuffer : sourceBuffer,
+          panelSize,
+          useDarkBackground
+        )
+      : null;
     const primary = croppedCloseRender || (useDarkBackground ? blackBackedRender : whiteBackedRender);
     const helpers: ParsedImageData[] = [];
 
@@ -2960,12 +3015,15 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
     if (textPriorityRender) {
       helpers.push(textPriorityRender);
     }
+    if (thresholdOcrRender) {
+      helpers.push(thresholdOcrRender);
+    }
     helpers.push({
       mimeType: parsed.mimeType,
       inlineData: parsed.inlineData,
     });
     const helperPromptHint = hasMeaningfulTransparency
-      ? `The provided images all show the same artwork. The strongest temporary high-contrast analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background. Additional helper renders may show the same transparent design on both dark and light garment-neutral backgrounds, and a neutral-gray garment-neutral helper view may appear when mixed contrast or sparse transparency makes that easier to read. A cropped close view around the visible artwork bounds may be included when the full canvas leaves too much empty space. A single-ink text-prioritized helper render may also appear to emphasize letters, symbols, and linework shape without changing the original design. A later helper image may show the untouched original transparent upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`
+      ? `The provided images all show the same artwork. The strongest temporary high-contrast analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background. Additional helper renders may show the same transparent design on both dark and light garment-neutral backgrounds, and a neutral-gray garment-neutral helper view may appear when mixed contrast or sparse transparency makes that easier to read. A cropped close view around the visible artwork bounds may be included when the full canvas leaves too much empty space. A single-ink text-prioritized helper render may also appear to emphasize letters, symbols, and linework shape without changing the original design. A threshold-mask OCR helper render may also appear to strip the artwork into literal readable shapes for High-Fidelity Text Logging. A later helper image may show the untouched original transparent upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`
       : `The provided images all show the same artwork. The strongest temporary upscaled analysis render may appear first on a ${analysisBackgroundLabel} garment-neutral background to improve readability for a small or low-signal source image. Additional helper renders may show the same design on dark and light garment-neutral backgrounds, and a neutral-gray garment-neutral helper view may appear when mixed contrast or weak source detail makes that easier to read. A later helper image may show the untouched original upload. Infer the design from the render with the strongest visual grounding, then use the untouched original only as confirmation rather than as the main reading surface.`;
 
     return {
@@ -3179,6 +3237,8 @@ function buildMasterPrompt(
   return [
     "ACT AS: A Senior E-commerce Metadata Indexer and SEO Strategist.",
     "",
+    "You are also an automated Digital Asset Management (DAM) system performing High-Fidelity Text Logging for warehouse inventory.",
+    "",
     "Your job is to index the visible design for search discovery and commercial metadata, not to explain your thought process or abstractly describe how the design feels.",
     "",
     "CONTEXT",
@@ -3186,6 +3246,7 @@ function buildMasterPrompt(
     "",
     "CRITICAL MANDATE",
     "You are responsible for VERBATIM EXTRACTION.",
+    "Treat visible wording as raw searchable database data, not as content to soften, summarize, or neutralize.",
     "If the design contains religious names, figures, scripture, political wording, slogans, or other exact visible phrases, you MUST preserve those exact terms in extracted_text, generated_title, generated_paragraph_1, generated_paragraph_2, and seo_tags.",
     "",
     "STRICT PROHIBITION",
@@ -3196,7 +3257,7 @@ function buildMasterPrompt(
     "This image may be a transparent PNG or isolated vector graphic intended for merchandise printing.",
     "If the image has been composited on a solid background for visibility, ignore the artificial background and focus only on the foreground typography, artwork, symbols, illustration, linework, and aesthetic.",
     "If multiple renders are provided, treat them as alternate views of the same design and trust the clearest render over the filename.",
-    "If you receive black-backed, white-backed, cropped, or helper renders, use them only to understand sparse or transparent artwork while preserving the untouched upload as the source of truth.",
+    "If you receive black-backed, white-backed, cropped, threshold-mask OCR, or helper renders, use them only to understand sparse or transparent artwork while preserving the untouched upload as the source of truth.",
     visionPromptHint ? visionPromptHint : "",
     "",
     "CONTEXT RULE",
@@ -3472,7 +3533,7 @@ async function callGeminiRecord(
         },
       ],
       generationConfig: {
-        temperature: 0.15,
+        temperature: 0.1,
         responseMimeType: "application/json",
         responseSchema: GEMINI_RESPONSE_SCHEMA,
       },
