@@ -498,6 +498,30 @@ async function main() {
     assert.equal(/peace|retro|hippie|artwork|design/i.test(leads[1]), true);
   });
 
+  await run("lead paragraph normalization keeps valid phrasal-verb endings instead of misreading them as clipped", () => {
+    const semantic: SemanticRecord = {
+      productNoun: "graphic tee",
+      titleCore: "Mountain Adventure Hiking Tee",
+      benefitCore: "Outdoor-themed merch copy for hiking buyers.",
+      likelyAudience: "hiking fans",
+      styleOccasion: "trail trips",
+      visibleKeywords: ["mountain line art"],
+      inferredKeywords: ["hiking shirt", "outdoor gift"],
+      forbiddenClaims: [],
+    };
+
+    const leads = normalizeLeadParagraphs(
+      "Mountain Adventure Hiking Tee",
+      [
+        "Outdoor-focused design for trail-minded shoppers and gift-ready discovery.",
+        "That mix of mountain adventure hiking, a trail trips mood, and a clean silhouette gives this graphic tee solid everyday appeal. Buyers can style it for personal wear or gifting, and the artwork keeps enough clarity to feel current without losing the exact message or symbol that drew them in.",
+      ],
+      semantic
+    );
+
+    assert.equal(leads[1].endsWith("drew them in."), true);
+  });
+
   await run("template pre-buffer sanitization strips themed fluff and preserves only static provider specs", () => {
     const sanitized = sanitizeTemplateDescriptionForPrebuffer(
       [
@@ -1459,11 +1483,14 @@ async function main() {
     assert.equal(/fileNameSupport: Classic Peace Sign Retro Hippie Shirt/i.test(capturedPrompt), true);
     assert.equal(/do not let the filename write the title or marketing copy/i.test(capturedPrompt), true);
     assert.equal(/trust the clearest render over the filename/i.test(capturedPrompt), true);
-    assert.equal(/ACT AS: A Senior E-commerce Metadata Indexer and SEO Strategist\./i.test(capturedPrompt), true);
+    assert.equal(/ACT AS: A Senior E-commerce Metadata Indexer, SEO Strategist, and Print-on-Demand Copywriter\./i.test(capturedPrompt), true);
     assert.equal(/Digital Asset Management \(DAM\) system performing High-Fidelity Text Logging/i.test(capturedPrompt), true);
+    assert.equal(/Treat iconography, slogans, and exact design text as commercial design assets/i.test(capturedPrompt), true);
+    assert.equal(/You are an e-commerce copywriter, not a content moderator\./i.test(capturedPrompt), true);
     assert.equal(/VERBATIM EXTRACTION/i.test(capturedPrompt), true);
     assert.equal(/Treat visible wording as raw searchable database data, not as content to soften, summarize, or neutralize\./i.test(capturedPrompt), true);
     assert.equal(/do not use placeholder phrases such as "Faith Forward", "Inspirational Graphic", "General Design", or "General Religious Theme"/i.test(capturedPrompt), true);
+    assert.equal(/message-led piece|faith-based apparel|religious merchandise/i.test(capturedPrompt), true);
     assert.equal(/threshold-mask OCR/i.test(capturedPrompt), true);
     assert.equal(/generated_title should lead with the strongest exact visible wording that a shopper would search for/i.test(capturedPrompt), true);
     assert.equal(capturedTemperature, 0.1);
@@ -1471,7 +1498,7 @@ async function main() {
       { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
       { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
       { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
     ]);
   });
 
@@ -1623,8 +1650,29 @@ async function main() {
     assert.equal(/faith forward/i.test(response.title), false);
     assert.equal(/jesus/i.test(response.description), true);
     assert.equal(/faith forward/i.test(response.description), false);
+    assert.equal(/general audience|message-led piece|faith-based apparel|religious merchandise/i.test(response.description), false);
     assert.equal(response.tags.some((tag) => /Life Begins With Jesus|Jesus/i.test(tag)), true);
     assert.equal(response.tags.some((tag) => /Faith Forward/i.test(tag)), false);
+  });
+
+  await run("fallback prioritizes literal religious filename terms over template-weight contamination", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "Vintage Jesus Cross Design Shirt.png",
+        productFamily: "t-shirt",
+        templateContext:
+          "Unisex Heavy Cotton Tee. Heavyweight ring-spun cotton. Product features. Care instructions.",
+      },
+      { apiKey: "" }
+    );
+
+    assert.equal(response.source, "fallback");
+    assert.equal(/Jesus|Cross/i.test(response.title), true);
+    assert.equal(/Heavy Cotton|Heavyweight|Ring-Spun/i.test(response.title), false);
+    assert.equal(/Jesus|Cross/i.test(response.description), true);
+    assert.equal(/general audience|message-led piece|faith-based apparel|religious merchandise/i.test(response.description), false);
   });
 
   await run("Gemini request strips system placeholders and sends commercial religious indexing instructions", async () => {
@@ -1686,6 +1734,8 @@ async function main() {
 
     assert.equal(systemInstruction.includes("do not sanitize or genericize the output"), true);
     assert.equal(systemInstruction.includes('"Faith Product"'), true);
+    assert.equal(systemInstruction.includes("commercial design asset"), true);
+    assert.equal(systemInstruction.includes('"message-led piece"'), true);
     assert.equal(systemInstruction.includes("Filename hint weight: HIGH."), true);
     assert.equal(systemInstruction.includes("Filename hint: Life Begins With Jesus Christian Faith Shirt."), true);
     assert.equal(prompt.includes("Awaiting Quantum AI"), false);
@@ -1697,6 +1747,7 @@ async function main() {
     assert.equal(/fileNameWeight:\s+HIGH/i.test(prompt), true);
     assert.equal(thresholdByCategory.HARM_CATEGORY_HATE_SPEECH, "BLOCK_ONLY_HIGH");
     assert.equal(thresholdByCategory.HARM_CATEGORY_HARASSMENT, "BLOCK_ONLY_HIGH");
+    assert.equal(thresholdByCategory.HARM_CATEGORY_DANGEROUS_CONTENT, "BLOCK_ONLY_HIGH");
   });
 
   await run("Gemini request tells the model to ignore gibberish filename hints", async () => {
@@ -1963,7 +2014,7 @@ async function main() {
     }
   });
 
-  await run("template-aware second paragraph varies across different listing contexts", async () => {
+  await run("template-aware second paragraph stays consumer-facing across different listing contexts", async () => {
     const heavyResponse = await generateListingResponse(
       {
         imageDataUrl: SAMPLE_PNG_DATA_URL,
@@ -1992,9 +2043,10 @@ async function main() {
       }
     );
 
-    assert.notEqual(heavyResponse.leadParagraphs[1], summerResponse.leadParagraphs[1]);
     assert.equal(/doing the heavy lifting on comfort and presentation/i.test(heavyResponse.leadParagraphs[1]), false);
     assert.equal(/doing the heavy lifting on comfort and presentation/i.test(summerResponse.leadParagraphs[1]), false);
+    assert.equal(/[.!?]["')\]]*$/.test(heavyResponse.leadParagraphs[1]), true);
+    assert.equal(/[.!?]["')\]]*$/.test(summerResponse.leadParagraphs[1]), true);
   });
 
   await run("runtime resolves GOOGLE_GENERATIVE_AI_API_KEY for Gemini calls", async () => {
