@@ -4,9 +4,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PROVIDER_OPTIONS, type ProviderChoiceId } from "../../lib/providers/client-options";
 
 const APP_TAGLINE = "Bulk product creation, simplified";
-const ACTIVE_BATCH_FILES = 10;
-const CONNECTED_TOTAL_BATCH_FILES = 300;
-const FIXED_TAG_COUNT = 15;
+const ACTIVE_BATCH_FILES = 50;
+const CONNECTED_TOTAL_BATCH_FILES = 50;
+const FIXED_TAG_COUNT = 13;
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
 export const QUANTUM_DESCRIPTION_AWAITING_TEXT = "Awaiting Quantum AI description...";
 
@@ -186,7 +186,7 @@ const LISTING_LIMITS: {
   descriptionMin: 220,
   descriptionMax: 1200,
   descriptionTargetWords: 150,
-  tagCount: 15,
+  tagCount: 13,
 };
 
 const DEFAULT_PLACEMENT_GUIDE: PlacementGuide = {
@@ -201,7 +201,7 @@ const AI_TITLE_MIN_CHARS = LISTING_LIMITS.titleMin;
 const AI_TITLE_MAX_CHARS = LISTING_LIMITS.titleMax;
 const AI_LEAD_MIN_CHARS = LISTING_LIMITS.descriptionMin;
 const AI_LEAD_MAX_CHARS = 380;
-const IMPORT_QUEUE_LIMIT = 100;
+const IMPORT_QUEUE_LIMIT = 50;
 const DISPLAY_PREVIEW_SAMPLE_DIMENSION = 256;
 const DISPLAY_PREVIEW_MAX_DIMENSION = 960;
 const DISPLAY_ALPHA_THRESHOLD = 12;
@@ -1207,9 +1207,9 @@ function deriveTags(title: string, templateDescription: string) {
     phrases.push(`${a} ${b}`);
   }
 
-  const ranked = Array.from(new Set([...phrases, ...singles])).slice(0, FIXED_TAG_COUNT);
-  while (ranked.length < FIXED_TAG_COUNT) ranked.push(`Keyword ${ranked.length + 1}`);
-  return ranked.map(titleCaseTag);
+  return Array.from(new Set([...phrases, ...singles]))
+    .slice(0, FIXED_TAG_COUNT)
+    .map(titleCaseTag);
 }
 
 function leadToHtml(paragraphs: string[]) {
@@ -1600,6 +1600,17 @@ function appendToActiveBatch(active: Img[], queued: Img[], incoming: Img[], limi
   };
 }
 
+function normalizeSelectionIds(ids: string[]) {
+  return Array.from(new Set(ids.filter(Boolean))).slice(0, IMPORT_QUEUE_LIMIT);
+}
+
+function selectionsMatch(a: string[], b: string[]) {
+  const left = normalizeSelectionIds(a).slice().sort();
+  const right = normalizeSelectionIds(b).slice().sort();
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   tone?: "default" | "ghost";
 };
@@ -1695,10 +1706,15 @@ function getStatusTone(status: ItemStatus) {
 
 function QuantOrbLoader({ className = "" }: { className?: string }) {
   return (
-    <span className={`relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center ${className}`}>
-      <span className="absolute inset-0 rounded-full bg-[#7F22FE]/30 blur-[3px] animate-pulse" />
-      <span className="absolute inset-[1px] rounded-full border border-[#A855F7]/80 animate-[spin_2.6s_linear_infinite]" />
-      <span className="absolute inset-[3px] rounded-full bg-[#7F22FE] shadow-[0_0_14px_rgba(127,34,254,0.9)]" />
+    <span className={`relative inline-flex h-4 w-4 shrink-0 items-center justify-center ${className}`}>
+      <span className="absolute inset-0 rounded-full bg-[#7F22FE]/22 blur-[4px]" />
+      <span className="absolute inset-0 inline-flex items-center justify-center animate-[spin_2.4s_linear_infinite]">
+        <svg viewBox="0 0 16 16" aria-hidden="true" className="h-4 w-4 text-[#C084FC]">
+          <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeOpacity="0.18" strokeWidth="1.25" fill="none" />
+          <path d="M8 1.75a6.25 6.25 0 0 1 4.68 2.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+        </svg>
+      </span>
+      <span className="absolute inset-[4px] rounded-full bg-[#7F22FE] shadow-[0_0_12px_rgba(127,34,254,0.9)]" />
     </span>
   );
 }
@@ -1796,6 +1812,7 @@ function getResolvedItemStatus(image: Img): ItemStatus {
 
 export default function MerchQuantumApp() {
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const templatePickerRef = useRef<HTMLDivElement | null>(null);
   const previousPreviewUrlsRef = useRef<string[]>([]);
   const aiLoopBusyRef = useRef<symbol | null>(null);
   const activeTemplateKeyRef = useRef("");
@@ -1819,6 +1836,8 @@ export default function MerchQuantumApp() {
   const [importedListingDescription, setImportedListingDescription] = useState("");
   const [template, setTemplate] = useState<Template | null>(null);
   const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
+  const [pendingTemplateSelectionIds, setPendingTemplateSelectionIds] = useState<string[]>([]);
+  const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
   const [isImportingListings, setIsImportingListings] = useState(false);
   const [importStatus, setImportStatus] = useState("");
   const [isSyncingImportedListings, setIsSyncingImportedListings] = useState(false);
@@ -1843,7 +1862,6 @@ export default function MerchQuantumApp() {
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
   const isLiveProvider = selectedProvider?.isLive || false;
   const supportsProviderMetadataSync = resolvedProviderId === "printify";
-  const supportsReverseIngestion = resolvedProviderId === "printify" || resolvedProviderId === "printful";
   const supportsImportedListingSync = resolvedProviderId === "printify" || resolvedProviderId === "printful";
   const supportsImportedPublish = resolvedProviderId === "printify";
   const totalBatchLimit = CONNECTED_TOTAL_BATCH_FILES;
@@ -1866,6 +1884,10 @@ export default function MerchQuantumApp() {
         (!q || p.title.toLowerCase().includes(q) || p.type.toLowerCase().includes(q))
     );
   }, [shopId, search, productSource]);
+  const selectedTemplateProducts = useMemo(
+    () => productSource.filter((product) => selectedImportIds.includes(product.id)),
+    [productSource, selectedImportIds]
+  );
   const importedQueueCount = useMemo(
     () => allImages.filter((img) => img.sourceType === "imported").length + queuedImportedImages.length,
     [allImages, queuedImportedImages]
@@ -1892,15 +1914,11 @@ export default function MerchQuantumApp() {
   const errorCount = images.filter((img) => getResolvedItemStatus(img) === "error").length;
   const processingCount = images.filter((img) => getResolvedItemStatus(img) === "pending").length;
   const draftReadyCount = images.filter((img) => img.sourceType !== "imported" && getResolvedItemStatus(img) === "ready").length;
-  const activeDisplayCount = images.length;
-  const queuedCount = queuedImages.length;
   const hasAnyLoadedImages = allImages.length > 0 || queuedImages.length > 0;
   const completedGenerationCount = readyCount + errorCount;
   const generationProgressPct = images.length > 0 ? Math.round((completedGenerationCount / images.length) * 100) : 0;
   const isWorkspaceConfigured = connected && !!shopId && !!template;
   const canSubmitProviderConnection = Boolean(provider && isLiveProvider && token.trim() && !loadingApi && !connected);
-  const searchNudgeTarget = !shopId ? "shop" : null;
-  const isSearchLocked = searchNudgeTarget !== null;
   const uploadDisabled = !isWorkspaceConfigured || draftReadyCount === 0 || isRunningBatch || processingCount > 0;
   const canShowDetailWorkspace = isWorkspaceConfigured;
   const canShowDetailPanel = canShowDetailWorkspace || !!selectedImage;
@@ -1988,13 +2006,21 @@ export default function MerchQuantumApp() {
     () => new Set([...allImages, ...queuedImages].map((img) => img.providerProductId).filter((value): value is string => !!value)),
     [allImages, queuedImages]
   );
-  const importSelectionMode = selectedImportIds.length === 1 ? "creation" : selectedImportIds.length >= 2 ? "import" : null;
-  const importSelectionActionLabel =
-    importSelectionMode === "creation"
-      ? "Open In Creation Mode"
-      : isImportingListings
-        ? "Importing..."
-        : "Import Selected";
+  const templatePickerLabel = selectedTemplateProducts.length === 0
+    ? "Choose Product Template"
+    : selectedTemplateProducts.length === 1
+      ? selectedTemplateProducts[0]?.title || "Choose Product Template"
+      : `${selectedTemplateProducts.length} Templates Selected`;
+  const templatePickerModeLabel = selectedImportIds.length === 1
+    ? "Creation Mode"
+    : selectedImportIds.length >= 2
+      ? "Bulk Edit Mode"
+      : "";
+  const pendingTemplateModeLabel = pendingTemplateSelectionIds.length === 1
+    ? "1 selection routes to Creation Mode"
+    : pendingTemplateSelectionIds.length >= 2
+      ? `${pendingTemplateSelectionIds.length} selections route to Bulk Edit Mode`
+      : "Select 1 template for Creation Mode or 2+ for Bulk Edit Mode.";
   const guidanceStep = !connected
     ? "connect"
     : !shopId
@@ -2724,23 +2750,41 @@ export default function MerchQuantumApp() {
   }, [templateKey]);
 
   useEffect(() => {
-    if (!connected || !isLiveProvider || !shopId) {
-      setApiProducts([]);
-      setProductId("");
-      return;
+    if (!isTemplatePickerOpen) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!templatePickerRef.current?.contains(event.target as Node)) {
+        void commitTemplateSelections(pendingTemplateSelectionIds);
+      }
     }
 
-    void loadProductsForShop(shopId);
-  }, [shopId]);
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelTemplatePicker();
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isTemplatePickerOpen, pendingTemplateSelectionIds, selectedImportIds]);
 
   useEffect(() => {
     if (!shopId) {
+      setApiProducts([]);
       setProductId("");
       setTemplate(null);
       setTemplateDescription("");
       setImportedListingTitle("");
       setImportedListingDescription("");
       setSelectedImportIds([]);
+      setPendingTemplateSelectionIds([]);
+      setIsTemplatePickerOpen(false);
       setImportStatus("");
       setEditingField(null);
       setInlineSaveFeedback(null);
@@ -3072,28 +3116,73 @@ export default function MerchQuantumApp() {
     }
   }
 
-  function toggleImportSelection(sourceId: string) {
-    setSelectedImportIds((current) => (
+  function togglePendingTemplateSelection(sourceId: string) {
+    setPendingTemplateSelectionIds((current) => (
       current.includes(sourceId)
         ? current.filter((entry) => entry !== sourceId)
-        : [...current, sourceId]
+        : normalizeSelectionIds([...current, sourceId])
     ));
   }
 
-  function selectVisibleListingsForImport() {
-    const remainingCapacity = Math.max(0, IMPORT_QUEUE_LIMIT - importedQueueCount);
-    if (remainingCapacity === 0) {
-      setImportStatus(`The reverse-ingestion queue is capped at ${IMPORT_QUEUE_LIMIT} imported listings.`);
+  function openTemplatePicker() {
+    if (!shopId) {
+      triggerAttentionCue("shop");
       return;
     }
 
-    const importableIds = visibleProducts
-      .map((product) => product.id)
-      .filter((id) => !importedProductIds.has(id))
-      .slice(0, remainingCapacity);
+    setPendingTemplateSelectionIds(selectedImportIds);
+    setIsTemplatePickerOpen(true);
+    setImportStatus("");
 
-    setSelectedImportIds(importableIds);
-    setImportStatus(importableIds.length > 0 ? `Selected ${importableIds.length} listing${importableIds.length === 1 ? "" : "s"} for rescue.` : "All visible products are already in the review queue.");
+    if (!loadingProducts && apiProducts.length === 0) {
+      void loadProductsForShop(shopId);
+    }
+  }
+
+  async function commitTemplateSelections(sourceIds: string[]) {
+    const nextSelections = normalizeSelectionIds(sourceIds);
+    const selectionChanged = !selectionsMatch(nextSelections, selectedImportIds);
+
+    setSelectedImportIds(nextSelections);
+    setPendingTemplateSelectionIds(nextSelections);
+    setIsTemplatePickerOpen(false);
+    setEditingField(null);
+    setInlineSaveFeedback(null);
+
+    if (!selectionChanged) {
+      if (nextSelections.length === 1) {
+        setImportStatus("Creation Mode is armed for this template.");
+      } else if (nextSelections.length >= 2) {
+        setImportStatus(`Bulk Edit Mode is staged for ${nextSelections.length} listing${nextSelections.length === 1 ? "" : "s"}.`);
+      }
+      return;
+    }
+
+    clearPreviewWorkspace();
+    setProductId("");
+    setTemplate(null);
+    setTemplateDescription("");
+    setImportedListingTitle("");
+    setImportedListingDescription("");
+
+    if (nextSelections.length === 0) {
+      setImportStatus("");
+      return;
+    }
+
+    if (nextSelections.length === 1) {
+      setImportStatus("Creation Mode is armed. Add artwork to generate new listing copy.");
+      setProductId(nextSelections[0]);
+      return;
+    }
+
+    setImportStatus(`Loading ${nextSelections.length} provider listing${nextSelections.length === 1 ? "" : "s"} for SEO tuning...`);
+    await importSelectedListings(nextSelections, { replaceExisting: true });
+  }
+
+  function cancelTemplatePicker() {
+    setPendingTemplateSelectionIds(selectedImportIds);
+    setIsTemplatePickerOpen(false);
   }
 
   function buildImportedImageSeed(record: ImportedListingRecord, file: File, preview: { src: string; background: string }, artworkBounds: ArtworkBounds): Img {
@@ -3133,30 +3222,27 @@ export default function MerchQuantumApp() {
     };
   }
 
-  async function importSelectedListings() {
-    if (!resolvedProviderId || !shopId || selectedImportIds.length === 0) {
+  async function importSelectedListings(
+    sourceIdsOverride = selectedImportIds,
+    options: { replaceExisting?: boolean } = {}
+  ) {
+    const sourceIds = normalizeSelectionIds(sourceIdsOverride);
+    if (!resolvedProviderId || !shopId || sourceIds.length === 0) {
       return;
     }
 
-    if (selectedImportIds.length === 1) {
-      const [singleSelectionId] = selectedImportIds;
-      setProductId(singleSelectionId);
-      setSelectedImportIds([]);
-      setImportStatus("Single selection routed to Creation Mode.");
-      setManualPrebufferOverride(false);
-      return;
-    }
-
-    const remainingCapacity = Math.max(0, IMPORT_QUEUE_LIMIT - importedQueueCount);
+    const existingImportedCount = options.replaceExisting ? 0 : importedQueueCount;
+    const existingImportedIds = options.replaceExisting ? new Set<string>() : importedProductIds;
+    const remainingCapacity = Math.max(0, IMPORT_QUEUE_LIMIT - existingImportedCount);
     if (remainingCapacity === 0) {
-      setImportStatus(`The reverse-ingestion queue is capped at ${IMPORT_QUEUE_LIMIT} imported listings.`);
+      setImportStatus(`The workspace is capped at ${IMPORT_QUEUE_LIMIT} listings in this pass.`);
       return;
     }
 
-    const uniqueIds = Array.from(new Set(selectedImportIds));
-    const duplicateIds = uniqueIds.filter((id) => importedProductIds.has(id));
+    const uniqueIds = Array.from(new Set(sourceIds));
+    const duplicateIds = uniqueIds.filter((id) => existingImportedIds.has(id));
     const idsToImport = uniqueIds
-      .filter((id) => !importedProductIds.has(id))
+      .filter((id) => !existingImportedIds.has(id))
       .slice(0, remainingCapacity);
     const skippedByLimit = Math.max(0, uniqueIds.length - duplicateIds.length - idsToImport.length);
 
@@ -3222,21 +3308,24 @@ export default function MerchQuantumApp() {
 
       let queuedImportedAfterImport = queuedImportedImages.length;
       if (rescued.length > 0) {
-        const { active: mergedActive, queued: mergedQueued } = appendToActiveBatch(images, queuedImages, rescued, activeBatchLimit);
+        const baseActive = options.replaceExisting ? [] : images;
+        const baseQueued = options.replaceExisting ? [] : queuedImages;
+        const { active: mergedActive, queued: mergedQueued } = appendToActiveBatch(baseActive, baseQueued, rescued, activeBatchLimit);
+        if (options.replaceExisting) {
+          setCompletedImportedImages([]);
+        }
         setImages(mergedActive);
         setQueuedImages(mergedQueued);
-        setSelectedId((current) => current || mergedActive[0]?.id || "");
+        setSelectedId(mergedActive[0]?.id || "");
         queuedImportedAfterImport = mergedQueued.filter((img) => img.sourceType === "imported").length;
       }
 
-      setSelectedImportIds((current) => current.filter((id) => !idsToImport.includes(id)));
-
       const summary: string[] = [];
       if (rescued.length > 0) {
-        summary.push(`Imported ${rescued.length} legacy listing${rescued.length === 1 ? "" : "s"} into the review queue.`);
+        summary.push(`Loaded ${rescued.length} provider listing${rescued.length === 1 ? "" : "s"} into Bulk Edit Mode.`);
       }
       if (rescued.length > 0 && queuedImportedAfterImport > 0) {
-        summary.push(`${queuedImportedAfterImport} imported listing${queuedImportedAfterImport === 1 ? "" : "s"} are queued behind the active review set.`);
+        summary.push(`${queuedImportedAfterImport} listing${queuedImportedAfterImport === 1 ? "" : "s"} are waiting behind the active review set.`);
       }
       if (duplicateIds.length > 0) {
         summary.push(`Skipped ${duplicateIds.length} duplicate${duplicateIds.length === 1 ? "" : "s"}.`);
@@ -3673,7 +3762,7 @@ export default function MerchQuantumApp() {
                 onPointerDownCapture={() => nudgeWorkflow(false)}
                 className={`relative grid gap-3 rounded-xl transition-all duration-500 ${guidanceStep === "template" ? "border border-[#7F22FE]/40 bg-[#7F22FE]/10 p-3 shadow-[0_18px_50px_-32px_rgba(127,34,254,0.38)]" : ""}`}
               >
-                <div className="grid items-stretch gap-3 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)]">
+                <div className="grid items-stretch gap-3 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
                   <div className={attentionTarget === "shop" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}>
                     <Select
                       value={shopId}
@@ -3682,11 +3771,17 @@ export default function MerchQuantumApp() {
                       onChange={(e) => {
                         const nextShopId = e.target.value;
                         setShopId(nextShopId);
+                        setApiProducts([]);
+                        setSearch("");
                         setProductId("");
                         setTemplate(null);
                         setTemplateDescription("");
                         setImportedListingTitle("");
                         setImportedListingDescription("");
+                        setSelectedImportIds([]);
+                        setPendingTemplateSelectionIds([]);
+                        setIsTemplatePickerOpen(false);
+                        clearPreviewWorkspace();
                         setEditingField(null);
                         setInlineSaveFeedback(null);
                       }}
@@ -3706,164 +3801,112 @@ export default function MerchQuantumApp() {
                     </Select>
                   </div>
 
-                  <div className={attentionTarget === "template" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}>
-                    <Select
-                      value={productId}
-                      className={productId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
-                      disabled={!shopId || loadingProducts}
-                      onChange={(e) => {
-                        setProductId(e.target.value);
-                        setImportedListingTitle("");
-                        setImportedListingDescription("");
-                        setEditingField(null);
-                        setInlineSaveFeedback(null);
+                  <div
+                    ref={templatePickerRef}
+                    className={`relative ${attentionTarget === "template" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isTemplatePickerOpen) {
+                          void commitTemplateSelections(pendingTemplateSelectionIds);
+                          return;
+                        }
+                        openTemplatePicker();
                       }}
+                      className="flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-700 bg-[#020616] px-3 text-left text-sm text-white transition hover:border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30"
                     >
-                      <option value="">
-                        {loadingProducts
-                          ? "Loading products..."
-                          : connected && isLiveProvider && shopId && visibleProducts.length === 0
-                            ? "No products found"
-                            : "Choose Product Template"}
-                      </option>
-                      {visibleProducts.map((product) => (
-                        <option key={product.id} value={product.id}>
-                          {product.title}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-
-                  <div className="relative">
-                    <Input
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search My Products"
-                      disabled={isSearchLocked}
-                      readOnly={isSearchLocked}
-                      aria-disabled={isSearchLocked}
-                      className={isSearchLocked ? "cursor-not-allowed select-none" : ""}
-                    />
-                    {isSearchLocked ? (
-                      <button
-                        type="button"
-                        aria-label={searchNudgeTarget === "shop" ? "Select Shop first" : "Choose Product Template first"}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          if (searchNudgeTarget) triggerAttentionCue(searchNudgeTarget);
-                        }}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          if (searchNudgeTarget) triggerAttentionCue(searchNudgeTarget);
-                        }}
-                        onFocus={() => {
-                          if (searchNudgeTarget) triggerAttentionCue(searchNudgeTarget);
-                        }}
-                        onKeyDown={(e) => {
-                          e.preventDefault();
-                          if (searchNudgeTarget) triggerAttentionCue(searchNudgeTarget);
-                        }}
-                        className="absolute inset-0 z-10 cursor-not-allowed rounded-xl bg-transparent outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-0"
-                      />
-                    ) : null}
-                  </div>
-                </div>
-
-                {shopId ? (
-                  <div className={`rounded-xl border border-slate-800 bg-[#020616] p-3 ${attentionTarget === "import" ? "ring-2 ring-[#7F22FE]/65 shadow-[0_18px_55px_-30px_rgba(127,34,254,0.48)]" : ""}`}>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <div className="text-sm font-medium text-white">Bi-Directional Ingestion Queue</div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
-                          <span>{activeDisplayCount} Active | {queuedCount} Queued</span>
-                          <span>{importedQueueCount}/{IMPORT_QUEUE_LIMIT} Imported</span>
-                          <span>{approvedImportedItems.length} Approved</span>
-                          <span>{flaggedImportedItems.length} Flagged</span>
-                          <span>{selectedImportIds.length} Selected</span>
-                        </div>
-                        {importSelectionMode ? (
-                          <div className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
-                            {importSelectionMode === "creation"
-                              ? "Single select routes through Creation Mode"
-                              : "Multi-select routes through Reverse Ingestion"}
-                          </div>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className={`truncate ${selectedImportIds.length === 0 ? "font-medium text-slate-400" : "font-normal text-white"}`}>
+                          {loadingProducts && isTemplatePickerOpen && productSource.length === 0 ? "Loading products..." : templatePickerLabel}
+                        </span>
+                        {templatePickerModeLabel ? (
+                          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
+                            {templatePickerModeLabel}
+                          </span>
                         ) : null}
                       </div>
+                      <svg
+                        className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${isTemplatePickerOpen ? "rotate-180" : ""}`}
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                      </svg>
+                    </button>
 
-                      <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:justify-end">
-                        <Button
-                          tone="ghost"
-                          disabled={!visibleProducts.some((product) => !importedProductIds.has(product.id))}
-                          onClick={selectVisibleListingsForImport}
-                        >
-                          Select Visible
-                        </Button>
-                        <Button
-                          tone="ghost"
-                          disabled={selectedImportIds.length === 0}
-                          onClick={() => {
-                            setSelectedImportIds([]);
-                            setImportStatus("");
-                          }}
-                        >
-                          Clear Selection
-                        </Button>
-                        <Button
-                          disabled={!supportsReverseIngestion || selectedImportIds.length === 0 || isImportingListings}
-                          onClick={() => { void importSelectedListings(); }}
-                        >
-                          {importSelectionActionLabel}
-                        </Button>
-                        <Button
-                          tone="ghost"
-                          disabled={!supportsImportedListingSync || approvedImportedItems.length === 0 || isSyncingImportedListings}
-                          onClick={() => { void syncApprovedImportedListings(); }}
-                        >
-                          {isSyncingImportedListings ? "Syncing..." : "Sync Approved SEO"}
-                        </Button>
-                        <Button
-                          tone="ghost"
-                          disabled={!supportsImportedPublish || syncedApprovedImportedItems.length === 0 || isPublishingImportedListings}
-                          onClick={() => { void publishApprovedImportedListings(); }}
-                        >
-                          {isPublishingImportedListings ? "Publishing..." : "Publish Approved"}
-                        </Button>
-                      </div>
-                    </div>
-
-                    {supportsReverseIngestion ? (
-                      <div className="mt-3 rounded-xl border border-slate-800 bg-[#010512] p-2">
-                        {visibleProducts.length > 0 ? (
-                          <div className="max-h-[13rem] overflow-auto pr-1">
+                    {isTemplatePickerOpen ? (
+                      <div className="absolute left-0 right-0 top-[calc(100%+0.55rem)] z-30 rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)]">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                            {pendingTemplateModeLabel}
+                          </p>
+                          {loadingProducts ? <QuantOrbLoader /> : null}
+                        </div>
+                        <div className="mt-2">
+                          <Input
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Search My Products"
+                            autoFocus
+                          />
+                        </div>
+                        <p className="mt-2 text-xs text-slate-500">
+                          Selection applies when this picker closes.
+                        </p>
+                        <div className="mt-3 max-h-[18rem] overflow-auto pr-1">
+                          {visibleProducts.length > 0 ? (
                             <div className="grid gap-2">
                               {visibleProducts.map((product) => {
                                 const alreadyImported = importedProductIds.has(product.id);
-                                const isSelectedForImport = selectedImportIds.includes(product.id);
+                                const isPendingSelection = pendingTemplateSelectionIds.includes(product.id);
+                                const isCreationSelection =
+                                  pendingTemplateSelectionIds.length === 1 && pendingTemplateSelectionIds[0] === product.id;
 
                                 return (
                                   <label
-                                    key={`import-${product.id}`}
-                                    className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition ${isSelectedForImport ? "border-[#7F22FE]/70 bg-[#7F22FE]/10" : alreadyImported ? "border-[#00BC7D]/45 bg-[#00BC7D]/[0.04]" : "border-slate-800 bg-[#020616] hover:border-slate-700"}`}
+                                    key={`template-${product.id}`}
+                                    className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition ${
+                                      isPendingSelection
+                                        ? "border-[#7F22FE]/70 bg-[#7F22FE]/10"
+                                        : alreadyImported
+                                          ? "border-[#00BC7D]/45 bg-[#00BC7D]/[0.04]"
+                                          : "border-slate-800 bg-[#010512] hover:border-slate-700"
+                                    }`}
                                   >
                                     <input
                                       type="checkbox"
-                                      checked={isSelectedForImport || alreadyImported}
-                                      disabled={alreadyImported}
-                                      onChange={() => toggleImportSelection(product.id)}
+                                      checked={isPendingSelection}
+                                      onChange={() => togglePendingTemplateSelection(product.id)}
                                       className="mt-1 h-4 w-4 rounded border-slate-600 bg-[#020616] text-[#7F22FE] focus:ring-[#7F22FE]/40"
                                     />
                                     <div className="min-w-0 flex-1">
                                       <div className="flex flex-wrap items-center gap-2">
                                         <span className="truncate text-sm font-medium text-white">{product.title}</span>
-                                        {alreadyImported ? (
+                                        {alreadyImported && !isPendingSelection ? (
                                           <span className="rounded-full border border-[#00BC7D]/40 bg-[#00BC7D]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[#7EF0C7]">
-                                            In Queue
+                                            Loaded
+                                          </span>
+                                        ) : null}
+                                        {isCreationSelection ? (
+                                          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
+                                            Creation
+                                          </span>
+                                        ) : isPendingSelection ? (
+                                          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
+                                            Bulk Edit
                                           </span>
                                         ) : null}
                                       </div>
                                       <div className="mt-1 text-xs text-slate-400">
                                         {product.description?.trim()
-                                          ? clampDescriptionForListing(extractBuyerFacingDescriptionFromListing(product.description, sanitizeTemplateDescriptionForPrebuffer(product.description, product.title))).slice(0, 160) || product.type
+                                          ? clampDescriptionForListing(
+                                            extractBuyerFacingDescriptionFromListing(
+                                              product.description,
+                                              sanitizeTemplateDescriptionForPrebuffer(product.description, product.title)
+                                            )
+                                          ).slice(0, 160) || product.type
                                           : product.type}
                                       </div>
                                     </div>
@@ -3871,43 +3914,45 @@ export default function MerchQuantumApp() {
                                 );
                               })}
                             </div>
-                          </div>
-                        ) : (
-                          <div className="px-2 py-3 text-sm text-slate-400">
-                            {search.trim()
-                              ? "No provider listings matched this search."
-                              : "Select a shop to load legacy provider listings for reverse ingestion."}
-                          </div>
-                        )}
+                          ) : (
+                            <div className="rounded-xl border border-slate-800 bg-[#010512] px-3 py-4 text-sm text-slate-400">
+                              {loadingProducts
+                                ? "Loading provider listings..."
+                                : search.trim()
+                                  ? "No products matched this search."
+                                  : "Open this picker to deliberately load product templates from the selected shop."}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    ) : (
-                      <div className="mt-3 rounded-xl border border-slate-800 bg-[#010512] px-3 py-2 text-sm text-slate-400">
-                        {selectedProvider?.label || "This provider"} reverse ingestion is not enabled in this pass yet.
-                      </div>
-                    )}
-
-                    {importStatus ? (
-                      <p className="mt-3 text-sm text-slate-300">{importStatus}</p>
-                    ) : processingBanner ? (
-                      <p className="mt-3 text-sm text-slate-300">{processingBanner}</p>
                     ) : null}
                   </div>
+                </div>
+
+                {importStatus ? (
+                  <p className="text-sm text-slate-300">{importStatus}</p>
+                ) : processingBanner ? (
+                  <p className="text-sm text-slate-300">{processingBanner}</p>
                 ) : null}
               </div>
             </div>
 
-            {shopId ? (
+            {shopId && canShowDetailPanel ? (
               <>
                 <div className="mt-3">
-                  {!canShowDetailPanel ? null : (
-                    <div className="space-y-3" onPointerDownCapture={() => nudgeWorkflow(true)}>
+                  <div className="space-y-3" onPointerDownCapture={() => nudgeWorkflow(true)}>
                       <div className="grid items-stretch gap-3 lg:grid-cols-[296px_minmax(0,1fr)]">
-                        <div className="flex h-full flex-col">
+                        <div className="flex h-full flex-col gap-3">
                           <div
                             className="space-y-1.5 cursor-pointer"
                             onClick={openArtworkPicker}
                           >
-                            <div className="flex min-h-[20px] items-center text-sm font-medium leading-5 tracking-tight text-slate-200">Upload Artwork</div>
+                            <div className="flex min-h-[20px] items-center justify-between gap-3 text-sm font-medium leading-5 tracking-tight text-slate-200">
+                              <span>Upload Artwork</span>
+                              <span className="text-[11px] font-normal tracking-normal text-slate-500">
+                                Drop or click • Max {CONNECTED_TOTAL_BATCH_FILES} items
+                              </span>
+                            </div>
                             <div
                               className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-[#020616] lg:h-[19rem]"
                               onDragOver={(e) => {
@@ -3953,9 +3998,6 @@ export default function MerchQuantumApp() {
                                     <StatusThumbIcon tone="error" direction="down" />
                                   </div>
                                   <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                    <span>{queuedCount} Queue</span>
-                                  </div>
-                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                                     <span>{completedGenerationCount} Done</span>
                                   </div>
                                   <span
@@ -3986,34 +4028,143 @@ export default function MerchQuantumApp() {
                               </div>
                             </div>
                           </div>
-                          <div className="mt-3 space-y-3">
-                            <Button
-                              className="w-full !bg-[#7F22FE] !text-white hover:!bg-[#6d1ee0]"
-                              disabled={uploadDisabled}
-                              onClick={() => { void runDraftBatch(); }}
-                            >
-                              {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
-                            </Button>
-                            {runStatus ? <p className="text-sm text-slate-300">{runStatus}</p> : null}
-                            {batchResults.length > 0 ? (
-                              <div className="max-h-[14rem] overflow-auto rounded-xl border border-slate-800 bg-[#020616] p-3 text-sm">
-                                <div className="space-y-1.5">
-                                  {batchResults.map((result) => (
-                                    <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-800 p-2.5">
-                                      <div className="font-medium">{result.title}</div>
-                                      <div className="text-xs text-slate-400">{result.fileName}</div>
-                                      <div className="mt-1 text-sm">{result.message}</div>
-                                      {result.productId ? <div className="mt-1 text-xs text-slate-400">Product ID: {result.productId}</div> : null}
+                          <Button
+                            className="w-full !bg-[#7F22FE] !text-white hover:!bg-[#6d1ee0]"
+                            disabled={uploadDisabled}
+                            onClick={() => { void runDraftBatch(); }}
+                          >
+                            {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
+                          </Button>
+                          {sortedImages.length > 0 ? (
+                            <div className="overflow-x-auto pb-1 [scrollbar-color:rgba(127,34,254,0.45)_transparent] [scrollbar-width:thin]">
+                              <div className="flex min-w-max gap-2 pr-1">
+                                {sortedImages.map((img, index) => {
+                                  const isSelected = selectedImage?.id === img.id;
+                                  const resolvedStatus = getResolvedItemStatus(img);
+                                  const isProcessing = resolvedStatus === "pending";
+                                  const previewFrameTone = isProcessing
+                                    ? "border-[#7F22FE]/55"
+                                    : resolvedStatus === "ready"
+                                      ? "border-[#00BC7D]/55"
+                                      : resolvedStatus === "error"
+                                        ? "border-[#FF2056]/55"
+                                        : "border-slate-700";
+                                  const previewAlignRight = index >= sortedImages.length - 2;
+                                  const statusIndicator = resolvedStatus === "ready"
+                                    ? { tone: "ready" as const, direction: "up" as const }
+                                    : resolvedStatus === "error"
+                                      ? { tone: "error" as const, direction: "down" as const }
+                                      : null;
+
+                                  return (
+                                    <div
+                                      key={img.id}
+                                      onClick={() => setSelectedId(img.id)}
+                                      className={`w-[88px] shrink-0 rounded-lg transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
+                                    >
+                                      <div className="relative">
+                                        {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
+                                        <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border bg-[#020616] transition-all duration-500 ${previewFrameTone}`}>
+                                          {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
+                                          {statusIndicator ? (
+                                            <div
+                                              aria-label={statusIndicator.tone}
+                                              className="absolute bottom-2 left-1/2 z-20 inline-flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full bg-black"
+                                            >
+                                              <StatusThumbIcon tone={statusIndicator.tone} direction={statusIndicator.direction} />
+                                            </div>
+                                          ) : null}
+                                          <button
+                                            type="button"
+                                            aria-label="remove"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              removePreviewItem(img.id);
+                                            }}
+                                            className="absolute right-1 top-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#020616]/92 p-0 text-[8px] font-normal leading-none text-slate-300 shadow-sm transition-colors hover:text-[#FF2056]"
+                                          >
+                                            x
+                                          </button>
+                                          <div
+                                            className="absolute inset-0 flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit]"
+                                            style={{ backgroundColor: img.previewBackground }}
+                                          >
+                                            {img.preview ? <img src={img.preview} alt={img.final} className="h-full w-full object-contain" /> : null}
+                                          </div>
+                                          {img.preview ? (
+                                            <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-xl group-hover:block top-full mt-2 ${previewAlignRight ? "right-0" : "left-0"}`}>
+                                              <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                      </div>
                                     </div>
-                                  ))}
-                                </div>
+                                  );
+                                })}
                               </div>
-                            ) : null}
-                          </div>
+                            </div>
+                          ) : null}
+                          {(supportsImportedListingSync && approvedImportedItems.length > 0) || (supportsImportedPublish && syncedApprovedImportedItems.length > 0) ? (
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                tone="ghost"
+                                disabled={!supportsImportedListingSync || approvedImportedItems.length === 0 || isSyncingImportedListings}
+                                onClick={() => { void syncApprovedImportedListings(); }}
+                              >
+                                {isSyncingImportedListings ? "Syncing..." : "Sync Approved SEO"}
+                              </Button>
+                              <Button
+                                tone="ghost"
+                                disabled={!supportsImportedPublish || syncedApprovedImportedItems.length === 0 || isPublishingImportedListings}
+                                onClick={() => { void publishApprovedImportedListings(); }}
+                              >
+                                {isPublishingImportedListings ? "Publishing..." : "Publish Approved"}
+                              </Button>
+                            </div>
+                          ) : null}
+                          {runStatus ? <p className="text-sm text-slate-300">{runStatus}</p> : null}
+                          {batchResults.length > 0 ? (
+                            <div className="max-h-[14rem] overflow-auto rounded-xl border border-slate-800 bg-[#020616] p-3 text-sm">
+                              <div className="space-y-1.5">
+                                {batchResults.map((result) => (
+                                  <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-800 p-2.5">
+                                    <div className="font-medium">{result.title}</div>
+                                    <div className="text-xs text-slate-400">{result.fileName}</div>
+                                    <div className="mt-1 text-sm">{result.message}</div>
+                                    {result.productId ? <div className="mt-1 text-xs text-slate-400">Product ID: {result.productId}</div> : null}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
 
                         <div className="flex h-full flex-col space-y-3">
-                          <Field label="Final Title">
+                          <Field
+                            label={(
+                              <div className="flex min-w-0 items-center justify-between gap-3">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <span>Final Title</span>
+                                  {(canEditDetailTitle || canRerollSelectedImage) ? (
+                                    <span className="truncate text-[11px] font-normal tracking-normal text-slate-500">
+                                      Click to edit • Press Enter to save • Re-roll for AI assist
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {canRerollSelectedImage ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => { void rerollSelectedImageField("title"); }}
+                                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
+                                    aria-label="Re-roll title with Quantum AI"
+                                    title="Re-Roll title"
+                                  >
+                                    <ReRollIcon className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
+                              </div>
+                            )}
+                          >
                             <div className="space-y-2">
                               <div className="rounded-xl">
                                 {editingField === "title" ? (
@@ -4076,30 +4227,40 @@ export default function MerchQuantumApp() {
                                   {titleFeedback.message}
                                 </p>
                               ) : canEditDetailTitle || canRerollSelectedImage ? (
-                                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-                                  <p>{canEditDetailTitle ? "Click to edit. Press Enter to save." : ""}</p>
-                                  <div className="flex items-center gap-2">
-                                    {canRerollSelectedImage ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => { void rerollSelectedImageField("title"); }}
-                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
-                                        aria-label="Re-roll title with Quantum AI"
-                                        title="Re-Roll title"
-                                      >
-                                        <ReRollIcon className="h-3.5 w-3.5" />
-                                      </button>
-                                    ) : null}
-                                    <p>{(editingField === "title" ? editableTitleDraft : detailTitle || "").trim().length}/{LISTING_LIMITS.titleMax}</p>
-                                  </div>
+                                <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-slate-500">
+                                  <p>{(editingField === "title" ? editableTitleDraft : detailTitle || "").trim().length}/{LISTING_LIMITS.titleMax}</p>
                                 </div>
                               ) : null}
                             </div>
                           </Field>
 
-                          <Field label="Final Description">
+                          <Field
+                            label={(
+                              <div className="flex min-w-0 items-center justify-between gap-3">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <span>Final Description</span>
+                                  {(canEditDetailDescription || canRerollSelectedImage) ? (
+                                    <span className="truncate text-[11px] font-normal tracking-normal text-slate-500">
+                                      Click to edit • Press Enter to save • Re-roll for AI assist
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {canRerollSelectedImage ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => { void rerollSelectedImageField("description"); }}
+                                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
+                                    aria-label="Re-roll description with Quantum AI"
+                                    title="Re-Roll description"
+                                  >
+                                    <ReRollIcon className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
+                              </div>
+                            )}
+                          >
                             <div className="space-y-2">
-                              <div className="min-h-[264px] rounded-xl border border-slate-700 bg-[#020616] px-3 py-2 text-sm font-normal leading-6 text-white">
+                              <div className="rounded-xl border border-slate-700 bg-[#020616] px-3 py-3 text-sm font-normal leading-6 text-white">
                                 <div className="flex min-h-full">
                                   {editingField === "description" ? (
                                     <div className="flex w-full flex-col gap-3">
@@ -4124,12 +4285,12 @@ export default function MerchQuantumApp() {
                                             setInlineSaveFeedback(null);
                                           }
                                         }}
-                                        className="min-h-[124px] w-full resize-none overflow-hidden rounded-xl border border-slate-600 bg-[#020616] px-3 py-2 text-left text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30"
+                                        className="min-h-[112px] w-full resize-none overflow-hidden rounded-xl border border-slate-600 bg-[#020616] px-3 py-2 text-left text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30"
                                       />
                                       {detailTemplateSpecBlock ? (
                                         <>
                                           <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
-                                          <div className="w-full whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
+                                          <div className="max-h-[120px] w-full overflow-y-auto pr-2 whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
                                             {detailTemplateSpecBlock}
                                           </div>
                                         </>
@@ -4148,7 +4309,7 @@ export default function MerchQuantumApp() {
                                           }
                                         }}
                                         disabled={!canEditDetailDescription}
-                                        className={`group flex min-h-[124px] w-full items-start rounded-xl border bg-[#020616] px-3 py-2 text-left text-sm font-normal leading-6 text-white transition ${canEditDetailDescription ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
+                                        className={`group flex min-h-[112px] w-full items-start rounded-xl border bg-[#020616] px-3 py-2 text-left text-sm font-normal leading-6 text-white transition ${canEditDetailDescription ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
                                       >
                                         {shouldAwaitQuantumDescription ? (
                                           <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
@@ -4174,7 +4335,7 @@ export default function MerchQuantumApp() {
                                       {detailTemplateSpecBlock ? (
                                         <>
                                           <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
-                                          <div className="w-full whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
+                                          <div className="max-h-[120px] w-full overflow-y-auto pr-2 whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
                                             {detailTemplateSpecBlock}
                                           </div>
                                         </>
@@ -4188,22 +4349,8 @@ export default function MerchQuantumApp() {
                                   {descriptionFeedback.message}
                                 </p>
                               ) : canEditDetailDescription || canRerollSelectedImage ? (
-                                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-                                  <p>{canEditDetailDescription ? "Click to edit. Press Enter to save, or Shift+Enter for a new line." : ""}</p>
-                                  <div className="flex items-center gap-2">
-                                    {canRerollSelectedImage ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => { void rerollSelectedImageField("description"); }}
-                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
-                                        aria-label="Re-roll description with Quantum AI"
-                                        title="Re-Roll description"
-                                      >
-                                        <ReRollIcon className="h-3.5 w-3.5" />
-                                      </button>
-                                    ) : null}
-                                    <p>{(editingField === "description" ? editableDescriptionDraft : detailBuyerDescription || "").trim().length}/{LISTING_LIMITS.descriptionMax}</p>
-                                  </div>
+                                <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-slate-500">
+                                  <p>{(editingField === "description" ? editableDescriptionDraft : detailBuyerDescription || "").trim().length}/{LISTING_LIMITS.descriptionMax}</p>
                                 </div>
                               ) : null}
                               {aiAssistStatus && selectedImage ? (
@@ -4215,115 +4362,40 @@ export default function MerchQuantumApp() {
                           </Field>
                         </div>
                       </div>
-
-                      {sortedImages.length > 0 ? (
-                        <div className="pt-0.5">
-                          <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
-                            {sortedImages.map((img, index) => {
-                              const isSelected = selectedImage?.id === img.id;
-                              const resolvedStatus = getResolvedItemStatus(img);
-                              const isProcessing = resolvedStatus === "pending";
-                              const previewFrameTone = isProcessing
-                                ? "border-[#7F22FE]/55"
-                                : resolvedStatus === "ready"
-                                  ? "border-[#00BC7D]/55"
-                                  : resolvedStatus === "error"
-                                    ? "border-[#FF2056]/55"
-                                    : "border-slate-700";
-                              const previewAlignRight = (index + 1) % 10 === 0 || (index + 1) % 10 === 9;
-                              const previewOpenUp = sortedImages.length - index <= 10;
-                              const statusIndicator = resolvedStatus === "ready"
-                                ? { tone: "ready" as const, direction: "up" as const }
-                                : resolvedStatus === "error"
-                                  ? { tone: "error" as const, direction: "down" as const }
-                                  : null;
-
-                              return (
-                                <div
-                                  key={img.id}
-                                  onClick={() => setSelectedId(img.id)}
-                                  className={`rounded-lg transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
-                                >
-                                  <div className="relative">
-                                    {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
-                                    <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border bg-[#020616] transition-all duration-500 ${previewFrameTone}`}>
-                                      {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
-                                      {statusIndicator ? (
-                                        <div
-                                          aria-label={statusIndicator.tone}
-                                          className="absolute bottom-2 left-1/2 z-20 inline-flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full bg-black"
-                                        >
-                                          <StatusThumbIcon tone={statusIndicator.tone} direction={statusIndicator.direction} />
-                                        </div>
-                                      ) : null}
-                                      <button
-                                        type="button"
-                                        aria-label="remove"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          removePreviewItem(img.id);
-                                        }}
-                                        className="absolute right-1 top-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#020616]/92 p-0 text-[8px] font-normal leading-none text-slate-300 shadow-sm transition-colors hover:text-[#FF2056]"
-                                      >
-                                        x
-                                      </button>
-                                      <div
-                                        className="absolute inset-0 flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit]"
-                                        style={{ backgroundColor: img.previewBackground }}
-                                      >
-                                        {img.preview ? <img src={img.preview} alt={img.final} className="h-full w-full object-contain" /> : null}
-                                      </div>
-                                      {img.preview ? (
-                                        <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-xl group-hover:block ${previewOpenUp ? "bottom-full mb-2" : "top-0"} ${previewAlignRight ? "right-0" : "left-0"}`}>
-                                          <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                      <div className="pt-0.5">
+                        <div className="flex flex-wrap items-center justify-center gap-1.5">
+                          <div className="flex min-h-[34px] items-center justify-center rounded-xl border border-slate-800 bg-[#020616] px-2.5 py-1.5 text-center text-sm">
+                            <span className="font-semibold text-[#7F22FE]">Quantum</span>
+                            <span className="ml-1 font-semibold text-white">AI</span>
+                            <span className="ml-1 font-semibold text-[#00BC7D]">Tags</span>
                           </div>
-                        </div>
-                      ) : null}
-
-                      {canShowDetailPanel ? (
-                        <div className="pt-0.5">
-                          <div className="grid gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
-                            <div className="flex min-h-[34px] items-center justify-center rounded-xl border border-slate-800 bg-[#020616] px-2.5 py-1.5 text-center text-sm">
-                              <span className="font-semibold text-[#7F22FE]">Quantum</span>
-                              <span className="ml-1 font-semibold text-white">AI</span>
-                              <span className="ml-1 font-semibold text-[#00BC7D]">Tags</span>
-                            </div>
-                            {isDetailTagsLoading ? (
-                              Array.from({ length: 6 }).map((_, index) => (
-                                <div
-                                  key={`loading-tag-${index}`}
-                                  className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-300"
-                                >
-                                  <QuantOrbLoader />
-                                </div>
-                              ))
-                            ) : detailTags.length > 0 ? (
-                              detailTags.map((tag, index) => (
-                                <div
-                                  key={`${selectedImage?.id || productId}-tag-${index}`}
-                                  title={tag}
-                                  className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-white"
-                                >
-                                  <span className="truncate">{tag}</span>
-                                </div>
-                              ))
-                            ) : (
-                              <div className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-400 sm:col-span-2 md:col-span-3 lg:col-span-6">
-                                Tags will appear after Quantum AI processing completes.
+                          {isDetailTagsLoading ? (
+                            Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
+                              <div
+                                key={`loading-tag-${index}`}
+                                className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-300"
+                              >
+                                <QuantOrbLoader />
                               </div>
-                            )}
-                          </div>
+                            ))
+                          ) : detailTags.length > 0 ? (
+                            detailTags.map((tag, index) => (
+                              <div
+                                key={`${selectedImage?.id || productId}-tag-${index}`}
+                                title={tag}
+                                className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-white"
+                              >
+                                <span className="truncate">{tag}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-400">
+                              Tags will appear after Quantum AI processing completes.
+                            </div>
+                          )}
                         </div>
-                      ) : null}
+                      </div>
                     </div>
-                  )}
                 </div>
               </>
             ) : null}
