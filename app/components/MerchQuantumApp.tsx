@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PROVIDER_OPTIONS, type ProviderChoiceId } from "../../lib/providers/client-options";
 
 const APP_TAGLINE = "Bulk product creation, simplified";
-const ACTIVE_BATCH_FILES = 50;
+const ACTIVE_BATCH_FILES = 10;
 const CONNECTED_TOTAL_BATCH_FILES = 300;
 const FIXED_TAG_COUNT = 15;
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
@@ -17,8 +17,6 @@ type ProviderId =
   | "apliiq"
   | "spod"
   | "spreadconnect";
-
-type WorkspaceMode = "merch" | "youtube" | "social";
 
 type ProductFamily =
   | "t-shirt"
@@ -175,42 +173,20 @@ type ImportedListingRecord = {
 
 const PROVIDERS = PROVIDER_OPTIONS;
 
-const WORKSPACE_MODE_CONFIG: Record<WorkspaceMode, {
-  label: string;
+const LISTING_LIMITS: {
   titleMin: number;
   titleMax: number;
   descriptionMin: number;
   descriptionMax: number;
   descriptionTargetWords: number;
   tagCount: number;
-}> = {
-  merch: {
-    label: "MERCH_MODE",
-    titleMin: 45,
-    titleMax: 120,
-    descriptionMin: 220,
-    descriptionMax: 1200,
-    descriptionTargetWords: 150,
-    tagCount: 15,
-  },
-  youtube: {
-    label: "YOUTUBE_MODE",
-    titleMin: 40,
-    titleMax: 100,
-    descriptionMin: 150,
-    descriptionMax: 5000,
-    descriptionTargetWords: 250,
-    tagCount: 15,
-  },
-  social: {
-    label: "SOCIAL_MODE",
-    titleMin: 25,
-    titleMax: 80,
-    descriptionMin: 80,
-    descriptionMax: 500,
-    descriptionTargetWords: 90,
-    tagCount: 15,
-  },
+} = {
+  titleMin: 45,
+  titleMax: 120,
+  descriptionMin: 220,
+  descriptionMax: 1200,
+  descriptionTargetWords: 150,
+  tagCount: 15,
 };
 
 const DEFAULT_PLACEMENT_GUIDE: PlacementGuide = {
@@ -221,9 +197,9 @@ const DEFAULT_PLACEMENT_GUIDE: PlacementGuide = {
 };
 
 const AI_MODEL_LABEL = "Quantum AI";
-const AI_TITLE_MIN_CHARS = WORKSPACE_MODE_CONFIG.merch.titleMin;
-const AI_TITLE_MAX_CHARS = WORKSPACE_MODE_CONFIG.merch.titleMax;
-const AI_LEAD_MIN_CHARS = WORKSPACE_MODE_CONFIG.merch.descriptionMin;
+const AI_TITLE_MIN_CHARS = LISTING_LIMITS.titleMin;
+const AI_TITLE_MAX_CHARS = LISTING_LIMITS.titleMax;
+const AI_LEAD_MIN_CHARS = LISTING_LIMITS.descriptionMin;
 const AI_LEAD_MAX_CHARS = 380;
 const IMPORT_QUEUE_LIMIT = 100;
 const DISPLAY_PREVIEW_SAMPLE_DIMENSION = 256;
@@ -1351,15 +1327,14 @@ function buildTags(title: string, description: string, count: number) {
   return deriveTags(title, description).slice(0, count);
 }
 
-export function canManualOverrideListingCopy(title: string, description: string, mode: WorkspaceMode) {
-  const limits = WORKSPACE_MODE_CONFIG[mode];
-  const normalizedTitle = clampTitleForMode(title, mode).trim();
-  const normalizedDescription = clampDescriptionForMode(description, mode).trim();
+export function canManualOverrideListingCopy(title: string, description: string) {
+  const normalizedTitle = clampTitleForListing(title).trim();
+  const normalizedDescription = clampDescriptionForListing(description).trim();
   const paragraphs = descriptionTextToParagraphs(normalizedDescription);
 
   return (
-    normalizedTitle.length >= limits.titleMin &&
-    normalizedDescription.length >= limits.descriptionMin &&
+    normalizedTitle.length >= LISTING_LIMITS.titleMin &&
+    normalizedDescription.length >= LISTING_LIMITS.descriptionMin &&
     paragraphs.length >= 2 &&
     paragraphs[0].trim().length >= 24 &&
     paragraphs[1].trim().length >= 24
@@ -1469,16 +1444,14 @@ async function urlToFile(url: string, fileName: string, fallbackType = "image/pn
   });
 }
 
-function clampTitleForMode(value: string, mode: WorkspaceMode) {
-  const limits = WORKSPACE_MODE_CONFIG[mode];
+function clampTitleForListing(value: string) {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (!normalized) return "";
-  if (normalized.length <= limits.titleMax) return normalized;
-  return trimTitleAtWordBoundary(normalized, limits.titleMax);
+  if (normalized.length <= LISTING_LIMITS.titleMax) return normalized;
+  return trimTitleAtWordBoundary(normalized, LISTING_LIMITS.titleMax);
 }
 
-function clampDescriptionForMode(value: string, mode: WorkspaceMode) {
-  const limits = WORKSPACE_MODE_CONFIG[mode];
+function clampDescriptionForListing(value: string) {
   const normalized = value
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+\n/g, "\n")
@@ -1486,8 +1459,8 @@ function clampDescriptionForMode(value: string, mode: WorkspaceMode) {
     .trim();
 
   if (!normalized) return "";
-  if (normalized.length <= limits.descriptionMax) return normalized;
-  return normalized.slice(0, limits.descriptionMax).trimEnd();
+  if (normalized.length <= LISTING_LIMITS.descriptionMax) return normalized;
+  return normalized.slice(0, LISTING_LIMITS.descriptionMax).trimEnd();
 }
 
 function autosizeTextarea(element: HTMLTextAreaElement | null) {
@@ -1616,6 +1589,14 @@ function fillActiveBatch(active: Img[], queued: Img[], limit: number) {
   return {
     active: [...active, ...queued.slice(0, room)],
     queued: queued.slice(room),
+  };
+}
+
+function appendToActiveBatch(active: Img[], queued: Img[], incoming: Img[], limit: number) {
+  const room = queued.length > 0 ? 0 : Math.max(0, limit - active.length);
+  return {
+    active: [...active, ...incoming.slice(0, room)],
+    queued: [...queued, ...incoming.slice(room)],
   };
 }
 
@@ -1821,8 +1802,7 @@ export default function MerchQuantumApp() {
   const inlineFeedbackTimeoutRef = useRef<number | null>(null);
 
   const [provider, setProvider] = useState<ProviderChoiceId | "">("");
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("merch");
-  const [token, setToken] = useState("");
+    const [token, setToken] = useState("");
   const [connected, setConnected] = useState(false);
   const [loadingApi, setLoadingApi] = useState(false);
   const [apiStatus, setApiStatus] = useState("");
@@ -1844,6 +1824,7 @@ export default function MerchQuantumApp() {
   const [isSyncingImportedListings, setIsSyncingImportedListings] = useState(false);
   const [isPublishingImportedListings, setIsPublishingImportedListings] = useState(false);
   const [images, setImages] = useState<Img[]>([]);
+  const [completedImportedImages, setCompletedImportedImages] = useState<Img[]>([]);
   const [queuedImages, setQueuedImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [message, setMessage] = useState("");
@@ -1865,9 +1846,13 @@ export default function MerchQuantumApp() {
   const supportsReverseIngestion = resolvedProviderId === "printify" || resolvedProviderId === "printful";
   const supportsImportedListingSync = resolvedProviderId === "printify" || resolvedProviderId === "printful";
   const supportsImportedPublish = resolvedProviderId === "printify";
-  const currentModeConfig = WORKSPACE_MODE_CONFIG[workspaceMode];
   const totalBatchLimit = CONNECTED_TOTAL_BATCH_FILES;
   const activeBatchLimit = ACTIVE_BATCH_FILES;
+  const allImages = useMemo(() => [...completedImportedImages, ...images], [completedImportedImages, images]);
+  const queuedImportedImages = useMemo(
+    () => queuedImages.filter((img) => img.sourceType === "imported"),
+    [queuedImages]
+  );
   const availableShops = connected && isLiveProvider ? apiShops : [];
   const productSource = connected && isLiveProvider ? apiProducts : [];
   const templateKey = useMemo(() => `${template?.reference || "no-template"}::${templateDescription.trim()}`, [template?.reference, templateDescription]);
@@ -1882,8 +1867,8 @@ export default function MerchQuantumApp() {
     );
   }, [shopId, search, productSource]);
   const importedQueueCount = useMemo(
-    () => images.filter((img) => img.sourceType === "imported").length,
-    [images]
+    () => allImages.filter((img) => img.sourceType === "imported").length + queuedImportedImages.length,
+    [allImages, queuedImportedImages]
   );
 
   const sortedImages = useMemo(() => {
@@ -1907,8 +1892,9 @@ export default function MerchQuantumApp() {
   const errorCount = images.filter((img) => getResolvedItemStatus(img) === "error").length;
   const processingCount = images.filter((img) => getResolvedItemStatus(img) === "pending").length;
   const draftReadyCount = images.filter((img) => img.sourceType !== "imported" && getResolvedItemStatus(img) === "ready").length;
+  const activeDisplayCount = images.length;
   const queuedCount = queuedImages.length;
-  const hasAnyLoadedImages = images.length > 0 || queuedImages.length > 0;
+  const hasAnyLoadedImages = allImages.length > 0 || queuedImages.length > 0;
   const completedGenerationCount = readyCount + errorCount;
   const generationProgressPct = images.length > 0 ? Math.round((completedGenerationCount / images.length) * 100) : 0;
   const isWorkspaceConfigured = connected && !!shopId && !!template;
@@ -1995,12 +1981,12 @@ export default function MerchQuantumApp() {
   const detailTags = selectedImage && selectedImageFieldStates.tags === "ready"
     ? selectedImage.tags
     : [];
-  const approvedImportedItems = images.filter((img) => img.sourceType === "imported" && getResolvedItemStatus(img) === "ready");
-  const flaggedImportedItems = images.filter((img) => img.sourceType === "imported" && getResolvedItemStatus(img) === "error");
+  const approvedImportedItems = allImages.filter((img) => img.sourceType === "imported" && getResolvedItemStatus(img) === "ready");
+  const flaggedImportedItems = allImages.filter((img) => img.sourceType === "imported" && getResolvedItemStatus(img) === "error");
   const syncedApprovedImportedItems = approvedImportedItems.filter((img) => img.syncState === "synced");
   const importedProductIds = useMemo(
-    () => new Set(images.map((img) => img.providerProductId).filter((value): value is string => !!value)),
-    [images]
+    () => new Set([...allImages, ...queuedImages].map((img) => img.providerProductId).filter((value): value is string => !!value)),
+    [allImages, queuedImages]
   );
   const importSelectionMode = selectedImportIds.length === 1 ? "creation" : selectedImportIds.length >= 2 ? "import" : null;
   const importSelectionActionLabel =
@@ -2100,22 +2086,20 @@ export default function MerchQuantumApp() {
   }
 
   function buildUserHintsForImage(image: Img) {
-    const activeTitleHint = clampTitleForMode(
+    const activeTitleHint = clampTitleForListing(
       editingField === "title"
         ? editableTitleDraft
-        : detailTitle || image.final || image.originalListingTitle || image.cleaned,
-      workspaceMode
+        : detailTitle || image.final || image.originalListingTitle || image.cleaned
     );
     const fallbackBuyerDescription = splitDetailDescriptionForDisplay(
       image.templateDescriptionOverride ?? detailTemplateDescription,
       image.aiDraft?.leadParagraphs || [],
       image.finalDescription
     ).buyerFacingDescription;
-    const activeDescriptionHint = clampDescriptionForMode(
+    const activeDescriptionHint = clampDescriptionForListing(
       editingField === "description"
         ? editableDescriptionDraft
-        : detailBuyerDescription || fallbackBuyerDescription,
-      workspaceMode
+        : detailBuyerDescription || fallbackBuyerDescription
     );
     const descriptionParagraphs = descriptionTextToParagraphs(activeDescriptionHint).slice(0, 2);
     const seen = new Set<string>();
@@ -2267,10 +2251,10 @@ export default function MerchQuantumApp() {
         return;
       }
 
-      const fallbackTitle = clampTitleForMode(safeTitle(nextImage.final, nextImage.cleaned), workspaceMode);
+      const fallbackTitle = clampTitleForListing(safeTitle(nextImage.final, nextImage.cleaned));
       const titleFromApi = typeof data?.title === "string" ? data.title : "";
-      const finalTitle = clampTitleForMode(safeTitle(titleFromApi, fallbackTitle), workspaceMode);
-      const descriptionText = clampDescriptionForMode(normalizeDescriptionText(data?.description), workspaceMode);
+      const finalTitle = clampTitleForListing(safeTitle(titleFromApi, fallbackTitle));
+      const descriptionText = clampDescriptionForListing(normalizeDescriptionText(data?.description));
       const descriptionParagraphs = normalizeAiLeadParagraphs(
         Array.isArray(data?.leadParagraphs)
           ? data.leadParagraphs
@@ -2283,7 +2267,7 @@ export default function MerchQuantumApp() {
             : buildLeadOnlyDescription(descriptionParagraphs)
         )
         : "";
-      const tags = normalizeTagsFromPayload(data?.tags).slice(0, currentModeConfig.tagCount);
+      const tags = normalizeTagsFromPayload(data?.tags).slice(0, LISTING_LIMITS.tagCount);
       const finalLead = descriptionParagraphs;
       const confidence = Number.isFinite(data?.confidence) ? clamp(Number(data.confidence), 0, 1) : 0;
       const reasonFlags = Array.isArray(data?.reasonFlags)
@@ -2339,7 +2323,7 @@ export default function MerchQuantumApp() {
       const currentVisibleDescription = currentBuyerDescription
         ? buildImageDescriptionHtmlForEdit(currentBuyerDescription, nextImage)
         : "";
-      const currentVisibleTags = normalizeTagsFromPayload(nextImage.tags).slice(0, currentModeConfig.tagCount);
+      const currentVisibleTags = normalizeTagsFromPayload(nextImage.tags).slice(0, LISTING_LIMITS.tagCount);
       const targetedPublishReady =
         targetField === "full"
           ? publishReady
@@ -2481,8 +2465,8 @@ export default function MerchQuantumApp() {
   async function commitInlineEdit(field: Exclude<InlineEditableField, null>, rawValue: string) {
     const nextValue = (
       field === "title"
-        ? clampTitleForMode(rawValue, workspaceMode)
-        : clampDescriptionForMode(rawValue, workspaceMode)
+        ? clampTitleForListing(rawValue)
+        : clampDescriptionForListing(rawValue)
     ).replace(/\r\n?/g, "\n").trim();
     const previousValue = (field === "title" ? detailTitle : detailBuyerDescription).trim();
 
@@ -2510,22 +2494,21 @@ export default function MerchQuantumApp() {
           ).buyerFacingDescription;
           const nextTitle = field === "title"
             ? nextValue
-            : clampTitleForMode(
-              safeTitle(img.final, img.aiDraft?.title || img.originalListingTitle || img.cleaned),
-              workspaceMode
+            : clampTitleForListing(
+              safeTitle(img.final, img.aiDraft?.title || img.originalListingTitle || img.cleaned)
             );
           const nextBuyerDescription = field === "description"
             ? nextValue
             : currentBuyerDescription;
           const nextLeadParagraphs = descriptionTextToParagraphs(nextBuyerDescription);
           const nextDescriptionHtml = buildImageDescriptionHtmlForEdit(nextBuyerDescription, img);
-          const preservedTags = normalizeTagsFromPayload(img.tags).slice(0, currentModeConfig.tagCount);
+          const preservedTags = normalizeTagsFromPayload(img.tags).slice(0, LISTING_LIMITS.tagCount);
           const derivedTags = preservedTags.length > 0
             ? preservedTags
-            : buildManualOverrideTags(nextTitle, nextBuyerDescription, currentModeConfig.tagCount);
+            : buildManualOverrideTags(nextTitle, nextBuyerDescription, LISTING_LIMITS.tagCount);
           const readyAfterManualOverride =
             canManualOverrideFlaggedImage(img)
-            && canManualOverrideListingCopy(nextTitle, nextBuyerDescription, workspaceMode)
+            && canManualOverrideListingCopy(nextTitle, nextBuyerDescription)
             && derivedTags.length > 0;
 
           return {
@@ -2652,11 +2635,10 @@ export default function MerchQuantumApp() {
     if (!selectedImage || !canRerollSelectedImage) return;
 
     const userHints = buildUserHintsForImage(selectedImage);
-    const titleSeed = clampTitleForMode(
+    const titleSeed = clampTitleForListing(
       editingField === "title"
         ? editableTitleDraft
-        : detailTitle || selectedImage.originalListingTitle || selectedImage.final || selectedImage.cleaned,
-      workspaceMode
+        : detailTitle || selectedImage.originalListingTitle || selectedImage.final || selectedImage.cleaned
     );
 
     setInlineSaveFeedback(null);
@@ -2803,7 +2785,31 @@ export default function MerchQuantumApp() {
     });
     if (!nextImage) return;
     void runAiListingForImage(nextImage);
-  }, [currentModeConfig.tagCount, images, template, templateDescription, templateKey, templateReadyForAi, workspaceMode]);
+  }, [LISTING_LIMITS.tagCount, images, template, templateDescription, templateKey, templateReadyForAi]);
+
+  useEffect(() => {
+    if (queuedImportedImages.length === 0) return;
+
+    const settledApprovedImported = images.filter(
+      (img) =>
+        img.sourceType === "imported"
+        && !img.aiProcessing
+        && getResolvedItemStatus(img) === "ready"
+    );
+
+    if (settledApprovedImported.length === 0) return;
+
+    const archivedIds = new Set(settledApprovedImported.map((img) => img.id));
+    const remainingActive = images.filter((img) => !archivedIds.has(img.id));
+    const { active: nextActive, queued: nextQueued } = fillActiveBatch(remainingActive, queuedImages, activeBatchLimit);
+
+    setCompletedImportedImages((current) => [...current, ...settledApprovedImported]);
+    setImages(nextActive);
+    setQueuedImages(nextQueued);
+    if (!selectedId || archivedIds.has(selectedId)) {
+      setSelectedId(nextActive[0]?.id || "");
+    }
+  }, [activeBatchLimit, images, queuedImages, queuedImportedImages, selectedId]);
 
   function resetProviderState(clearStatus = true) {
     setConnected(false);
@@ -2830,10 +2836,15 @@ export default function MerchQuantumApp() {
     setIsImportingListings(false);
     setIsSyncingImportedListings(false);
     setIsPublishingImportedListings(false);
+    setImages([]);
+    setCompletedImportedImages([]);
+    setQueuedImages([]);
+    setSelectedId("");
   }
 
   function clearPreviewWorkspace() {
     setImages([]);
+    setCompletedImportedImages([]);
     setQueuedImages([]);
     setSelectedId("");
     setMessage("");
@@ -2884,23 +2895,17 @@ export default function MerchQuantumApp() {
       } satisfies Img;
     }));
 
-    const activeRoom = queuedImages.length > 0
-      ? 0
-      : Math.max(0, activeBatchLimit - images.length);
-    const nextActive = good.slice(0, activeRoom);
-    const nextQueued = good.slice(activeRoom);
-    const mergedActive = [...images, ...nextActive];
-    const mergedQueued = [...queuedImages, ...nextQueued];
+    const { active: mergedActive, queued: mergedQueued } = appendToActiveBatch(images, queuedImages, good, activeBatchLimit);
     setImages(mergedActive);
     setQueuedImages(mergedQueued);
     if (!selectedId && mergedActive[0]) setSelectedId(mergedActive[0].id);
 
     const parts: string[] = [];
-    if (mergedActive.length !== images.length || nextQueued.length) {
+    if (mergedActive.length !== images.length || mergedQueued.length) {
       parts.push(`Loaded ${good.length} image${good.length === 1 ? "" : "s"}.`);
     }
-    if (nextQueued.length) {
-      parts.push(`Queued ${nextQueued.length} for later batches.`);
+    if (mergedQueued.length) {
+      parts.push(`Queued ${mergedQueued.length} for later batches.`);
     }
     if (ignoredByType) parts.push(`Ignored ${ignoredByType} non-image file${ignoredByType === 1 ? "" : "s"}.`);
     if (ignoredByLimit) {
@@ -3092,12 +3097,11 @@ export default function MerchQuantumApp() {
   }
 
   function buildImportedImageSeed(record: ImportedListingRecord, file: File, preview: { src: string; background: string }, artworkBounds: ArtworkBounds): Img {
-    const titleSeed = clampTitleForMode(record.title || record.artwork?.fileName || "Recovered Artwork", workspaceMode);
+    const titleSeed = clampTitleForListing(record.title || record.artwork?.fileName || "Recovered Artwork");
     const cleaned = cleanTitle(titleSeed || record.artwork?.fileName || record.id);
     const staticSpecBlock = sanitizeTemplateDescriptionForPrebuffer(record.templateDescription || record.description || "", record.title);
-    const buyerDescription = clampDescriptionForMode(
-      extractBuyerFacingDescriptionFromListing(record.description || "", staticSpecBlock),
-      workspaceMode
+    const buyerDescription = clampDescriptionForListing(
+      extractBuyerFacingDescriptionFromListing(record.description || "", staticSpecBlock)
     );
 
     return {
@@ -3216,9 +3220,13 @@ export default function MerchQuantumApp() {
         }
       }
 
+      let queuedImportedAfterImport = queuedImportedImages.length;
       if (rescued.length > 0) {
-        setImages((current) => [...current, ...rescued]);
-        setSelectedId((current) => current || rescued[0].id);
+        const { active: mergedActive, queued: mergedQueued } = appendToActiveBatch(images, queuedImages, rescued, activeBatchLimit);
+        setImages(mergedActive);
+        setQueuedImages(mergedQueued);
+        setSelectedId((current) => current || mergedActive[0]?.id || "");
+        queuedImportedAfterImport = mergedQueued.filter((img) => img.sourceType === "imported").length;
       }
 
       setSelectedImportIds((current) => current.filter((id) => !idsToImport.includes(id)));
@@ -3226,6 +3234,9 @@ export default function MerchQuantumApp() {
       const summary: string[] = [];
       if (rescued.length > 0) {
         summary.push(`Imported ${rescued.length} legacy listing${rescued.length === 1 ? "" : "s"} into the review queue.`);
+      }
+      if (rescued.length > 0 && queuedImportedAfterImport > 0) {
+        summary.push(`${queuedImportedAfterImport} imported listing${queuedImportedAfterImport === 1 ? "" : "s"} are queued behind the active review set.`);
       }
       if (duplicateIds.length > 0) {
         summary.push(`Skipped ${duplicateIds.length} duplicate${duplicateIds.length === 1 ? "" : "s"}.`);
@@ -3759,141 +3770,127 @@ export default function MerchQuantumApp() {
                 </div>
 
                 {shopId ? (
-                  <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
-                    <div>
-                      <Field label="Workspace Mode">
-                        <Select
-                          value={workspaceMode}
-                          onChange={(e) => setWorkspaceMode(e.target.value as WorkspaceMode)}
-                          className="text-[13px] font-medium text-white"
-                        >
-                          {Object.entries(WORKSPACE_MODE_CONFIG).map(([mode, config]) => (
-                            <option key={mode} value={mode}>
-                              {config.label}
-                            </option>
-                          ))}
-                        </Select>
-                      </Field>
-                    </div>
-
-                    <div className={`rounded-xl border border-slate-800 bg-[#020616] p-3 ${attentionTarget === "import" ? "ring-2 ring-[#7F22FE]/65 shadow-[0_18px_55px_-30px_rgba(127,34,254,0.48)]" : ""}`}>
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="space-y-1">
-                          <div className="text-sm font-medium text-white">Bi-Directional Ingestion Queue</div>
-                          <div className="text-xs text-slate-400">
-                            {selectedImportIds.length} selected • {importedQueueCount}/{IMPORT_QUEUE_LIMIT} rescued • {approvedImportedItems.length} Approved • {flaggedImportedItems.length} Flagged
+                  <div className={`rounded-xl border border-slate-800 bg-[#020616] p-3 ${attentionTarget === "import" ? "ring-2 ring-[#7F22FE]/65 shadow-[0_18px_55px_-30px_rgba(127,34,254,0.48)]" : ""}`}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="text-sm font-medium text-white">Bi-Directional Ingestion Queue</div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                          <span>{activeDisplayCount} Active | {queuedCount} Queued</span>
+                          <span>{importedQueueCount}/{IMPORT_QUEUE_LIMIT} Imported</span>
+                          <span>{approvedImportedItems.length} Approved</span>
+                          <span>{flaggedImportedItems.length} Flagged</span>
+                          <span>{selectedImportIds.length} Selected</span>
+                        </div>
+                        {importSelectionMode ? (
+                          <div className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
+                            {importSelectionMode === "creation"
+                              ? "Single select routes through Creation Mode"
+                              : "Multi-select routes through Reverse Ingestion"}
                           </div>
-                          {importSelectionMode ? (
-                            <div className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
-                              {importSelectionMode === "creation"
-                                ? "Single select routes through Creation Mode"
-                                : "Multi-select routes through Reverse Ingestion"}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button
-                            tone="ghost"
-                            disabled={!visibleProducts.some((product) => !importedProductIds.has(product.id))}
-                            onClick={selectVisibleListingsForImport}
-                          >
-                            Select Visible
-                          </Button>
-                          <Button
-                            tone="ghost"
-                            disabled={selectedImportIds.length === 0}
-                            onClick={() => {
-                              setSelectedImportIds([]);
-                              setImportStatus("");
-                            }}
-                          >
-                            Clear Selection
-                          </Button>
-                          <Button
-                            disabled={!supportsReverseIngestion || selectedImportIds.length === 0 || isImportingListings}
-                            onClick={() => { void importSelectedListings(); }}
-                          >
-                            {importSelectionActionLabel}
-                          </Button>
-                          <Button
-                            tone="ghost"
-                            disabled={!supportsImportedListingSync || approvedImportedItems.length === 0 || isSyncingImportedListings}
-                            onClick={() => { void syncApprovedImportedListings(); }}
-                          >
-                            {isSyncingImportedListings ? "Syncing..." : "Sync Approved SEO"}
-                          </Button>
-                          <Button
-                            tone="ghost"
-                            disabled={!supportsImportedPublish || syncedApprovedImportedItems.length === 0 || isPublishingImportedListings}
-                            onClick={() => { void publishApprovedImportedListings(); }}
-                          >
-                            {isPublishingImportedListings ? "Publishing..." : "Publish Approved"}
-                          </Button>
-                        </div>
+                        ) : null}
                       </div>
 
-                      {supportsReverseIngestion ? (
-                        <div className="mt-3 rounded-xl border border-slate-800 bg-[#010512] p-2">
-                          {visibleProducts.length > 0 ? (
-                            <div className="max-h-[13rem] overflow-auto pr-1">
-                              <div className="grid gap-2">
-                                {visibleProducts.map((product) => {
-                                  const alreadyImported = importedProductIds.has(product.id);
-                                  const isSelectedForImport = selectedImportIds.includes(product.id);
-
-                                  return (
-                                    <label
-                                      key={`import-${product.id}`}
-                                      className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition ${isSelectedForImport ? "border-[#7F22FE]/70 bg-[#7F22FE]/10" : alreadyImported ? "border-[#00BC7D]/45 bg-[#00BC7D]/[0.04]" : "border-slate-800 bg-[#020616] hover:border-slate-700"}`}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={isSelectedForImport || alreadyImported}
-                                        disabled={alreadyImported}
-                                        onChange={() => toggleImportSelection(product.id)}
-                                        className="mt-1 h-4 w-4 rounded border-slate-600 bg-[#020616] text-[#7F22FE] focus:ring-[#7F22FE]/40"
-                                      />
-                                      <div className="min-w-0 flex-1">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                          <span className="truncate text-sm font-medium text-white">{product.title}</span>
-                                          {alreadyImported ? (
-                                            <span className="rounded-full border border-[#00BC7D]/40 bg-[#00BC7D]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[#7EF0C7]">
-                                              In Queue
-                                            </span>
-                                          ) : null}
-                                        </div>
-                                        <div className="mt-1 text-xs text-slate-400">
-                                          {product.description?.trim()
-                                            ? clampDescriptionForMode(extractBuyerFacingDescriptionFromListing(product.description, sanitizeTemplateDescriptionForPrebuffer(product.description, product.title)), workspaceMode).slice(0, 160) || product.type
-                                            : product.type}
-                                        </div>
-                                      </div>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="px-2 py-3 text-sm text-slate-400">
-                              {search.trim()
-                                ? "No provider listings matched this search."
-                                : "Select a shop to load legacy provider listings for reverse ingestion."}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="mt-3 rounded-xl border border-slate-800 bg-[#010512] px-3 py-2 text-sm text-slate-400">
-                          {selectedProvider?.label || "This provider"} reverse ingestion is not enabled in this pass yet.
-                        </div>
-                      )}
-
-                      {importStatus ? (
-                        <p className="mt-3 text-sm text-slate-300">{importStatus}</p>
-                      ) : processingBanner ? (
-                        <p className="mt-3 text-sm text-slate-300">{processingBanner}</p>
-                      ) : null}
+                      <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:justify-end">
+                        <Button
+                          tone="ghost"
+                          disabled={!visibleProducts.some((product) => !importedProductIds.has(product.id))}
+                          onClick={selectVisibleListingsForImport}
+                        >
+                          Select Visible
+                        </Button>
+                        <Button
+                          tone="ghost"
+                          disabled={selectedImportIds.length === 0}
+                          onClick={() => {
+                            setSelectedImportIds([]);
+                            setImportStatus("");
+                          }}
+                        >
+                          Clear Selection
+                        </Button>
+                        <Button
+                          disabled={!supportsReverseIngestion || selectedImportIds.length === 0 || isImportingListings}
+                          onClick={() => { void importSelectedListings(); }}
+                        >
+                          {importSelectionActionLabel}
+                        </Button>
+                        <Button
+                          tone="ghost"
+                          disabled={!supportsImportedListingSync || approvedImportedItems.length === 0 || isSyncingImportedListings}
+                          onClick={() => { void syncApprovedImportedListings(); }}
+                        >
+                          {isSyncingImportedListings ? "Syncing..." : "Sync Approved SEO"}
+                        </Button>
+                        <Button
+                          tone="ghost"
+                          disabled={!supportsImportedPublish || syncedApprovedImportedItems.length === 0 || isPublishingImportedListings}
+                          onClick={() => { void publishApprovedImportedListings(); }}
+                        >
+                          {isPublishingImportedListings ? "Publishing..." : "Publish Approved"}
+                        </Button>
+                      </div>
                     </div>
+
+                    {supportsReverseIngestion ? (
+                      <div className="mt-3 rounded-xl border border-slate-800 bg-[#010512] p-2">
+                        {visibleProducts.length > 0 ? (
+                          <div className="max-h-[13rem] overflow-auto pr-1">
+                            <div className="grid gap-2">
+                              {visibleProducts.map((product) => {
+                                const alreadyImported = importedProductIds.has(product.id);
+                                const isSelectedForImport = selectedImportIds.includes(product.id);
+
+                                return (
+                                  <label
+                                    key={`import-${product.id}`}
+                                    className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition ${isSelectedForImport ? "border-[#7F22FE]/70 bg-[#7F22FE]/10" : alreadyImported ? "border-[#00BC7D]/45 bg-[#00BC7D]/[0.04]" : "border-slate-800 bg-[#020616] hover:border-slate-700"}`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelectedForImport || alreadyImported}
+                                      disabled={alreadyImported}
+                                      onChange={() => toggleImportSelection(product.id)}
+                                      className="mt-1 h-4 w-4 rounded border-slate-600 bg-[#020616] text-[#7F22FE] focus:ring-[#7F22FE]/40"
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="truncate text-sm font-medium text-white">{product.title}</span>
+                                        {alreadyImported ? (
+                                          <span className="rounded-full border border-[#00BC7D]/40 bg-[#00BC7D]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[#7EF0C7]">
+                                            In Queue
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      <div className="mt-1 text-xs text-slate-400">
+                                        {product.description?.trim()
+                                          ? clampDescriptionForListing(extractBuyerFacingDescriptionFromListing(product.description, sanitizeTemplateDescriptionForPrebuffer(product.description, product.title))).slice(0, 160) || product.type
+                                          : product.type}
+                                      </div>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="px-2 py-3 text-sm text-slate-400">
+                            {search.trim()
+                              ? "No provider listings matched this search."
+                              : "Select a shop to load legacy provider listings for reverse ingestion."}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-3 rounded-xl border border-slate-800 bg-[#010512] px-3 py-2 text-sm text-slate-400">
+                        {selectedProvider?.label || "This provider"} reverse ingestion is not enabled in this pass yet.
+                      </div>
+                    )}
+
+                    {importStatus ? (
+                      <p className="mt-3 text-sm text-slate-300">{importStatus}</p>
+                    ) : processingBanner ? (
+                      <p className="mt-3 text-sm text-slate-300">{processingBanner}</p>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -4024,7 +4021,7 @@ export default function MerchQuantumApp() {
                                     autoFocus
                                     value={editableTitleDraft}
                                     onChange={(e) => setEditableTitleDraft(e.target.value)}
-                                    maxLength={currentModeConfig.titleMax}
+                                    maxLength={LISTING_LIMITS.titleMax}
                                     onBlur={() => { void commitInlineEdit("title", editableTitleDraft); }}
                                     onKeyDown={(e) => {
                                       if (e.key === "Enter") {
@@ -4093,7 +4090,7 @@ export default function MerchQuantumApp() {
                                         <ReRollIcon className="h-3.5 w-3.5" />
                                       </button>
                                     ) : null}
-                                    <p>{(editingField === "title" ? editableTitleDraft : detailTitle || "").trim().length}/{currentModeConfig.titleMax}</p>
+                                    <p>{(editingField === "title" ? editableTitleDraft : detailTitle || "").trim().length}/{LISTING_LIMITS.titleMax}</p>
                                   </div>
                                 </div>
                               ) : null}
@@ -4114,7 +4111,7 @@ export default function MerchQuantumApp() {
                                           setEditableDescriptionDraft(e.target.value);
                                           autosizeTextarea(e.currentTarget);
                                         }}
-                                        maxLength={currentModeConfig.descriptionMax}
+                                        maxLength={LISTING_LIMITS.descriptionMax}
                                         onBlur={() => { void commitInlineEdit("description", editableDescriptionDraft); }}
                                         onKeyDown={(e) => {
                                           if (e.key === "Enter" && !e.shiftKey) {
@@ -4205,7 +4202,7 @@ export default function MerchQuantumApp() {
                                         <ReRollIcon className="h-3.5 w-3.5" />
                                       </button>
                                     ) : null}
-                                    <p>{(editingField === "description" ? editableDescriptionDraft : detailBuyerDescription || "").trim().length}/{currentModeConfig.descriptionMax}</p>
+                                    <p>{(editingField === "description" ? editableDescriptionDraft : detailBuyerDescription || "").trim().length}/{LISTING_LIMITS.descriptionMax}</p>
                                   </div>
                                 </div>
                               ) : null}

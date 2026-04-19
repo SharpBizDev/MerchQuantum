@@ -1610,11 +1610,11 @@ async function main() {
     ].join("\n\n");
 
     assert.equal(
-      canManualOverrideListingCopy("Christ on the Cross Christian Faith Graphic Tee", validDescription, "merch"),
+      canManualOverrideListingCopy("Christ on the Cross Christian Faith Graphic Tee", validDescription),
       true
     );
     assert.equal(
-      canManualOverrideListingCopy("Cross Shirt", "Too short for a manual rescue.", "merch"),
+      canManualOverrideListingCopy("Cross Shirt", "Too short for a manual rescue."),
       false
     );
   });
