@@ -3150,10 +3150,10 @@ export default function MerchQuantumApp() {
     setInlineSaveFeedback(null);
 
     if (!selectionChanged) {
-      if (nextSelections.length === 1) {
-        setImportStatus("Creation Mode is armed for this template.");
-      } else if (nextSelections.length >= 2) {
+      if (nextSelections.length >= 2) {
         setImportStatus(`Bulk Edit Mode is staged for ${nextSelections.length} listing${nextSelections.length === 1 ? "" : "s"}.`);
+      } else {
+        setImportStatus("");
       }
       return;
     }
@@ -3171,7 +3171,7 @@ export default function MerchQuantumApp() {
     }
 
     if (nextSelections.length === 1) {
-      setImportStatus("Creation Mode is armed. Add artwork to generate new listing copy.");
+      setImportStatus("");
       setProductId(nextSelections[0]);
       return;
     }
@@ -3636,7 +3636,7 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <div className="min-h-screen bg-[#000000] p-6 text-white transition-colors md:p-8">
+    <div className="min-h-screen bg-[#000000] px-6 pb-6 pt-3 text-white transition-colors md:px-8 md:pb-8 md:pt-4">
       <div className="mx-auto max-w-6xl space-y-5">
         <div className="flex flex-wrap items-center gap-3">
           <BrandMark />
@@ -3734,12 +3734,174 @@ export default function MerchQuantumApp() {
                 </button>
               ) : null}
             </div>
+
+            <div className={attentionTarget === "shop" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}>
+              <Select
+                value={shopId}
+                className={shopId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
+                disabled={!availableShops.length}
+                onChange={(e) => {
+                  const nextShopId = e.target.value;
+                  setShopId(nextShopId);
+                  setApiProducts([]);
+                  setSearch("");
+                  setProductId("");
+                  setTemplate(null);
+                  setTemplateDescription("");
+                  setImportedListingTitle("");
+                  setImportedListingDescription("");
+                  setSelectedImportIds([]);
+                  setPendingTemplateSelectionIds([]);
+                  setIsTemplatePickerOpen(false);
+                  clearPreviewWorkspace();
+                  setEditingField(null);
+                  setInlineSaveFeedback(null);
+                }}
+              >
+                <option value="">
+                  {loadingApi
+                    ? "Loading shops..."
+                    : connected && isLiveProvider && availableShops.length === 0
+                      ? "No shops returned"
+                      : "Select Shop"}
+                </option>
+                {availableShops.map((shop) => (
+                  <option key={shop.id} value={shop.id}>
+                    {shop.title}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div
+              ref={templatePickerRef}
+              className={`relative ${attentionTarget === "template" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  if (isTemplatePickerOpen) {
+                    void commitTemplateSelections(pendingTemplateSelectionIds);
+                    return;
+                  }
+                  openTemplatePicker();
+                }}
+                className="flex h-11 w-full items-center gap-3 overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-3 text-left text-sm text-white transition hover:border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30"
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+                  <span className={`min-w-0 flex-1 truncate ${selectedImportIds.length === 0 ? "font-medium text-slate-400" : "font-normal text-white"}`}>
+                    {loadingProducts && isTemplatePickerOpen && productSource.length === 0 ? "Loading products..." : templatePickerLabel}
+                  </span>
+                  {templatePickerModeLabel ? (
+                    <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
+                      {templatePickerModeLabel}
+                    </span>
+                  ) : null}
+                </div>
+                <svg
+                  className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${isTemplatePickerOpen ? "rotate-180" : ""}`}
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                </svg>
+              </button>
+
+              {isTemplatePickerOpen ? (
+                <div className="absolute left-0 right-0 top-[calc(100%+0.55rem)] z-30 rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                      {pendingTemplateModeLabel}
+                    </p>
+                    {loadingProducts ? <QuantOrbLoader /> : null}
+                  </div>
+                  <div className="mt-2">
+                    <Input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search My Products"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="mt-3 max-h-[18rem] overflow-auto pr-1">
+                    {visibleProducts.length > 0 ? (
+                      <div className="grid gap-2">
+                        {visibleProducts.map((product) => {
+                          const alreadyImported = importedProductIds.has(product.id);
+                          const isPendingSelection = pendingTemplateSelectionIds.includes(product.id);
+                          const isCreationSelection =
+                            pendingTemplateSelectionIds.length === 1 && pendingTemplateSelectionIds[0] === product.id;
+
+                          return (
+                            <label
+                              key={`template-${product.id}`}
+                              className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition ${
+                                isPendingSelection
+                                  ? "border-[#7F22FE]/70 bg-[#7F22FE]/10"
+                                  : alreadyImported
+                                    ? "border-[#00BC7D]/45 bg-[#00BC7D]/[0.04]"
+                                    : "border-slate-800 bg-[#010512] hover:border-slate-700"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isPendingSelection}
+                                onChange={() => togglePendingTemplateSelection(product.id)}
+                                className="mt-1 h-4 w-4 rounded border-slate-600 bg-[#020616] text-[#7F22FE] focus:ring-[#7F22FE]/40"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="truncate text-sm font-medium text-white">{product.title}</span>
+                                  {alreadyImported && !isPendingSelection ? (
+                                    <span className="rounded-full border border-[#00BC7D]/40 bg-[#00BC7D]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[#7EF0C7]">
+                                      Loaded
+                                    </span>
+                                  ) : null}
+                                  {isCreationSelection ? (
+                                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
+                                      Creation
+                                    </span>
+                                  ) : isPendingSelection ? (
+                                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
+                                      Bulk Edit
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="mt-1 text-xs text-slate-400">
+                                  {product.description?.trim()
+                                    ? clampDescriptionForListing(
+                                      extractBuyerFacingDescriptionFromListing(
+                                        product.description,
+                                        sanitizeTemplateDescriptionForPrebuffer(product.description, product.title)
+                                      )
+                                    ).slice(0, 160) || product.type
+                                    : product.type}
+                                </div>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-slate-800 bg-[#010512] px-3 py-4 text-sm text-slate-400">
+                        {loadingProducts
+                          ? "Loading provider listings..."
+                          : search.trim()
+                            ? "No products matched this search."
+                            : "Open this picker to deliberately load product templates from the selected shop."}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
 
           {apiStatus ? <p className="mt-3 text-sm text-[#FE9A00]">{apiStatus}</p> : null}
         </Box>
 
-        {connected ? (
+        {connected && ((shopId && canShowDetailPanel) || importStatus || processingBanner || runStatus || batchResults.length > 0) ? (
           <Box className="border-slate-800 bg-[#020616] shadow-[0_24px_70px_-38px_rgba(2,6,22,0.95)]">
             <input
               ref={fileRef}
@@ -3757,185 +3919,11 @@ export default function MerchQuantumApp() {
               }}
             />
 
-            <div className="mt-3">
-              <div
-                onPointerDownCapture={() => nudgeWorkflow(false)}
-                className={`relative grid gap-3 rounded-xl transition-all duration-500 ${guidanceStep === "template" ? "border border-[#7F22FE]/40 bg-[#7F22FE]/10 p-3 shadow-[0_18px_50px_-32px_rgba(127,34,254,0.38)]" : ""}`}
-              >
-                <div className="grid items-stretch gap-3 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                  <div className={attentionTarget === "shop" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}>
-                    <Select
-                      value={shopId}
-                      className={shopId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
-                      disabled={!availableShops.length}
-                      onChange={(e) => {
-                        const nextShopId = e.target.value;
-                        setShopId(nextShopId);
-                        setApiProducts([]);
-                        setSearch("");
-                        setProductId("");
-                        setTemplate(null);
-                        setTemplateDescription("");
-                        setImportedListingTitle("");
-                        setImportedListingDescription("");
-                        setSelectedImportIds([]);
-                        setPendingTemplateSelectionIds([]);
-                        setIsTemplatePickerOpen(false);
-                        clearPreviewWorkspace();
-                        setEditingField(null);
-                        setInlineSaveFeedback(null);
-                      }}
-                    >
-                      <option value="">
-                        {loadingApi
-                          ? "Loading shops..."
-                          : connected && isLiveProvider && availableShops.length === 0
-                            ? "No shops returned"
-                            : "Select Shop"}
-                      </option>
-                      {availableShops.map((shop) => (
-                        <option key={shop.id} value={shop.id}>
-                          {shop.title}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-
-                  <div
-                    ref={templatePickerRef}
-                    className={`relative ${attentionTarget === "template" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (isTemplatePickerOpen) {
-                          void commitTemplateSelections(pendingTemplateSelectionIds);
-                          return;
-                        }
-                        openTemplatePicker();
-                      }}
-                      className="flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-700 bg-[#020616] px-3 text-left text-sm text-white transition hover:border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30"
-                    >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className={`truncate ${selectedImportIds.length === 0 ? "font-medium text-slate-400" : "font-normal text-white"}`}>
-                          {loadingProducts && isTemplatePickerOpen && productSource.length === 0 ? "Loading products..." : templatePickerLabel}
-                        </span>
-                        {templatePickerModeLabel ? (
-                          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
-                            {templatePickerModeLabel}
-                          </span>
-                        ) : null}
-                      </div>
-                      <svg
-                        className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${isTemplatePickerOpen ? "rotate-180" : ""}`}
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                        aria-hidden="true"
-                      >
-                        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                      </svg>
-                    </button>
-
-                    {isTemplatePickerOpen ? (
-                      <div className="absolute left-0 right-0 top-[calc(100%+0.55rem)] z-30 rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)]">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                            {pendingTemplateModeLabel}
-                          </p>
-                          {loadingProducts ? <QuantOrbLoader /> : null}
-                        </div>
-                        <div className="mt-2">
-                          <Input
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Search My Products"
-                            autoFocus
-                          />
-                        </div>
-                        <p className="mt-2 text-xs text-slate-500">
-                          Selection applies when this picker closes.
-                        </p>
-                        <div className="mt-3 max-h-[18rem] overflow-auto pr-1">
-                          {visibleProducts.length > 0 ? (
-                            <div className="grid gap-2">
-                              {visibleProducts.map((product) => {
-                                const alreadyImported = importedProductIds.has(product.id);
-                                const isPendingSelection = pendingTemplateSelectionIds.includes(product.id);
-                                const isCreationSelection =
-                                  pendingTemplateSelectionIds.length === 1 && pendingTemplateSelectionIds[0] === product.id;
-
-                                return (
-                                  <label
-                                    key={`template-${product.id}`}
-                                    className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition ${
-                                      isPendingSelection
-                                        ? "border-[#7F22FE]/70 bg-[#7F22FE]/10"
-                                        : alreadyImported
-                                          ? "border-[#00BC7D]/45 bg-[#00BC7D]/[0.04]"
-                                          : "border-slate-800 bg-[#010512] hover:border-slate-700"
-                                    }`}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={isPendingSelection}
-                                      onChange={() => togglePendingTemplateSelection(product.id)}
-                                      className="mt-1 h-4 w-4 rounded border-slate-600 bg-[#020616] text-[#7F22FE] focus:ring-[#7F22FE]/40"
-                                    />
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <span className="truncate text-sm font-medium text-white">{product.title}</span>
-                                        {alreadyImported && !isPendingSelection ? (
-                                          <span className="rounded-full border border-[#00BC7D]/40 bg-[#00BC7D]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[#7EF0C7]">
-                                            Loaded
-                                          </span>
-                                        ) : null}
-                                        {isCreationSelection ? (
-                                          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
-                                            Creation
-                                          </span>
-                                        ) : isPendingSelection ? (
-                                          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
-                                            Bulk Edit
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                      <div className="mt-1 text-xs text-slate-400">
-                                        {product.description?.trim()
-                                          ? clampDescriptionForListing(
-                                            extractBuyerFacingDescriptionFromListing(
-                                              product.description,
-                                              sanitizeTemplateDescriptionForPrebuffer(product.description, product.title)
-                                            )
-                                          ).slice(0, 160) || product.type
-                                          : product.type}
-                                      </div>
-                                    </div>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <div className="rounded-xl border border-slate-800 bg-[#010512] px-3 py-4 text-sm text-slate-400">
-                              {loadingProducts
-                                ? "Loading provider listings..."
-                                : search.trim()
-                                  ? "No products matched this search."
-                                  : "Open this picker to deliberately load product templates from the selected shop."}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
-                {importStatus ? (
-                  <p className="text-sm text-slate-300">{importStatus}</p>
-                ) : processingBanner ? (
-                  <p className="text-sm text-slate-300">{processingBanner}</p>
-                ) : null}
-              </div>
-            </div>
+            {importStatus ? (
+              <p className="mt-3 text-sm text-slate-300">{importStatus}</p>
+            ) : processingBanner ? (
+              <p className="mt-3 text-sm text-slate-300">{processingBanner}</p>
+            ) : null}
 
             {shopId && canShowDetailPanel ? (
               <>
