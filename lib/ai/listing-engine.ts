@@ -554,6 +554,18 @@ function getFallbackSterileProductType(productFamily?: string) {
   }
 }
 
+class GeminiHttpError extends Error {
+  status: number;
+  responseBodyPreview: string;
+
+  constructor(status: number, message: string, responseBodyPreview = "") {
+    super(message);
+    this.name = "GeminiHttpError";
+    this.status = status;
+    this.responseBodyPreview = responseBodyPreview;
+  }
+}
+
 function sanitizeTemplateContextForAi(templateContext: string, productFamily?: string) {
   const normalized = cleanSpaces(stripHtmlForAi(templateContext).replace(/[•:]+/g, " "));
   if (normalized) {
@@ -3787,7 +3799,11 @@ async function callGeminiRecord(
       statusText: response.statusText,
       responseBodyPreview: truncateForLog(errorBody),
     }, options.onDiagnosticEvent);
-    throw new Error(`Gemini request failed with status ${response.status}.`);
+    throw new GeminiHttpError(
+      response.status,
+      `Gemini request failed with status ${response.status}.`,
+      truncateForLog(errorBody)
+    );
   }
 
   const responseBody = await response.text();
@@ -4093,12 +4109,12 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
   const normalizedInput = sanitizeListingRequest(input);
   const preparedVisionInputs = await prepareVisionInputs(String(normalizedInput.imageDataUrl || ""));
   const modelRoute = resolveGeminiModelRoute(options, preparedVisionInputs?.routingHint);
-  const selectedModel = modelRoute.selectedModel;
+  let activeModel = modelRoute.selectedModel;
 
   if (preparedVisionInputs?.blockingReason) {
     return mapRecordToUiResponse(
       buildTechnicalQcRejectedRecord(normalizedInput, preparedVisionInputs.blockingReason),
-      selectedModel,
+      activeModel,
       localeProfile
     );
   }
@@ -4109,7 +4125,7 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
         const geminiRecord = await callGeminiRecord(normalizedInput, {
           fetchFn,
           apiKey,
-          model: selectedModel,
+          model: activeModel,
           localeProfile,
           visionInputs: preparedVisionInputs,
           onDiagnosticEvent: options.onDiagnosticEvent,
@@ -4147,7 +4163,7 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
                 localeProfile,
                 attempt
               );
-              const fallbackResponse = mapRecordToUiResponse(fallbackRecord, selectedModel, localeProfile);
+              const fallbackResponse = mapRecordToUiResponse(fallbackRecord, activeModel, localeProfile);
               const fallbackSanitizedPhrases = detectSanitizedOutputPhrases([
                 fallbackResponse.title,
                 fallbackResponse.description,
@@ -4168,15 +4184,15 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
                   "Quantum AI returned generic sanitized placeholder language instead of literal searchable design text. Re-run this artwork with a stricter OCR pass."
                 )
               ),
-              selectedModel,
+              activeModel,
               localeProfile
             );
           }
 
-          const geminiResponse = mapRecordToUiResponse(geminiRecord, selectedModel, localeProfile);
+          const geminiResponse = mapRecordToUiResponse(geminiRecord, activeModel, localeProfile);
           if (!geminiResponse.publishReady && shouldAttemptFilenameSupportedRescue(normalizedInput, geminiRecord)) {
             const fallbackRecord = buildFallbackRecord(normalizedInput, localeProfile, attempt);
-            const fallbackResponse = mapRecordToUiResponse(fallbackRecord, selectedModel, localeProfile);
+            const fallbackResponse = mapRecordToUiResponse(fallbackRecord, activeModel, localeProfile);
             if (fallbackResponse.publishReady) {
               return fallbackResponse;
             }
@@ -4189,8 +4205,26 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
           throw error;
         }
 
+        if (
+          error instanceof GeminiHttpError &&
+          error.status === 429 &&
+          activeModel !== modelRoute.defaultModel &&
+          Boolean(modelRoute.defaultModel)
+        ) {
+          logGeminiFailure("quota_downgrade_to_default_model", {
+            requestedModel: activeModel,
+            fallbackModel: modelRoute.defaultModel,
+            fileName: normalizedInput.fileName || null,
+            retryAttempt: attempt,
+            status: error.status,
+            responseBodyPreview: error.responseBodyPreview,
+          }, options.onDiagnosticEvent);
+          activeModel = modelRoute.defaultModel;
+          continue;
+        }
+
         logGeminiFailure("attempt_exception", {
-          model: selectedModel,
+          model: activeModel,
           fileName: normalizedInput.fileName || null,
           retryAttempt: attempt,
           error: error instanceof Error ? error.message : String(error),
@@ -4203,7 +4237,7 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
 
   return mapRecordToUiResponse(
     buildFallbackRecord(normalizedInput, localeProfile, apiKey ? MAX_GEMINI_ATTEMPTS : 0),
-    selectedModel,
+    activeModel,
     localeProfile
   );
 }

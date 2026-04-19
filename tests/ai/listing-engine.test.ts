@@ -2829,6 +2829,50 @@ async function main() {
     assert.equal(diagnostics.some((entry) => entry.event === "attempt_exception"), true);
   });
 
+  await run("quota exhaustion on the OCR model downgrades to the default Gemini model before fallback", async () => {
+    const image = await createTransparentSvgDataUrl(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="520" viewBox="0 0 1600 520">
+        <rect width="1600" height="520" fill="transparent"/>
+        <text x="80" y="250" font-size="148" font-family="Arial, sans-serif" font-weight="700" fill="#111111">MERCY OVER FEAR</text>
+        <text x="140" y="390" font-size="110" font-family="Arial, sans-serif" font-weight="700" fill="#111111">GRACE WINS DAILY</text>
+      </svg>
+    `);
+    const diagnostics: Array<{ event: string; details: Record<string, unknown> }> = [];
+    const requestedUrls: string[] = [];
+    const sequence = createFetchSequence([
+      new Response("quota exhausted", { status: 429, headers: { "content-type": "text/plain" } }),
+      createGeminiResponse(createGeminiPayload()),
+    ]);
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: image.dataUrl,
+        fileName: "mercy-over-fear-transparent-typography.png",
+        title: "",
+        productFamily: "t-shirt",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-fast-test",
+        ocrModel: "gemini-ocr-test",
+        onDiagnosticEvent: (event) => {
+          diagnostics.push(event);
+        },
+        fetchFn: async (url, init) => {
+          requestedUrls.push(String(url || ""));
+          return sequence.fetchFn(url, init);
+        },
+      }
+    );
+
+    assert.equal(requestedUrls.length, 2);
+    assert.equal(/models\/gemini-ocr-test:generateContent/i.test(requestedUrls[0]), true);
+    assert.equal(/models\/gemini-fast-test:generateContent/i.test(requestedUrls[1]), true);
+    assert.equal(response.source, "gemini");
+    assert.equal(response.model, "gemini-fast-test");
+    assert.equal(diagnostics.some((entry) => entry.event === "quota_downgrade_to_default_model"), true);
+  });
+
   await run("repeated sanitized placeholder output can recover to a literal filename-grounded fallback for searchable religious text", async () => {
     const makeSanitizedPayload = () =>
       createGeminiResponse(
