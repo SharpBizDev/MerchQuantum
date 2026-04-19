@@ -95,13 +95,14 @@ await run("provider activation options expose only supported locked-frontend pro
   const gelato = PROVIDER_OPTIONS.find((provider) => provider.id === "gelato");
   const prodigi = PROVIDER_OPTIONS.find((provider) => provider.id === "prodigi");
   const lulu = PROVIDER_OPTIONS.find((provider) => provider.id === "lulu_direct");
-  const spod = PROVIDER_OPTIONS.find((provider) => provider.id === "spod");
+  const spod = PROVIDER_OPTIONS.find((provider) => provider.providerId === "spod");
 
   assert.equal(printify?.isLive, true);
   assert.equal(printful?.isLive, true);
   assert.equal(gooten?.isLive, true);
   assert.equal(apliiq?.isLive, true);
   assert.equal(spod?.isLive, true);
+  assert.equal(spod?.id, "spreadconnect");
   assert.equal(gelato, undefined);
   assert.equal(prodigi, undefined);
   assert.equal(lulu, undefined);
@@ -214,5 +215,228 @@ await run("provider error normalization maps upstream status codes cleanly", asy
   );
   assert.equal(rateLimited.code, "rate_limited");
   assert.equal(rateLimited.retryable, true);
+});
+
+await run("printify import detail restores recovered artwork and legacy metadata", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    createResponse({
+      id: "prod-1",
+      title: "Legacy Cross Shirt",
+      description: "Legacy storefront description",
+      tags: ["cross", "christian", "unisex"],
+      visible: true,
+      print_areas: [
+        {
+          placeholders: [
+            {
+              position: "front",
+              images: [
+                {
+                  id: "upload-1",
+                  src: "https://cdn.printify.test/fallback.png",
+                  name: "fallback.png",
+                  type: "image/png",
+                  width: 1400,
+                  height: 1800,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+    createResponse({
+      id: "upload-1",
+      file_name: "restored-art.png",
+      src: "https://cdn.printify.test/restored-art.png",
+      preview_url: "https://cdn.printify.test/restored-art-preview.png",
+      type: "image/png",
+      width: 2400,
+      height: 3200,
+    }),
+  ]);
+
+  const adapter = createPrintifyAdapter({ fetch: fetchFn });
+  const detail = await adapter.getImportedListingDetail?.({
+    credentials: { apiKey: "token" },
+    storeId: "shop-1",
+    sourceId: "prod-1",
+  });
+
+  assert.ok(detail);
+  assert.equal(detail?.title, "Legacy Cross Shirt");
+  assert.equal(detail?.description, "Legacy storefront description");
+  assert.deepEqual(detail?.tags, ["cross", "christian", "unisex"]);
+  assert.equal(detail?.templateDescription, "Legacy storefront description");
+  assert.equal(detail?.artwork?.fileName, "restored-art.png");
+  assert.equal(detail?.artwork?.url, "https://cdn.printify.test/restored-art.png");
+  assert.equal(detail?.artwork?.previewUrl, "https://cdn.printify.test/restored-art-preview.png");
+  assert.equal(detail?.metadata.visible, true);
+  assert.equal(calls.length, 2);
+  assert.match(calls[0]?.input || "", /\/shops\/shop-1\/products\/prod-1\.json$/);
+  assert.match(calls[1]?.input || "", /\/uploads\/upload-1\.json$/);
+});
+
+await run("printify metadata sync trims payloads and publish step pushes the expected flags", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    createResponse({
+      id: "prod-2",
+      title: "Updated Cross Tee",
+      description: "Buyer-facing paragraph copy",
+      tags: Array.from({ length: 20 }, (_, index) => `tag-${index + 1}`),
+    }),
+    createResponse({ ok: true }),
+  ]);
+
+  const adapter = createPrintifyAdapter({ fetch: fetchFn });
+
+  const updated = await adapter.updateListingMetadata?.({
+    credentials: { apiKey: "token" },
+    storeId: "shop-1",
+    sourceId: "prod-2",
+    title: "  Updated Cross Tee  ",
+    description: "  Buyer-facing paragraph copy  ",
+    tags: Array.from({ length: 20 }, (_, index) => ` tag-${index + 1} `),
+  });
+
+  assert.ok(updated);
+  assert.equal(updated?.title, "Updated Cross Tee");
+  assert.equal(updated?.description, "Buyer-facing paragraph copy");
+  assert.equal(updated?.tags.length, 20);
+
+  const updatePayload = JSON.parse(String(calls[0]?.init?.body || "{}"));
+  assert.equal(updatePayload.title, "Updated Cross Tee");
+  assert.equal(updatePayload.description, "Buyer-facing paragraph copy");
+  assert.equal(updatePayload.tags.length, 15);
+  assert.deepEqual(updatePayload.tags.slice(0, 3), ["tag-1", "tag-2", "tag-3"]);
+
+  await adapter.publishProduct?.({
+    credentials: { apiKey: "token" },
+    storeId: "shop-1",
+    productId: "prod-2",
+  });
+
+  const publishPayload = JSON.parse(String(calls[1]?.init?.body || "{}"));
+  assert.deepEqual(publishPayload, {
+    title: true,
+    description: true,
+    images: true,
+    variants: true,
+    tags: true,
+    keyFeatures: true,
+    shipping_template: true,
+  });
+});
+
+await run("printful import detail restores file-library artwork when available", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    createResponse({
+      result: {
+        sync_product: {
+          id: 101,
+          name: "Imported Flag Shirt",
+        },
+        sync_variants: [
+          {
+            id: 900,
+            variant_id: 321,
+            retail_price: "24.99",
+            files: [
+              {
+                id: 555,
+                type: "front",
+                url: "https://files.printful.test/front-fallback.png",
+                filename: "front-fallback.png",
+                width: 1800,
+                height: 2400,
+              },
+            ],
+          },
+        ],
+      },
+    }),
+    createResponse({
+      result: {
+        id: 555,
+        url: "https://files.printful.test/front-original.png",
+        filename: "front-original.png",
+        preview_url: "https://files.printful.test/front-preview.png",
+        mime_type: "image/png",
+        width: 3600,
+        height: 4800,
+      },
+    }),
+  ]);
+
+  const adapter = createPrintfulAdapter({ fetch: fetchFn });
+  const detail = await adapter.getImportedListingDetail?.({
+    credentials: { apiKey: "token" },
+    storeId: "store-1",
+    sourceId: "101",
+  });
+
+  assert.ok(detail);
+  assert.equal(detail?.title, "Imported Flag Shirt");
+  assert.equal(detail?.artwork?.fileName, "front-original.png");
+  assert.equal(detail?.artwork?.url, "https://files.printful.test/front-original.png");
+  assert.equal(detail?.artwork?.previewUrl, "https://files.printful.test/front-preview.png");
+  assert.equal(detail?.artwork?.contentType, "image/png");
+  assert.equal(calls.length, 2);
+  assert.match(calls[0]?.input || "", /\/store\/products\/101$/);
+  assert.match(calls[1]?.input || "", /\/files\/555$/);
+});
+
+await run("printful metadata sync is title-only in this pass and rejects unsupported fields", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    createResponse({
+      result: {
+        sync_product: {
+          id: 202,
+          name: "Refined Printful Title",
+        },
+      },
+    }),
+  ]);
+
+  const adapter = createPrintfulAdapter({ fetch: fetchFn });
+  const updated = await adapter.updateListingMetadata?.({
+    credentials: { apiKey: "token" },
+    storeId: "store-1",
+    sourceId: "202",
+    title: "  Refined Printful Title  ",
+  });
+
+  assert.ok(updated);
+  assert.equal(updated?.title, "Refined Printful Title");
+  assert.equal(updated?.description, "");
+  assert.deepEqual(updated?.tags, []);
+
+  const titlePayload = JSON.parse(String(calls[0]?.init?.body || "{}"));
+  assert.deepEqual(titlePayload, {
+    sync_product: {
+      name: "Refined Printful Title",
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      adapter.updateListingMetadata?.({
+        credentials: { apiKey: "token" },
+        storeId: "store-1",
+        sourceId: "202",
+        description: "Should not be accepted in this pass.",
+      }) ?? Promise.resolve(undefined),
+    (error: unknown) => {
+      assert.ok(error instanceof ProviderError);
+      assert.equal(error.code, "unsupported_operation");
+      return true;
+    }
+  );
+});
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });
 

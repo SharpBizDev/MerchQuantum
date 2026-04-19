@@ -1,12 +1,20 @@
-import type { ProviderAdapter, ProviderAdapterContext } from "../contracts";
+import type {
+  ProviderAdapter,
+  ProviderAdapterContext,
+  ProviderImportDetailContext,
+  ProviderListingMetadataUpdateContext,
+} from "../contracts";
 import { ProviderError, providerErrorFromResponse, toProviderError } from "../errors";
 import type {
   DraftProductResult,
   NormalizedArtworkUpload,
+  NormalizedImportedListingDetail,
   NormalizedPlacementGuide,
+  NormalizedRecoveredArtwork,
   NormalizedStore,
   NormalizedTemplateDetail,
   NormalizedTemplateSummary,
+  NormalizedUpdatedListing,
   ProviderCapabilities,
 } from "../types";
 
@@ -53,6 +61,7 @@ type PrintfulSyncVariant = {
     width?: number;
     height?: number;
     preview_url?: string;
+    thumbnail_url?: string;
   }>;
   options?: Array<Record<string, unknown>>;
   product?: {
@@ -95,9 +104,13 @@ type PrintfulPrintfileInfo = {
 
 type PrintfulFile = {
   id: number | string;
+  url?: string | null;
   filename?: string | null;
   preview_url?: string | null;
   thumbnail_url?: string | null;
+  mime_type?: string | null;
+  width?: number;
+  height?: number;
   status?: string;
 };
 
@@ -214,6 +227,21 @@ function buildFallbackPlacementGuide(syncVariants: PrintfulSyncVariant[]) {
   };
 }
 
+function chooseImportedFile(syncVariants: PrintfulSyncVariant[]) {
+  for (const variant of syncVariants) {
+    const preferred = (variant.files || []).find((file) => String(file.type || "").trim() && String(file.type || "").trim() !== "preview");
+    if (preferred) {
+      return preferred;
+    }
+
+    if (variant.files?.[0]) {
+      return variant.files[0];
+    }
+  }
+
+  return null;
+}
+
 function resolveRetailPrice(variant: PrintfulSyncVariant) {
   if (typeof variant.retail_price === "string" && variant.retail_price.trim()) {
     return variant.retail_price.trim();
@@ -327,6 +355,56 @@ export function createPrintfulAdapter(options: PrintfulAdapterOptions = {}): Pro
     return buildFallbackPlacementGuide(syncVariants);
   }
 
+  async function resolveImportedArtwork(
+    context: ProviderImportDetailContext,
+    syncVariants: PrintfulSyncVariant[]
+  ): Promise<NormalizedRecoveredArtwork | null> {
+    const file = chooseImportedFile(syncVariants);
+    if (!file?.id && !file?.preview_url && !file?.thumbnail_url && !file?.url) {
+      return null;
+    }
+
+    if (file?.id) {
+      try {
+        const resolved = await requestJson<PrintfulFile>(
+          context,
+          `/files/${encodeURIComponent(String(file.id))}`,
+          "Unable to retrieve the imported artwork from Printful.",
+          undefined,
+          context.storeId
+        );
+
+        return {
+          assetId: String(resolved.id || file.id),
+          fileName: resolved.filename || file.filename || `printful-${file.id}.png`,
+          url: resolved.url || file.url || resolved.preview_url || file.preview_url || resolved.thumbnail_url || file.thumbnail_url || "",
+          previewUrl: resolved.preview_url || file.preview_url || resolved.thumbnail_url || file.thumbnail_url || resolved.url || file.url || "",
+          width: resolved.width || file.width,
+          height: resolved.height || file.height,
+          contentType: resolved.mime_type,
+        };
+      } catch (error) {
+        if (error instanceof ProviderError && error.code === "invalid_credentials") {
+          throw error;
+        }
+      }
+    }
+
+    const fallbackUrl = file.url || file.preview_url || file.thumbnail_url;
+    if (!fallbackUrl) {
+      return null;
+    }
+
+    return {
+      assetId: file.id ? String(file.id) : undefined,
+      fileName: file.filename || `printful-${file.id || "artwork"}.png`,
+      url: fallbackUrl,
+      previewUrl: file.preview_url || file.thumbnail_url || fallbackUrl,
+      width: file.width,
+      height: file.height,
+    };
+  }
+
   return {
     id: "printful",
     displayName: "Printful",
@@ -434,6 +512,45 @@ export function createPrintfulAdapter(options: PrintfulAdapterOptions = {}): Pro
           },
         },
       };
+    },
+    async getImportedListingDetail(context) {
+      const storeId = context.storeId.trim();
+      const sourceId = context.sourceId.trim();
+
+      if (!storeId || !sourceId) {
+        throw new ProviderError({
+          providerId: "printful",
+          code: "missing_parameter",
+          status: 400,
+          message: "Missing storeId or sourceId.",
+        });
+      }
+
+      const detail = await requestJson<PrintfulSyncProductDetail>(
+        context,
+        `/store/products/${encodeURIComponent(sourceId)}`,
+        "Unable to load Printful product detail for import.",
+        undefined,
+        storeId
+      );
+
+      const syncProduct = detail.sync_product || {};
+      const syncVariants = asArray<PrintfulSyncVariant>(detail.sync_variants);
+      const artwork = await resolveImportedArtwork(context, syncVariants);
+
+      return {
+        id: String(syncProduct.id || sourceId),
+        storeId,
+        title: syncProduct.name || `Printful Product ${sourceId}`,
+        description: "",
+        tags: [],
+        templateDescription: "",
+        artwork,
+        metadata: {
+          rawTemplate: detail,
+          syncVariants,
+        },
+      } satisfies NormalizedImportedListingDetail;
     },
     async uploadArtwork(context) {
       const data = context.imageDataUrl.trim();
@@ -556,6 +673,65 @@ export function createPrintfulAdapter(options: PrintfulAdapterOptions = {}): Pro
           message: "Unable to create Printful draft product.",
         });
       }
+    },
+    async updateListingMetadata(context) {
+      const sourceId = context.sourceId.trim();
+      const storeId = context.storeId.trim();
+      const title = context.title?.trim();
+      const description = context.description?.trim();
+      const tags = Array.isArray(context.tags)
+        ? context.tags.filter((tag): tag is string => typeof tag === "string" && !!tag.trim()).slice(0, 15)
+        : [];
+
+      if (!storeId || !sourceId) {
+        throw new ProviderError({
+          providerId: "printful",
+          code: "missing_parameter",
+          status: 400,
+          message: "Missing storeId or sourceId.",
+        });
+      }
+
+      if (!title && !description && tags.length === 0) {
+        throw new ProviderError({
+          providerId: "printful",
+          code: "validation_error",
+          status: 400,
+          message: "Nothing to update.",
+        });
+      }
+
+      if (description || tags.length) {
+        throw new ProviderError({
+          providerId: "printful",
+          code: "unsupported_operation",
+          status: 501,
+          message: "Printful metadata sync currently supports title updates only in this pass.",
+        });
+      }
+
+      const updated = await requestJson<{ sync_product?: { id?: number | string; name?: string } }>(
+        context,
+        `/store/products/${encodeURIComponent(sourceId)}`,
+        "Unable to update the Printful listing title.",
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            sync_product: {
+              name: title,
+            },
+          }),
+        },
+        storeId
+      );
+
+      return {
+        id: String(updated.sync_product?.id || sourceId),
+        storeId,
+        title: updated.sync_product?.name || title || "",
+        description: "",
+        tags: [],
+      } satisfies NormalizedUpdatedListing;
     },
   };
 }

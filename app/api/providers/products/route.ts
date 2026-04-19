@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getProviderAdapter, getProviderEntry, isProviderId } from "../../../../lib/providers/registry";
 import { ProviderError } from "../../../../lib/providers/errors";
+import { runWithProviderGovernor } from "../../../../lib/providers/governor";
 import { readActiveProviderId, readProviderCredentials } from "../../../../lib/providers/session";
 
 export async function GET(req: NextRequest) {
@@ -29,10 +30,12 @@ export async function GET(req: NextRequest) {
     }
 
     const adapter = getProviderAdapter(providerId);
-    const products = await adapter.listTemplatesOrProducts({
-      credentials,
-      storeId: shopId,
-    });
+    const products = await runWithProviderGovernor(providerId, "read", () =>
+      adapter.listTemplatesOrProducts({
+        credentials,
+        storeId: shopId,
+      })
+    );
 
     return NextResponse.json({
       providerId,

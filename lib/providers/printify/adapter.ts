@@ -1,14 +1,22 @@
-import type { ProviderAdapter, ProviderAdapterContext } from "../contracts";
+import type {
+  ProviderAdapter,
+  ProviderAdapterContext,
+  ProviderImportDetailContext,
+  ProviderListingMetadataUpdateContext,
+} from "../contracts";
 import { ProviderError, providerErrorFromResponse, toProviderError } from "../errors";
 import type {
   ArtworkBounds,
   DraftProductInput,
   DraftProductResult,
   NormalizedArtworkUpload,
+  NormalizedImportedListingDetail,
   NormalizedPlacementGuide,
+  NormalizedRecoveredArtwork,
   NormalizedStore,
   NormalizedTemplateDetail,
   NormalizedTemplateSummary,
+  NormalizedUpdatedListing,
   ProviderCapabilities,
 } from "../types";
 
@@ -36,6 +44,8 @@ type PrintifyProduct = {
   id: string;
   title: string;
   description?: string;
+  tags?: string[];
+  visible?: boolean;
   shop_id?: number | string;
   blueprint_id?: number;
   print_provider_id?: number;
@@ -50,6 +60,12 @@ type PrintifyProduct = {
     placeholders?: Array<{
       position?: string;
       images?: Array<{
+        id?: string;
+        src?: string;
+        name?: string;
+        type?: string;
+        width?: number;
+        height?: number;
         x?: number;
         y?: number;
         scale?: number;
@@ -78,6 +94,16 @@ type CatalogVariantResponse =
       data?: CatalogVariant[];
     };
 
+type PrintifyUpload = {
+  id?: string;
+  file_name?: string;
+  preview_url?: string;
+  src?: string;
+  type?: string;
+  width?: number;
+  height?: number;
+};
+
 type ImageDimensions = {
   width: number;
   height: number;
@@ -98,7 +124,7 @@ export const PRINTIFY_CAPABILITIES: ProviderCapabilities = {
   supportsMockups: false,
   supportsWebhooks: false,
   supportsOrderOnly: false,
-  supportsPublishStep: false,
+  supportsPublishStep: true,
   supportsMultiplePlacements: false,
   requiresHostedArtwork: false,
   supportsDirectUpload: true,
@@ -280,6 +306,29 @@ function chooseFrontPlacement(product: PrintifyProduct) {
 
       if (FRONT_POSITION_PATTERNS.some((pattern) => pattern.test(position))) {
         return { areaIndex, placeholderIndex, position, imageDefaults };
+      }
+    }
+  }
+
+  return fallback;
+}
+
+function chooseImportedArtwork(product: PrintifyProduct) {
+  let fallback:
+    | NonNullable<NonNullable<PrintifyProduct["print_areas"]>[number]["placeholders"]>[number]["images"][number]
+    | null = null;
+
+  for (const area of product.print_areas || []) {
+    for (const placeholder of area.placeholders || []) {
+      const position = String(placeholder.position || "").trim();
+      for (const image of placeholder.images || []) {
+        if (!fallback) {
+          fallback = image;
+        }
+
+        if (FRONT_POSITION_PATTERNS.some((pattern) => pattern.test(position))) {
+          return image;
+        }
       }
     }
   }
@@ -518,6 +567,56 @@ export function createPrintifyAdapter(options: PrintifyAdapterOptions = {}): Pro
     };
   }
 
+  async function resolveImportedArtwork(
+    context: ProviderImportDetailContext,
+    product: PrintifyProduct
+  ): Promise<NormalizedRecoveredArtwork | null> {
+    const sourceImage = chooseImportedArtwork(product);
+    if (!sourceImage) {
+      return null;
+    }
+
+    if (sourceImage.id) {
+      try {
+        const upload = await requestJson<PrintifyUpload>(
+          context,
+          `/uploads/${encodeURIComponent(String(sourceImage.id))}.json`,
+          "Unable to retrieve the original uploaded artwork."
+        );
+
+        if (upload.src) {
+          return {
+            assetId: upload.id || sourceImage.id,
+            fileName: upload.file_name || sourceImage.name || `${product.id}.png`,
+            url: upload.src,
+            previewUrl: upload.preview_url || upload.src,
+            contentType: upload.type || sourceImage.type,
+            width: upload.width || sourceImage.width,
+            height: upload.height || sourceImage.height,
+          };
+        }
+      } catch (error) {
+        if (error instanceof ProviderError && error.code === "invalid_credentials") {
+          throw error;
+        }
+      }
+    }
+
+    if (!sourceImage.src) {
+      return null;
+    }
+
+    return {
+      assetId: sourceImage.id,
+      fileName: sourceImage.name || `${product.id}.png`,
+      url: sourceImage.src,
+      previewUrl: sourceImage.src,
+      contentType: sourceImage.type,
+      width: sourceImage.width,
+      height: sourceImage.height,
+    };
+  }
+
   return {
     id: "printify",
     displayName: "Printify",
@@ -593,6 +692,43 @@ export function createPrintifyAdapter(options: PrintifyAdapterOptions = {}): Pro
           rawTemplate: product,
         },
       };
+    },
+    async getImportedListingDetail(context) {
+      if (!context.storeId.trim() || !context.sourceId.trim()) {
+        throw new ProviderError({
+          providerId: "printify",
+          code: "missing_parameter",
+          status: 400,
+          message: "Missing storeId or sourceId.",
+        });
+      }
+
+      const product = await requestJson<PrintifyProduct>(
+        context,
+        `/shops/${encodeURIComponent(context.storeId)}/products/${encodeURIComponent(context.sourceId)}.json`,
+        "Unable to load product detail for import."
+      );
+
+      const artwork = await resolveImportedArtwork(context, product);
+
+      return {
+        id: product.id,
+        storeId: context.storeId,
+        title: product.title || `Product ${product.id}`,
+        description: product.description || "",
+        tags: Array.isArray(product.tags)
+          ? product.tags
+              .filter((tag): tag is string => typeof tag === "string")
+              .map((tag) => tag.trim())
+              .filter(Boolean)
+          : [],
+        templateDescription: product.description || "",
+        artwork,
+        metadata: {
+          rawTemplate: product,
+          visible: product.visible ?? null,
+        },
+      } satisfies NormalizedImportedListingDetail;
     },
     async uploadArtwork(context) {
       const contents = extractBase64(context.imageDataUrl);
@@ -688,7 +824,13 @@ export function createPrintifyAdapter(options: PrintifyAdapterOptions = {}): Pro
               description: context.item.description,
               blueprint_id: template.blueprint_id,
               print_provider_id: template.print_provider_id,
-              tags: Array.isArray(context.item.tags) ? context.item.tags.slice(0, 13) : [],
+              tags: Array.isArray(context.item.tags)
+                ? context.item.tags
+                    .filter((tag): tag is string => typeof tag === "string")
+                    .map((tag) => tag.trim())
+                    .filter(Boolean)
+                    .slice(0, 13)
+                : [],
               variants: enabledVariants,
               print_areas: printAreas,
               ...(template.print_details ? { print_details: template.print_details } : {}),
@@ -712,6 +854,98 @@ export function createPrintifyAdapter(options: PrintifyAdapterOptions = {}): Pro
           message: "Unable to create draft product.",
         });
       }
+    },
+    async updateListingMetadata(context) {
+      const sourceId = context.sourceId.trim();
+      const storeId = context.storeId.trim();
+      if (!storeId || !sourceId) {
+        throw new ProviderError({
+          providerId: "printify",
+          code: "missing_parameter",
+          status: 400,
+          message: "Missing storeId or sourceId.",
+        });
+      }
+
+      const title = context.title?.trim();
+      const description = context.description?.trim();
+      const tags = Array.isArray(context.tags)
+        ? context.tags
+            .filter((tag): tag is string => typeof tag === "string")
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+            .slice(0, 15)
+        : [];
+
+      if (!title && !description && tags.length === 0) {
+        throw new ProviderError({
+          providerId: "printify",
+          code: "validation_error",
+          status: 400,
+          message: "Nothing to update.",
+        });
+      }
+
+      const updated = await requestJson<PrintifyProduct>(
+        context,
+        `/shops/${encodeURIComponent(storeId)}/products/${encodeURIComponent(sourceId)}.json`,
+        "Unable to update Printify listing metadata.",
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            ...(title ? { title } : {}),
+            ...(description ? { description } : {}),
+            ...(tags.length ? { tags } : {}),
+          }),
+        }
+      );
+
+      return {
+        id: updated.id || sourceId,
+        storeId,
+        title: updated.title || title || "",
+        description: updated.description || description || "",
+        tags: Array.isArray(updated.tags)
+          ? updated.tags
+              .filter((tag): tag is string => typeof tag === "string")
+              .map((tag) => tag.trim())
+              .filter(Boolean)
+          : tags,
+        metadata: {
+          rawTemplate: updated,
+        },
+      } satisfies NormalizedUpdatedListing;
+    },
+    async publishProduct(context) {
+      const productId = context.productId.trim();
+      const storeId = context.storeId.trim();
+
+      if (!storeId || !productId) {
+        throw new ProviderError({
+          providerId: "printify",
+          code: "missing_parameter",
+          status: 400,
+          message: "Missing storeId or productId.",
+        });
+      }
+
+      return requestJson(
+        context,
+        `/shops/${encodeURIComponent(storeId)}/products/${encodeURIComponent(productId)}/publish.json`,
+        "Unable to publish the selected Printify product.",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            title: true,
+            description: true,
+            images: true,
+            variants: true,
+            tags: true,
+            keyFeatures: true,
+            shipping_template: true,
+          }),
+        }
+      );
     },
   };
 }

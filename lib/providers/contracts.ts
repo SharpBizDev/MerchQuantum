@@ -3,12 +3,14 @@ import type {
   DraftProductResult,
   HostedArtworkReference,
   NormalizedArtworkUpload,
+  NormalizedImportedListingDetail,
   NormalizedOrderDetail,
   NormalizedOrderSummary,
   NormalizedPreviewResult,
   NormalizedStore,
   NormalizedTemplateDetail,
   NormalizedTemplateSummary,
+  NormalizedUpdatedListing,
   ProviderCapabilities,
   ProviderConnectionResult,
   ProviderCredentials,
@@ -35,6 +37,19 @@ export type ProviderPublishContext = ProviderAdapterContext & {
   storeId: string;
 };
 
+export type ProviderImportDetailContext = ProviderAdapterContext & {
+  sourceId: string;
+  storeId: string;
+};
+
+export type ProviderListingMetadataUpdateContext = ProviderAdapterContext & {
+  sourceId: string;
+  storeId: string;
+  title?: string;
+  description?: string;
+  tags?: string[];
+};
+
 export type ProviderOrderSubmitContext = ProviderAdapterContext & {
   orderInput: Record<string, unknown>;
 };
@@ -56,9 +71,11 @@ export interface ProviderAdapter {
   listStores(context: ProviderAdapterContext): Promise<NormalizedStore[]>;
   listTemplatesOrProducts(context: ProviderAdapterContext & { storeId: string }): Promise<NormalizedTemplateSummary[]>;
   getTemplateDetail(context: ProviderAdapterContext & { storeId: string; sourceId: string }): Promise<NormalizedTemplateDetail>;
+  getImportedListingDetail?(context: ProviderImportDetailContext): Promise<NormalizedImportedListingDetail>;
   uploadArtwork(context: ProviderArtworkContext): Promise<NormalizedArtworkUpload>;
   createDraftProduct(context: ProviderAdapterContext & DraftProductInput): Promise<DraftProductResult>;
   createPreview?(context: ProviderPreviewContext): Promise<NormalizedPreviewResult>;
+  updateListingMetadata?(context: ProviderListingMetadataUpdateContext): Promise<NormalizedUpdatedListing>;
   publishProduct?(context: ProviderPublishContext): Promise<unknown>;
   submitOrder?(context: ProviderOrderSubmitContext): Promise<unknown>;
   listOrders?(context: ProviderListOrdersContext): Promise<NormalizedOrderSummary[]>;

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { publishHostedArtwork } from "../../../../lib/providers/artwork";
 import { ProviderError } from "../../../../lib/providers/errors";
+import { runWithProviderGovernor } from "../../../../lib/providers/governor";
 import { getProviderAdapter, getProviderEntry, isProviderId } from "../../../../lib/providers/registry";
 import { readActiveProviderId, readProviderCredentials } from "../../../../lib/providers/session";
 
@@ -121,11 +122,13 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const templateDetail = await adapter.getTemplateDetail({
-      credentials,
-      storeId: shopId,
-      sourceId: templateProductId,
-    });
+    const templateDetail = await runWithProviderGovernor(providerId, "read", () =>
+      adapter.getTemplateDetail({
+        credentials,
+        storeId: shopId,
+        sourceId: templateProductId,
+      })
+    );
 
     const results = [];
     for (const item of items) {
@@ -149,14 +152,16 @@ export async function POST(req: NextRequest) {
             })
           : undefined;
 
-        const created = await adapter.createDraftProduct({
-          credentials,
-          storeId: shopId,
-          templateId: templateProductId,
-          templateDetail,
-          item,
-          hostedArtwork,
-        });
+        const created = await runWithProviderGovernor(providerId, "write", () =>
+          adapter.createDraftProduct({
+            credentials,
+            storeId: shopId,
+            templateId: templateProductId,
+            templateDetail,
+            item,
+            hostedArtwork,
+          })
+        );
 
         results.push({
           fileName: created.fileName,

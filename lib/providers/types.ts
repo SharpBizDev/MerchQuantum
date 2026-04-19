@@ -73,6 +73,36 @@ export type NormalizedTemplateDetail = {
   metadata: Record<string, unknown>;
 };
 
+export type NormalizedRecoveredArtwork = {
+  assetId?: string;
+  fileName: string;
+  url: string;
+  previewUrl?: string;
+  contentType?: string;
+  width?: number;
+  height?: number;
+};
+
+export type NormalizedImportedListingDetail = {
+  id: string;
+  storeId: string;
+  title: string;
+  description: string;
+  tags: string[];
+  templateDescription: string;
+  artwork: NormalizedRecoveredArtwork | null;
+  metadata: Record<string, unknown>;
+};
+
+export type NormalizedUpdatedListing = {
+  id: string;
+  storeId: string;
+  title: string;
+  description: string;
+  tags: string[];
+  metadata?: Record<string, unknown>;
+};
+
 export type NormalizedArtworkUpload = {
   id: string;
   fileName: string;

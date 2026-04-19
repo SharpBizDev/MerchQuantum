@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
 import { ProviderError } from "../../../../lib/providers/errors";
+import { runWithProviderGovernor } from "../../../../lib/providers/governor";
 import { getProviderAdapter, getProviderEntry, isProviderId } from "../../../../lib/providers/registry";
 import { readActiveProviderId, readProviderCredentials } from "../../../../lib/providers/session";
 
@@ -31,11 +32,13 @@ export async function GET(req: NextRequest) {
     }
 
     const adapter = getProviderAdapter(providerId);
-    const detail = await adapter.getTemplateDetail({
-      credentials,
-      storeId: shopId,
-      sourceId: productId,
-    });
+    const detail = await runWithProviderGovernor(providerId, "read", () =>
+      adapter.getTemplateDetail({
+        credentials,
+        storeId: shopId,
+        sourceId: productId,
+      })
+    );
 
     return NextResponse.json({
       providerId,
