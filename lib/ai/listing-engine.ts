@@ -26,6 +26,11 @@ export type ListingUiResponse = {
   semanticRecord: SemanticRecord;
 };
 
+export type GeminiDiagnosticEvent = {
+  event: string;
+  details: Record<string, unknown>;
+};
+
 export type ListingReasonSeverity = "info" | "warning" | "critical";
 
 export type ListingReasonStage =
@@ -123,6 +128,7 @@ type GenerateOptions = {
   model?: string;
   ocrModel?: string;
   locale?: string;
+  onDiagnosticEvent?: (event: GeminiDiagnosticEvent) => void;
 };
 
 type RetryContext = {
@@ -3223,7 +3229,12 @@ function buildGeminiPayloadTelemetry(payload: any) {
   };
 }
 
-function logGeminiFailure(event: string, details: Record<string, unknown>) {
+function logGeminiFailure(
+  event: string,
+  details: Record<string, unknown>,
+  reporter?: (event: GeminiDiagnosticEvent) => void
+) {
+  reporter?.({ event, details });
   try {
     console.error("[listing-engine][gemini]", JSON.stringify({ event, ...details }));
   } catch {
@@ -3701,7 +3712,7 @@ function shouldAttemptFilenameSupportedRescue(input: ListingRequest, record: Eng
 
 async function callGeminiRecord(
   input: ListingRequest,
-  options: Required<Pick<GenerateOptions, "apiKey" | "model" | "fetchFn">> & {
+  options: Required<Pick<GenerateOptions, "apiKey" | "model" | "fetchFn">> & Pick<GenerateOptions, "onDiagnosticEvent"> & {
     localeProfile: LocaleProfile;
     retryContext: RetryContext;
     visionInputs: VisionInputSet;
@@ -3775,7 +3786,7 @@ async function callGeminiRecord(
       status: response.status,
       statusText: response.statusText,
       responseBodyPreview: truncateForLog(errorBody),
-    });
+    }, options.onDiagnosticEvent);
     throw new Error(`Gemini request failed with status ${response.status}.`);
   }
 
@@ -3788,7 +3799,7 @@ async function callGeminiRecord(
       ...requestTelemetry,
       responseBodyPreview: truncateForLog(responseBody),
       error: error instanceof Error ? error.message : String(error),
-    });
+    }, options.onDiagnosticEvent);
     throw new Error("Gemini returned a non-JSON HTTP payload.");
   }
 
@@ -3799,7 +3810,7 @@ async function callGeminiRecord(
       ...requestTelemetry,
       rawTextPreview: truncateForLog(rawText),
       payloadTelemetry: buildGeminiPayloadTelemetry(payload),
-    });
+    }, options.onDiagnosticEvent);
     return null;
   }
 
@@ -4101,6 +4112,7 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
           model: selectedModel,
           localeProfile,
           visionInputs: preparedVisionInputs,
+          onDiagnosticEvent: options.onDiagnosticEvent,
           retryContext: {
             attempt,
             retryInstruction:
@@ -4182,7 +4194,7 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
           fileName: normalizedInput.fileName || null,
           retryAttempt: attempt,
           error: error instanceof Error ? error.message : String(error),
-        });
+        }, options.onDiagnosticEvent);
 
         if (attempt >= MAX_GEMINI_ATTEMPTS) break;
       }

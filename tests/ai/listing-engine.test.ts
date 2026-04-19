@@ -2794,6 +2794,41 @@ async function main() {
     assert.equal(response.reasonFlags.some((flag) => flag.toLowerCase().includes("deterministic fallback used")), true);
   });
 
+  await run("diagnostic callback captures structured-output and exception telemetry", async () => {
+    const diagnostics: Array<{ event: string; details: Record<string, unknown> }> = [];
+    const sequence = createFetchSequence([
+      new Response(
+        JSON.stringify({
+          candidates: [{ content: { parts: [{ text: "not-valid-json" }] } }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      ),
+      new Response("temporary failure", { status: 500, headers: { "content-type": "text/plain" } }),
+    ]);
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "fallback seed",
+        fileName: "fallback_seed.png",
+        productFamily: "t-shirt",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: sequence.fetchFn,
+        onDiagnosticEvent: (event) => {
+          diagnostics.push(event);
+        },
+      }
+    );
+
+    assert.equal(response.source, "fallback");
+    assert.equal(diagnostics.some((entry) => entry.event === "unusable_structured_output"), true);
+    assert.equal(diagnostics.some((entry) => entry.event === "http_error"), true);
+    assert.equal(diagnostics.some((entry) => entry.event === "attempt_exception"), true);
+  });
+
   await run("repeated sanitized placeholder output can recover to a literal filename-grounded fallback for searchable religious text", async () => {
     const makeSanitizedPayload = () =>
       createGeminiResponse(

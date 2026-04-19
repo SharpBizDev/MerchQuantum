@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import {
   generateListingResponse,
+  type GeminiDiagnosticEvent,
   ListingInputGuardError,
   type ListingRequest,
 } from "../../../../lib/ai/listing-engine";
@@ -24,6 +25,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = (await request.json()) as ListingRequest;
+    const debugRequested =
+      request.nextUrl.searchParams.get("debug") === "1" ||
+      request.headers.get("x-quantum-debug") === "1";
+    const diagnostics: GeminiDiagnosticEvent[] = [];
     const imageMimeType = detectImageMimeType(body?.imageDataUrl);
     const geminiApiKeyPresent = Boolean(process.env.GEMINI_API_KEY);
     const googleGenerativeApiKeyPresent = Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
@@ -48,7 +53,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Image data is required." }, { status: 400 });
     }
 
-    const result = await generateListingResponse(body);
+    const result = await generateListingResponse(body, {
+      onDiagnosticEvent: debugRequested
+        ? (event) => {
+            diagnostics.push(event);
+          }
+        : undefined,
+    });
     if (
       result.source === "fallback" &&
       result.reasonFlags.some((flag) => /bounded gemini attempt|gemini output was unavailable or unparseable/i.test(flag))
@@ -64,7 +75,19 @@ export async function POST(request: NextRequest) {
         })
       );
     }
-    return NextResponse.json(result);
+    return NextResponse.json(
+      debugRequested
+        ? {
+            ...result,
+            debug: {
+              requestId,
+              imageMimeType,
+              resolvedApiKeyPresent,
+              diagnostics,
+            },
+          }
+        : result
+    );
   } catch (error) {
     if (error instanceof ListingInputGuardError) {
       console.error(
