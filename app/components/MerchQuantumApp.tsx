@@ -18,6 +18,8 @@ type ProviderId =
   | "spod"
   | "spreadconnect";
 
+type WorkspaceMode = "merch" | "youtube" | "social";
+
 type ProductFamily =
   | "t-shirt"
   | "hoodie"
@@ -70,6 +72,16 @@ type AiListingDraft = {
   publishReady?: boolean;
 };
 
+type ImportedArtwork = {
+  assetId?: string;
+  fileName: string;
+  url: string;
+  previewUrl?: string;
+  contentType?: string;
+  width?: number;
+  height?: number;
+};
+
 type Img = {
   id: string;
   name: string;
@@ -87,6 +99,18 @@ type Img = {
   processedTemplateKey?: string;
   artworkBounds?: ArtworkBounds;
   aiDraft?: AiListingDraft;
+  sourceType?: "upload" | "imported";
+  providerId?: ProviderId;
+  providerStoreId?: string;
+  providerProductId?: string;
+  templateDescriptionOverride?: string;
+  templateReferenceOverride?: string;
+  productFamilyOverride?: ProductFamily;
+  importedArtwork?: ImportedArtwork | null;
+  originalListingTitle?: string;
+  originalListingDescription?: string;
+  syncState?: "idle" | "syncing" | "synced" | "error";
+  syncMessage?: string;
 };
 
 type InlineEditableField = "title" | "description" | null;
@@ -139,7 +163,55 @@ type BatchResult = {
   message: string;
 };
 
+type ImportedListingRecord = {
+  id: string;
+  storeId: string;
+  title: string;
+  description: string;
+  tags: string[];
+  templateDescription: string;
+  artwork: ImportedArtwork | null;
+};
+
 const PROVIDERS = PROVIDER_OPTIONS;
+
+const WORKSPACE_MODE_CONFIG: Record<WorkspaceMode, {
+  label: string;
+  titleMin: number;
+  titleMax: number;
+  descriptionMin: number;
+  descriptionMax: number;
+  descriptionTargetWords: number;
+  tagCount: number;
+}> = {
+  merch: {
+    label: "MERCH_MODE",
+    titleMin: 45,
+    titleMax: 120,
+    descriptionMin: 220,
+    descriptionMax: 1200,
+    descriptionTargetWords: 150,
+    tagCount: 15,
+  },
+  youtube: {
+    label: "YOUTUBE_MODE",
+    titleMin: 40,
+    titleMax: 100,
+    descriptionMin: 150,
+    descriptionMax: 5000,
+    descriptionTargetWords: 250,
+    tagCount: 15,
+  },
+  social: {
+    label: "SOCIAL_MODE",
+    titleMin: 25,
+    titleMax: 80,
+    descriptionMin: 80,
+    descriptionMax: 500,
+    descriptionTargetWords: 90,
+    tagCount: 15,
+  },
+};
 
 const DEFAULT_PLACEMENT_GUIDE: PlacementGuide = {
   position: "front",
@@ -149,10 +221,11 @@ const DEFAULT_PLACEMENT_GUIDE: PlacementGuide = {
 };
 
 const AI_MODEL_LABEL = "Quantum AI";
-const AI_TITLE_MIN_CHARS = 45;
-const AI_TITLE_MAX_CHARS = 120;
-const AI_LEAD_MIN_CHARS = 220;
+const AI_TITLE_MIN_CHARS = WORKSPACE_MODE_CONFIG.merch.titleMin;
+const AI_TITLE_MAX_CHARS = WORKSPACE_MODE_CONFIG.merch.titleMax;
+const AI_LEAD_MIN_CHARS = WORKSPACE_MODE_CONFIG.merch.descriptionMin;
 const AI_LEAD_MAX_CHARS = 380;
+const IMPORT_QUEUE_LIMIT = 100;
 const DISPLAY_PREVIEW_SAMPLE_DIMENSION = 256;
 const DISPLAY_PREVIEW_MAX_DIMENSION = 960;
 const DISPLAY_ALPHA_THRESHOLD = 12;
@@ -1278,6 +1351,31 @@ function buildTags(title: string, description: string, count: number) {
   return deriveTags(title, description).slice(0, count);
 }
 
+export function canManualOverrideListingCopy(title: string, description: string, mode: WorkspaceMode) {
+  const limits = WORKSPACE_MODE_CONFIG[mode];
+  const normalizedTitle = clampTitleForMode(title, mode).trim();
+  const normalizedDescription = clampDescriptionForMode(description, mode).trim();
+  const paragraphs = descriptionTextToParagraphs(normalizedDescription);
+
+  return (
+    normalizedTitle.length >= limits.titleMin &&
+    normalizedDescription.length >= limits.descriptionMin &&
+    paragraphs.length >= 2 &&
+    paragraphs[0].trim().length >= 24 &&
+    paragraphs[1].trim().length >= 24
+  );
+}
+
+function buildManualOverrideTags(title: string, description: string, count: number) {
+  return deriveTags(title, description)
+    .filter((tag) => !/^keyword\s+\d+$/i.test(tag.trim()))
+    .slice(0, count);
+}
+
+function canManualOverrideFlaggedImage(image: Img | null) {
+  return !!image && image.aiDraft?.qcApproved !== false;
+}
+
 function createAiFieldStates(status: AiFieldStatus = "idle"): AiFieldStates {
   return {
     title: status,
@@ -1357,6 +1455,45 @@ function fileToDataUrl(file: File) {
 
 function readDataUrl(file: File) {
   return fileToDataUrl(file);
+}
+
+async function urlToFile(url: string, fileName: string, fallbackType = "image/png") {
+  const response = await fetchWithTimeout(url, undefined, 60000);
+  if (!response.ok) {
+    throw new Error(`Unable to retrieve rescued artwork (${response.status}).`);
+  }
+
+  const blob = await response.blob();
+  return new File([blob], fileName, {
+    type: blob.type || fallbackType,
+  });
+}
+
+function clampTitleForMode(value: string, mode: WorkspaceMode) {
+  const limits = WORKSPACE_MODE_CONFIG[mode];
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  if (normalized.length <= limits.titleMax) return normalized;
+  return trimTitleAtWordBoundary(normalized, limits.titleMax);
+}
+
+function clampDescriptionForMode(value: string, mode: WorkspaceMode) {
+  const limits = WORKSPACE_MODE_CONFIG[mode];
+  const normalized = value
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (!normalized) return "";
+  if (normalized.length <= limits.descriptionMax) return normalized;
+  return normalized.slice(0, limits.descriptionMax).trimEnd();
+}
+
+function autosizeTextarea(element: HTMLTextAreaElement | null) {
+  if (!element) return;
+  element.style.height = "0px";
+  element.style.height = `${Math.max(element.scrollHeight, 124)}px`;
 }
 
 const REQUEST_TIMEOUT_MS = 45000;
@@ -1575,8 +1712,14 @@ function getStatusTone(status: ItemStatus) {
   }
 }
 
-function getLoadingIndicatorClass() {
-  return "h-2 w-2 rounded-full ring-2 bg-[#7F22FE] ring-[#7F22FE]/35";
+function QuantOrbLoader({ className = "" }: { className?: string }) {
+  return (
+    <span className={`relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center ${className}`}>
+      <span className="absolute inset-0 rounded-full bg-[#7F22FE]/30 blur-[3px] animate-pulse" />
+      <span className="absolute inset-[1px] rounded-full border border-[#A855F7]/80 animate-[spin_2.6s_linear_infinite]" />
+      <span className="absolute inset-[3px] rounded-full bg-[#7F22FE] shadow-[0_0_14px_rgba(127,34,254,0.9)]" />
+    </span>
+  );
 }
 
 function StatusThumbIcon({ tone, direction }: { tone: "ready" | "error"; direction: "up" | "down" }) {
@@ -1616,6 +1759,24 @@ function PencilIcon({ className = "" }: { className?: string }) {
     >
       <path d="M3.2 10.95 10.55 3.6a1.45 1.45 0 0 1 2.05 0l.8.8a1.45 1.45 0 0 1 0 2.05l-7.35 7.35-2.6.55.55-2.6Z" />
       <path d="m9.95 4.2 1.85 1.85" />
+    </svg>
+  );
+}
+
+function ReRollIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.2"
+    >
+      <path d="M12.75 5.25V2.8m0 0h-2.45m2.45 0L9.9 5.65" />
+      <path d="M12.1 8a4.7 4.7 0 1 1-1.38-3.32" />
     </svg>
   );
 }
@@ -1660,6 +1821,7 @@ export default function MerchQuantumApp() {
   const inlineFeedbackTimeoutRef = useRef<number | null>(null);
 
   const [provider, setProvider] = useState<ProviderChoiceId | "">("");
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("merch");
   const [token, setToken] = useState("");
   const [connected, setConnected] = useState(false);
   const [loadingApi, setLoadingApi] = useState(false);
@@ -1676,6 +1838,11 @@ export default function MerchQuantumApp() {
   const [importedListingTitle, setImportedListingTitle] = useState("");
   const [importedListingDescription, setImportedListingDescription] = useState("");
   const [template, setTemplate] = useState<Template | null>(null);
+  const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
+  const [isImportingListings, setIsImportingListings] = useState(false);
+  const [importStatus, setImportStatus] = useState("");
+  const [isSyncingImportedListings, setIsSyncingImportedListings] = useState(false);
+  const [isPublishingImportedListings, setIsPublishingImportedListings] = useState(false);
   const [images, setImages] = useState<Img[]>([]);
   const [queuedImages, setQueuedImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -1688,11 +1855,17 @@ export default function MerchQuantumApp() {
   const [editableTitleDraft, setEditableTitleDraft] = useState("");
   const [editableDescriptionDraft, setEditableDescriptionDraft] = useState("");
   const [inlineSaveFeedback, setInlineSaveFeedback] = useState<InlineSaveFeedback | null>(null);
+  const [aiAssistStatus, setAiAssistStatus] = useState("");
+  const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
 
   const resolvedProviderId = provider === "spreadconnect" ? "spod" : provider;
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
   const isLiveProvider = selectedProvider?.isLive || false;
   const supportsProviderMetadataSync = resolvedProviderId === "printify";
+  const supportsReverseIngestion = resolvedProviderId === "printify" || resolvedProviderId === "printful";
+  const supportsImportedListingSync = resolvedProviderId === "printify" || resolvedProviderId === "printful";
+  const supportsImportedPublish = resolvedProviderId === "printify";
+  const currentModeConfig = WORKSPACE_MODE_CONFIG[workspaceMode];
   const totalBatchLimit = CONNECTED_TOTAL_BATCH_FILES;
   const activeBatchLimit = ACTIVE_BATCH_FILES;
   const availableShops = connected && isLiveProvider ? apiShops : [];
@@ -1708,12 +1881,18 @@ export default function MerchQuantumApp() {
         (!q || p.title.toLowerCase().includes(q) || p.type.toLowerCase().includes(q))
     );
   }, [shopId, search, productSource]);
+  const importedQueueCount = useMemo(
+    () => images.filter((img) => img.sourceType === "imported").length,
+    [images]
+  );
 
   const sortedImages = useMemo(() => {
     return [...images].sort((a, b) => {
       const statusDelta = getStatusSortValue(getResolvedItemStatus(a)) - getStatusSortValue(getResolvedItemStatus(b));
       if (statusDelta !== 0) return statusDelta;
-      return a.name.localeCompare(b.name);
+      const aLabel = (a.final || a.originalListingTitle || a.cleaned || a.name).trim().toLowerCase();
+      const bLabel = (b.final || b.originalListingTitle || b.cleaned || b.name).trim().toLowerCase();
+      return aLabel.localeCompare(bLabel);
     });
   }, [images]);
 
@@ -1727,36 +1906,42 @@ export default function MerchQuantumApp() {
   const readyCount = images.filter((img) => getResolvedItemStatus(img) === "ready").length;
   const errorCount = images.filter((img) => getResolvedItemStatus(img) === "error").length;
   const processingCount = images.filter((img) => getResolvedItemStatus(img) === "pending").length;
+  const draftReadyCount = images.filter((img) => img.sourceType !== "imported" && getResolvedItemStatus(img) === "ready").length;
   const queuedCount = queuedImages.length;
   const hasAnyLoadedImages = images.length > 0 || queuedImages.length > 0;
   const completedGenerationCount = readyCount + errorCount;
   const generationProgressPct = images.length > 0 ? Math.round((completedGenerationCount / images.length) * 100) : 0;
   const isWorkspaceConfigured = connected && !!shopId && !!template;
   const canSubmitProviderConnection = Boolean(provider && isLiveProvider && token.trim() && !loadingApi && !connected);
-  const searchNudgeTarget = !shopId ? "shop" : !template ? "template" : null;
+  const searchNudgeTarget = !shopId ? "shop" : null;
   const isSearchLocked = searchNudgeTarget !== null;
-  const uploadDisabled = !isWorkspaceConfigured || readyCount === 0 || isRunningBatch || processingCount > 0;
+  const uploadDisabled = !isWorkspaceConfigured || draftReadyCount === 0 || isRunningBatch || processingCount > 0;
   const canShowDetailWorkspace = isWorkspaceConfigured;
   const canShowDetailPanel = canShowDetailWorkspace || !!selectedImage;
   const selectedImageFieldStates = selectedImage?.aiFieldStates ?? createAiFieldStates("idle");
   const previewOverlayUsesLightText = shouldUseLightPreviewText(selectedImage?.previewBackground || DISPLAY_NEUTRAL_BACKGROUND);
   const previewOverlayTextClass = previewOverlayUsesLightText ? "text-white" : "text-slate-950";
+  const detailTemplateDescription = selectedImage?.templateDescriptionOverride ?? templateDescription;
+  const selectedImageTemplateKey = selectedImage
+    ? `${selectedImage.templateReferenceOverride || template?.reference || "no-template"}::${detailTemplateDescription.trim()}`
+    : templateKey;
   const isImageAwaitingStructuredOutput =
-    !!(selectedImage && templateReadyForAi && selectedImage.processedTemplateKey !== templateKey);
+    !!(selectedImage && selectedImage.processedTemplateKey !== selectedImageTemplateKey);
+  const hasVisibleSelectedImageTitle = !!selectedImage && selectedImageFieldStates.title === "ready" && !!selectedImage.final.trim();
+  const hasVisibleSelectedImageDescription = !!selectedImage && selectedImageFieldStates.description === "ready" && !!selectedImage.finalDescription.trim();
   const isDetailTitleLoading =
     selectedImageFieldStates.title === "loading"
     || !!selectedImage?.aiProcessing
-    || isImageAwaitingStructuredOutput;
+    || (isImageAwaitingStructuredOutput && !hasVisibleSelectedImageTitle);
   const isDetailDescriptionLoading =
     selectedImageFieldStates.description === "loading"
     || !!selectedImage?.aiProcessing
-    || isImageAwaitingStructuredOutput;
+    || (isImageAwaitingStructuredOutput && !hasVisibleSelectedImageDescription);
   const isDetailTagsLoading =
     selectedImageFieldStates.tags === "loading"
     || !!selectedImage?.aiProcessing
     || isImageAwaitingStructuredOutput;
-  const hasImportedListingContent = !!importedListingTitle.trim() || !!importedListingDescription.trim();
-  const isTemplatePrebufferState = templateReadyForAi && !selectedImage && !hasImportedListingContent;
+  const isTemplatePrebufferState = templateReadyForAi && !selectedImage && !hasAnyLoadedImages && !manualPrebufferOverride;
   const shouldAwaitQuantumTitle = isTemplatePrebufferState || isDetailTitleLoading;
   const shouldAwaitQuantumDescription = isTemplatePrebufferState || isDetailDescriptionLoading;
   const detailTitle = selectedImage
@@ -1782,28 +1967,57 @@ export default function MerchQuantumApp() {
           : "")
       : importedListingDescription);
   const detailDescriptionSections = splitDetailDescriptionForDisplay(
-    templateDescription,
+    detailTemplateDescription,
     selectedImage?.aiDraft?.leadParagraphs || [],
     detailDescription
   );
   const detailBuyerDescription = detailDescriptionSections.buyerFacingDescription;
   const detailTemplateSpecBlock = detailDescriptionSections.templateSpecBlock;
   const canEditImportedListing = !selectedImage && templateReadyForAi && !!template?.reference;
-  const canEditSelectedImageCopy = !!selectedImage && getResolvedItemStatus(selectedImage) === "ready";
-  const canEditDetailTitle = !shouldAwaitQuantumTitle && (canEditImportedListing || canEditSelectedImageCopy);
-  const canEditDetailDescription = !shouldAwaitQuantumDescription && (canEditImportedListing || canEditSelectedImageCopy);
+  const canEditSelectedImageCopy =
+    !!selectedImage
+    && !selectedImage.aiProcessing
+    && canManualOverrideFlaggedImage(selectedImage)
+    && getResolvedItemStatus(selectedImage) !== "pending";
+  const canEditDetailTitle = canEditImportedListing || canEditSelectedImageCopy;
+  const canEditDetailDescription = canEditImportedListing || canEditSelectedImageCopy;
   const titleFeedback = inlineSaveFeedback?.field === "title" ? inlineSaveFeedback : null;
   const descriptionFeedback = inlineSaveFeedback?.field === "description" ? inlineSaveFeedback : null;
+  const selectedImageStatus = selectedImage ? getResolvedItemStatus(selectedImage) : null;
+  const canManualRescueSelectedImage =
+    !!selectedImage
+    && selectedImageStatus === "error"
+    && canManualOverrideFlaggedImage(selectedImage);
+  const canRerollSelectedImage =
+    !!selectedImage
+    && !selectedImage.aiProcessing
+    && !isImageAwaitingStructuredOutput;
   const detailTags = selectedImage && selectedImageFieldStates.tags === "ready"
     ? selectedImage.tags
     : [];
+  const approvedImportedItems = images.filter((img) => img.sourceType === "imported" && getResolvedItemStatus(img) === "ready");
+  const flaggedImportedItems = images.filter((img) => img.sourceType === "imported" && getResolvedItemStatus(img) === "error");
+  const syncedApprovedImportedItems = approvedImportedItems.filter((img) => img.syncState === "synced");
+  const importedProductIds = useMemo(
+    () => new Set(images.map((img) => img.providerProductId).filter((value): value is string => !!value)),
+    [images]
+  );
+  const importSelectionMode = selectedImportIds.length === 1 ? "creation" : selectedImportIds.length >= 2 ? "import" : null;
+  const importSelectionActionLabel =
+    importSelectionMode === "creation"
+      ? "Open In Creation Mode"
+      : isImportingListings
+        ? "Importing..."
+        : "Import Selected";
   const guidanceStep = !connected
     ? "connect"
-    : !shopId || !template
+    : !shopId
       ? "template"
+      : !template && images.length === 0
+        ? "template"
       : images.length === 0
         ? "import"
-      : "settled";
+        : "settled";
   const processingBanner = processingCount > 0
     ? `Quantum AI is generating listing copy for ${processingCount} image${processingCount === 1 ? "" : "s"} in this batch.`
     : "";
@@ -1827,6 +2041,11 @@ export default function MerchQuantumApp() {
     if (!template) return "template" as const;
     if (includeImportStep && images.length === 0) return "import" as const;
     return null;
+  }
+
+  function canSubmitProviderConnectionWithToken(tokenCandidate?: string) {
+    const submittedToken = String(tokenCandidate ?? token).trim();
+    return Boolean(provider && isLiveProvider && submittedToken && !loadingApi && !connected);
   }
 
   function nudgeWorkflow(includeImportStep: boolean) {
@@ -1867,26 +2086,404 @@ export default function MerchQuantumApp() {
 
   function buildEditableDescriptionHtml(value: string) {
     const paragraphs = descriptionTextToParagraphs(value);
-    return templateDescription.trim()
-      ? formatProductDescriptionWithSections(paragraphs, templateDescription)
+    return detailTemplateDescription.trim()
+      ? formatProductDescriptionWithSections(paragraphs, detailTemplateDescription)
       : buildLeadOnlyDescription(paragraphs);
+  }
+
+  function buildImageDescriptionHtmlForEdit(value: string, image?: Img | null) {
+    const imageTemplateDescription = image?.templateDescriptionOverride ?? detailTemplateDescription;
+    const paragraphs = descriptionTextToParagraphs(value);
+    return imageTemplateDescription.trim()
+      ? formatProductDescriptionWithSections(paragraphs, imageTemplateDescription)
+      : buildLeadOnlyDescription(paragraphs);
+  }
+
+  function buildUserHintsForImage(image: Img) {
+    const activeTitleHint = clampTitleForMode(
+      editingField === "title"
+        ? editableTitleDraft
+        : detailTitle || image.final || image.originalListingTitle || image.cleaned,
+      workspaceMode
+    );
+    const fallbackBuyerDescription = splitDetailDescriptionForDisplay(
+      image.templateDescriptionOverride ?? detailTemplateDescription,
+      image.aiDraft?.leadParagraphs || [],
+      image.finalDescription
+    ).buyerFacingDescription;
+    const activeDescriptionHint = clampDescriptionForMode(
+      editingField === "description"
+        ? editableDescriptionDraft
+        : detailBuyerDescription || fallbackBuyerDescription,
+      workspaceMode
+    );
+    const descriptionParagraphs = descriptionTextToParagraphs(activeDescriptionHint).slice(0, 2);
+    const seen = new Set<string>();
+
+    return [
+      activeTitleHint,
+      ...image.tags.map((tag) => String(tag || "").trim()),
+      ...descriptionParagraphs,
+    ]
+      .map((hint) => hint.replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .filter((hint) => {
+        const key = hint.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 8);
+  }
+
+  function buildLegacyContextForImage(image: Img) {
+    if (image.sourceType !== "imported") return undefined;
+
+    const legacyParts = [
+      image.originalListingTitle?.trim()
+        ? `Legacy title: ${image.originalListingTitle.trim()}`
+        : "",
+      image.originalListingDescription?.trim()
+        ? `Legacy description: ${image.originalListingDescription.trim()}`
+        : "",
+    ].filter(Boolean);
+
+    return legacyParts.length > 0 ? legacyParts.join("\n") : undefined;
+  }
+
+  async function runAiListingForImage(
+    nextImage: Img,
+    options: {
+      userHints?: string[];
+      legacyContext?: string;
+      titleSeed?: string;
+      pendingReason?: string;
+      preserveVisibleCopyOnFailure?: boolean;
+      successMessage?: string;
+      targetField?: "title" | "description" | "full";
+    } = {}
+  ) {
+    const requestTemplateDescription = nextImage.templateDescriptionOverride ?? templateDescription;
+    const requestTemplateReference = nextImage.templateReferenceOverride ?? (template?.reference || "");
+    const requestTemplateKey = `${requestTemplateReference || "no-template"}::${requestTemplateDescription.trim()}`;
+    const requestUsesGlobalTemplate = !nextImage.templateDescriptionOverride;
+    const requestOwner = Symbol(nextImage.id);
+
+    aiLoopBusyRef.current = requestOwner;
+    setImages((current) =>
+      current.map((img) =>
+        img.id === nextImage.id
+          ? {
+              ...img,
+              aiProcessing: true,
+              aiFieldStates: createAiFieldStates("loading"),
+              status: "pending",
+              statusReason: options.pendingReason || "Quantum AI is analyzing artwork.",
+            }
+          : img
+      )
+    );
+
+    try {
+      const imageDataUrl = await readDataUrl(nextImage.file);
+      const requestProductFamily = nextImage.productFamilyOverride || resolveProductFamily(nextImage.cleaned, requestTemplateDescription);
+      const sterileTemplateContext = buildTemplateContext(requestTemplateDescription, requestProductFamily);
+      const legacyContext = options.legacyContext || buildLegacyContextForImage(nextImage);
+      const response = await fetchWithTimeout(
+        "/api/ai/listing",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            imageDataUrl,
+            title: options.titleSeed || nextImage.originalListingTitle || undefined,
+            fileName: nextImage.name,
+            templateContext: sterileTemplateContext,
+            productFamily: requestProductFamily,
+            userHints: options.userHints?.length ? options.userHints : undefined,
+            legacyContext,
+          }),
+        },
+        60000
+      );
+
+      const data = await parseResponsePayload(response);
+      if (!response.ok) throw new Error(data?.error || `AI request failed with status ${response.status}.`);
+      if (requestUsesGlobalTemplate && activeTemplateKeyRef.current !== requestTemplateKey) return;
+
+      const qcApproved = data?.qcApproved !== false;
+      if (!qcApproved) {
+        const qcFlags = Array.isArray(data?.reasonFlags)
+          ? data.reasonFlags.filter((flag: unknown): flag is string => typeof flag === "string")
+          : [];
+        const message = qcFlags.length
+          ? qcFlags.join(" • ")
+          : "Quantum AI rejected this artwork because the design appears blank, illegible, or too distorted for safe listing generation.";
+
+        setImages((current) =>
+          current.map((img) => {
+            if (img.id !== nextImage.id) return img;
+
+            if (!options.preserveVisibleCopyOnFailure) {
+              return {
+                ...img,
+                final: "",
+                finalDescription: "",
+                tags: [],
+                aiProcessing: false,
+                aiFieldStates: {
+                  title: "error",
+                  description: "error",
+                  tags: "error",
+                },
+                status: "error",
+                statusReason: message,
+                processedTemplateKey: requestTemplateKey,
+                aiDraft: undefined,
+              };
+            }
+
+            const preservedBuyerDescription = splitDetailDescriptionForDisplay(
+              img.templateDescriptionOverride ?? templateDescription,
+              img.aiDraft?.leadParagraphs || [],
+              img.finalDescription
+            ).buyerFacingDescription;
+
+            return {
+              ...img,
+              aiProcessing: false,
+              aiFieldStates: {
+                title: cleanTitle(String(img.final || img.aiDraft?.title || "")).trim() ? "ready" : "error",
+                description: preservedBuyerDescription.trim() ? "ready" : "error",
+                tags: img.tags.some((tag) => String(tag || "").trim()) ? "ready" : "error",
+              },
+              status: "error",
+              statusReason: message,
+              processedTemplateKey: requestTemplateKey,
+            };
+          })
+        );
+        setAiAssistStatus(message);
+        return;
+      }
+
+      const fallbackTitle = clampTitleForMode(safeTitle(nextImage.final, nextImage.cleaned), workspaceMode);
+      const titleFromApi = typeof data?.title === "string" ? data.title : "";
+      const finalTitle = clampTitleForMode(safeTitle(titleFromApi, fallbackTitle), workspaceMode);
+      const descriptionText = clampDescriptionForMode(normalizeDescriptionText(data?.description), workspaceMode);
+      const descriptionParagraphs = normalizeAiLeadParagraphs(
+        Array.isArray(data?.leadParagraphs)
+          ? data.leadParagraphs
+          : descriptionTextToParagraphs(descriptionText)
+      );
+      const finalDescription = descriptionParagraphs.length
+        ? (
+          requestTemplateDescription.trim()
+            ? formatProductDescriptionWithSections(descriptionParagraphs, requestTemplateDescription)
+            : buildLeadOnlyDescription(descriptionParagraphs)
+        )
+        : "";
+      const tags = normalizeTagsFromPayload(data?.tags).slice(0, currentModeConfig.tagCount);
+      const finalLead = descriptionParagraphs;
+      const confidence = Number.isFinite(data?.confidence) ? clamp(Number(data.confidence), 0, 1) : 0;
+      const reasonFlags = Array.isArray(data?.reasonFlags)
+        ? data.reasonFlags.filter((flag: unknown) => typeof flag === "string")
+        : [];
+      const grade = data?.grade === "green" || data?.grade === "red"
+        ? data.grade
+        : data?.publishReady === true
+          ? "green"
+          : "red";
+      const source = data?.source === "gemini" || data?.source === "fallback"
+        ? data.source
+        : "fallback";
+      const publishReady =
+        typeof data?.publishReady === "boolean"
+          ? data.publishReady
+          : qcApproved && grade === "green";
+      const hasCompleteStructuredOutput = !!finalTitle && !!finalDescription && tags.length > 0;
+      if (!hasCompleteStructuredOutput) {
+        throw new Error("Quantum AI returned incomplete structured output.");
+      }
+      const nextFieldStates: AiFieldStates = publishReady
+        ? {
+            title: "ready",
+            description: "ready",
+            tags: "ready",
+          }
+        : {
+            title: "error",
+            description: "error",
+            tags: "error",
+          };
+      const status: ItemStatus =
+        publishReady
+          ? "ready"
+          : "error";
+      const statusReason = reasonFlags.length
+        ? reasonFlags.join(" • ")
+        : status === "ready"
+          ? source === "fallback"
+            ? "Quantum AI produced a publish-ready fallback draft."
+            : "AI draft passed publish checks."
+          : source === "fallback"
+            ? "Quantum AI completed a fallback draft, but it did not pass publish checks."
+            : "Quantum AI could not generate a publish-ready draft for this image.";
+      const targetField = options.targetField || "full";
+      const currentVisibleTitle = safeTitle(nextImage.final, nextImage.originalListingTitle || nextImage.cleaned);
+      const currentBuyerDescription = splitDetailDescriptionForDisplay(
+        requestTemplateDescription,
+        nextImage.aiDraft?.leadParagraphs || [],
+        nextImage.finalDescription
+      ).buyerFacingDescription;
+      const currentVisibleDescription = currentBuyerDescription
+        ? buildImageDescriptionHtmlForEdit(currentBuyerDescription, nextImage)
+        : "";
+      const currentVisibleTags = normalizeTagsFromPayload(nextImage.tags).slice(0, currentModeConfig.tagCount);
+      const targetedPublishReady =
+        targetField === "full"
+          ? publishReady
+          : qcApproved
+            && !!(targetField === "title" ? finalTitle : currentVisibleTitle)
+            && !!(targetField === "description" ? finalDescription : currentVisibleDescription)
+            && currentVisibleTags.length > 0;
+      const nextStatus: ItemStatus = targetedPublishReady ? "ready" : "error";
+      const nextStatusReason =
+        targetField === "full"
+          ? statusReason
+          : targetedPublishReady
+            ? targetField === "title"
+              ? "Quantum AI refreshed the title."
+              : "Quantum AI refreshed the description."
+            : reasonFlags.length > 0
+              ? reasonFlags.join(" • ")
+              : `Quantum AI refreshed the ${targetField}, but this draft still needs the remaining listing fields.`;
+      const visibleTitle =
+        targetField === "description"
+          ? currentVisibleTitle
+          : safeTitle(finalTitle, currentVisibleTitle);
+      const visibleDescription =
+        targetField === "title"
+          ? currentVisibleDescription
+          : finalDescription || currentVisibleDescription;
+      const visibleTags =
+        targetField === "full"
+          ? (publishReady ? tags : [])
+          : currentVisibleTags;
+
+      setImages((current) =>
+        current.map((img) =>
+          img.id === nextImage.id
+            ? {
+                ...img,
+                final: visibleTitle,
+                finalDescription: visibleDescription,
+                tags: visibleTags,
+                aiProcessing: false,
+                aiFieldStates:
+                  targetField === "title"
+                    ? {
+                        ...img.aiFieldStates,
+                        title: visibleTitle ? "ready" : "error",
+                      }
+                    : targetField === "description"
+                      ? {
+                          ...img.aiFieldStates,
+                          description: visibleDescription ? "ready" : "error",
+                        }
+                      : nextFieldStates,
+                status: targetField === "full" ? status : nextStatus,
+                statusReason: nextStatusReason,
+                processedTemplateKey: requestTemplateKey,
+                aiDraft: {
+                  title: targetField === "description" ? (img.aiDraft?.title || currentVisibleTitle) : finalTitle,
+                  leadParagraphs: targetField === "title" ? (img.aiDraft?.leadParagraphs || finalLead) : finalLead,
+                  model: typeof data?.model === "string" ? data.model : AI_MODEL_LABEL,
+                  confidence,
+                  templateReference: requestTemplateReference,
+                  reasonFlags,
+                  source,
+                  grade,
+                  qcApproved,
+                  publishReady: targetField === "full" ? publishReady : targetedPublishReady,
+                },
+              }
+            : img
+        )
+      );
+      setAiAssistStatus(options.successMessage || "");
+    } catch (error) {
+      if (requestUsesGlobalTemplate && activeTemplateKeyRef.current !== requestTemplateKey) return;
+      const message = formatApiError(error instanceof Error ? error.message : "Quantum AI could not process this item.");
+      setImages((current) =>
+        current.map((img) => {
+          if (img.id !== nextImage.id) return img;
+
+          if (!options.preserveVisibleCopyOnFailure) {
+            return {
+              ...img,
+              aiProcessing: false,
+              aiFieldStates: {
+                title: "error",
+                description: "error",
+                tags: "error",
+              },
+              status: "error",
+              statusReason: message,
+              processedTemplateKey: requestTemplateKey,
+              aiDraft: undefined,
+            };
+          }
+
+          const preservedBuyerDescription = splitDetailDescriptionForDisplay(
+            img.templateDescriptionOverride ?? templateDescription,
+            img.aiDraft?.leadParagraphs || [],
+            img.finalDescription
+          ).buyerFacingDescription;
+          const preservedFieldStates: AiFieldStates = {
+            title: cleanTitle(String(img.final || img.aiDraft?.title || "")).trim() ? "ready" : "error",
+            description: preservedBuyerDescription.trim() ? "ready" : "error",
+            tags: img.tags.some((tag) => String(tag || "").trim()) ? "ready" : "error",
+          };
+
+          return {
+            ...img,
+            aiProcessing: false,
+            aiFieldStates: preservedFieldStates,
+            status: "error",
+            statusReason: message,
+            processedTemplateKey: requestTemplateKey,
+          };
+        })
+      );
+      setAiAssistStatus(message);
+    } finally {
+      if (aiLoopBusyRef.current === requestOwner) {
+        aiLoopBusyRef.current = null;
+      }
+    }
   }
 
   function beginInlineEdit(field: Exclude<InlineEditableField, null>) {
     if (field === "title") {
       if (!canEditDetailTitle) return;
-      setEditableTitleDraft(detailTitle || "");
+      setEditableTitleDraft(shouldAwaitQuantumTitle ? "" : detailTitle || "");
     } else {
       if (!canEditDetailDescription) return;
-      setEditableDescriptionDraft(detailBuyerDescription || "");
+      setEditableDescriptionDraft(shouldAwaitQuantumDescription ? "" : detailBuyerDescription || "");
     }
 
     setInlineSaveFeedback(null);
+    setAiAssistStatus("");
     setEditingField(field);
   }
 
   async function commitInlineEdit(field: Exclude<InlineEditableField, null>, rawValue: string) {
-    const nextValue = rawValue.replace(/\r\n?/g, "\n").trim();
+    const nextValue = (
+      field === "title"
+        ? clampTitleForMode(rawValue, workspaceMode)
+        : clampDescriptionForMode(rawValue, workspaceMode)
+    ).replace(/\r\n?/g, "\n").trim();
     const previousValue = (field === "title" ? detailTitle : detailBuyerDescription).trim();
 
     if (!nextValue) {
@@ -1902,54 +2499,84 @@ export default function MerchQuantumApp() {
     }
 
     if (selectedImage && canEditSelectedImageCopy) {
-      if (field === "title") {
-        setImages((current) =>
-          current.map((img) =>
-            img.id === selectedImage.id
+      setImages((current) =>
+        current.map((img) => {
+          if (img.id !== selectedImage.id) return img;
+
+          const currentBuyerDescription = splitDetailDescriptionForDisplay(
+            img.templateDescriptionOverride ?? templateDescription,
+            img.aiDraft?.leadParagraphs || [],
+            img.finalDescription
+          ).buyerFacingDescription;
+          const nextTitle = field === "title"
+            ? nextValue
+            : clampTitleForMode(
+              safeTitle(img.final, img.aiDraft?.title || img.originalListingTitle || img.cleaned),
+              workspaceMode
+            );
+          const nextBuyerDescription = field === "description"
+            ? nextValue
+            : currentBuyerDescription;
+          const nextLeadParagraphs = descriptionTextToParagraphs(nextBuyerDescription);
+          const nextDescriptionHtml = buildImageDescriptionHtmlForEdit(nextBuyerDescription, img);
+          const preservedTags = normalizeTagsFromPayload(img.tags).slice(0, currentModeConfig.tagCount);
+          const derivedTags = preservedTags.length > 0
+            ? preservedTags
+            : buildManualOverrideTags(nextTitle, nextBuyerDescription, currentModeConfig.tagCount);
+          const readyAfterManualOverride =
+            canManualOverrideFlaggedImage(img)
+            && canManualOverrideListingCopy(nextTitle, nextBuyerDescription, workspaceMode)
+            && derivedTags.length > 0;
+
+          return {
+            ...img,
+            final: nextTitle,
+            finalDescription: nextDescriptionHtml,
+            tags: readyAfterManualOverride ? derivedTags : preservedTags,
+            aiFieldStates: readyAfterManualOverride
               ? {
-                  ...img,
-                  final: nextValue,
-                  aiFieldStates: {
-                    ...img.aiFieldStates,
-                    title: "ready",
-                  },
-                  aiDraft: img.aiDraft
-                    ? {
-                        ...img.aiDraft,
-                        title: nextValue,
-                      }
-                    : img.aiDraft,
+                  title: "ready",
+                  description: "ready",
+                  tags: derivedTags.length > 0 ? "ready" : "error",
                 }
-              : img
-          )
-        );
-      } else {
-        const nextLeadParagraphs = descriptionTextToParagraphs(nextValue);
-        const nextDescriptionHtml = buildEditableDescriptionHtml(nextValue);
-        setImages((current) =>
-          current.map((img) =>
-            img.id === selectedImage.id
-              ? {
-                  ...img,
-                  finalDescription: nextDescriptionHtml,
-                  aiFieldStates: {
-                    ...img.aiFieldStates,
-                    description: "ready",
-                  },
-                  aiDraft: img.aiDraft
-                    ? {
-                        ...img.aiDraft,
-                        leadParagraphs: nextLeadParagraphs,
-                      }
-                    : img.aiDraft,
-                }
-              : img
-          )
-        );
-      }
+              : {
+                  ...img.aiFieldStates,
+                  [field]: "ready",
+                },
+            status: readyAfterManualOverride ? "ready" : "error",
+            statusReason: readyAfterManualOverride
+              ? "Manual override approved this draft for upload."
+              : img.statusReason,
+            aiDraft: {
+              title: nextTitle,
+              leadParagraphs: nextLeadParagraphs,
+              model: img.aiDraft?.model || AI_MODEL_LABEL,
+              confidence: Math.max(img.aiDraft?.confidence || 0, readyAfterManualOverride ? 0.74 : 0.52),
+              templateReference:
+                img.aiDraft?.templateReference
+                || img.templateReferenceOverride
+                || template?.reference
+                || "",
+              reasonFlags: readyAfterManualOverride
+                ? ["Manual override completed the missing listing fields."]
+                : img.aiDraft?.reasonFlags || [],
+              source: img.aiDraft?.source || "fallback",
+              grade: readyAfterManualOverride ? "green" : (img.aiDraft?.grade || "red"),
+              qcApproved: img.aiDraft?.qcApproved !== false,
+              publishReady: readyAfterManualOverride,
+            },
+          };
+        })
+      );
 
       setEditingField(null);
-      setInlineFeedbackState(field, "saved", "Saved to this draft.");
+      setInlineFeedbackState(
+        field,
+        "saved",
+        canManualRescueSelectedImage
+          ? "Saved and marked Good."
+          : "Saved to this draft."
+      );
       return;
     }
 
@@ -1966,10 +2593,18 @@ export default function MerchQuantumApp() {
       setImportedListingDescription(nextValue);
     }
 
-    if (!supportsProviderMetadataSync || !resolvedProviderId) {
+    setManualPrebufferOverride(true);
+
+    if (!supportsProviderMetadataSync || !resolvedProviderId || !hasAnyLoadedImages) {
       setEditingField(null);
       const providerName = selectedProvider?.label || "This provider";
-      setInlineFeedbackState(field, "saved", `${providerName} metadata sync is not live yet, so this change is saved locally.`);
+      setInlineFeedbackState(
+        field,
+        "saved",
+        hasAnyLoadedImages
+          ? `${providerName} metadata sync is not live yet, so this change is saved locally.`
+          : "Saved locally for this draft."
+      );
       return;
     }
 
@@ -2013,6 +2648,41 @@ export default function MerchQuantumApp() {
     }
   }
 
+  async function rerollSelectedImageField(field: "title" | "description") {
+    if (!selectedImage || !canRerollSelectedImage) return;
+
+    const userHints = buildUserHintsForImage(selectedImage);
+    const titleSeed = clampTitleForMode(
+      editingField === "title"
+        ? editableTitleDraft
+        : detailTitle || selectedImage.originalListingTitle || selectedImage.final || selectedImage.cleaned,
+      workspaceMode
+    );
+
+    setInlineSaveFeedback(null);
+    setAiAssistStatus(
+      field === "title"
+        ? "Quantum AI is refreshing the title."
+        : "Quantum AI is refreshing the description."
+    );
+
+    await runAiListingForImage(selectedImage, {
+      targetField: field,
+      userHints,
+      legacyContext: buildLegacyContextForImage(selectedImage),
+      titleSeed: titleSeed || undefined,
+      pendingReason:
+        field === "title"
+          ? "Quantum AI is refreshing the title."
+          : "Quantum AI is refreshing the description.",
+      preserveVisibleCopyOnFailure: true,
+      successMessage:
+        field === "title"
+          ? "Quantum AI refreshed the title using the current listing hints."
+          : "Quantum AI refreshed the description using the current listing hints.",
+    });
+  }
+
   useEffect(() => {
     const previous = previousPreviewUrlsRef.current;
     const current = [...images, ...queuedImages].map((img) => img.preview);
@@ -2041,7 +2711,7 @@ export default function MerchQuantumApp() {
     aiLoopBusyRef.current = null;
     setImages((current) =>
       current.map((img) =>
-        img.processedTemplateKey === templateKey
+        img.sourceType === "imported" || img.processedTemplateKey === templateKey
           ? img
           : {
               ...img,
@@ -2056,7 +2726,7 @@ export default function MerchQuantumApp() {
     );
     setQueuedImages((current) =>
       current.map((img) =>
-        img.processedTemplateKey === templateKey
+        img.sourceType === "imported" || img.processedTemplateKey === templateKey
           ? img
           : {
               ...img,
@@ -2088,6 +2758,8 @@ export default function MerchQuantumApp() {
       setTemplateDescription("");
       setImportedListingTitle("");
       setImportedListingDescription("");
+      setSelectedImportIds([]);
+      setImportStatus("");
       setEditingField(null);
       setInlineSaveFeedback(null);
       return;
@@ -2104,6 +2776,7 @@ export default function MerchQuantumApp() {
       setTemplateDescription("");
       setImportedListingTitle("");
       setImportedListingDescription("");
+      setManualPrebufferOverride(false);
       setEditingField(null);
       setInlineSaveFeedback(null);
       return;
@@ -2115,216 +2788,22 @@ export default function MerchQuantumApp() {
   useEffect(() => {
     setEditingField(null);
     setInlineSaveFeedback(null);
+    setAiAssistStatus("");
   }, [selectedId, template?.reference]);
 
   useEffect(() => {
-    if (!templateReadyForAi) return;
+    if (!templateReadyForAi && !images.some((img) => img.sourceType === "imported")) return;
     if (aiLoopBusyRef.current) return;
-    const nextImage = images.find((img) => !img.aiProcessing && img.processedTemplateKey !== templateKey);
+    const nextImage = images.find((img) => {
+      if (img.aiProcessing) return false;
+      const nextTemplateDescription = img.templateDescriptionOverride ?? templateDescription;
+      const nextReference = img.templateReferenceOverride ?? template?.reference ?? "no-template";
+      const nextProcessingKey = `${nextReference}::${nextTemplateDescription.trim()}`;
+      return img.processedTemplateKey !== nextProcessingKey;
+    });
     if (!nextImage) return;
-
-    const requestTemplateKey = templateKey;
-    const requestTemplateDescription = templateDescription;
-    const requestTemplateReference = template?.reference || "";
-    const requestOwner = Symbol(nextImage.id);
-
-    aiLoopBusyRef.current = requestOwner;
-    setImages((current) =>
-      current.map((img) =>
-        img.id === nextImage.id
-          ? {
-              ...img,
-              aiProcessing: true,
-              aiFieldStates: createAiFieldStates("loading"),
-              status: "pending",
-              statusReason: "Quantum AI is analyzing artwork.",
-            }
-          : img
-      )
-    );
-
-    void (async () => {
-      try {
-        const imageDataUrl = await readDataUrl(nextImage.file);
-        const requestProductFamily = resolveProductFamily(nextImage.cleaned, requestTemplateDescription);
-        const sterileTemplateContext = buildTemplateContext(requestTemplateDescription, requestProductFamily);
-        const response = await fetchWithTimeout(
-          "/api/ai/listing",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              imageDataUrl,
-              fileName: nextImage.name,
-              templateContext: sterileTemplateContext,
-              productFamily: requestProductFamily,
-            }),
-          },
-          60000
-        );
-
-        const data = await parseResponsePayload(response);
-        if (!response.ok) throw new Error(data?.error || `AI request failed with status ${response.status}.`);
-        if (activeTemplateKeyRef.current !== requestTemplateKey) return;
-
-        const qcApproved = data?.qcApproved !== false;
-        if (!qcApproved) {
-          const qcFlags = Array.isArray(data?.reasonFlags)
-            ? data.reasonFlags.filter((flag: unknown): flag is string => typeof flag === "string")
-            : [];
-          const message = qcFlags.length
-            ? qcFlags.join(" • ")
-            : "Quantum AI rejected this artwork because the design appears blank, illegible, or too distorted for safe listing generation.";
-
-          setImages((current) =>
-            current.map((img) =>
-              img.id === nextImage.id
-                ? {
-                    ...img,
-                    final: "",
-                    finalDescription: "",
-                    tags: [],
-                    aiProcessing: false,
-                    aiFieldStates: {
-                      title: "error",
-                      description: "error",
-                      tags: "error",
-                    },
-                    status: "error",
-                    statusReason: message,
-                    processedTemplateKey: requestTemplateKey,
-                    aiDraft: undefined,
-                  }
-                : img
-            )
-          );
-          return;
-        }
-
-        const fallbackTitle = safeTitle(nextImage.final, nextImage.cleaned);
-        const titleFromApi = typeof data?.title === "string" ? data.title : "";
-        const finalTitle = safeTitle(titleFromApi, fallbackTitle);
-        const descriptionText = normalizeDescriptionText(data?.description);
-        const descriptionParagraphs = normalizeAiLeadParagraphs(
-          Array.isArray(data?.leadParagraphs)
-            ? data.leadParagraphs
-            : descriptionTextToParagraphs(descriptionText)
-        );
-        const finalDescription = descriptionParagraphs.length
-          ? (
-            requestTemplateDescription.trim()
-              ? formatProductDescriptionWithSections(descriptionParagraphs, requestTemplateDescription)
-              : buildLeadOnlyDescription(descriptionParagraphs)
-          )
-          : "";
-        const tags = normalizeTagsFromPayload(data?.tags);
-        const finalLead = descriptionParagraphs;
-        const confidence = Number.isFinite(data?.confidence) ? clamp(Number(data.confidence), 0, 1) : 0;
-        const reasonFlags = Array.isArray(data?.reasonFlags)
-          ? data.reasonFlags.filter((flag: unknown) => typeof flag === "string")
-          : [];
-        const grade = data?.grade === "green" || data?.grade === "red"
-          ? data.grade
-          : data?.publishReady === true
-            ? "green"
-            : "red";
-        const source = data?.source === "gemini" || data?.source === "fallback"
-          ? data.source
-          : "fallback";
-        const publishReady =
-          typeof data?.publishReady === "boolean"
-            ? data.publishReady
-            : qcApproved && grade === "green";
-        const hasCompleteStructuredOutput = !!finalTitle && !!finalDescription && tags.length > 0;
-        if (!hasCompleteStructuredOutput) {
-          throw new Error("Quantum AI returned incomplete structured output.");
-        }
-        const nextFieldStates: AiFieldStates = publishReady
-          ? {
-              title: "ready",
-              description: "ready",
-              tags: "ready",
-            }
-          : {
-              title: "error",
-              description: "error",
-              tags: "error",
-            };
-        const status: ItemStatus =
-          publishReady
-            ? "ready"
-            : "error";
-        const statusReason = reasonFlags.length
-          ? reasonFlags.join(" • ")
-          : status === "ready"
-            ? source === "fallback"
-              ? "Quantum AI produced a publish-ready fallback draft."
-              : "AI draft passed publish checks."
-            : source === "fallback"
-              ? "Quantum AI completed a fallback draft, but it did not pass publish checks."
-              : "Quantum AI could not generate a publish-ready draft for this image.";
-        const visibleTitle = publishReady ? finalTitle : "";
-        const visibleDescription = publishReady ? finalDescription : "";
-        const visibleTags = publishReady ? tags : [];
-
-        setImages((current) =>
-          current.map((img) =>
-            img.id === nextImage.id
-              ? {
-                  ...img,
-                  final: visibleTitle,
-                  finalDescription: visibleDescription,
-                  tags: visibleTags,
-                  aiProcessing: false,
-                  aiFieldStates: nextFieldStates,
-                  status,
-                  statusReason,
-                  processedTemplateKey: requestTemplateKey,
-                  aiDraft: {
-                    title: finalTitle,
-                    leadParagraphs: finalLead,
-                    model: typeof data?.model === "string" ? data.model : AI_MODEL_LABEL,
-                    confidence,
-                    templateReference: requestTemplateReference,
-                    reasonFlags,
-                    source,
-                    grade,
-                    qcApproved,
-                    publishReady,
-                  },
-                }
-              : img
-          )
-        );
-      } catch (error) {
-        if (activeTemplateKeyRef.current !== requestTemplateKey) return;
-        const message = formatApiError(error instanceof Error ? error.message : "Quantum AI could not process this item.");
-        setImages((current) =>
-          current.map((img) =>
-                img.id === nextImage.id
-                  ? {
-                      ...img,
-                      aiProcessing: false,
-                      aiFieldStates: {
-                        title: "error",
-                        description: "error",
-                        tags: "error",
-                      },
-                      status: "error",
-                      statusReason: message,
-                      processedTemplateKey: requestTemplateKey,
-                  aiDraft: undefined,
-                }
-              : img
-          )
-        );
-      } finally {
-        if (aiLoopBusyRef.current === requestOwner) {
-          aiLoopBusyRef.current = null;
-        }
-      }
-    })();
-  }, [images, template, templateDescription, templateKey, templateReadyForAi]);
+    void runAiListingForImage(nextImage);
+  }, [currentModeConfig.tagCount, images, template, templateDescription, templateKey, templateReadyForAi, workspaceMode]);
 
   function resetProviderState(clearStatus = true) {
     setConnected(false);
@@ -2340,10 +2819,17 @@ export default function MerchQuantumApp() {
     setTemplateDescription("");
     setImportedListingTitle("");
     setImportedListingDescription("");
+    setManualPrebufferOverride(false);
     setBatchResults([]);
     setRunStatus("");
     setEditingField(null);
     setInlineSaveFeedback(null);
+    setAiAssistStatus("");
+    setSelectedImportIds([]);
+    setImportStatus("");
+    setIsImportingListings(false);
+    setIsSyncingImportedListings(false);
+    setIsPublishingImportedListings(false);
   }
 
   function clearPreviewWorkspace() {
@@ -2353,6 +2839,9 @@ export default function MerchQuantumApp() {
     setMessage("");
     setBatchResults([]);
     setRunStatus("");
+    setImportStatus("");
+    setAiAssistStatus("");
+    setManualPrebufferOverride(false);
   }
 
   function openArtworkPicker() {
@@ -2546,6 +3035,7 @@ export default function MerchQuantumApp() {
       setTemplateDescription(base);
       setImportedListingTitle(title);
       setImportedListingDescription(importedBuyerDescription);
+      setManualPrebufferOverride(false);
       setApiStatus(
         !base
           ? "Static provider product specs were not available in this template response."
@@ -2569,6 +3059,7 @@ export default function MerchQuantumApp() {
       setTemplateDescription(base);
       setImportedListingTitle(title);
       setImportedListingDescription(importedBuyerDescription);
+      setManualPrebufferOverride(false);
       const baseStatus = formatApiError(error instanceof Error ? error.message : "Unable to load template product.");
       setApiStatus(base ? baseStatus : `${baseStatus} Static provider product specs were not available in this template response.`);
     } finally {
@@ -2576,10 +3067,382 @@ export default function MerchQuantumApp() {
     }
   }
 
+  function toggleImportSelection(sourceId: string) {
+    setSelectedImportIds((current) => (
+      current.includes(sourceId)
+        ? current.filter((entry) => entry !== sourceId)
+        : [...current, sourceId]
+    ));
+  }
+
+  function selectVisibleListingsForImport() {
+    const remainingCapacity = Math.max(0, IMPORT_QUEUE_LIMIT - importedQueueCount);
+    if (remainingCapacity === 0) {
+      setImportStatus(`The reverse-ingestion queue is capped at ${IMPORT_QUEUE_LIMIT} imported listings.`);
+      return;
+    }
+
+    const importableIds = visibleProducts
+      .map((product) => product.id)
+      .filter((id) => !importedProductIds.has(id))
+      .slice(0, remainingCapacity);
+
+    setSelectedImportIds(importableIds);
+    setImportStatus(importableIds.length > 0 ? `Selected ${importableIds.length} listing${importableIds.length === 1 ? "" : "s"} for rescue.` : "All visible products are already in the review queue.");
+  }
+
+  function buildImportedImageSeed(record: ImportedListingRecord, file: File, preview: { src: string; background: string }, artworkBounds: ArtworkBounds): Img {
+    const titleSeed = clampTitleForMode(record.title || record.artwork?.fileName || "Recovered Artwork", workspaceMode);
+    const cleaned = cleanTitle(titleSeed || record.artwork?.fileName || record.id);
+    const staticSpecBlock = sanitizeTemplateDescriptionForPrebuffer(record.templateDescription || record.description || "", record.title);
+    const buyerDescription = clampDescriptionForMode(
+      extractBuyerFacingDescriptionFromListing(record.description || "", staticSpecBlock),
+      workspaceMode
+    );
+
+    return {
+      id: makeId(),
+      name: titleSeed || cleaned,
+      file,
+      preview: preview.src,
+      previewBackground: preview.background,
+      cleaned,
+      final: titleSeed || cleaned,
+      finalDescription: "",
+      tags: [],
+      status: "pending",
+      statusReason: "Quantum AI is preparing listing copy.",
+      aiFieldStates: createAiFieldStates("idle"),
+      artworkBounds,
+      sourceType: "imported",
+      providerId: resolvedProviderId as ProviderId,
+      providerStoreId: record.storeId,
+      providerProductId: record.id,
+      templateDescriptionOverride: staticSpecBlock,
+      templateReferenceOverride: normalizeRef(record.id) || record.id,
+      productFamilyOverride: resolveProductFamily(titleSeed || cleaned, staticSpecBlock),
+      importedArtwork: record.artwork,
+      originalListingTitle: titleSeed || cleaned,
+      originalListingDescription: buyerDescription,
+      syncState: "idle",
+      syncMessage: "Awaiting Quantum AI rewrite.",
+    };
+  }
+
+  async function importSelectedListings() {
+    if (!resolvedProviderId || !shopId || selectedImportIds.length === 0) {
+      return;
+    }
+
+    if (selectedImportIds.length === 1) {
+      const [singleSelectionId] = selectedImportIds;
+      setProductId(singleSelectionId);
+      setSelectedImportIds([]);
+      setImportStatus("Single selection routed to Creation Mode.");
+      setManualPrebufferOverride(false);
+      return;
+    }
+
+    const remainingCapacity = Math.max(0, IMPORT_QUEUE_LIMIT - importedQueueCount);
+    if (remainingCapacity === 0) {
+      setImportStatus(`The reverse-ingestion queue is capped at ${IMPORT_QUEUE_LIMIT} imported listings.`);
+      return;
+    }
+
+    const uniqueIds = Array.from(new Set(selectedImportIds));
+    const duplicateIds = uniqueIds.filter((id) => importedProductIds.has(id));
+    const idsToImport = uniqueIds
+      .filter((id) => !importedProductIds.has(id))
+      .slice(0, remainingCapacity);
+    const skippedByLimit = Math.max(0, uniqueIds.length - duplicateIds.length - idsToImport.length);
+
+    if (idsToImport.length === 0) {
+      setImportStatus(duplicateIds.length > 0 ? "Those provider listings are already loaded in the review queue." : "Select at least one provider listing to import.");
+      return;
+    }
+
+    setIsImportingListings(true);
+    setImportStatus(`Rescuing ${idsToImport.length} provider listing${idsToImport.length === 1 ? "" : "s"}...`);
+
+    try {
+      const response = await fetchWithTimeout(
+        "/api/providers/import-listings",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            provider: resolvedProviderId,
+            shopId,
+            sourceIds: idsToImport,
+          }),
+        },
+        60000
+      );
+      const data = await parseResponsePayload(response);
+      if (!response.ok) {
+        throw new Error(data?.error || `Import request failed with status ${response.status}.`);
+      }
+
+      const importedRecords: ImportedListingRecord[] = Array.isArray(data?.items)
+        ? data.items.map((item: ImportedListingRecord) => ({
+            id: String(item.id || ""),
+            storeId: String(item.storeId || shopId),
+            title: String(item.title || ""),
+            description: String(item.description || ""),
+            tags: Array.isArray(item.tags) ? item.tags.map((tag) => String(tag || "")) : [],
+            templateDescription: String(item.templateDescription || ""),
+            artwork: item.artwork || null,
+          }))
+        : [];
+
+      const rescued: Img[] = [];
+      let skippedMissingArtwork = 0;
+      let skippedFailedRescue = 0;
+
+      for (const record of importedRecords) {
+        if (!record.artwork?.url) {
+          skippedMissingArtwork += 1;
+          continue;
+        }
+
+        try {
+          const fallbackFileName = `${cleanTitle(record.title || record.artwork.fileName || "Recovered Artwork") || "Recovered Artwork"}.png`;
+          const file = await urlToFile(record.artwork.url, record.artwork.fileName || fallbackFileName, record.artwork.contentType || "image/png");
+          const preview = await createContrastSafePreview(file);
+          const artworkBounds = await analyzeArtworkBounds(file);
+          rescued.push(buildImportedImageSeed(record, file, preview, artworkBounds));
+        } catch {
+          skippedFailedRescue += 1;
+        }
+      }
+
+      if (rescued.length > 0) {
+        setImages((current) => [...current, ...rescued]);
+        setSelectedId((current) => current || rescued[0].id);
+      }
+
+      setSelectedImportIds((current) => current.filter((id) => !idsToImport.includes(id)));
+
+      const summary: string[] = [];
+      if (rescued.length > 0) {
+        summary.push(`Imported ${rescued.length} legacy listing${rescued.length === 1 ? "" : "s"} into the review queue.`);
+      }
+      if (duplicateIds.length > 0) {
+        summary.push(`Skipped ${duplicateIds.length} duplicate${duplicateIds.length === 1 ? "" : "s"}.`);
+      }
+      if (skippedByLimit > 0) {
+        summary.push(`Skipped ${skippedByLimit} above the ${IMPORT_QUEUE_LIMIT}-item import cap.`);
+      }
+      if (skippedMissingArtwork > 0) {
+        summary.push(`${skippedMissingArtwork} listing${skippedMissingArtwork === 1 ? "" : "s"} did not expose recoverable artwork.`);
+      }
+      if (skippedFailedRescue > 0) {
+        summary.push(`${skippedFailedRescue} artwork rescue${skippedFailedRescue === 1 ? "" : "s"} failed during download.`);
+      }
+
+      setImportStatus(summary.join(" ") || "No provider listings were imported.");
+    } catch (error) {
+      setImportStatus(formatApiError(error instanceof Error ? error.message : "Unable to import provider listings."));
+    } finally {
+      setIsImportingListings(false);
+    }
+  }
+
+  async function syncApprovedImportedListings() {
+    if (!resolvedProviderId || !shopId || approvedImportedItems.length === 0) {
+      return;
+    }
+
+    if (!supportsImportedListingSync) {
+      setImportStatus(`${selectedProvider?.label || "This provider"} metadata sync is not available in this pass yet.`);
+      return;
+    }
+
+    setIsSyncingImportedListings(true);
+    setImportStatus(`Syncing ${approvedImportedItems.length} approved listing${approvedImportedItems.length === 1 ? "" : "s"} back to ${selectedProvider?.label || "the provider"}...`);
+
+    let syncedCount = 0;
+    let failedCount = 0;
+
+    for (const item of approvedImportedItems) {
+      if (!item.providerProductId) {
+        failedCount += 1;
+        continue;
+      }
+
+      setImages((current) =>
+        current.map((img) =>
+          img.id === item.id
+            ? {
+                ...img,
+                syncState: "syncing",
+                syncMessage: "Syncing SEO rewrite to provider...",
+              }
+            : img
+        )
+      );
+
+      try {
+        const requestBody: Record<string, unknown> = {
+          provider: resolvedProviderId,
+          shopId,
+          productId: item.providerProductId,
+          title: item.final,
+        };
+
+        if (resolvedProviderId === "printify") {
+          requestBody.description = item.finalDescription;
+          requestBody.tags = item.tags;
+        }
+
+        const response = await fetchWithTimeout(
+          "/api/update-listing-metadata",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(requestBody),
+          },
+          60000
+        );
+        const data = await parseResponsePayload(response);
+        if (!response.ok) {
+          throw new Error(data?.error || `Metadata sync failed with status ${response.status}.`);
+        }
+
+        syncedCount += 1;
+        setImages((current) =>
+          current.map((img) =>
+            img.id === item.id
+              ? {
+                  ...img,
+                  syncState: "synced",
+                  syncMessage: "Provider metadata is synced.",
+                }
+              : img
+          )
+        );
+      } catch (error) {
+        failedCount += 1;
+        const message = formatApiError(error instanceof Error ? error.message : "Unable to sync provider metadata.");
+        setImages((current) =>
+          current.map((img) =>
+            img.id === item.id
+              ? {
+                  ...img,
+                  syncState: "error",
+                  syncMessage: message,
+                }
+              : img
+          )
+        );
+      }
+    }
+
+    setImportStatus(
+      failedCount > 0
+        ? `Synced ${syncedCount} approved listing${syncedCount === 1 ? "" : "s"} and flagged ${failedCount} for manual review.`
+        : `Synced ${syncedCount} approved listing${syncedCount === 1 ? "" : "s"} back to ${selectedProvider?.label || "the provider"}.`
+    );
+    setIsSyncingImportedListings(false);
+  }
+
+  async function publishApprovedImportedListings() {
+    if (!resolvedProviderId || !shopId || syncedApprovedImportedItems.length === 0) {
+      setImportStatus("Sync approved listings before sending them to the provider publish step.");
+      return;
+    }
+
+    if (!supportsImportedPublish) {
+      setImportStatus(`${selectedProvider?.label || "This provider"} direct publishing is not available in this pass yet.`);
+      return;
+    }
+
+    setIsPublishingImportedListings(true);
+    setImportStatus(`Publishing ${syncedApprovedImportedItems.length} synced approved listing${syncedApprovedImportedItems.length === 1 ? "" : "s"}...`);
+
+    try {
+      const response = await fetchWithTimeout(
+        "/api/providers/publish-listings",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            provider: resolvedProviderId,
+            shopId,
+            items: syncedApprovedImportedItems.map((item) => ({
+              productId: item.providerProductId,
+              title: item.final,
+              description: item.finalDescription,
+              tags: item.tags,
+              publishReady: item.aiDraft?.publishReady === true,
+              qcApproved: item.aiDraft?.qcApproved !== false,
+            })),
+          }),
+        },
+        60000
+      );
+      const data = await parseResponsePayload(response);
+      if (!response.ok) {
+        throw new Error(data?.error || `Publish request failed with status ${response.status}.`);
+      }
+
+      const results = Array.isArray(data?.results) ? data.results : [];
+      const publishedIds = new Set<string>();
+      const errorMessages = new Map<string, string>();
+
+      for (const entry of results) {
+        const productId = String(entry?.productId || "").trim();
+        const message = String(entry?.message || "").trim();
+        if (!productId) continue;
+        if (/accepted/i.test(message)) {
+          publishedIds.add(productId);
+        } else if (message) {
+          errorMessages.set(productId, message);
+        }
+      }
+
+      setImages((current) =>
+        current.map((img) => {
+          if (!img.providerProductId || !syncedApprovedImportedItems.some((item) => item.providerProductId === img.providerProductId)) {
+            return img;
+          }
+
+          if (publishedIds.has(img.providerProductId)) {
+            return {
+              ...img,
+              syncMessage: "Provider publish request accepted.",
+            };
+          }
+
+          if (errorMessages.has(img.providerProductId)) {
+            return {
+              ...img,
+              syncState: "error",
+              syncMessage: formatApiError(errorMessages.get(img.providerProductId) || "Unable to publish this listing."),
+            };
+          }
+
+          return img;
+        })
+      );
+
+      const failedCount = errorMessages.size;
+      setImportStatus(
+        failedCount > 0
+          ? `Published ${publishedIds.size} listing${publishedIds.size === 1 ? "" : "s"} and left ${failedCount} flagged for follow-up.`
+          : `Published ${publishedIds.size} approved listing${publishedIds.size === 1 ? "" : "s"} to ${selectedProvider?.label || "the provider"}.`
+      );
+    } catch (error) {
+      setImportStatus(formatApiError(error instanceof Error ? error.message : "Unable to publish approved listings."));
+    } finally {
+      setIsPublishingImportedListings(false);
+    }
+  }
+
   async function runDraftBatch() {
     if (!template || !shopId || readyCount === 0 || !isLiveProvider || !resolvedProviderId) return;
 
-    const activeImages = images.filter((img) => getResolvedItemStatus(img) === "ready");
+      const activeImages = images.filter((img) => img.sourceType !== "imported" && getResolvedItemStatus(img) === "ready");
     setIsRunningBatch(true);
     setRunStatus("");
     setBatchResults([]);
@@ -2745,6 +3608,12 @@ export default function MerchQuantumApp() {
                 readOnly={connected}
                 placeholder="Provider API Key"
                 onChange={(e) => setToken(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && canSubmitProviderConnectionWithToken(e.currentTarget.value)) {
+                    e.preventDefault();
+                    void connectProvider(e.currentTarget.value);
+                  }
+                }}
                 className={`pr-32 ${connected ? "pr-52" : ""} disabled:cursor-not-allowed`}
               />
               <button
@@ -2888,10 +3757,149 @@ export default function MerchQuantumApp() {
                     ) : null}
                   </div>
                 </div>
+
+                {shopId ? (
+                  <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
+                    <div>
+                      <Field label="Workspace Mode">
+                        <Select
+                          value={workspaceMode}
+                          onChange={(e) => setWorkspaceMode(e.target.value as WorkspaceMode)}
+                          className="text-[13px] font-medium text-white"
+                        >
+                          {Object.entries(WORKSPACE_MODE_CONFIG).map(([mode, config]) => (
+                            <option key={mode} value={mode}>
+                              {config.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                    </div>
+
+                    <div className={`rounded-xl border border-slate-800 bg-[#020616] p-3 ${attentionTarget === "import" ? "ring-2 ring-[#7F22FE]/65 shadow-[0_18px_55px_-30px_rgba(127,34,254,0.48)]" : ""}`}>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="text-sm font-medium text-white">Bi-Directional Ingestion Queue</div>
+                          <div className="text-xs text-slate-400">
+                            {selectedImportIds.length} selected • {importedQueueCount}/{IMPORT_QUEUE_LIMIT} rescued • {approvedImportedItems.length} Approved • {flaggedImportedItems.length} Flagged
+                          </div>
+                          {importSelectionMode ? (
+                            <div className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
+                              {importSelectionMode === "creation"
+                                ? "Single select routes through Creation Mode"
+                                : "Multi-select routes through Reverse Ingestion"}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            tone="ghost"
+                            disabled={!visibleProducts.some((product) => !importedProductIds.has(product.id))}
+                            onClick={selectVisibleListingsForImport}
+                          >
+                            Select Visible
+                          </Button>
+                          <Button
+                            tone="ghost"
+                            disabled={selectedImportIds.length === 0}
+                            onClick={() => {
+                              setSelectedImportIds([]);
+                              setImportStatus("");
+                            }}
+                          >
+                            Clear Selection
+                          </Button>
+                          <Button
+                            disabled={!supportsReverseIngestion || selectedImportIds.length === 0 || isImportingListings}
+                            onClick={() => { void importSelectedListings(); }}
+                          >
+                            {importSelectionActionLabel}
+                          </Button>
+                          <Button
+                            tone="ghost"
+                            disabled={!supportsImportedListingSync || approvedImportedItems.length === 0 || isSyncingImportedListings}
+                            onClick={() => { void syncApprovedImportedListings(); }}
+                          >
+                            {isSyncingImportedListings ? "Syncing..." : "Sync Approved SEO"}
+                          </Button>
+                          <Button
+                            tone="ghost"
+                            disabled={!supportsImportedPublish || syncedApprovedImportedItems.length === 0 || isPublishingImportedListings}
+                            onClick={() => { void publishApprovedImportedListings(); }}
+                          >
+                            {isPublishingImportedListings ? "Publishing..." : "Publish Approved"}
+                          </Button>
+                        </div>
+                      </div>
+
+                      {supportsReverseIngestion ? (
+                        <div className="mt-3 rounded-xl border border-slate-800 bg-[#010512] p-2">
+                          {visibleProducts.length > 0 ? (
+                            <div className="max-h-[13rem] overflow-auto pr-1">
+                              <div className="grid gap-2">
+                                {visibleProducts.map((product) => {
+                                  const alreadyImported = importedProductIds.has(product.id);
+                                  const isSelectedForImport = selectedImportIds.includes(product.id);
+
+                                  return (
+                                    <label
+                                      key={`import-${product.id}`}
+                                      className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition ${isSelectedForImport ? "border-[#7F22FE]/70 bg-[#7F22FE]/10" : alreadyImported ? "border-[#00BC7D]/45 bg-[#00BC7D]/[0.04]" : "border-slate-800 bg-[#020616] hover:border-slate-700"}`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelectedForImport || alreadyImported}
+                                        disabled={alreadyImported}
+                                        onChange={() => toggleImportSelection(product.id)}
+                                        className="mt-1 h-4 w-4 rounded border-slate-600 bg-[#020616] text-[#7F22FE] focus:ring-[#7F22FE]/40"
+                                      />
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span className="truncate text-sm font-medium text-white">{product.title}</span>
+                                          {alreadyImported ? (
+                                            <span className="rounded-full border border-[#00BC7D]/40 bg-[#00BC7D]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[#7EF0C7]">
+                                              In Queue
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                        <div className="mt-1 text-xs text-slate-400">
+                                          {product.description?.trim()
+                                            ? clampDescriptionForMode(extractBuyerFacingDescriptionFromListing(product.description, sanitizeTemplateDescriptionForPrebuffer(product.description, product.title)), workspaceMode).slice(0, 160) || product.type
+                                            : product.type}
+                                        </div>
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="px-2 py-3 text-sm text-slate-400">
+                              {search.trim()
+                                ? "No provider listings matched this search."
+                                : "Select a shop to load legacy provider listings for reverse ingestion."}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="mt-3 rounded-xl border border-slate-800 bg-[#010512] px-3 py-2 text-sm text-slate-400">
+                          {selectedProvider?.label || "This provider"} reverse ingestion is not enabled in this pass yet.
+                        </div>
+                      )}
+
+                      {importStatus ? (
+                        <p className="mt-3 text-sm text-slate-300">{importStatus}</p>
+                      ) : processingBanner ? (
+                        <p className="mt-3 text-sm text-slate-300">{processingBanner}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
 
-            {isWorkspaceConfigured ? (
+            {shopId ? (
               <>
                 <div className="mt-3">
                   {!canShowDetailPanel ? null : (
@@ -3016,6 +4024,7 @@ export default function MerchQuantumApp() {
                                     autoFocus
                                     value={editableTitleDraft}
                                     onChange={(e) => setEditableTitleDraft(e.target.value)}
+                                    maxLength={currentModeConfig.titleMax}
                                     onBlur={() => { void commitInlineEdit("title", editableTitleDraft); }}
                                     onKeyDown={(e) => {
                                       if (e.key === "Enter") {
@@ -3046,7 +4055,7 @@ export default function MerchQuantumApp() {
                                   >
                                     {shouldAwaitQuantumTitle ? (
                                       <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
-                                        <span className={`${getLoadingIndicatorClass()} animate-pulse`} />
+                                        <QuantOrbLoader />
                                         <span>{QUANTUM_TITLE_AWAITING_TEXT}</span>
                                       </div>
                                     ) : (
@@ -3069,36 +4078,43 @@ export default function MerchQuantumApp() {
                                 <p className={`text-xs ${titleFeedback.tone === "error" ? "text-[#FF8AA5]" : titleFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-400"}`}>
                                   {titleFeedback.message}
                                 </p>
-                              ) : canEditDetailTitle ? (
-                                <p className="text-xs text-slate-500">
-                                  Click to edit. Press Enter to save.
-                                </p>
+                              ) : canEditDetailTitle || canRerollSelectedImage ? (
+                                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                                  <p>{canEditDetailTitle ? "Click to edit. Press Enter to save." : ""}</p>
+                                  <div className="flex items-center gap-2">
+                                    {canRerollSelectedImage ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => { void rerollSelectedImageField("title"); }}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
+                                        aria-label="Re-roll title with Quantum AI"
+                                        title="Re-Roll title"
+                                      >
+                                        <ReRollIcon className="h-3.5 w-3.5" />
+                                      </button>
+                                    ) : null}
+                                    <p>{(editingField === "title" ? editableTitleDraft : detailTitle || "").trim().length}/{currentModeConfig.titleMax}</p>
+                                  </div>
+                                </div>
                               ) : null}
                             </div>
                           </Field>
 
                           <Field label="Final Description">
                             <div className="space-y-2">
-                              <div className="min-h-[264px] rounded-xl border border-slate-700 bg-[#020616] px-3 py-2 text-sm font-normal leading-6 text-white lg:h-[17rem] lg:overflow-y-auto">
+                              <div className="min-h-[264px] rounded-xl border border-slate-700 bg-[#020616] px-3 py-2 text-sm font-normal leading-6 text-white">
                                 <div className="flex min-h-full">
-                                  {shouldAwaitQuantumDescription ? (
-                                    <div className="flex w-full flex-col gap-3">
-                                      <div className="flex items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
-                                        <span className={`${getLoadingIndicatorClass()} animate-pulse`} />
-                                        <span>{QUANTUM_DESCRIPTION_AWAITING_TEXT}</span>
-                                      </div>
-                                      {detailTemplateSpecBlock ? (
-                                        <div className="w-full whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
-                                          {detailTemplateSpecBlock}
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                  ) : editingField === "description" ? (
+                                  {editingField === "description" ? (
                                     <div className="flex w-full flex-col gap-3">
                                       <textarea
                                         autoFocus
                                         value={editableDescriptionDraft}
-                                        onChange={(e) => setEditableDescriptionDraft(e.target.value)}
+                                        onFocus={(e) => autosizeTextarea(e.currentTarget)}
+                                        onChange={(e) => {
+                                          setEditableDescriptionDraft(e.target.value);
+                                          autosizeTextarea(e.currentTarget);
+                                        }}
+                                        maxLength={currentModeConfig.descriptionMax}
                                         onBlur={() => { void commitInlineEdit("description", editableDescriptionDraft); }}
                                         onKeyDown={(e) => {
                                           if (e.key === "Enter" && !e.shiftKey) {
@@ -3111,45 +4127,62 @@ export default function MerchQuantumApp() {
                                             setInlineSaveFeedback(null);
                                           }
                                         }}
-                                        className="min-h-[124px] w-full resize-none rounded-xl border border-slate-600 bg-[#020616] px-3 py-2 text-left text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30"
+                                        className="min-h-[124px] w-full resize-none overflow-hidden rounded-xl border border-slate-600 bg-[#020616] px-3 py-2 text-left text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30"
                                       />
                                       {detailTemplateSpecBlock ? (
-                                        <div className="w-full whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
-                                          {detailTemplateSpecBlock}
-                                        </div>
+                                        <>
+                                          <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
+                                          <div className="w-full whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
+                                            {detailTemplateSpecBlock}
+                                          </div>
+                                        </>
                                       ) : null}
                                     </div>
                                   ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => beginInlineEdit("description")}
-                                      onKeyDown={(e) => {
-                                        if (!canEditDetailDescription) return;
-                                        if (e.key === "Enter" || e.key === " ") {
-                                          e.preventDefault();
-                                          beginInlineEdit("description");
-                                        }
-                                      }}
-                                      disabled={!canEditDetailDescription}
-                                      className={`group flex min-h-full w-full flex-col gap-3 rounded-xl text-left transition ${canEditDetailDescription ? "cursor-text hover:text-white focus-visible:outline-none" : "cursor-default"}`}
-                                    >
-                                      <div className={`w-full whitespace-pre-wrap text-left transition ${canEditDetailDescription ? "rounded-lg border border-transparent px-0 py-0 group-hover:border-slate-700 group-focus-visible:border-[#7F22FE]/50" : ""}`}>
-                                        {detailBuyerDescription || (
-                                          <span className="text-slate-400">Click to add buyer-facing description copy.</span>
+                                    <div className="flex w-full flex-col gap-3">
+                                      <button
+                                        type="button"
+                                        onClick={() => beginInlineEdit("description")}
+                                        onKeyDown={(e) => {
+                                          if (!canEditDetailDescription) return;
+                                          if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault();
+                                            beginInlineEdit("description");
+                                          }
+                                        }}
+                                        disabled={!canEditDetailDescription}
+                                        className={`group flex min-h-[124px] w-full items-start rounded-xl border bg-[#020616] px-3 py-2 text-left text-sm font-normal leading-6 text-white transition ${canEditDetailDescription ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
+                                      >
+                                        {shouldAwaitQuantumDescription ? (
+                                          <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
+                                            <QuantOrbLoader />
+                                            <span>{QUANTUM_DESCRIPTION_AWAITING_TEXT}</span>
+                                          </div>
+                                        ) : (
+                                          <div className="flex w-full min-w-0 items-start justify-between gap-3">
+                                            <div className="min-w-0 flex-1 whitespace-pre-wrap text-left">
+                                              {detailBuyerDescription || (
+                                                <span className="text-slate-400">Click to add buyer-facing description copy.</span>
+                                              )}
+                                            </div>
+                                            {canEditDetailDescription ? (
+                                              <span className="inline-flex items-center gap-1 text-xs text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                                                <PencilIcon className="h-3.5 w-3.5" />
+                                                Edit
+                                              </span>
+                                            ) : null}
+                                          </div>
                                         )}
-                                      </div>
+                                      </button>
                                       {detailTemplateSpecBlock ? (
-                                        <div className="w-full whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
-                                          {detailTemplateSpecBlock}
-                                        </div>
+                                        <>
+                                          <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
+                                          <div className="w-full whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
+                                            {detailTemplateSpecBlock}
+                                          </div>
+                                        </>
                                       ) : null}
-                                      {canEditDetailDescription ? (
-                                        <span className="inline-flex items-center gap-1 text-xs text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                                          <PencilIcon className="h-3.5 w-3.5" />
-                                          Edit buyer copy
-                                        </span>
-                                      ) : null}
-                                    </button>
+                                    </div>
                                   )}
                                 </div>
                               </div>
@@ -3157,9 +4190,28 @@ export default function MerchQuantumApp() {
                                 <p className={`text-xs ${descriptionFeedback.tone === "error" ? "text-[#FF8AA5]" : descriptionFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-400"}`}>
                                   {descriptionFeedback.message}
                                 </p>
-                              ) : canEditDetailDescription ? (
-                                <p className="text-xs text-slate-500">
-                                  Click to edit. Press Enter to save, or Shift+Enter for a new line.
+                              ) : canEditDetailDescription || canRerollSelectedImage ? (
+                                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                                  <p>{canEditDetailDescription ? "Click to edit. Press Enter to save, or Shift+Enter for a new line." : ""}</p>
+                                  <div className="flex items-center gap-2">
+                                    {canRerollSelectedImage ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => { void rerollSelectedImageField("description"); }}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
+                                        aria-label="Re-roll description with Quantum AI"
+                                        title="Re-Roll description"
+                                      >
+                                        <ReRollIcon className="h-3.5 w-3.5" />
+                                      </button>
+                                    ) : null}
+                                    <p>{(editingField === "description" ? editableDescriptionDraft : detailBuyerDescription || "").trim().length}/{currentModeConfig.descriptionMax}</p>
+                                  </div>
+                                </div>
+                              ) : null}
+                              {aiAssistStatus && selectedImage ? (
+                                <p className={`text-xs ${canManualRescueSelectedImage ? "text-slate-400" : "text-slate-500"}`}>
+                                  {aiAssistStatus}
                                 </p>
                               ) : null}
                             </div>
@@ -3238,7 +4290,7 @@ export default function MerchQuantumApp() {
                         </div>
                       ) : null}
 
-                      {canShowDetailWorkspace ? (
+                      {canShowDetailPanel ? (
                         <div className="pt-0.5">
                           <div className="grid gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
                             <div className="flex min-h-[34px] items-center justify-center rounded-xl border border-slate-800 bg-[#020616] px-2.5 py-1.5 text-center text-sm">
@@ -3252,7 +4304,7 @@ export default function MerchQuantumApp() {
                                   key={`loading-tag-${index}`}
                                   className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-300"
                                 >
-                                  <span className={`${getLoadingIndicatorClass()} animate-pulse`} />
+                                  <QuantOrbLoader />
                                 </div>
                               ))
                             ) : detailTags.length > 0 ? (

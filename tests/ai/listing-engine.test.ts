@@ -11,6 +11,7 @@ import {
   type SemanticRecord,
 } from "../../lib/ai/listing-engine";
 import {
+  canManualOverrideListingCopy,
   QUANTUM_DESCRIPTION_AWAITING_TEXT,
   QUANTUM_TITLE_AWAITING_TEXT,
   sanitizeTemplateDescriptionForPrebuffer,
@@ -1523,6 +1524,99 @@ async function main() {
       { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
       { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
     ]);
+  });
+
+  await run("Gemini prompt injects sanitized human hints for AI assist retries", async () => {
+    let capturedPrompt = "";
+    let capturedSystemInstruction = "";
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        fileName: "Christ on the Cross Shirt, Christian Faith Graphic Tee, Religious T-Shirt.png",
+        productFamily: "t-shirt",
+        templateContext:
+          "Comfort Colors 1717 heavyweight garment-dyed t-shirt. 100% ring-spun cotton. Relaxed fit with double-needle stitching and shoulder-to-shoulder twill tape.",
+        userHints: [
+          "Christ on the Cross",
+          "Christian faith graphic tee",
+          "Awaiting Quantum AI title...",
+          "Printify",
+        ],
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_url, init) => {
+          capturedPrompt = String(getGeminiRequestParts(init)[0]?.text || "");
+          capturedSystemInstruction = getGeminiSystemInstructionText(init);
+          return createGeminiResponse(createGeminiPayload());
+        },
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    assert.equal(/USER HINTS/i.test(capturedPrompt), true);
+    assert.equal(/The user has provided the following hints\/context:/i.test(capturedPrompt), true);
+    assert.equal(/Christ on the Cross/i.test(capturedPrompt), true);
+    assert.equal(/Christian faith graphic tee/i.test(capturedPrompt), true);
+    assert.equal(/Awaiting Quantum AI|Printify/i.test(capturedPrompt), false);
+    assert.equal(/HUMAN-IN-THE-LOOP RULE/i.test(capturedSystemInstruction), true);
+    assert.equal(/seller supplied these hints/i.test(capturedSystemInstruction), true);
+  });
+
+  await run("Gemini prompt injects sanitized legacy context for import upgrades and richer descriptions", async () => {
+    let capturedPrompt = "";
+    let capturedSystemInstruction = "";
+
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        fileName: "Christ on the Cross Shirt, Christian Faith Graphic Tee, Religious T-Shirt.png",
+        productFamily: "t-shirt",
+        templateContext:
+          "Comfort Colors 1717 heavyweight garment-dyed t-shirt. 100% ring-spun cotton. Relaxed fit with double-needle stitching and shoulder-to-shoulder twill tape.",
+        legacyContext: [
+          "Legacy title: Awaiting Quantum AI title...",
+          "Legacy description: Jesus Saves Christian church tee for Easter services and faith gatherings.",
+          "Printify [Store_Name]",
+        ].join("\n"),
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async (_url, init) => {
+          capturedPrompt = String(getGeminiRequestParts(init)[0]?.text || "");
+          capturedSystemInstruction = getGeminiSystemInstructionText(init);
+          return createGeminiResponse(createGeminiPayload());
+        },
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    assert.equal(/IMPORT MODE LEGACY CONTEXT/i.test(capturedPrompt), true);
+    assert.equal(/legacy description they previously used/i.test(capturedPrompt), true);
+    assert.equal(/Jesus Saves Christian church tee/i.test(capturedPrompt), true);
+    assert.equal(/Awaiting Quantum AI|Printify|\[Store_Name\]/i.test(capturedPrompt), false);
+    assert.equal(/minimum of two rich, engaging paragraphs/i.test(capturedPrompt), true);
+    assert.equal(/LEGACY UPGRADE RULE/i.test(capturedSystemInstruction), true);
+    assert.equal(/foundational hint for a much stronger modern retail rewrite/i.test(capturedSystemInstruction), true);
+  });
+
+  await run("manual override helper only approves structured buyer copy that meets workspace minimums", () => {
+    const validDescription = [
+      "This Christian cross design gives the listing a clear, specific buyer-facing message with enough visual detail and intent to support a strong manual rescue in the active card.",
+      "The second paragraph keeps the copy merchandise-ready with styling context, gifting relevance, and enough substance to satisfy the minimum structured SEO requirements.",
+    ].join("\n\n");
+
+    assert.equal(
+      canManualOverrideListingCopy("Christ on the Cross Christian Faith Graphic Tee", validDescription, "merch"),
+      true
+    );
+    assert.equal(
+      canManualOverrideListingCopy("Cross Shirt", "Too short for a manual rescue.", "merch"),
+      false
+    );
   });
 
   await run("validator keeps the strongest ambiguity warning while preserving real OCR clarity concerns", () => {

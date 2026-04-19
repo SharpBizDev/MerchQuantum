@@ -6,6 +6,8 @@ export type ListingRequest = {
   fileName?: string;
   productFamily?: string;
   templateContext?: string;
+  userHints?: string[] | string;
+  legacyContext?: string;
 };
 
 export type ListingUiResponse = {
@@ -597,15 +599,40 @@ function sanitizeFileNameForModel(value: string) {
   return stripModelSerializationNoise(String(value || ""));
 }
 
+function sanitizeUserHintsForModel(input: ListingRequest["userHints"]) {
+  const rawHints = Array.isArray(input)
+    ? input
+    : typeof input === "string"
+      ? input.split(/[\n,;|]+/g)
+      : [];
+
+  return unique(
+    rawHints
+      .map((hint) => sanitizePromptSeed(String(hint || "")))
+      .map((hint) => cleanSpaces(hint))
+      .filter(Boolean)
+  ).slice(0, 8);
+}
+
+function sanitizeLegacyContextForModel(input: ListingRequest["legacyContext"]) {
+  const normalized = sanitizePromptSeed(String(input || ""));
+  if (!normalized) return undefined;
+  return cleanSpaces(normalized.replace(/\s*\n\s*/g, "\n")).slice(0, 1200).trim() || undefined;
+}
+
 function sanitizeListingRequest(input: ListingRequest): ListingRequest {
   const sanitizedTitle = sanitizePromptSeed(String(input.title || ""));
   const sanitizedTemplateSource = sanitizePromptSeed(String(input.templateContext || ""));
   const sanitizedFileName = sanitizeFileNameForModel(String(input.fileName || ""));
+  const sanitizedUserHints = sanitizeUserHintsForModel(input.userHints);
+  const sanitizedLegacyContext = sanitizeLegacyContextForModel(input.legacyContext);
   return {
     ...input,
     title: sanitizedTitle || undefined,
     fileName: sanitizedFileName || undefined,
     templateContext: sanitizeTemplateContextForAi(sanitizedTemplateSource, input.productFamily),
+    userHints: sanitizedUserHints.length > 0 ? sanitizedUserHints : undefined,
+    legacyContext: sanitizedLegacyContext,
   };
 }
 
@@ -3419,6 +3446,10 @@ function buildMasterPrompt(
   const sterileProductType = cleanSpaces(input.templateContext || getFallbackSterileProductType(input.productFamily));
   const sanitizedFileNameHint = getSanitizedFilenameHint(input.fileName || "");
   const filenameWeight = getFilenamePromptWeight(input.fileName || "", filenameAssessment);
+  const userHints = Array.isArray(input.userHints)
+    ? input.userHints.map((hint) => cleanSpaces(String(hint || ""))).filter(Boolean)
+    : [];
+  const legacyContext = cleanSpaces(String(input.legacyContext || ""));
 
   return [
     "ACT AS: A Senior E-commerce Metadata Indexer, SEO Strategist, and Print-on-Demand Copywriter.",
@@ -3448,6 +3479,16 @@ function buildMasterPrompt(
     "If multiple renders are provided, treat them as alternate views of the same design and trust the clearest render over the filename.",
     "If you receive black-backed, white-backed, cropped, threshold-mask OCR, or helper renders, use them only to understand sparse or transparent artwork while preserving the untouched upload as the source of truth.",
     visionPromptHint ? visionPromptHint : "",
+    "",
+    userHints.length > 0 ? "USER HINTS" : "",
+    userHints.length > 0
+      ? `The user has provided the following hints/context: ${userHints.join(" | ")}. Use this exact context to bypass ambiguity and generate a cohesive title, buyer-facing description, and tags that still stay faithful to the visible artwork.`
+      : "",
+    "",
+    legacyContext ? "IMPORT MODE LEGACY CONTEXT" : "",
+    legacyContext
+      ? `The user is upgrading an existing product. Here is the legacy description they previously used: ${legacyContext}. Analyze the logic, keywords, and intent of this legacy text, and use it as a foundational hint to generate a vastly superior, modernized title and 2-paragraph SEO description without copying the legacy text verbatim or overriding the visible image truth.`
+      : "",
     "",
     "CONTEXT RULE",
     `You are writing copy for a ${sterileProductType}. Do NOT reference any other themes, religions, or subjects other than what is visibly present in the image scan.`,
@@ -3479,6 +3520,7 @@ function buildMasterPrompt(
     "- NO META-COMMENTARY: never explain your thought process, never critique the wording, and never describe what the design 'conveys' or how the copy was written. Write buyer-facing sales copy only.",
     '- Do not start with phrases like "This image features", "I cannot describe this", or any safety disclaimer. Start directly in the requested JSON fields.',
     "- generated_paragraph_1 and generated_paragraph_2 must be exactly 2 substantial paragraphs totaling 150 to 250 words combined. Aim for roughly 70 to 125 words per paragraph.",
+    "- The SEO Description MUST be a minimum of two rich, engaging paragraphs. Do not provide brief summaries. Expand on the aesthetic, the mood, and the target audience comprehensively.",
     "- The first sentence of generated_paragraph_1 must be a strong keyword-rich SEO hook that immediately describes the actual item and visible artwork.",
     "- generated_paragraph_1 focuses on the emotional hook, vibe, audience, and why the artwork is appealing to wear or gift.",
     "- generated_paragraph_2 focuses on literal design details, styling suggestions, shopper use cases, and aesthetic fit.",
@@ -3535,6 +3577,10 @@ function buildGeminiSystemInstruction(input: ListingRequest, filenameAssessment:
   const sterileProductType = cleanSpaces(input.templateContext || getFallbackSterileProductType(input.productFamily));
   const sanitizedFileNameHint = getSanitizedFilenameHint(input.fileName || "");
   const filenameWeight = getFilenamePromptWeight(input.fileName || "", filenameAssessment);
+  const userHints = Array.isArray(input.userHints)
+    ? input.userHints.map((hint) => cleanSpaces(String(hint || ""))).filter(Boolean)
+    : [];
+  const legacyContext = cleanSpaces(String(input.legacyContext || ""));
 
   return [
     "ROLE: You are an expert SEO copywriter for a print-on-demand brand and a Senior Metadata Indexer for apparel and giftware.",
@@ -3557,6 +3603,23 @@ function buildGeminiSystemInstruction(input: ListingRequest, filenameAssessment:
     "- SUPPORT_ONLY means the filename can assist but must remain secondary to visible image truth.",
     "- IGNORE means rely on the image pixels and helper renders only.",
     "- When the image truth and filename hint align, use those shared keywords aggressively in the commercial copy.",
+    ...(userHints.length > 0
+      ? [
+          "",
+          "HUMAN-IN-THE-LOOP RULE",
+          `- The seller supplied these hints to resolve ambiguity: ${userHints.join(" | ")}.`,
+          "- When those hints align with the visible artwork, use them directly instead of softening or ignoring them.",
+        ]
+      : []),
+    ...(legacyContext
+      ? [
+          "",
+          "LEGACY UPGRADE RULE",
+          `- The seller is upgrading an existing product from this legacy context: ${legacyContext}.`,
+          "- Analyze the logic, keywords, and intent in that legacy text and use it as a foundational hint for a much stronger modern retail rewrite.",
+          "- Do not copy the legacy wording verbatim, and do not let it override the actual visible artwork.",
+        ]
+      : []),
     "",
     "SANITIZATION RULE",
     '- Treat strings such as "Awaiting Quantum AI", "Printify", and "[Store_Name]" as null system noise rather than real design metadata.',
