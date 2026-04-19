@@ -5,8 +5,45 @@ import { ProviderError } from "../../../../lib/providers/errors";
 import { runWithProviderGovernor } from "../../../../lib/providers/governor";
 import { getProviderAdapter, getProviderEntry, isProviderId } from "../../../../lib/providers/registry";
 import { readActiveProviderId, readProviderCredentials } from "../../../../lib/providers/session";
+import type { NormalizedImportedListingDetail, NormalizedRecoveredArtwork } from "../../../../lib/providers/types";
 
 const MAX_IMPORT_ITEMS = 100;
+
+function buildArtworkProxyUrl(
+  req: NextRequest,
+  providerId: string,
+  sourceId: string,
+  artwork: NormalizedRecoveredArtwork
+) {
+  const assetKey = encodeURIComponent(String(artwork.assetId || sourceId || "rescued-artwork"));
+  const proxyUrl = new URL(`/api/providers/artwork/${assetKey}`, req.nextUrl.origin);
+  proxyUrl.searchParams.set("provider", providerId);
+  proxyUrl.searchParams.set("source", artwork.url);
+  if (artwork.fileName) proxyUrl.searchParams.set("fileName", artwork.fileName);
+  if (artwork.contentType) proxyUrl.searchParams.set("contentType", artwork.contentType);
+  return proxyUrl.toString();
+}
+
+function normalizeImportedListingForClient(
+  req: NextRequest,
+  providerId: string,
+  detail: NormalizedImportedListingDetail
+) {
+  if (!detail.artwork?.url) {
+    return detail;
+  }
+
+  const proxiedUrl = buildArtworkProxyUrl(req, providerId, detail.id, detail.artwork);
+
+  return {
+    ...detail,
+    artwork: {
+      ...detail.artwork,
+      url: proxiedUrl,
+      previewUrl: proxiedUrl,
+    },
+  } satisfies NormalizedImportedListingDetail;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -66,7 +103,7 @@ export async function POST(req: NextRequest) {
         })
       );
 
-      items.push(detail);
+      items.push(normalizeImportedListingForClient(req, providerId, detail));
     }
 
     return NextResponse.json({
