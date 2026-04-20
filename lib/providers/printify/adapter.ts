@@ -336,6 +336,11 @@ function chooseImportedArtwork(product: PrintifyProduct) {
   return fallback;
 }
 
+function chooseTemplatePreviewUrl(product: PrintifyProduct) {
+  const image = chooseImportedArtwork(product);
+  return image?.src ? String(image.src).trim() || undefined : undefined;
+}
+
 function chooseVariantId(product: PrintifyProduct) {
   const enabled = (product.variants || []).filter((variant) => variant.is_enabled !== false);
   return enabled.find((variant) => variant.is_default)?.id || enabled[0]?.id || product.variants?.[0]?.id;
@@ -663,6 +668,7 @@ export function createPrintifyAdapter(options: PrintifyAdapterOptions = {}): Pro
         title: product.title,
         description: product.description,
         type: "product",
+        previewUrl: chooseTemplatePreviewUrl(product),
       }));
     },
     async getTemplateDetail(context) {

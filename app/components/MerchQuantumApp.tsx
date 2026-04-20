@@ -140,6 +140,7 @@ type Product = {
   type: string;
   shopId: string;
   description?: string;
+  previewUrl?: string;
 };
 
 type ApiShop = { id: number | string; title: string; sales_channel?: string };
@@ -148,6 +149,7 @@ type ApiProduct = {
   title: string;
   description?: string;
   shop_id?: number | string;
+  preview_url?: string;
   blueprint_id?: number;
   print_provider_id?: number;
 };
@@ -212,6 +214,8 @@ const DISPLAY_TRANSPARENCY_RATIO_THRESHOLD = 0.04;
 const DISPLAY_DARK_BACKGROUND = "#000000";
 const DISPLAY_LIGHT_BACKGROUND = "#FFFFFF";
 const DISPLAY_NEUTRAL_BACKGROUND = "#020616";
+const ARTWORK_SAFE_ZONE_PCT = 0.08;
+const ARTWORK_SAFE_ZONE_LABEL = "Max 50 items. System will queue additional listings. (API Rate Limit Safety Enforced)";
 
 const STOP_WORDS = new Set([
   "the",
@@ -571,14 +575,20 @@ function normalizeArtworkBounds(bounds: ArtworkBounds | undefined, width: number
   const visibleHeight = Number.isFinite(bounds?.visibleHeight) && (bounds?.visibleHeight || 0) > 0
     ? clamp(Number(bounds!.visibleHeight), 1, maxVisibleHeight)
     : canvasHeight;
+  const safeInsetX = Math.max(0, Math.round(visibleWidth * ARTWORK_SAFE_ZONE_PCT));
+  const safeInsetY = Math.max(0, Math.round(visibleHeight * ARTWORK_SAFE_ZONE_PCT));
+  const adjustedLeft = clamp(visibleLeft - safeInsetX, 0, canvasWidth);
+  const adjustedTop = clamp(visibleTop - safeInsetY, 0, canvasHeight);
+  const adjustedWidth = clamp(visibleWidth + safeInsetX * 2, 1, canvasWidth - adjustedLeft);
+  const adjustedHeight = clamp(visibleHeight + safeInsetY * 2, 1, canvasHeight - adjustedTop);
 
   return {
     canvasWidth,
     canvasHeight,
-    visibleLeft,
-    visibleTop,
-    visibleWidth,
-    visibleHeight,
+    visibleLeft: adjustedLeft,
+    visibleTop: adjustedTop,
+    visibleWidth: adjustedWidth,
+    visibleHeight: adjustedHeight,
   };
 }
 
@@ -1620,6 +1630,10 @@ function selectionsMatch(a: string[], b: string[]) {
   return left.every((value, index) => value === right[index]);
 }
 
+function getFileSignature(file: Pick<File, "name" | "size">) {
+  return `${String(file.name || "").trim().toLowerCase()}::${Number(file.size || 0)}`;
+}
+
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   tone?: "default" | "ghost";
 };
@@ -1650,9 +1664,9 @@ type SelectProps = React.SelectHTMLAttributes<HTMLSelectElement>;
 
 function Select({ className = "", children, ...props }: SelectProps) {
   return (
-    <div className="relative min-w-0 w-full">
+    <div className={`group relative min-w-0 w-full ${props.disabled ? "cursor-not-allowed" : ""}`}>
       <select
-        className={`h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 pr-9 text-sm text-white outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500 ${className}`}
+        className={`h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 pr-9 text-sm text-white outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500 ${className}`}
         {...props}
       >
         {children}
@@ -1660,6 +1674,11 @@ function Select({ className = "", children, ...props }: SelectProps) {
       <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
       </svg>
+      {props.disabled ? (
+        <span className="pointer-events-none absolute right-8 top-1/2 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[#0b1024]/95 p-1 text-slate-400 shadow-lg group-hover:inline-flex">
+          <DisabledSlashIcon className="h-3.5 w-3.5" />
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -1694,11 +1713,12 @@ function Box({ title, children, className = "", headerClassName = "" }: BoxProps
   );
 }
 
-function BrandMark() {
+function MerchQuantumInlineHeading({ className = "" }: { className?: string }) {
   return (
-    <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#7F22FE] text-lg font-semibold text-white shadow-lg shadow-[#7F22FE]/30">
-      MQ
-    </div>
+    <span className={`min-w-0 text-sm font-semibold leading-tight tracking-tight text-white ${className}`}>
+      <span className="text-[#7F22FE]">Merch</span>{" "}
+      <span className="text-white">Quantum AI bulk auto listings</span>
+    </span>
   );
 }
 
@@ -1725,6 +1745,24 @@ function QuantOrbLoader({ className = "" }: { className?: string }) {
       </span>
       <span className="absolute inset-[4px] rounded-full bg-[#7F22FE] shadow-[0_0_12px_rgba(127,34,254,0.9)]" />
     </span>
+  );
+}
+
+function DisabledSlashIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.25"
+    >
+      <circle cx="8" cy="8" r="5.1" />
+      <path d="M4.55 11.45 11.45 4.55" />
+    </svg>
   );
 }
 
@@ -1863,6 +1901,7 @@ export default function MerchQuantumApp() {
   const [template, setTemplate] = useState<Template | null>(null);
   const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
   const [pendingTemplateSelectionIds, setPendingTemplateSelectionIds] = useState<string[]>([]);
+  const [templateSelectionAnchorIndex, setTemplateSelectionAnchorIndex] = useState<number | null>(null);
   const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
   const [isDisconnectArmed, setIsDisconnectArmed] = useState(false);
   const [isTokenInputFocused, setIsTokenInputFocused] = useState(false);
@@ -2055,6 +2094,7 @@ export default function MerchQuantumApp() {
     () => new Set([...allImages, ...queuedImages].map((img) => img.providerProductId).filter((value): value is string => !!value)),
     [allImages, queuedImages]
   );
+  const queuedStatCount = queuedImages.length;
   const templatePickerBaseLabel = isBulkEditMode ? "Choose Listings to Edit" : "Choose Product Template";
   const templatePickerLabel = selectedTemplateProducts.length === 0
     ? templatePickerBaseLabel
@@ -2076,6 +2116,27 @@ export default function MerchQuantumApp() {
   const workspaceModeLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "";
   const workspaceModePickerLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "Edit mode";
   const routingToggleLabel = isRoutingGridExpanded ? "Hide" : "Show";
+  const previewOverlayUsesLightText = selectedImage?.preview
+    ? shouldUseLightPreviewText(selectedImage.previewBackground || DISPLAY_NEUTRAL_BACKGROUND)
+    : true;
+  const previewOverlayTextClass = selectedImage?.preview
+    ? previewOverlayUsesLightText
+      ? "text-white/90"
+      : "text-slate-950/85"
+    : "text-slate-300";
+  const bulkEditPublishDisabled =
+    !isBulkEditMode
+    || approvedImportedItems.length === 0
+    || isSyncingImportedListings
+    || isPublishingImportedListings
+    || (!supportsImportedListingSync && !supportsImportedPublish);
+  const descriptionActionLabel = isCreateMode
+    ? (isRunningBatch ? "Uploading..." : "Upload")
+    : isSyncingImportedListings
+      ? "Syncing..."
+      : isPublishingImportedListings
+        ? "Publishing..."
+        : "Publish";
   const routingGuidanceTarget =
     !provider
       ? "provider"
@@ -3047,6 +3108,7 @@ export default function MerchQuantumApp() {
     setImportedListingDescription("");
     setSelectedImportIds([]);
     setPendingTemplateSelectionIds([]);
+    setTemplateSelectionAnchorIndex(null);
     setIsTemplatePickerOpen(false);
     setEditingField(null);
     setInlineSaveFeedback(null);
@@ -3070,6 +3132,7 @@ export default function MerchQuantumApp() {
     setImportedListingDescription("");
     setSelectedImportIds([]);
     setPendingTemplateSelectionIds([]);
+    setTemplateSelectionAnchorIndex(null);
     setIsTemplatePickerOpen(false);
     clearPreviewWorkspace();
     setEditingField(null);
@@ -3092,10 +3155,21 @@ export default function MerchQuantumApp() {
     const incoming = Array.from(list);
     const imageFiles = incoming.filter(isImage);
     const ignoredByType = incoming.length - imageFiles.length;
+    const existingSignatures = new Set(
+      [...images, ...completedImportedImages, ...queuedImages]
+        .map((entry) => getFileSignature(entry.file))
+        .filter(Boolean)
+    );
+    const uniqueImageFiles = imageFiles.filter((file) => {
+      const signature = getFileSignature(file);
+      if (existingSignatures.has(signature)) return false;
+      existingSignatures.add(signature);
+      return true;
+    });
     const currentTotal = images.length + queuedImages.length;
     const room = Math.max(0, totalBatchLimit - currentTotal);
-    const accepted = imageFiles.slice(0, room);
-    const ignoredByLimit = Math.max(0, imageFiles.length - accepted.length);
+    const accepted = uniqueImageFiles.slice(0, room);
+    const ignoredByLimit = Math.max(0, uniqueImageFiles.length - accepted.length);
 
     const good = await Promise.all(accepted.map(async (file) => {
       const cleaned = cleanTitle(file.name);
@@ -3157,6 +3231,7 @@ export default function MerchQuantumApp() {
             type: "Template",
             shopId: String(product.shop_id ?? nextShopId),
             description: product.description || "",
+            previewUrl: product.preview_url || "",
           }))
         : [];
 
@@ -3309,8 +3384,29 @@ export default function MerchQuantumApp() {
       : normalizeSelectionIds([...pendingTemplateSelectionIds, sourceId]);
   }
 
+  function stageBulkEditTemplateSelection(sourceId: string, index: number, options?: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) {
+    const useRange = Boolean(options?.shiftKey) && templateSelectionAnchorIndex !== null;
+    let nextSelections: string[];
+
+    if (useRange) {
+      const start = Math.min(templateSelectionAnchorIndex || 0, index);
+      const end = Math.max(templateSelectionAnchorIndex || 0, index);
+      const rangeIds = visibleProducts.slice(start, end + 1).map((product) => product.id);
+      nextSelections = normalizeSelectionIds([...pendingTemplateSelectionIds, ...rangeIds]);
+    } else if (options?.ctrlKey || options?.metaKey) {
+      nextSelections = pendingTemplateSelectionIds.includes(sourceId)
+        ? pendingTemplateSelectionIds.filter((entry) => entry !== sourceId)
+        : normalizeSelectionIds([...pendingTemplateSelectionIds, sourceId]);
+    } else {
+      nextSelections = [sourceId];
+    }
+
+    setPendingTemplateSelectionIds(nextSelections);
+    setTemplateSelectionAnchorIndex(index);
+  }
+
   async function commitTemplateSelectionFromMenu(sourceId: string) {
-    const nextSelections = getNextTemplateSelections(sourceId);
+    const nextSelections = isCreateMode ? getNextTemplateSelections(sourceId) : pendingTemplateSelectionIds;
     await commitTemplateSelections(nextSelections);
   }
 
@@ -3326,6 +3422,7 @@ export default function MerchQuantumApp() {
     }
 
     setPendingTemplateSelectionIds(selectedImportIds);
+    setTemplateSelectionAnchorIndex(null);
     setIsTemplatePickerOpen(true);
     setImportStatus("");
 
@@ -3341,6 +3438,7 @@ export default function MerchQuantumApp() {
 
     setSelectedImportIds(nextSelections);
     setPendingTemplateSelectionIds(nextSelections);
+    setTemplateSelectionAnchorIndex(null);
     setIsTemplatePickerOpen(false);
     setEditingField(null);
     setInlineSaveFeedback(null);
@@ -3378,6 +3476,7 @@ export default function MerchQuantumApp() {
 
   function cancelTemplatePicker() {
     setPendingTemplateSelectionIds(selectedImportIds);
+    setTemplateSelectionAnchorIndex(null);
     setIsTemplatePickerOpen(false);
   }
 
@@ -3544,23 +3643,30 @@ export default function MerchQuantumApp() {
     }
   }
 
-  async function syncApprovedImportedListings() {
-    if (!resolvedProviderId || !shopId || approvedImportedItems.length === 0) {
-      return;
+  async function syncImportedItems(items: Img[], options: { announce?: boolean } = {}) {
+    const announce = options.announce !== false;
+
+    if (!resolvedProviderId || !shopId || items.length === 0) {
+      return { syncedItems: [] as Img[], failedCount: 0 };
     }
 
     if (!supportsImportedListingSync) {
-      setImportStatus(`${selectedProvider?.label || "This provider"} metadata sync is not available in this pass yet.`);
-      return;
+      if (announce) {
+        setImportStatus(`${selectedProvider?.label || "This provider"} metadata sync is not available in this pass yet.`);
+      }
+      return { syncedItems: [] as Img[], failedCount: items.length };
     }
 
     setIsSyncingImportedListings(true);
-    setImportStatus(`Syncing ${approvedImportedItems.length} approved listing${approvedImportedItems.length === 1 ? "" : "s"} back to ${selectedProvider?.label || "the provider"}...`);
+    if (announce) {
+      setImportStatus(`Syncing ${items.length} approved listing${items.length === 1 ? "" : "s"} back to ${selectedProvider?.label || "the provider"}...`);
+    }
 
     let syncedCount = 0;
     let failedCount = 0;
+    const syncedItems: Img[] = [];
 
-    for (const item of approvedImportedItems) {
+    for (const item of items) {
       if (!item.providerProductId) {
         failedCount += 1;
         continue;
@@ -3606,6 +3712,7 @@ export default function MerchQuantumApp() {
         }
 
         syncedCount += 1;
+        syncedItems.push(item);
         setImages((current) =>
           current.map((img) =>
             img.id === item.id
@@ -3634,16 +3741,23 @@ export default function MerchQuantumApp() {
       }
     }
 
-    setImportStatus(
-      failedCount > 0
-        ? `Synced ${syncedCount} approved listing${syncedCount === 1 ? "" : "s"} and flagged ${failedCount} for manual review.`
-        : `Synced ${syncedCount} approved listing${syncedCount === 1 ? "" : "s"} back to ${selectedProvider?.label || "the provider"}.`
-    );
+    if (announce) {
+      setImportStatus(
+        failedCount > 0
+          ? `Synced ${syncedCount} approved listing${syncedCount === 1 ? "" : "s"} and flagged ${failedCount} for manual review.`
+          : `Synced ${syncedCount} approved listing${syncedCount === 1 ? "" : "s"} back to ${selectedProvider?.label || "the provider"}.`
+      );
+    }
     setIsSyncingImportedListings(false);
+    return { syncedItems, failedCount };
   }
 
-  async function publishApprovedImportedListings() {
-    if (!resolvedProviderId || !shopId || syncedApprovedImportedItems.length === 0) {
+  async function syncApprovedImportedListings() {
+    await syncImportedItems(approvedImportedItems);
+  }
+
+  async function publishImportedItems(items: Img[]) {
+    if (!resolvedProviderId || !shopId || items.length === 0) {
       setImportStatus("Sync approved listings before sending them to the provider publish step.");
       return;
     }
@@ -3653,8 +3767,16 @@ export default function MerchQuantumApp() {
       return;
     }
 
+    const publishableProductIds = new Set(
+      items.map((item) => item.providerProductId).filter((value): value is string => !!value)
+    );
+    if (publishableProductIds.size === 0) {
+      setImportStatus("Sync approved listings before sending them to the provider publish step.");
+      return;
+    }
+
     setIsPublishingImportedListings(true);
-    setImportStatus(`Publishing ${syncedApprovedImportedItems.length} synced approved listing${syncedApprovedImportedItems.length === 1 ? "" : "s"}...`);
+    setImportStatus(`Publishing ${publishableProductIds.size} synced approved listing${publishableProductIds.size === 1 ? "" : "s"}...`);
 
     try {
       const response = await fetchWithTimeout(
@@ -3665,7 +3787,7 @@ export default function MerchQuantumApp() {
           body: JSON.stringify({
             provider: resolvedProviderId,
             shopId,
-            items: syncedApprovedImportedItems.map((item) => ({
+            items: items.map((item) => ({
               productId: item.providerProductId,
               title: item.final,
               description: item.finalDescription,
@@ -3699,7 +3821,7 @@ export default function MerchQuantumApp() {
 
       setImages((current) =>
         current.map((img) => {
-          if (!img.providerProductId || !syncedApprovedImportedItems.some((item) => item.providerProductId === img.providerProductId)) {
+          if (!img.providerProductId || !publishableProductIds.has(img.providerProductId)) {
             return img;
           }
 
@@ -3733,6 +3855,35 @@ export default function MerchQuantumApp() {
     } finally {
       setIsPublishingImportedListings(false);
     }
+  }
+
+  async function publishApprovedImportedListings() {
+    await publishImportedItems(syncedApprovedImportedItems);
+  }
+
+  async function runBulkEditPublishAction() {
+    if (approvedImportedItems.length === 0) {
+      setImportStatus("Approve at least one rescued listing before publishing.");
+      return;
+    }
+
+    if (supportsImportedPublish) {
+      setImportStatus(`Preparing ${approvedImportedItems.length} approved listing${approvedImportedItems.length === 1 ? "" : "s"} for publish...`);
+      const { syncedItems } = await syncImportedItems(approvedImportedItems, { announce: false });
+      if (syncedItems.length === 0) {
+        setImportStatus("No approved rescued listings were ready to publish after provider sync.");
+        return;
+      }
+      await publishImportedItems(syncedItems);
+      return;
+    }
+
+    if (supportsImportedListingSync) {
+      await syncImportedItems(approvedImportedItems);
+      return;
+    }
+
+    setImportStatus(`${selectedProvider?.label || "This provider"} publishing is not available in this pass yet.`);
   }
 
   async function runDraftBatch() {
@@ -3855,25 +4006,14 @@ export default function MerchQuantumApp() {
       ) : null}
 
       <div className="mx-auto max-w-6xl space-y-3">
-        <div className="flex w-full min-w-0 items-start justify-between gap-2 overflow-hidden">
-          <div className="flex min-w-0 flex-col justify-center">
-            <div className="flex min-w-0 items-baseline gap-1.5">
-              <span className="truncate text-[1.7rem] font-semibold tracking-tight text-[#7F22FE] sm:text-[1.9rem]">Merch</span>
-              <span className="truncate text-[1.7rem] font-semibold tracking-tight text-white sm:text-[1.9rem]">Quantum</span>
-            </div>
-            <span className="-mt-0.5 pl-px text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-              AI Auto Listings
-            </span>
-          </div>
-        </div>
-
-        <div className="relative pt-2.5">
+        <div className="relative pt-3">
           {workspaceMode ? (
             <button
               type="button"
               aria-label={`${routingToggleLabel} setup`}
+              title="Collapse / Expand"
               onClick={() => setIsRoutingGridExpanded((current) => !current)}
-              className="absolute right-3 top-0 z-20 inline-flex h-6 items-center gap-1 rounded-b-lg rounded-t-sm border border-white/10 bg-[#0c1120] px-2 text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-300 transition hover:border-[#7F22FE]/35 hover:text-white"
+              className="absolute right-4 top-0 z-20 inline-flex h-6 items-center gap-1 rounded-b-lg rounded-t-sm border border-white/10 bg-[#0c1120] px-2 text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-300 transition hover:border-[#7F22FE]/35 hover:text-white"
             >
               <span>{routingToggleLabel}</span>
               <ChevronIcon open={isRoutingGridExpanded} className="h-3 w-3 text-slate-500" />
@@ -3890,6 +4030,9 @@ export default function MerchQuantumApp() {
           <div
             className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-[#00BC7D]/90 to-transparent" : "bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent"} ${pulseConnected || routingGuidanceTarget ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
           />
+          <div className="mb-4 flex min-w-0 items-start pr-14">
+            <MerchQuantumInlineHeading className="max-w-full" />
+          </div>
           <div className="grid w-full grid-cols-2 gap-2">
             <div className={`min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
               <Select
@@ -4082,10 +4225,10 @@ export default function MerchQuantumApp() {
             />
 
             <div className="space-y-1.5">
-              <div className="flex min-h-[20px] items-center justify-between gap-3 text-sm font-medium leading-5 tracking-tight text-slate-200">
-                <span>{templatePickerBaseLabel}</span>
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <MerchQuantumInlineHeading className="max-w-full" />
                 {workspaceModeLabel ? (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
+                  <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
                     {workspaceModeLabel}
                   </span>
                 ) : null}
@@ -4099,7 +4242,11 @@ export default function MerchQuantumApp() {
                   type="button"
                   onClick={() => {
                     if (isTemplatePickerOpen) {
-                      void commitTemplateSelections(pendingTemplateSelectionIds);
+                      if (isBulkEditMode) {
+                        void commitTemplateSelections(pendingTemplateSelectionIds);
+                      } else {
+                        void commitTemplateSelections(pendingTemplateSelectionIds);
+                      }
                       return;
                     }
                     openTemplatePicker();
@@ -4144,77 +4291,155 @@ export default function MerchQuantumApp() {
                     </div>
                     <div className="mt-3 max-h-[18rem] overflow-auto pr-1">
                       {visibleProducts.length > 0 ? (
-                        <div className="grid gap-2">
-                          {visibleProducts.map((product) => {
-                            const alreadyImported = importedProductIds.has(product.id);
-                            const isPendingSelection = pendingTemplateSelectionIds.includes(product.id);
-                            const isCreationSelection =
-                              pendingTemplateSelectionIds.length === 1 && pendingTemplateSelectionIds[0] === product.id;
+                        isBulkEditMode ? (
+                          <div className="overflow-x-auto pb-1 [scrollbar-color:rgba(127,34,254,0.45)_transparent] [scrollbar-width:thin]">
+                            <div className="flex min-w-max gap-2 pr-1">
+                              {visibleProducts.map((product, index) => {
+                                const alreadyImported = importedProductIds.has(product.id);
+                                const isPendingSelection = pendingTemplateSelectionIds.includes(product.id);
 
-                            return (
-                              <label
-                                key={`template-${product.id}`}
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  void commitTemplateSelectionFromMenu(product.id);
-                                }}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter" || event.key === " ") {
+                                return (
+                                  <button
+                                    key={`template-${product.id}`}
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      stageBulkEditTemplateSelection(product.id, index, {
+                                        shiftKey: event.shiftKey,
+                                        ctrlKey: event.ctrlKey,
+                                        metaKey: event.metaKey,
+                                      });
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter" || event.key === " ") {
+                                        event.preventDefault();
+                                        stageBulkEditTemplateSelection(product.id, index);
+                                      }
+                                    }}
+                                    className={`group w-[116px] shrink-0 rounded-xl border bg-[#010512] p-2 text-left transition ${
+                                      isPendingSelection
+                                        ? "border-[#7F22FE]/75 shadow-[0_14px_36px_-28px_rgba(127,34,254,0.82)]"
+                                        : alreadyImported
+                                          ? "border-[#00BC7D]/45 bg-[#00BC7D]/[0.04]"
+                                          : "border-slate-800 hover:border-slate-700"
+                                    }`}
+                                  >
+                                    <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-slate-800 bg-[#020616]">
+                                      <div className="absolute inset-0" style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }} />
+                                      {product.previewUrl ? (
+                                        <div className="absolute inset-0 overflow-hidden rounded-[inherit]">
+                                          <div className="absolute" style={{ inset: `${ARTWORK_SAFE_ZONE_PCT * 100}%` }}>
+                                            <img src={product.previewUrl} alt={product.title} className="h-full w-full object-contain" />
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="relative z-10 flex h-full w-full items-center justify-center px-3 text-center text-xs font-medium text-slate-400">
+                                          <span className="line-clamp-3">{product.title}</span>
+                                        </div>
+                                      )}
+                                      {alreadyImported && !isPendingSelection ? (
+                                        <span className="absolute left-2 top-2 rounded-full border border-[#00BC7D]/35 bg-[#00BC7D]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#7EF0C7]">
+                                          Loaded
+                                        </span>
+                                      ) : null}
+                                      {isPendingSelection ? (
+                                        <span className="absolute right-2 top-2 rounded-full border border-[#7F22FE]/35 bg-[#7F22FE]/18 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#D8B4FE]">
+                                          Edit
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    <div className="mt-2 space-y-1">
+                                      <div className="truncate text-sm font-medium text-white">{product.title}</div>
+                                      <div className="line-clamp-2 text-[11px] text-slate-400">
+                                        {product.description?.trim()
+                                          ? clampDescriptionForListing(
+                                            extractBuyerFacingDescriptionFromListing(
+                                              product.description,
+                                              sanitizeTemplateDescriptionForPrebuffer(product.description, product.title)
+                                            )
+                                          ).slice(0, 96) || product.type
+                                          : product.type}
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="grid gap-2">
+                            {visibleProducts.map((product) => {
+                              const alreadyImported = importedProductIds.has(product.id);
+                              const isPendingSelection = pendingTemplateSelectionIds.includes(product.id);
+                              const isCreationSelection =
+                                pendingTemplateSelectionIds.length === 1 && pendingTemplateSelectionIds[0] === product.id;
+
+                              return (
+                                <label
+                                  key={`template-${product.id}`}
+                                  onClick={(event) => {
                                     event.preventDefault();
                                     event.stopPropagation();
                                     void commitTemplateSelectionFromMenu(product.id);
-                                  }
-                                }}
-                                tabIndex={0}
-                                className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition ${
-                                  isPendingSelection
-                                    ? "border-[#7F22FE]/70 bg-[#7F22FE]/10"
-                                    : alreadyImported
-                                      ? "border-[#00BC7D]/45 bg-[#00BC7D]/[0.04]"
-                                      : "border-slate-800 bg-[#010512] hover:border-slate-700"
-                                } pointer-events-auto`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isPendingSelection}
-                                  readOnly
-                                  tabIndex={-1}
-                                  className="mt-1 h-4 w-4 rounded border-slate-600 bg-[#020616] text-[#7F22FE] focus:ring-[#7F22FE]/40"
-                                />
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="truncate text-sm font-medium text-white">{product.title}</span>
-                                    {alreadyImported && !isPendingSelection ? (
-                                      <span className="rounded-full border border-[#00BC7D]/40 bg-[#00BC7D]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[#7EF0C7]">
-                                        Loaded
-                                      </span>
-                                    ) : null}
-                                    {isCreationSelection ? (
-                                      <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
-                                        Create
-                                      </span>
-                                    ) : isPendingSelection ? (
-                                      <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
-                                        Edit
-                                      </span>
-                                    ) : null}
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter" || event.key === " ") {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      void commitTemplateSelectionFromMenu(product.id);
+                                    }
+                                  }}
+                                  tabIndex={0}
+                                  className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition ${
+                                    isPendingSelection
+                                      ? "border-[#7F22FE]/70 bg-[#7F22FE]/10"
+                                      : alreadyImported
+                                        ? "border-[#00BC7D]/45 bg-[#00BC7D]/[0.04]"
+                                        : "border-slate-800 bg-[#010512] hover:border-slate-700"
+                                  } pointer-events-auto`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isPendingSelection}
+                                    readOnly
+                                    tabIndex={-1}
+                                    className="mt-1 h-4 w-4 rounded border-slate-600 bg-[#020616] text-[#7F22FE] focus:ring-[#7F22FE]/40"
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="truncate text-sm font-medium text-white">{product.title}</span>
+                                      {alreadyImported && !isPendingSelection ? (
+                                        <span className="rounded-full border border-[#00BC7D]/40 bg-[#00BC7D]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[#7EF0C7]">
+                                          Loaded
+                                        </span>
+                                      ) : null}
+                                      {isCreationSelection ? (
+                                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
+                                          Create
+                                        </span>
+                                      ) : isPendingSelection ? (
+                                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
+                                          Edit
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    <div className="mt-1 text-xs text-slate-400">
+                                      {product.description?.trim()
+                                        ? clampDescriptionForListing(
+                                          extractBuyerFacingDescriptionFromListing(
+                                            product.description,
+                                            sanitizeTemplateDescriptionForPrebuffer(product.description, product.title)
+                                          )
+                                        ).slice(0, 160) || product.type
+                                        : product.type}
+                                    </div>
                                   </div>
-                                  <div className="mt-1 text-xs text-slate-400">
-                                    {product.description?.trim()
-                                      ? clampDescriptionForListing(
-                                        extractBuyerFacingDescriptionFromListing(
-                                          product.description,
-                                          sanitizeTemplateDescriptionForPrebuffer(product.description, product.title)
-                                        )
-                                      ).slice(0, 160) || product.type
-                                      : product.type}
-                                  </div>
-                                </div>
-                              </label>
-                            );
-                          })}
-                        </div>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )
                       ) : (
                         <div className="rounded-xl border border-slate-800 bg-[#010512] px-3 py-4 text-sm text-slate-400">
                           {loadingProducts
@@ -4225,11 +4450,31 @@ export default function MerchQuantumApp() {
                         </div>
                       )}
                     </div>
+                    {isBulkEditMode ? (
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <span className="text-xs text-slate-400">
+                          {pendingTemplateSelectionIds.length > 0
+                            ? `${pendingTemplateSelectionIds.length} listing${pendingTemplateSelectionIds.length === 1 ? "" : "s"} staged`
+                            : "No listings staged yet"}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <Button tone="ghost" className="min-h-[36px] px-3" onClick={cancelTemplatePicker}>
+                            Cancel
+                          </Button>
+                          <Button
+                            className="min-h-[36px] px-3"
+                            disabled={pendingTemplateSelectionIds.length === 0 || isImportingListings}
+                            onClick={() => { void commitTemplateSelections(pendingTemplateSelectionIds); }}
+                          >
+                            {isImportingListings ? "Loading..." : "Load Selected"}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
             </div>
-
             {importStatus ? (
               <p className="mt-3 text-sm text-slate-300">{importStatus}</p>
             ) : processingBanner ? (
@@ -4247,22 +4492,9 @@ export default function MerchQuantumApp() {
                       <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-[296px_minmax(0,1fr)]">
                         <div className="flex min-w-0 h-full flex-col gap-3">
                           <div
-                            className={`space-y-1.5 ${isCreateMode ? "cursor-pointer" : ""}`}
+                            className={`${isCreateMode ? "cursor-pointer" : ""}`}
                             onClick={isCreateMode ? openArtworkPicker : undefined}
                           >
-                            <div className="flex min-h-[20px] flex-col items-start gap-1.5 text-sm font-medium leading-5 tracking-tight text-slate-200 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                              <span>{isCreateMode ? "Upload Artwork" : "Loaded Artwork"}</span>
-                              <span className="block max-w-full text-[11px] font-normal tracking-normal text-slate-500 sm:max-w-[15rem] sm:text-right">
-                                {isCreateMode ? (
-                                  `Drop or click • Max ${CONNECTED_TOTAL_BATCH_FILES} items`
-                                ) : (
-                                  <>
-                                    <span className="sm:hidden">Provider artwork rescue</span>
-                                    <span className="hidden sm:inline">Recovered from selected provider listings</span>
-                                  </>
-                                )}
-                              </span>
-                            </div>
                             <div
                               className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-[#020616] lg:h-[19rem]"
                               onDragOver={(e) => {
@@ -4284,22 +4516,23 @@ export default function MerchQuantumApp() {
                                   className="absolute inset-0 overflow-hidden rounded-[inherit]"
                                   style={{ backgroundColor: selectedImage.previewBackground || DISPLAY_NEUTRAL_BACKGROUND }}
                                 >
-                                  <img src={selectedImage.preview} alt={selectedImage.final} className="h-full w-full object-contain" />
+                                  <div className="absolute" style={{ inset: `${ARTWORK_SAFE_ZONE_PCT * 100}%` }}>
+                                    <img src={selectedImage.preview} alt={selectedImage.final} className="h-full w-full object-contain" />
+                                  </div>
                                 </div>
                               ) : (
                                 <div className="flex h-full w-full p-4">
                                   <div className="flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-6 text-center transition-colors hover:bg-[#0b1024]">
                                     <span className="text-sm font-medium text-white">{isCreateMode ? "Drag images here" : "Awaiting rescued artwork"}</span>
-                                    <span className="mt-1 text-xs text-slate-400">{isCreateMode ? "or click Add Images" : "Choose provider listings above to load previews."}</span>
+                                    <span className="mt-1 text-xs text-slate-400">{isCreateMode ? "or click to add images" : "Choose provider listings above to load previews."}</span>
+                                    <span className="mt-3 max-w-[18rem] text-[11px] leading-5 text-slate-500">
+                                      {ARTWORK_SAFE_ZONE_LABEL}
+                                    </span>
                                   </div>
                                 </div>
                               )}
 
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11px] font-medium text-slate-300 sm:text-xs">
+                              <div className={`absolute bottom-3 left-3 z-10 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
                                 <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                                   <span>{readyCount}</span>
                                   <StatusThumbIcon tone="ready" direction="up" />
@@ -4311,33 +4544,29 @@ export default function MerchQuantumApp() {
                                 <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                                   <span>{completedGenerationCount} Done</span>
                                 </div>
+                                <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                  <span>Q: {queuedStatCount}</span>
+                                </div>
                                 <button
                                   type="button"
                                   disabled={!hasAnyLoadedImages}
-                                  onClick={() => {
+                                  onClick={(event) => {
+                                    event.stopPropagation();
                                     if (!hasAnyLoadedImages) return;
                                     clearPreviewWorkspace();
                                   }}
-                                  className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none text-slate-300 transition hover:text-white disabled:cursor-default disabled:opacity-100 sm:text-xs"
+                                  className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none transition sm:text-xs ${previewOverlayUsesLightText ? "hover:text-white" : "hover:text-slate-950"} disabled:cursor-default disabled:opacity-100`}
                                 >
                                   Clear
                                 </button>
                               </div>
-                              {isCreateMode ? (
-                                <Button
-                                  className="shrink-0 px-3 !bg-[#7F22FE] !text-white hover:!bg-[#6d1ee0]"
-                                  disabled={uploadDisabled}
-                                  onClick={() => { void runDraftBatch(); }}
-                                >
-                                  {isRunningBatch ? "Uploading..." : "Upload"}
-                                </Button>
-                              ) : null}
-                            </div>
-                            <div className="pointer-events-none h-[2px] rounded-full bg-slate-800">
-                              <div
-                                className={`h-full transition-all duration-500 ${processingCount > 0 ? "bg-[#7F22FE]" : "bg-[#00A6F4]"}`}
-                                style={{ width: `${generationProgressPct}%` }}
-                              />
+
+                              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[2px] rounded-full bg-slate-800/90">
+                                <div
+                                  className={`h-full transition-all duration-500 ${processingCount > 0 ? "bg-[#7F22FE]" : "bg-[#00A6F4]"}`}
+                                  style={{ width: `${generationProgressPct}%` }}
+                                />
+                              </div>
                             </div>
                           </div>
                           {sortedImages.length > 0 ? (
@@ -4394,7 +4623,11 @@ export default function MerchQuantumApp() {
                                             className="absolute inset-0 flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit]"
                                             style={{ backgroundColor: img.previewBackground }}
                                           >
-                                            {img.preview ? <img src={img.preview} alt={img.final} className="h-full w-full object-contain" /> : null}
+                                            {img.preview ? (
+                                              <div className="absolute" style={{ inset: `${ARTWORK_SAFE_ZONE_PCT * 100}%` }}>
+                                                <img src={img.preview} alt={img.final} className="h-full w-full object-contain" />
+                                              </div>
+                                            ) : null}
                                           </div>
                                           {img.preview ? (
                                             <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-xl group-hover:block top-full mt-2 ${previewAlignRight ? "right-0" : "left-0"}`}>
@@ -4407,24 +4640,6 @@ export default function MerchQuantumApp() {
                                   );
                                 })}
                               </div>
-                            </div>
-                          ) : null}
-                          {(supportsImportedListingSync && approvedImportedItems.length > 0) || (supportsImportedPublish && syncedApprovedImportedItems.length > 0) ? (
-                            <div className="flex flex-wrap gap-2">
-                              <Button
-                                tone="ghost"
-                                disabled={!supportsImportedListingSync || approvedImportedItems.length === 0 || isSyncingImportedListings}
-                                onClick={() => { void syncApprovedImportedListings(); }}
-                              >
-                                {isSyncingImportedListings ? "Syncing..." : "Sync Approved SEO"}
-                              </Button>
-                              <Button
-                                tone="ghost"
-                                disabled={!supportsImportedPublish || syncedApprovedImportedItems.length === 0 || isPublishingImportedListings}
-                                onClick={() => { void publishApprovedImportedListings(); }}
-                              >
-                                {isPublishingImportedListings ? "Publishing..." : "Publish Approved"}
-                              </Button>
                             </div>
                           ) : null}
                           {runStatus ? <p className="text-sm text-slate-300">{runStatus}</p> : null}
@@ -4443,129 +4658,34 @@ export default function MerchQuantumApp() {
                             </div>
                           ) : null}
                         </div>
-
                         <div className="flex min-w-0 h-full flex-col space-y-3">
-                          <div className="space-y-1.5">
-                            <button
-                              type="button"
-                              onClick={() => toggleMetadataSection("title")}
-                              className="flex min-h-[20px] w-full items-center justify-between gap-3 text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
-                              aria-expanded={metadataSectionState.title}
-                            >
-                              <span>Final Title</span>
-                              <ChevronIcon open={metadataSectionState.title} className="h-4 w-4 text-slate-500" />
-                            </button>
-                            {metadataSectionState.title ? (
-                              <div className="space-y-2">
-                                <div className="rounded-xl">
-                                  {editingField === "title" ? (
-                                    <Input
-                                      autoFocus
-                                      value={editableTitleDraft}
-                                      onChange={(e) => setEditableTitleDraft(e.target.value)}
-                                      maxLength={LISTING_LIMITS.titleMax}
-                                      onBlur={() => { void commitInlineEdit("title", editableTitleDraft); }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                          e.preventDefault();
-                                          e.currentTarget.blur();
-                                        }
-                                        if (e.key === "Escape") {
-                                          e.preventDefault();
-                                          setEditingField(null);
-                                          setInlineSaveFeedback(null);
-                                        }
-                                      }}
-                                      className="px-3"
-                                    />
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => beginInlineEdit("title")}
-                                      onKeyDown={(e) => {
-                                        if (!canEditDetailTitle) return;
-                                        if (e.key === "Enter" || e.key === " ") {
-                                          e.preventDefault();
-                                          beginInlineEdit("title");
-                                        }
-                                      }}
-                                      disabled={!canEditDetailTitle}
-                                      className={`group flex min-h-[44px] w-full items-center rounded-xl border bg-[#020616] px-3 py-0 text-left text-sm font-normal leading-5 text-white transition ${canEditDetailTitle ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
-                                    >
-                                      {shouldAwaitQuantumTitle ? (
-                                        <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
-                                          <QuantOrbLoader />
-                                          <span>{QUANTUM_TITLE_AWAITING_TEXT}</span>
-                                        </div>
-                                      ) : (
-                                        <div className="flex w-full min-w-0 items-center justify-between gap-3">
-                                          <span className="min-w-0 flex-1 truncate">
-                                            {detailTitle || <span className="text-slate-400">Click to add a final title.</span>}
-                                          </span>
-                                          {canEditDetailTitle ? (
-                                            <span className="inline-flex items-center gap-1 text-xs text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                                              <PencilIcon className="h-3.5 w-3.5" />
-                                              Edit
-                                            </span>
-                                          ) : null}
-                                        </div>
-                                      )}
-                                    </button>
-                                  )}
-                                </div>
-                                {titleFeedback ? (
-                                  <p className={`text-xs ${titleFeedback.tone === "error" ? "text-[#FF8AA5]" : titleFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-400"}`}>
-                                    {titleFeedback.message}
-                                  </p>
-                                ) : null}
-                                {canEditDetailTitle || canRerollSelectedImage ? (
-                                  <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-slate-500">
-                                    <p>{(editingField === "title" ? editableTitleDraft : detailTitle || "").trim().length}/{LISTING_LIMITS.titleMax}</p>
-                                    {canRerollSelectedImage ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => { void rerollSelectedImageField("title"); }}
-                                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
-                                        aria-label="Re-roll title with Quantum AI"
-                                        title="Re-Roll title"
-                                      >
-                                        <ReRollIcon className="h-3.5 w-3.5" />
-                                      </button>
-                                    ) : null}
-                                  </div>
-                                ) : null}
-                              </div>
-                            ) : null}
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <button
-                              type="button"
-                              onClick={() => toggleMetadataSection("description")}
-                              className="flex min-h-[20px] w-full items-center justify-between gap-3 text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
-                              aria-expanded={metadataSectionState.description}
-                            >
-                              <span>Final Description</span>
-                              <ChevronIcon open={metadataSectionState.description} className="h-4 w-4 text-slate-500" />
-                            </button>
-                            {metadataSectionState.description ? (
-                              <div className="space-y-2">
-                                <div className="rounded-xl border border-slate-700 bg-[#020616] px-3 py-3 text-sm font-normal leading-6 text-white">
-                                  <div className="flex min-h-full">
-                                    {editingField === "description" ? (
-                                      <div className="flex w-full flex-col gap-3">
-                                        <textarea
+                          <div className="space-y-3">
+                            <div className="space-y-1.5">
+                              <button
+                                type="button"
+                                onClick={() => toggleMetadataSection("title")}
+                                className="flex min-h-[20px] w-full items-center justify-between gap-3 text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
+                                aria-expanded={metadataSectionState.title}
+                              >
+                                <span className="inline-flex items-center text-sm font-semibold">
+                                  <span className="text-[#7F22FE]">Quantum</span>
+                                  <span className="ml-1 text-white">AI Title</span>
+                                </span>
+                                <ChevronIcon open={metadataSectionState.title} className="h-4 w-4 text-slate-500" />
+                              </button>
+                              {metadataSectionState.title ? (
+                                <div className="space-y-2">
+                                  <div className="rounded-xl">
+                                    {editingField === "title" ? (
+                                      <div className="relative">
+                                        <Input
                                           autoFocus
-                                          value={editableDescriptionDraft}
-                                          onFocus={(e) => autosizeTextarea(e.currentTarget)}
-                                          onChange={(e) => {
-                                            setEditableDescriptionDraft(e.target.value);
-                                            autosizeTextarea(e.currentTarget);
-                                          }}
-                                          maxLength={LISTING_LIMITS.descriptionMax}
-                                          onBlur={() => { void commitInlineEdit("description", editableDescriptionDraft); }}
+                                          value={editableTitleDraft}
+                                          onChange={(e) => setEditableTitleDraft(e.target.value)}
+                                          maxLength={LISTING_LIMITS.titleMax}
+                                          onBlur={() => { void commitInlineEdit("title", editableTitleDraft); }}
                                           onKeyDown={(e) => {
-                                            if (e.key === "Enter" && !e.shiftKey) {
+                                            if (e.key === "Enter") {
                                               e.preventDefault();
                                               e.currentTarget.blur();
                                             }
@@ -4575,143 +4695,274 @@ export default function MerchQuantumApp() {
                                               setInlineSaveFeedback(null);
                                             }
                                           }}
-                                          className="min-h-[112px] w-full resize-none overflow-hidden rounded-xl border border-slate-600 bg-[#020616] px-3 py-2 text-left text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30"
+                                          className="h-12 px-3 pr-20"
                                         />
-                                        {detailTemplateSpecBlock ? (
-                                          <>
-                                            <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
-                                            <div className="max-h-[120px] w-full overflow-y-auto pr-2 whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
-                                              {detailTemplateSpecBlock}
-                                            </div>
-                                          </>
-                                        ) : null}
+                                        <div className="pointer-events-none absolute bottom-1.5 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-500">
+                                          <span>{editableTitleDraft.trim().length}/{LISTING_LIMITS.titleMax}</span>
+                                        </div>
                                       </div>
                                     ) : (
-                                      <div className="flex w-full flex-col gap-3">
-                                        <button
-                                          type="button"
-                                          onClick={() => beginInlineEdit("description")}
-                                          onKeyDown={(e) => {
-                                            if (!canEditDetailDescription) return;
-                                            if (e.key === "Enter" || e.key === " ") {
-                                              e.preventDefault();
-                                              beginInlineEdit("description");
-                                            }
-                                          }}
-                                          disabled={!canEditDetailDescription}
-                                          className={`group flex min-h-[112px] w-full items-start rounded-xl border bg-[#020616] px-3 py-2 text-left text-sm font-normal leading-6 text-white transition ${canEditDetailDescription ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
-                                        >
-                                          {shouldAwaitQuantumDescription ? (
-                                            <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
-                                              <QuantOrbLoader />
-                                              <span>{QUANTUM_DESCRIPTION_AWAITING_TEXT}</span>
-                                            </div>
-                                          ) : (
-                                            <div className="flex w-full min-w-0 items-start justify-between gap-3">
-                                              <div className="min-w-0 flex-1 whitespace-pre-wrap text-left">
-                                                {detailBuyerDescription || (
-                                                  <span className="text-slate-400">Click to add buyer-facing description copy.</span>
-                                                )}
-                                              </div>
-                                              {canEditDetailDescription ? (
-                                                <span className="inline-flex items-center gap-1 text-xs text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                                                  <PencilIcon className="h-3.5 w-3.5" />
-                                                  Edit
-                                                </span>
-                                              ) : null}
-                                            </div>
-                                          )}
-                                        </button>
-                                        {detailTemplateSpecBlock ? (
-                                          <>
-                                            <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
-                                            <div className="max-h-[120px] w-full overflow-y-auto pr-2 whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
-                                              {detailTemplateSpecBlock}
-                                            </div>
-                                          </>
-                                        ) : null}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                {descriptionFeedback ? (
-                                  <p className={`text-xs ${descriptionFeedback.tone === "error" ? "text-[#FF8AA5]" : descriptionFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-400"}`}>
-                                    {descriptionFeedback.message}
-                                  </p>
-                                ) : null}
-                                {canEditDetailDescription || canRerollSelectedImage ? (
-                                  <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-slate-500">
-                                    <p>{(editingField === "description" ? editableDescriptionDraft : detailBuyerDescription || "").trim().length}/{LISTING_LIMITS.descriptionMax}</p>
-                                    {canRerollSelectedImage ? (
                                       <button
                                         type="button"
-                                        onClick={() => { void rerollSelectedImageField("description"); }}
-                                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
-                                        aria-label="Re-roll description with Quantum AI"
-                                        title="Re-Roll description"
+                                        onClick={() => beginInlineEdit("title")}
+                                        onKeyDown={(e) => {
+                                          if (!canEditDetailTitle) return;
+                                          if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault();
+                                            beginInlineEdit("title");
+                                          }
+                                        }}
+                                        disabled={!canEditDetailTitle}
+                                        className={`group relative flex min-h-[52px] w-full items-center rounded-xl border bg-[#020616] px-3 py-0 pr-24 text-left text-sm font-normal leading-5 text-white transition ${canEditDetailTitle ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
                                       >
-                                        <ReRollIcon className="h-3.5 w-3.5" />
+                                        {shouldAwaitQuantumTitle ? (
+                                          <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
+                                            <QuantOrbLoader />
+                                            <span>{QUANTUM_TITLE_AWAITING_TEXT}</span>
+                                          </div>
+                                        ) : (
+                                          <div className="flex w-full min-w-0 items-center justify-between gap-3">
+                                            <span className="min-w-0 flex-1 truncate">
+                                              {detailTitle || <span className="text-slate-400">Click to add a final title.</span>}
+                                            </span>
+                                            {canEditDetailTitle ? (
+                                              <span className="inline-flex items-center gap-1 text-xs text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                                                <PencilIcon className="h-3.5 w-3.5" />
+                                                Edit
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                        )}
+                                        <div className="absolute bottom-1.5 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-500">
+                                          <span>{(detailTitle || "").trim().length}/{LISTING_LIMITS.titleMax}</span>
+                                          {canRerollSelectedImage ? (
+                                            <button
+                                              type="button"
+                                              onClick={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                void rerollSelectedImageField("title");
+                                              }}
+                                              className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
+                                              aria-label="Re-roll title with Quantum AI"
+                                              title="Re-Roll title"
+                                            >
+                                              <ReRollIcon className="h-3 w-3" />
+                                            </button>
+                                          ) : null}
+                                        </div>
                                       </button>
-                                    ) : null}
+                                    )}
                                   </div>
-                                ) : null}
-                                {aiAssistStatus && selectedImage ? (
-                                  <p className={`text-xs ${canManualRescueSelectedImage ? "text-slate-400" : "text-slate-500"}`}>
-                                    {aiAssistStatus}
-                                  </p>
+                                  {titleFeedback ? (
+                                    <p className={`text-xs ${titleFeedback.tone === "error" ? "text-[#FF8AA5]" : titleFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-400"}`}>
+                                      {titleFeedback.message}
+                                    </p>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleMetadataSection("description")}
+                                  className="flex min-h-[20px] min-w-0 flex-1 items-center justify-between gap-3 text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
+                                  aria-expanded={metadataSectionState.description}
+                                >
+                                  <span className="inline-flex min-w-0 items-center text-sm font-semibold">
+                                    <span className="text-[#7F22FE]">Quantum</span>
+                                    <span className="ml-1 truncate text-white">AI Description</span>
+                                  </span>
+                                  <ChevronIcon open={metadataSectionState.description} className="h-4 w-4 text-slate-500" />
+                                </button>
+                                {canRerollSelectedImage ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => { void rerollSelectedImageField("description"); }}
+                                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
+                                    aria-label="Re-roll description with Quantum AI"
+                                    title="Re-Roll description"
+                                  >
+                                    <ReRollIcon className="h-3.5 w-3.5" />
+                                  </button>
                                 ) : null}
                               </div>
-                            ) : null}
+                              {metadataSectionState.description ? (
+                                <div className="space-y-2">
+                                  <div className="rounded-xl border border-slate-700 bg-[#020616] px-3 py-3 text-sm font-normal leading-6 text-white">
+                                    <div className="flex min-h-full">
+                                      {editingField === "description" ? (
+                                        <div className="flex w-full flex-col gap-3">
+                                          <div className="relative">
+                                            <textarea
+                                              autoFocus
+                                              value={editableDescriptionDraft}
+                                              onFocus={(e) => autosizeTextarea(e.currentTarget)}
+                                              onChange={(e) => {
+                                                setEditableDescriptionDraft(e.target.value);
+                                                autosizeTextarea(e.currentTarget);
+                                              }}
+                                              maxLength={LISTING_LIMITS.descriptionMax}
+                                              onBlur={() => { void commitInlineEdit("description", editableDescriptionDraft); }}
+                                              onKeyDown={(e) => {
+                                                if (e.key === "Enter" && !e.shiftKey) {
+                                                  e.preventDefault();
+                                                  e.currentTarget.blur();
+                                                }
+                                                if (e.key === "Escape") {
+                                                  e.preventDefault();
+                                                  setEditingField(null);
+                                                  setInlineSaveFeedback(null);
+                                                }
+                                              }}
+                                              className="min-h-[132px] w-full resize-none overflow-hidden rounded-xl border border-slate-600 bg-[#020616] px-3 py-2 pb-8 text-left text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30"
+                                            />
+                                            <div className="pointer-events-none absolute bottom-2 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-500">
+                                              <span>{editableDescriptionDraft.trim().length}/{LISTING_LIMITS.descriptionMax}</span>
+                                            </div>
+                                          </div>
+                                          {detailTemplateSpecBlock ? (
+                                            <>
+                                              <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
+                                              <div className="max-h-[120px] w-full overflow-y-auto pr-2 whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
+                                                {detailTemplateSpecBlock}
+                                              </div>
+                                            </>
+                                          ) : null}
+                                        </div>
+                                      ) : (
+                                        <div className="flex w-full flex-col gap-3">
+                                          <button
+                                            type="button"
+                                            onClick={() => beginInlineEdit("description")}
+                                            onKeyDown={(e) => {
+                                              if (!canEditDetailDescription) return;
+                                              if (e.key === "Enter" || e.key === " ") {
+                                                e.preventDefault();
+                                                beginInlineEdit("description");
+                                              }
+                                            }}
+                                            disabled={!canEditDetailDescription}
+                                            className={`group relative flex min-h-[132px] w-full items-start rounded-xl border bg-[#020616] px-3 py-2 pb-8 text-left text-sm font-normal leading-6 text-white transition ${canEditDetailDescription ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
+                                          >
+                                            {shouldAwaitQuantumDescription ? (
+                                              <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
+                                                <QuantOrbLoader />
+                                                <span>{QUANTUM_DESCRIPTION_AWAITING_TEXT}</span>
+                                              </div>
+                                            ) : (
+                                              <div className="flex w-full min-w-0 items-start justify-between gap-3">
+                                                <div className="min-w-0 flex-1 whitespace-pre-wrap text-left">
+                                                  {detailBuyerDescription || (
+                                                    <span className="text-slate-400">Select or add artwork to generate image-based listing copy.</span>
+                                                  )}
+                                                </div>
+                                                {canEditDetailDescription ? (
+                                                  <span className="inline-flex items-center gap-1 text-xs text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                                                    <PencilIcon className="h-3.5 w-3.5" />
+                                                    Edit
+                                                  </span>
+                                                ) : null}
+                                              </div>
+                                            )}
+                                            <div className="pointer-events-none absolute bottom-2 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-500">
+                                              <span>{(detailBuyerDescription || "").trim().length}/{LISTING_LIMITS.descriptionMax}</span>
+                                            </div>
+                                          </button>
+                                          {detailTemplateSpecBlock ? (
+                                            <>
+                                              <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
+                                              <div className="max-h-[120px] w-full overflow-y-auto pr-2 whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
+                                                {detailTemplateSpecBlock}
+                                              </div>
+                                            </>
+                                          ) : null}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {descriptionFeedback ? (
+                                    <p className={`text-xs ${descriptionFeedback.tone === "error" ? "text-[#FF8AA5]" : descriptionFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-400"}`}>
+                                      {descriptionFeedback.message}
+                                    </p>
+                                  ) : null}
+                                  {aiAssistStatus && selectedImage ? (
+                                    <p className={`text-xs ${canManualRescueSelectedImage ? "text-slate-400" : "text-slate-500"}`}>
+                                      {aiAssistStatus}
+                                    </p>
+                                  ) : null}
+                                  <div className="flex items-center justify-start">
+                                    <Button
+                                      className="px-3 !bg-[#7F22FE] !text-white hover:!bg-[#6d1ee0]"
+                                      disabled={isCreateMode ? uploadDisabled : bulkEditPublishDisabled}
+                                      onClick={() => {
+                                        if (isCreateMode) {
+                                          void runDraftBatch();
+                                          return;
+                                        }
+                                        void runBulkEditPublishAction();
+                                      }}
+                                    >
+                                      {descriptionActionLabel}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="pt-0.5">
+                            <div className="space-y-2">
+                              <button
+                                type="button"
+                                onClick={() => toggleMetadataSection("tags")}
+                                className="flex w-full items-center justify-between gap-3 text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
+                                aria-expanded={metadataSectionState.tags}
+                              >
+                                <span>Tags</span>
+                                <ChevronIcon open={metadataSectionState.tags} className="h-4 w-4 text-slate-500" />
+                              </button>
+                              {metadataSectionState.tags ? (
+                                <div className="flex flex-wrap items-center justify-start gap-1.5">
+                                  <div className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-[#7F22FE]/35 bg-[#7F22FE]/12 px-2.5 py-1.5 text-center text-sm leading-5 text-white">
+                                    <span className="inline-flex items-center gap-1">
+                                      <span className="font-semibold text-[#D8B4FE]">Quantum</span>
+                                      <span className="font-semibold text-white">AI Tags</span>
+                                    </span>
+                                  </div>
+                                  {isDetailTagsLoading ? (
+                                    Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
+                                      <div
+                                        key={`loading-tag-${index}`}
+                                        className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-300"
+                                      >
+                                        <QuantOrbLoader />
+                                      </div>
+                                    ))
+                                  ) : detailTags.length > 0 ? (
+                                    detailTags.map((tag, index) => (
+                                      <div
+                                        key={`${selectedImage?.id || productId}-tag-${index}`}
+                                        title={tag}
+                                        className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-white"
+                                      >
+                                        <span className="truncate">{tag}</span>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <div className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-400">
+                                      Tags will appear after Quantum AI processing completes.
+                                    </div>
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="pt-0.5">
-                        <div className="space-y-2">
-                          <button
-                            type="button"
-                            onClick={() => toggleMetadataSection("tags")}
-                            className="flex w-full items-center justify-between gap-3 text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
-                            aria-expanded={metadataSectionState.tags}
-                          >
-                            <span className="inline-flex items-center text-sm">
-                              <span className="font-semibold text-[#7F22FE]">Quantum</span>
-                              <span className="ml-1 font-semibold text-white">AI</span>
-                              <span className="ml-1 font-semibold text-[#00BC7D]">Tags</span>
-                            </span>
-                            <ChevronIcon open={metadataSectionState.tags} className="h-4 w-4 text-slate-500" />
-                          </button>
-                          {metadataSectionState.tags ? (
-                            <div className="flex flex-wrap items-center justify-center gap-1.5">
-                              {isDetailTagsLoading ? (
-                                Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
-                                  <div
-                                    key={`loading-tag-${index}`}
-                                    className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-300"
-                                  >
-                                    <QuantOrbLoader />
-                                  </div>
-                                ))
-                              ) : detailTags.length > 0 ? (
-                                detailTags.map((tag, index) => (
-                                  <div
-                                    key={`${selectedImage?.id || productId}-tag-${index}`}
-                                    title={tag}
-                                    className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-white"
-                                  >
-                                    <span className="truncate">{tag}</span>
-                                  </div>
-                                ))
-                              ) : (
-                                <div className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-400">
-                                  Tags will appear after Quantum AI processing completes.
-                                </div>
-                              )}
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
                     </div>
                 </div>
+              </div>
               </>
             ) : null}
           </Box>

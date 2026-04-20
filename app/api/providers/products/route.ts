@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
         title: product.title,
         description: product.description || "",
         shop_id: product.storeId,
+        preview_url: product.previewUrl || "",
       })),
     });
   } catch (error) {

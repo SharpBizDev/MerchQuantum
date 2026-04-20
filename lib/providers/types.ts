@@ -54,6 +54,7 @@ export type NormalizedTemplateSummary = {
   title: string;
   description?: string;
   type: string;
+  previewUrl?: string;
 };
 
 export type NormalizedPlacementGuide = {

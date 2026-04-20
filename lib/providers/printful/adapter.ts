@@ -451,6 +451,7 @@ export function createPrintfulAdapter(options: PrintfulAdapterOptions = {}): Pro
         storeId,
         title: product.name || `Product ${product.id}`,
         type: "sync_product",
+        previewUrl: product.thumbnail_url || undefined,
       }));
     },
     async getTemplateDetail(context) {
