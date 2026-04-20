@@ -2075,7 +2075,7 @@ export default function MerchQuantumApp() {
       : "Select active listings to load into Bulk Edit Mode.";
   const workspaceModeLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "";
   const workspaceModePickerLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "Edit mode";
-  const routingToggleLabel = isRoutingGridExpanded ? "Close Setup" : "Open Setup";
+  const routingToggleLabel = isRoutingGridExpanded ? "Hide" : "Show";
   const routingGuidanceTarget =
     !provider
       ? "provider"
@@ -3865,18 +3865,20 @@ export default function MerchQuantumApp() {
               AI Auto Listings
             </span>
           </div>
+        </div>
+
+        <div className="relative pt-2.5">
           {workspaceMode ? (
             <button
               type="button"
-              aria-label={routingToggleLabel}
+              aria-label={`${routingToggleLabel} setup`}
               onClick={() => setIsRoutingGridExpanded((current) => !current)}
-              className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-b-xl rounded-t-md border border-white/10 bg-[#0c1120] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300 transition hover:border-[#7F22FE]/35 hover:text-white"
+              className="absolute right-3 top-0 z-20 inline-flex h-6 items-center gap-1 rounded-b-lg rounded-t-sm border border-white/10 bg-[#0c1120] px-2 text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-300 transition hover:border-[#7F22FE]/35 hover:text-white"
             >
               <span>{routingToggleLabel}</span>
-              <ChevronIcon open={isRoutingGridExpanded} className="h-3.5 w-3.5 text-slate-500" />
+              <ChevronIcon open={isRoutingGridExpanded} className="h-3 w-3 text-slate-500" />
             </button>
           ) : null}
-        </div>
 
         <div className={`overflow-hidden transition-all duration-500 ${isRoutingGridCollapsed ? "pointer-events-none max-h-0 -translate-y-3 opacity-0" : "pointer-events-auto max-h-[32rem] translate-y-0 opacity-100"}`}>
           <Box
@@ -4058,6 +4060,7 @@ export default function MerchQuantumApp() {
 
           {apiStatus ? <p className="mt-3 text-sm text-[#FE9A00]">{apiStatus}</p> : null}
         </Box>
+        </div>
         </div>
 
         {connected && shopId && workspaceMode ? (
