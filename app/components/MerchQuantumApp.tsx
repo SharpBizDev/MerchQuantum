@@ -2073,8 +2073,8 @@ export default function MerchQuantumApp() {
     : pendingTemplateSelectionIds.length > 0
       ? `${pendingTemplateSelectionIds.length} listing${pendingTemplateSelectionIds.length === 1 ? "" : "s"} will load into Bulk Edit Mode.`
       : "Select active listings to load into Bulk Edit Mode.";
-  const workspaceModeLabel = isCreateMode ? "Create" : isBulkEditMode ? "Bulk Edit" : "";
-  const workspaceModePickerLabel = isCreateMode ? "Create new" : isBulkEditMode ? "Edit old" : "Mode";
+  const workspaceModeLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "";
+  const workspaceModePickerLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "Edit mode";
   const routeSummaryLabel = [selectedProvider?.label, selectedShop?.title, workspaceModeLabel].filter(Boolean).join(" • ");
   const routeSummaryProviderLabel = selectedProvider?.label || "";
   const routeSummaryShopLabel = selectedShop?.title || "";
@@ -4059,8 +4059,8 @@ export default function MerchQuantumApp() {
                 }}
               >
                 <option value="">{workspaceModePickerLabel}</option>
-                <option value="create">Create new</option>
-                <option value="edit">Edit old</option>
+                <option value="create">Bulk Create</option>
+                <option value="edit">Bulk Edit</option>
               </Select>
             </div>
           </div>
