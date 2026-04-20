@@ -120,6 +120,8 @@ type InlineSaveFeedback = {
   message: string;
 };
 
+type MetadataSectionKey = "title" | "description" | "tags";
+
 type Template = {
   reference: string;
   nickname: string;
@@ -1778,6 +1780,23 @@ function ReRollIcon({ className = "" }: { className?: string }) {
   );
 }
 
+function ChevronIcon({ open, className = "" }: { open: boolean; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className={`${className} transition-transform ${open ? "rotate-180" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.4"
+    >
+      <path d="M4.75 6.25 8 9.5l3.25-3.25" />
+    </svg>
+  );
+}
+
 function getStatusSortValue(status: ItemStatus) {
   switch (status) {
     case "ready":
@@ -1857,6 +1876,11 @@ export default function MerchQuantumApp() {
   const [inlineSaveFeedback, setInlineSaveFeedback] = useState<InlineSaveFeedback | null>(null);
   const [aiAssistStatus, setAiAssistStatus] = useState("");
   const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
+  const [metadataSectionState, setMetadataSectionState] = useState<Record<MetadataSectionKey, boolean>>({
+    title: true,
+    description: true,
+    tags: true,
+  });
 
   const resolvedProviderId = provider === "spreadconnect" ? "spod" : provider;
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
@@ -1923,8 +1947,6 @@ export default function MerchQuantumApp() {
   const canShowDetailWorkspace = isWorkspaceConfigured;
   const canShowDetailPanel = canShowDetailWorkspace || !!selectedImage;
   const selectedImageFieldStates = selectedImage?.aiFieldStates ?? createAiFieldStates("idle");
-  const previewOverlayUsesLightText = shouldUseLightPreviewText(selectedImage?.previewBackground || DISPLAY_NEUTRAL_BACKGROUND);
-  const previewOverlayTextClass = previewOverlayUsesLightText ? "text-white" : "text-slate-950";
   const detailTemplateDescription = selectedImage?.templateDescriptionOverride ?? templateDescription;
   const selectedImageTemplateKey = selectedImage
     ? `${selectedImage.templateReferenceOverride || template?.reference || "no-template"}::${detailTemplateDescription.trim()}`
@@ -2036,6 +2058,13 @@ export default function MerchQuantumApp() {
 
   function getProviderRoute(path: "connect" | "disconnect" | "products" | "product" | "batch-create") {
     return `/api/providers/${path}`;
+  }
+
+  function toggleMetadataSection(section: MetadataSectionKey) {
+    setMetadataSectionState((current) => ({
+      ...current,
+      [section]: !current[section],
+    }));
   }
 
   function triggerAttentionCue(target: "provider" | "token" | "import" | "shop" | "template") {
@@ -2816,6 +2845,24 @@ export default function MerchQuantumApp() {
     setInlineSaveFeedback(null);
     setAiAssistStatus("");
   }, [selectedId, template?.reference]);
+
+  useEffect(() => {
+    if (!canShowDetailPanel) return;
+
+    setMetadataSectionState({
+      title: true,
+      description: true,
+      tags: true,
+    });
+  }, [
+    canShowDetailPanel,
+    productId,
+    selectedId,
+    selectedImage?.aiProcessing,
+    selectedImage?.statusReason,
+    template?.reference,
+    detailTags.length,
+  ]);
 
   useEffect(() => {
     if (!templateReadyForAi && !images.some((img) => img.sourceType === "imported")) return;
@@ -3702,7 +3749,7 @@ export default function MerchQuantumApp() {
                 onPointerDownCapture={nudgeProviderSelectionFromTokenArea}
                 className={`${attentionTarget === "token" ? "rounded-2xl ring-1 ring-[#7F22FE]/35" : ""}`}
               >
-                <div className="flex w-full flex-col gap-2 sm:flex-row">
+                <div className="flex w-full min-w-0 flex-row flex-nowrap items-center gap-2">
                   <Input
                     type={connected ? "text" : "password"}
                     value={connected ? maskToken(token) : token}
@@ -3722,7 +3769,7 @@ export default function MerchQuantumApp() {
                     type="button"
                     onClick={() => { void connectProvider(); }}
                     disabled={!canSubmitProviderConnection}
-                    className={`min-h-[44px] shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${connected ? "bg-[#00BC7D] text-white disabled:cursor-default" : "bg-[#7F22FE] text-white hover:bg-[#6d1ee0] disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"}`}
+                    className={`min-h-[40px] shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition-colors sm:px-4 sm:text-sm ${connected ? "bg-[#00BC7D] text-white disabled:cursor-default" : "bg-[#7F22FE] text-white hover:bg-[#6d1ee0] disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"}`}
                   >
                     {loadingApi ? "Connecting..." : connected ? "Connected" : "Connect"}
                   </button>
@@ -3730,7 +3777,7 @@ export default function MerchQuantumApp() {
                     <button
                       type="button"
                       onClick={() => { void disconnectProvider(); }}
-                      className="min-h-[44px] shrink-0 rounded-lg px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:text-white"
+                      className="min-h-[40px] shrink-0 whitespace-nowrap rounded-lg px-2.5 py-2 text-xs font-medium text-slate-400 transition-colors hover:text-white sm:px-3 sm:text-sm"
                     >
                       Disconnect
                     </button>
@@ -3979,58 +4026,49 @@ export default function MerchQuantumApp() {
                                 </div>
                               )}
 
-                              <div
-                                className="absolute bottom-3 left-1/2 z-20 w-[calc(100%-1.5rem)] max-w-[calc(100%-1.5rem)] -translate-x-1/2 px-3 py-2"
-                                onClick={(e) => e.stopPropagation()}
-                                onPointerDown={(e) => e.stopPropagation()}
-                              >
-                                <div className={`flex min-w-0 flex-wrap items-center justify-center gap-x-2.5 gap-y-1.5 overflow-hidden px-0.5 pb-1.5 pt-0.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
-                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                    <span>{readyCount}</span>
-                                    <StatusThumbIcon tone="ready" direction="up" />
-                                  </div>
-                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                    <span>{errorCount}</span>
-                                    <StatusThumbIcon tone="error" direction="down" />
-                                  </div>
-                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                    <span>{completedGenerationCount} Done</span>
-                                  </div>
-                                  <span
-                                    role="button"
-                                    tabIndex={hasAnyLoadedImages ? 0 : -1}
-                                    onClick={() => {
-                                      if (!hasAnyLoadedImages) return;
-                                      clearPreviewWorkspace();
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if (!hasAnyLoadedImages) return;
-                                      if (e.key === "Enter" || e.key === " ") {
-                                        e.preventDefault();
-                                        clearPreviewWorkspace();
-                                      }
-                                    }}
-                                    className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none sm:text-xs ${previewOverlayTextClass} ${hasAnyLoadedImages ? "cursor-pointer opacity-100 hover:opacity-90 focus:opacity-90 active:opacity-90" : "cursor-default opacity-100"}`}
-                                  >
-                                    Clear
-                                  </span>
-                                </div>
-                                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] rounded-full bg-slate-800">
-                                  <div
-                                    className={`h-full transition-all duration-500 ${processingCount > 0 ? "bg-[#7F22FE]" : "bg-[#00A6F4]"}`}
-                                    style={{ width: `${generationProgressPct}%` }}
-                                  />
-                                </div>
-                              </div>
                             </div>
                           </div>
-                          <Button
-                            className="w-full !bg-[#7F22FE] !text-white hover:!bg-[#6d1ee0]"
-                            disabled={uploadDisabled}
-                            onClick={() => { void runDraftBatch(); }}
-                          >
-                            {isRunningBatch ? "Uploading Draft Products..." : "Upload Draft Products"}
-                          </Button>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11px] font-medium text-slate-300 sm:text-xs">
+                                <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                  <span>{readyCount}</span>
+                                  <StatusThumbIcon tone="ready" direction="up" />
+                                </div>
+                                <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                  <span>{errorCount}</span>
+                                  <StatusThumbIcon tone="error" direction="down" />
+                                </div>
+                                <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                  <span>{completedGenerationCount} Done</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  disabled={!hasAnyLoadedImages}
+                                  onClick={() => {
+                                    if (!hasAnyLoadedImages) return;
+                                    clearPreviewWorkspace();
+                                  }}
+                                  className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none text-slate-300 transition hover:text-white disabled:cursor-default disabled:opacity-100 sm:text-xs"
+                                >
+                                  Clear
+                                </button>
+                              </div>
+                              <Button
+                                className="shrink-0 px-3 !bg-[#7F22FE] !text-white hover:!bg-[#6d1ee0]"
+                                disabled={uploadDisabled}
+                                onClick={() => { void runDraftBatch(); }}
+                              >
+                                {isRunningBatch ? "Uploading..." : "Upload"}
+                              </Button>
+                            </div>
+                            <div className="pointer-events-none h-[2px] rounded-full bg-slate-800">
+                              <div
+                                className={`h-full transition-all duration-500 ${processingCount > 0 ? "bg-[#7F22FE]" : "bg-[#00A6F4]"}`}
+                                style={{ width: `${generationProgressPct}%` }}
+                              />
+                            </div>
+                          </div>
                           {sortedImages.length > 0 ? (
                             <div className="overflow-x-auto pb-1 [scrollbar-color:rgba(127,34,254,0.45)_transparent] [scrollbar-width:thin]">
                               <div className="flex min-w-max gap-2 pr-1">
@@ -4136,259 +4174,269 @@ export default function MerchQuantumApp() {
                         </div>
 
                         <div className="flex h-full flex-col space-y-3">
-                          <Field
-                            label={(
-                              <div className="flex min-w-0 items-center justify-between gap-3">
-                                <div className="flex min-w-0 items-center gap-2">
-                                  <span>Final Title</span>
-                                  {(canEditDetailTitle || canRerollSelectedImage) ? (
-                                    <span className="truncate text-[11px] font-normal tracking-normal text-slate-500">
-                                      Click to edit • Press Enter to save • Re-roll for AI assist
-                                    </span>
-                                  ) : null}
+                          <div className="space-y-1.5">
+                            <button
+                              type="button"
+                              onClick={() => toggleMetadataSection("title")}
+                              className="flex min-h-[20px] w-full items-center justify-between gap-3 text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
+                              aria-expanded={metadataSectionState.title}
+                            >
+                              <span>Final Title</span>
+                              <ChevronIcon open={metadataSectionState.title} className="h-4 w-4 text-slate-500" />
+                            </button>
+                            {metadataSectionState.title ? (
+                              <div className="space-y-2">
+                                <div className="rounded-xl">
+                                  {editingField === "title" ? (
+                                    <Input
+                                      autoFocus
+                                      value={editableTitleDraft}
+                                      onChange={(e) => setEditableTitleDraft(e.target.value)}
+                                      maxLength={LISTING_LIMITS.titleMax}
+                                      onBlur={() => { void commitInlineEdit("title", editableTitleDraft); }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          e.preventDefault();
+                                          e.currentTarget.blur();
+                                        }
+                                        if (e.key === "Escape") {
+                                          e.preventDefault();
+                                          setEditingField(null);
+                                          setInlineSaveFeedback(null);
+                                        }
+                                      }}
+                                      className="px-3"
+                                    />
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => beginInlineEdit("title")}
+                                      onKeyDown={(e) => {
+                                        if (!canEditDetailTitle) return;
+                                        if (e.key === "Enter" || e.key === " ") {
+                                          e.preventDefault();
+                                          beginInlineEdit("title");
+                                        }
+                                      }}
+                                      disabled={!canEditDetailTitle}
+                                      className={`group flex min-h-[44px] w-full items-center rounded-xl border bg-[#020616] px-3 py-0 text-left text-sm font-normal leading-5 text-white transition ${canEditDetailTitle ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
+                                    >
+                                      {shouldAwaitQuantumTitle ? (
+                                        <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
+                                          <QuantOrbLoader />
+                                          <span>{QUANTUM_TITLE_AWAITING_TEXT}</span>
+                                        </div>
+                                      ) : (
+                                        <div className="flex w-full min-w-0 items-center justify-between gap-3">
+                                          <span className="min-w-0 flex-1 truncate">
+                                            {detailTitle || <span className="text-slate-400">Click to add a final title.</span>}
+                                          </span>
+                                          {canEditDetailTitle ? (
+                                            <span className="inline-flex items-center gap-1 text-xs text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                                              <PencilIcon className="h-3.5 w-3.5" />
+                                              Edit
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                      )}
+                                    </button>
+                                  )}
                                 </div>
-                                {canRerollSelectedImage ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => { void rerollSelectedImageField("title"); }}
-                                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
-                                    aria-label="Re-roll title with Quantum AI"
-                                    title="Re-Roll title"
-                                  >
-                                    <ReRollIcon className="h-3.5 w-3.5" />
-                                  </button>
+                                {titleFeedback ? (
+                                  <p className={`text-xs ${titleFeedback.tone === "error" ? "text-[#FF8AA5]" : titleFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-400"}`}>
+                                    {titleFeedback.message}
+                                  </p>
+                                ) : null}
+                                {canEditDetailTitle || canRerollSelectedImage ? (
+                                  <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-slate-500">
+                                    <p>{(editingField === "title" ? editableTitleDraft : detailTitle || "").trim().length}/{LISTING_LIMITS.titleMax}</p>
+                                    {canRerollSelectedImage ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => { void rerollSelectedImageField("title"); }}
+                                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
+                                        aria-label="Re-roll title with Quantum AI"
+                                        title="Re-Roll title"
+                                      >
+                                        <ReRollIcon className="h-3.5 w-3.5" />
+                                      </button>
+                                    ) : null}
+                                  </div>
                                 ) : null}
                               </div>
-                            )}
-                          >
-                            <div className="space-y-2">
-                              <div className="rounded-xl">
-                                {editingField === "title" ? (
-                                  <Input
-                                    autoFocus
-                                    value={editableTitleDraft}
-                                    onChange={(e) => setEditableTitleDraft(e.target.value)}
-                                    maxLength={LISTING_LIMITS.titleMax}
-                                    onBlur={() => { void commitInlineEdit("title", editableTitleDraft); }}
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") {
-                                        e.preventDefault();
-                                        e.currentTarget.blur();
-                                      }
-                                      if (e.key === "Escape") {
-                                        e.preventDefault();
-                                        setEditingField(null);
-                                        setInlineSaveFeedback(null);
-                                      }
-                                    }}
-                                    className="px-3"
-                                  />
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => beginInlineEdit("title")}
-                                    onKeyDown={(e) => {
-                                      if (!canEditDetailTitle) return;
-                                      if (e.key === "Enter" || e.key === " ") {
-                                        e.preventDefault();
-                                        beginInlineEdit("title");
-                                      }
-                                    }}
-                                    disabled={!canEditDetailTitle}
-                                    className={`group flex min-h-[44px] w-full items-center rounded-xl border bg-[#020616] px-3 py-0 text-left text-sm font-normal leading-5 text-white transition ${canEditDetailTitle ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
-                                  >
-                                    {shouldAwaitQuantumTitle ? (
-                                      <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
-                                        <QuantOrbLoader />
-                                        <span>{QUANTUM_TITLE_AWAITING_TEXT}</span>
+                            ) : null}
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <button
+                              type="button"
+                              onClick={() => toggleMetadataSection("description")}
+                              className="flex min-h-[20px] w-full items-center justify-between gap-3 text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
+                              aria-expanded={metadataSectionState.description}
+                            >
+                              <span>Final Description</span>
+                              <ChevronIcon open={metadataSectionState.description} className="h-4 w-4 text-slate-500" />
+                            </button>
+                            {metadataSectionState.description ? (
+                              <div className="space-y-2">
+                                <div className="rounded-xl border border-slate-700 bg-[#020616] px-3 py-3 text-sm font-normal leading-6 text-white">
+                                  <div className="flex min-h-full">
+                                    {editingField === "description" ? (
+                                      <div className="flex w-full flex-col gap-3">
+                                        <textarea
+                                          autoFocus
+                                          value={editableDescriptionDraft}
+                                          onFocus={(e) => autosizeTextarea(e.currentTarget)}
+                                          onChange={(e) => {
+                                            setEditableDescriptionDraft(e.target.value);
+                                            autosizeTextarea(e.currentTarget);
+                                          }}
+                                          maxLength={LISTING_LIMITS.descriptionMax}
+                                          onBlur={() => { void commitInlineEdit("description", editableDescriptionDraft); }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter" && !e.shiftKey) {
+                                              e.preventDefault();
+                                              e.currentTarget.blur();
+                                            }
+                                            if (e.key === "Escape") {
+                                              e.preventDefault();
+                                              setEditingField(null);
+                                              setInlineSaveFeedback(null);
+                                            }
+                                          }}
+                                          className="min-h-[112px] w-full resize-none overflow-hidden rounded-xl border border-slate-600 bg-[#020616] px-3 py-2 text-left text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30"
+                                        />
+                                        {detailTemplateSpecBlock ? (
+                                          <>
+                                            <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
+                                            <div className="max-h-[120px] w-full overflow-y-auto pr-2 whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
+                                              {detailTemplateSpecBlock}
+                                            </div>
+                                          </>
+                                        ) : null}
                                       </div>
                                     ) : (
-                                      <div className="flex w-full min-w-0 items-center justify-between gap-3">
-                                        <span className="min-w-0 flex-1 truncate">
-                                          {detailTitle || <span className="text-slate-400">Click to add a final title.</span>}
-                                        </span>
-                                        {canEditDetailTitle ? (
-                                          <span className="inline-flex items-center gap-1 text-xs text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                                            <PencilIcon className="h-3.5 w-3.5" />
-                                            Edit
-                                          </span>
+                                      <div className="flex w-full flex-col gap-3">
+                                        <button
+                                          type="button"
+                                          onClick={() => beginInlineEdit("description")}
+                                          onKeyDown={(e) => {
+                                            if (!canEditDetailDescription) return;
+                                            if (e.key === "Enter" || e.key === " ") {
+                                              e.preventDefault();
+                                              beginInlineEdit("description");
+                                            }
+                                          }}
+                                          disabled={!canEditDetailDescription}
+                                          className={`group flex min-h-[112px] w-full items-start rounded-xl border bg-[#020616] px-3 py-2 text-left text-sm font-normal leading-6 text-white transition ${canEditDetailDescription ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
+                                        >
+                                          {shouldAwaitQuantumDescription ? (
+                                            <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
+                                              <QuantOrbLoader />
+                                              <span>{QUANTUM_DESCRIPTION_AWAITING_TEXT}</span>
+                                            </div>
+                                          ) : (
+                                            <div className="flex w-full min-w-0 items-start justify-between gap-3">
+                                              <div className="min-w-0 flex-1 whitespace-pre-wrap text-left">
+                                                {detailBuyerDescription || (
+                                                  <span className="text-slate-400">Click to add buyer-facing description copy.</span>
+                                                )}
+                                              </div>
+                                              {canEditDetailDescription ? (
+                                                <span className="inline-flex items-center gap-1 text-xs text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                                                  <PencilIcon className="h-3.5 w-3.5" />
+                                                  Edit
+                                                </span>
+                                              ) : null}
+                                            </div>
+                                          )}
+                                        </button>
+                                        {detailTemplateSpecBlock ? (
+                                          <>
+                                            <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
+                                            <div className="max-h-[120px] w-full overflow-y-auto pr-2 whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
+                                              {detailTemplateSpecBlock}
+                                            </div>
+                                          </>
                                         ) : null}
                                       </div>
                                     )}
-                                  </button>
-                                )}
-                              </div>
-                              {titleFeedback ? (
-                                <p className={`text-xs ${titleFeedback.tone === "error" ? "text-[#FF8AA5]" : titleFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-400"}`}>
-                                  {titleFeedback.message}
-                                </p>
-                              ) : canEditDetailTitle || canRerollSelectedImage ? (
-                                <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-slate-500">
-                                  <p>{(editingField === "title" ? editableTitleDraft : detailTitle || "").trim().length}/{LISTING_LIMITS.titleMax}</p>
+                                  </div>
                                 </div>
-                              ) : null}
-                            </div>
-                          </Field>
-
-                          <Field
-                            label={(
-                              <div className="flex min-w-0 items-center justify-between gap-3">
-                                <div className="flex min-w-0 items-center gap-2">
-                                  <span>Final Description</span>
-                                  {(canEditDetailDescription || canRerollSelectedImage) ? (
-                                    <span className="truncate text-[11px] font-normal tracking-normal text-slate-500">
-                                      Click to edit • Press Enter to save • Re-roll for AI assist
-                                    </span>
-                                  ) : null}
-                                </div>
-                                {canRerollSelectedImage ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => { void rerollSelectedImageField("description"); }}
-                                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
-                                    aria-label="Re-roll description with Quantum AI"
-                                    title="Re-Roll description"
-                                  >
-                                    <ReRollIcon className="h-3.5 w-3.5" />
-                                  </button>
+                                {descriptionFeedback ? (
+                                  <p className={`text-xs ${descriptionFeedback.tone === "error" ? "text-[#FF8AA5]" : descriptionFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-400"}`}>
+                                    {descriptionFeedback.message}
+                                  </p>
                                 ) : null}
-                              </div>
-                            )}
-                          >
-                            <div className="space-y-2">
-                              <div className="rounded-xl border border-slate-700 bg-[#020616] px-3 py-3 text-sm font-normal leading-6 text-white">
-                                <div className="flex min-h-full">
-                                  {editingField === "description" ? (
-                                    <div className="flex w-full flex-col gap-3">
-                                      <textarea
-                                        autoFocus
-                                        value={editableDescriptionDraft}
-                                        onFocus={(e) => autosizeTextarea(e.currentTarget)}
-                                        onChange={(e) => {
-                                          setEditableDescriptionDraft(e.target.value);
-                                          autosizeTextarea(e.currentTarget);
-                                        }}
-                                        maxLength={LISTING_LIMITS.descriptionMax}
-                                        onBlur={() => { void commitInlineEdit("description", editableDescriptionDraft); }}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter" && !e.shiftKey) {
-                                            e.preventDefault();
-                                            e.currentTarget.blur();
-                                          }
-                                          if (e.key === "Escape") {
-                                            e.preventDefault();
-                                            setEditingField(null);
-                                            setInlineSaveFeedback(null);
-                                          }
-                                        }}
-                                        className="min-h-[112px] w-full resize-none overflow-hidden rounded-xl border border-slate-600 bg-[#020616] px-3 py-2 text-left text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30"
-                                      />
-                                      {detailTemplateSpecBlock ? (
-                                        <>
-                                          <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
-                                          <div className="max-h-[120px] w-full overflow-y-auto pr-2 whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
-                                            {detailTemplateSpecBlock}
-                                          </div>
-                                        </>
-                                      ) : null}
-                                    </div>
-                                  ) : (
-                                    <div className="flex w-full flex-col gap-3">
+                                {canEditDetailDescription || canRerollSelectedImage ? (
+                                  <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-slate-500">
+                                    <p>{(editingField === "description" ? editableDescriptionDraft : detailBuyerDescription || "").trim().length}/{LISTING_LIMITS.descriptionMax}</p>
+                                    {canRerollSelectedImage ? (
                                       <button
                                         type="button"
-                                        onClick={() => beginInlineEdit("description")}
-                                        onKeyDown={(e) => {
-                                          if (!canEditDetailDescription) return;
-                                          if (e.key === "Enter" || e.key === " ") {
-                                            e.preventDefault();
-                                            beginInlineEdit("description");
-                                          }
-                                        }}
-                                        disabled={!canEditDetailDescription}
-                                        className={`group flex min-h-[112px] w-full items-start rounded-xl border bg-[#020616] px-3 py-2 text-left text-sm font-normal leading-6 text-white transition ${canEditDetailDescription ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
+                                        onClick={() => { void rerollSelectedImageField("description"); }}
+                                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
+                                        aria-label="Re-roll description with Quantum AI"
+                                        title="Re-Roll description"
                                       >
-                                        {shouldAwaitQuantumDescription ? (
-                                          <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
-                                            <QuantOrbLoader />
-                                            <span>{QUANTUM_DESCRIPTION_AWAITING_TEXT}</span>
-                                          </div>
-                                        ) : (
-                                          <div className="flex w-full min-w-0 items-start justify-between gap-3">
-                                            <div className="min-w-0 flex-1 whitespace-pre-wrap text-left">
-                                              {detailBuyerDescription || (
-                                                <span className="text-slate-400">Click to add buyer-facing description copy.</span>
-                                              )}
-                                            </div>
-                                            {canEditDetailDescription ? (
-                                              <span className="inline-flex items-center gap-1 text-xs text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                                                <PencilIcon className="h-3.5 w-3.5" />
-                                                Edit
-                                              </span>
-                                            ) : null}
-                                          </div>
-                                        )}
+                                        <ReRollIcon className="h-3.5 w-3.5" />
                                       </button>
-                                      {detailTemplateSpecBlock ? (
-                                        <>
-                                          <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
-                                          <div className="max-h-[120px] w-full overflow-y-auto pr-2 whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
-                                            {detailTemplateSpecBlock}
-                                          </div>
-                                        </>
-                                      ) : null}
-                                    </div>
-                                  )}
-                                </div>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                                {aiAssistStatus && selectedImage ? (
+                                  <p className={`text-xs ${canManualRescueSelectedImage ? "text-slate-400" : "text-slate-500"}`}>
+                                    {aiAssistStatus}
+                                  </p>
+                                ) : null}
                               </div>
-                              {descriptionFeedback ? (
-                                <p className={`text-xs ${descriptionFeedback.tone === "error" ? "text-[#FF8AA5]" : descriptionFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-400"}`}>
-                                  {descriptionFeedback.message}
-                                </p>
-                              ) : canEditDetailDescription || canRerollSelectedImage ? (
-                                <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-slate-500">
-                                  <p>{(editingField === "description" ? editableDescriptionDraft : detailBuyerDescription || "").trim().length}/{LISTING_LIMITS.descriptionMax}</p>
-                                </div>
-                              ) : null}
-                              {aiAssistStatus && selectedImage ? (
-                                <p className={`text-xs ${canManualRescueSelectedImage ? "text-slate-400" : "text-slate-500"}`}>
-                                  {aiAssistStatus}
-                                </p>
-                              ) : null}
-                            </div>
-                          </Field>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                       <div className="pt-0.5">
-                        <div className="flex flex-wrap items-center justify-center gap-1.5">
-                          <div className="flex min-h-[34px] items-center justify-center rounded-xl border border-slate-800 bg-[#020616] px-2.5 py-1.5 text-center text-sm">
-                            <span className="font-semibold text-[#7F22FE]">Quantum</span>
-                            <span className="ml-1 font-semibold text-white">AI</span>
-                            <span className="ml-1 font-semibold text-[#00BC7D]">Tags</span>
-                          </div>
-                          {isDetailTagsLoading ? (
-                            Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
-                              <div
-                                key={`loading-tag-${index}`}
-                                className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-300"
-                              >
-                                <QuantOrbLoader />
-                              </div>
-                            ))
-                          ) : detailTags.length > 0 ? (
-                            detailTags.map((tag, index) => (
-                              <div
-                                key={`${selectedImage?.id || productId}-tag-${index}`}
-                                title={tag}
-                                className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-white"
-                              >
-                                <span className="truncate">{tag}</span>
-                              </div>
-                            ))
-                          ) : (
-                            <div className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-400">
-                              Tags will appear after Quantum AI processing completes.
+                        <div className="space-y-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleMetadataSection("tags")}
+                            className="flex w-full items-center justify-between gap-3 text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
+                            aria-expanded={metadataSectionState.tags}
+                          >
+                            <span className="inline-flex items-center text-sm">
+                              <span className="font-semibold text-[#7F22FE]">Quantum</span>
+                              <span className="ml-1 font-semibold text-white">AI</span>
+                              <span className="ml-1 font-semibold text-[#00BC7D]">Tags</span>
+                            </span>
+                            <ChevronIcon open={metadataSectionState.tags} className="h-4 w-4 text-slate-500" />
+                          </button>
+                          {metadataSectionState.tags ? (
+                            <div className="flex flex-wrap items-center justify-center gap-1.5">
+                              {isDetailTagsLoading ? (
+                                Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
+                                  <div
+                                    key={`loading-tag-${index}`}
+                                    className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-300"
+                                  >
+                                    <QuantOrbLoader />
+                                  </div>
+                                ))
+                              ) : detailTags.length > 0 ? (
+                                detailTags.map((tag, index) => (
+                                  <div
+                                    key={`${selectedImage?.id || productId}-tag-${index}`}
+                                    title={tag}
+                                    className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-white"
+                                  >
+                                    <span className="truncate">{tag}</span>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-400">
+                                  Tags will appear after Quantum AI processing completes.
+                                </div>
+                              )}
                             </div>
-                          )}
+                          ) : null}
                         </div>
                       </div>
                     </div>
