@@ -1634,7 +1634,7 @@ type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
 function Input({ className = "", ...props }: InputProps) {
   return (
     <input
-      className={`h-11 w-full rounded-xl border border-slate-700 bg-[#020616] px-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500 ${className}`}
+      className={`h-11 w-full min-w-0 rounded-xl border border-slate-700 bg-[#020616] px-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500 ${className}`}
       {...props}
     />
   );
@@ -1644,9 +1644,9 @@ type SelectProps = React.SelectHTMLAttributes<HTMLSelectElement>;
 
 function Select({ className = "", children, ...props }: SelectProps) {
   return (
-    <div className="relative w-full">
+    <div className="relative min-w-0 w-full">
       <select
-        className={`h-11 w-full appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 pr-9 text-sm text-white outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500 ${className}`}
+        className={`h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 pr-9 text-sm text-white outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500 ${className}`}
         {...props}
       >
         {children}
@@ -2061,6 +2061,9 @@ export default function MerchQuantumApp() {
       : "Select active listings to load into Bulk Edit Mode.";
   const workspaceModeLabel = isCreateMode ? "Create" : isBulkEditMode ? "Bulk Edit" : "";
   const routeSummaryLabel = [selectedProvider?.label, selectedShop?.title, workspaceModeLabel].filter(Boolean).join(" • ");
+  const routeSummaryProviderLabel = selectedProvider?.label || "";
+  const routeSummaryShopLabel = selectedShop?.title || "";
+  const routeSummaryModeLabel = workspaceModeLabel || "";
   const isRoutingGridCollapsed = !!workspaceMode && !isRoutingGridExpanded;
   const guidanceStep = !connected
     ? "connect"
@@ -3776,7 +3779,7 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-x-clip bg-[#000000] px-6 pb-6 pt-3 text-white transition-colors md:px-8 md:pb-8 md:pt-4">
+    <div className="relative min-h-screen max-w-full overflow-x-hidden bg-[#000000] px-6 pb-6 pt-3 text-white transition-colors md:px-8 md:pb-8 md:pt-4">
       {isBootOverlayMounted ? (
         <div
           onClick={dismissBootOverlay}
@@ -3799,7 +3802,7 @@ export default function MerchQuantumApp() {
       ) : null}
 
       <div className="mx-auto max-w-6xl space-y-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex w-full min-w-0 items-center justify-between gap-3 overflow-hidden">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="text-3xl font-semibold tracking-tight text-[#7F22FE]">Merch</span>
             <span className="text-3xl font-semibold tracking-tight text-white">Quantum</span>
@@ -3808,10 +3811,17 @@ export default function MerchQuantumApp() {
           {workspaceMode ? (
             <button
               type="button"
+              aria-label={routeSummaryLabel}
               onClick={() => setIsRoutingGridExpanded((current) => !current)}
-              className="inline-flex max-w-full items-center gap-2 self-start rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-200 transition hover:border-[#7F22FE]/35 hover:text-white sm:-translate-y-1"
+              className="inline-flex min-w-0 max-w-[58vw] shrink-0 items-center gap-1.5 overflow-hidden rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-200 transition hover:border-[#7F22FE]/35 hover:text-white sm:max-w-[50vw] md:max-w-md"
             >
-              <span className="max-w-[10rem] truncate sm:max-w-[14rem] lg:max-w-[18rem]">{routeSummaryLabel}</span>
+              {routeSummaryProviderLabel || routeSummaryShopLabel ? (
+                <span className="min-w-0 flex-1 truncate">
+                  {[routeSummaryProviderLabel, routeSummaryShopLabel].filter(Boolean).join(" • ")}
+                </span>
+              ) : null}
+              {routeSummaryModeLabel ? <span className="shrink-0 text-slate-500">•</span> : null}
+              {routeSummaryModeLabel ? <span className="shrink-0">{routeSummaryModeLabel}</span> : null}
               <ChevronIcon open={isRoutingGridExpanded} className="h-3.5 w-3.5 text-slate-400" />
             </button>
           ) : null}
@@ -3829,7 +3839,7 @@ export default function MerchQuantumApp() {
           />
           <div className="flex w-full flex-col gap-4">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-center">
-              <div className={`${attentionTarget === "provider" ? "rounded-2xl ring-1 ring-[#7F22FE]/35" : ""}`}>
+              <div className={`min-w-0 ${attentionTarget === "provider" ? "rounded-2xl ring-1 ring-[#7F22FE]/35" : ""}`}>
                 <Select
                   value={provider}
                   onChange={(e) => {
@@ -3854,28 +3864,30 @@ export default function MerchQuantumApp() {
                 onMouseEnter={nudgeProviderSelectionFromTokenArea}
                 onFocusCapture={nudgeProviderSelectionFromTokenArea}
                 onPointerDownCapture={nudgeProviderSelectionFromTokenArea}
-                className={`${attentionTarget === "token" ? "rounded-2xl ring-1 ring-[#7F22FE]/35" : ""}`}
+                className={`min-w-0 ${attentionTarget === "token" ? "rounded-2xl ring-1 ring-[#7F22FE]/35" : ""}`}
               >
                 <div className="flex w-full min-w-0 flex-row flex-nowrap items-center gap-2">
-                  <Input
-                    type={connected ? "text" : "password"}
-                    value={connected ? maskToken(token) : token}
-                    disabled={!provider}
-                    readOnly={connected}
-                    placeholder="API unlocks shops"
-                    onChange={(e) => setToken(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && canSubmitProviderConnectionWithToken(e.currentTarget.value)) {
-                        e.preventDefault();
-                        void connectProvider(e.currentTarget.value);
-                      }
-                    }}
-                    className="min-w-0 flex-1 disabled:cursor-not-allowed"
-                  />
-                  <span className="pointer-events-none relative hidden h-7 w-7 shrink-0 sm:inline-flex">
-                    <span className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(255,255,255,0.95),rgba(177,123,255,0.72)_20%,rgba(127,34,254,0.3)_55%,transparent_78%)] blur-[1px]" />
-                    <span className="absolute inset-[4px] rounded-full border border-[#7F22FE]/45 animate-pulse" />
-                  </span>
+                  <div className="relative min-w-0 flex-1">
+                    <Input
+                      type={connected ? "text" : "password"}
+                      value={connected ? maskToken(token) : token}
+                      disabled={!provider}
+                      readOnly={connected}
+                      placeholder="API unlocks shops"
+                      onChange={(e) => setToken(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && canSubmitProviderConnectionWithToken(e.currentTarget.value)) {
+                          e.preventDefault();
+                          void connectProvider(e.currentTarget.value);
+                        }
+                      }}
+                      className="min-w-0 flex-1 truncate pr-11 disabled:cursor-not-allowed"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 hidden h-7 w-7 shrink-0 -translate-y-1/2 sm:inline-flex">
+                      <span className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(255,255,255,0.95),rgba(177,123,255,0.72)_20%,rgba(127,34,254,0.3)_55%,transparent_78%)] blur-[1px]" />
+                      <span className="absolute inset-[4px] rounded-full border border-[#7F22FE]/45 animate-pulse" />
+                    </span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => { void connectProvider(); }}
@@ -3898,7 +3910,7 @@ export default function MerchQuantumApp() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-center">
-              <div className={attentionTarget === "shop" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}>
+              <div className={`min-w-0 ${attentionTarget === "shop" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}>
                 <Select
                   value={shopId}
                   className={shopId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
@@ -3940,7 +3952,7 @@ export default function MerchQuantumApp() {
                 </Select>
               </div>
 
-              <div className={attentionTarget === "mode" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}>
+              <div className={`min-w-0 ${attentionTarget === "mode" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}>
                 <Select
                   value={workspaceMode}
                   disabled={!connected || !shopId}
