@@ -3697,7 +3697,7 @@ export default function MerchQuantumApp() {
         </div>
 
         <Box
-          className={`relative overflow-hidden border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${guidanceStep === "connect" ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""}`}
+          className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${guidanceStep === "connect" ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""}`}
           headerClassName="mb-4"
           title={
             <div className="flex items-end justify-between gap-3">
@@ -3863,7 +3863,7 @@ export default function MerchQuantumApp() {
                 </button>
 
                 {isTemplatePickerOpen ? (
-                  <div className="absolute left-0 right-0 top-[calc(100%+0.55rem)] z-30 rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)]">
+                  <div className="absolute left-0 right-0 top-[calc(100%+0.55rem)] z-[100] rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)]">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
                         {pendingTemplateModeLabel}
