@@ -426,6 +426,12 @@ function maskToken(value: string) {
   return `••••••••••${visible}`;
 }
 
+function maskTokenCompact(value: string) {
+  const s = value.trim();
+  if (!s) return "";
+  return `••••${s.slice(-4)}`;
+}
+
 const PROTECTED_TITLE_SUFFIXES = ["Tank Top", "T-Shirt", "Sweatshirt", "Hoodie", "Shirt", "Tee"] as const;
 
 function getProtectedTitleSuffix(value: string) {
@@ -1833,6 +1839,8 @@ function getResolvedItemStatus(image: Img): ItemStatus {
 export default function MerchQuantumApp() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const templatePickerRef = useRef<HTMLDivElement | null>(null);
+  const shopPickerRef = useRef<HTMLDivElement | null>(null);
+  const modePickerRef = useRef<HTMLDivElement | null>(null);
   const previousPreviewUrlsRef = useRef<string[]>([]);
   const aiLoopBusyRef = useRef<symbol | null>(null);
   const activeTemplateKeyRef = useRef("");
@@ -1858,6 +1866,9 @@ export default function MerchQuantumApp() {
   const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
   const [pendingTemplateSelectionIds, setPendingTemplateSelectionIds] = useState<string[]>([]);
   const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
+  const [isShopPickerOpen, setIsShopPickerOpen] = useState(false);
+  const [isModePickerOpen, setIsModePickerOpen] = useState(false);
+  const [isDisconnectArmed, setIsDisconnectArmed] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("");
   const [isRoutingGridExpanded, setIsRoutingGridExpanded] = useState(true);
   const [isImportingListings, setIsImportingListings] = useState(false);
@@ -2060,10 +2071,21 @@ export default function MerchQuantumApp() {
       ? `${pendingTemplateSelectionIds.length} listing${pendingTemplateSelectionIds.length === 1 ? "" : "s"} will load into Bulk Edit Mode.`
       : "Select active listings to load into Bulk Edit Mode.";
   const workspaceModeLabel = isCreateMode ? "Create" : isBulkEditMode ? "Bulk Edit" : "";
+  const workspaceModePickerLabel = isCreateMode ? "Create new" : isBulkEditMode ? "Edit old" : "Mode";
   const routeSummaryLabel = [selectedProvider?.label, selectedShop?.title, workspaceModeLabel].filter(Boolean).join(" • ");
   const routeSummaryProviderLabel = selectedProvider?.label || "";
   const routeSummaryShopLabel = selectedShop?.title || "";
   const routeSummaryModeLabel = workspaceModeLabel || "";
+  const routingGuidanceTarget =
+    !provider
+      ? "provider"
+      : !connected
+        ? "token"
+        : !shopId
+          ? "shop"
+          : !workspaceMode
+            ? "mode"
+            : null;
   const isRoutingGridCollapsed = !!workspaceMode && !isRoutingGridExpanded;
   const guidanceStep = !connected
     ? "connect"
@@ -2126,6 +2148,12 @@ export default function MerchQuantumApp() {
     if (!provider) {
       triggerAttentionCue("provider");
     }
+  }
+
+  function getRoutingFieldGlowClass(target: "provider" | "token" | "shop" | "mode") {
+    return attentionTarget === target || routingGuidanceTarget === target
+      ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_18px_45px_-28px_rgba(127,34,254,0.6)] animate-pulse"
+      : "";
   }
 
   function clearInlineFeedbackTimer() {
@@ -2856,6 +2884,36 @@ export default function MerchQuantumApp() {
   }, [isTemplatePickerOpen, pendingTemplateSelectionIds, selectedImportIds]);
 
   useEffect(() => {
+    if (!isShopPickerOpen && !isModePickerOpen) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (isShopPickerOpen && !shopPickerRef.current?.contains(target)) {
+        setIsShopPickerOpen(false);
+      }
+      if (isModePickerOpen && !modePickerRef.current?.contains(target)) {
+        setIsModePickerOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsShopPickerOpen(false);
+        setIsModePickerOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isModePickerOpen, isShopPickerOpen]);
+
+  useEffect(() => {
     if (!shopId) {
       setApiProducts([]);
       setProductId("");
@@ -2868,6 +2926,8 @@ export default function MerchQuantumApp() {
       setSelectedImportIds([]);
       setPendingTemplateSelectionIds([]);
       setIsTemplatePickerOpen(false);
+      setIsShopPickerOpen(false);
+      setIsModePickerOpen(false);
       setImportStatus("");
       setEditingField(null);
       setInlineSaveFeedback(null);
@@ -2960,6 +3020,7 @@ export default function MerchQuantumApp() {
     setConnected(false);
     setLoadingApi(false);
     setPulseConnected(false);
+    setIsDisconnectArmed(false);
     if (clearStatus) setApiStatus("");
     setApiShops([]);
     setApiProducts([]);
@@ -2972,6 +3033,8 @@ export default function MerchQuantumApp() {
     setImportedListingDescription("");
     setWorkspaceMode("");
     setIsRoutingGridExpanded(true);
+    setIsShopPickerOpen(false);
+    setIsModePickerOpen(false);
     setManualPrebufferOverride(false);
     setBatchResults([]);
     setRunStatus("");
@@ -3009,6 +3072,7 @@ export default function MerchQuantumApp() {
   function handleWorkspaceModeChange(nextMode: WorkspaceMode) {
     setWorkspaceMode(nextMode);
     setIsRoutingGridExpanded(!nextMode);
+    setIsModePickerOpen(false);
     setSearch("");
     setProductId("");
     setTemplate(null);
@@ -3025,6 +3089,27 @@ export default function MerchQuantumApp() {
     if (nextMode === "edit") {
       setImportStatus("Choose active provider listings to load into Bulk Edit Mode.");
     }
+  }
+
+  function handleShopSelection(nextShopId: string) {
+    setShopId(nextShopId);
+    setApiProducts([]);
+    setSearch("");
+    setWorkspaceMode("");
+    setIsRoutingGridExpanded(true);
+    setProductId("");
+    setTemplate(null);
+    setTemplateDescription("");
+    setImportedListingTitle("");
+    setImportedListingDescription("");
+    setSelectedImportIds([]);
+    setPendingTemplateSelectionIds([]);
+    setIsTemplatePickerOpen(false);
+    setIsShopPickerOpen(false);
+    setIsModePickerOpen(false);
+    clearPreviewWorkspace();
+    setEditingField(null);
+    setInlineSaveFeedback(null);
   }
 
   function openArtworkPicker() {
@@ -3145,6 +3230,7 @@ export default function MerchQuantumApp() {
       setToken(submittedToken);
       setApiShops(shopsFromApi);
       setConnected(true);
+      setIsDisconnectArmed(false);
       setShopId("");
       setWorkspaceMode("");
       setIsRoutingGridExpanded(true);
@@ -3173,6 +3259,7 @@ export default function MerchQuantumApp() {
     } catch {
       // local reset only
     } finally {
+      setIsDisconnectArmed(false);
       setToken("");
       resetProviderState(true);
       setApiStatus("");
@@ -3801,12 +3888,16 @@ export default function MerchQuantumApp() {
         </div>
       ) : null}
 
-      <div className="mx-auto max-w-6xl space-y-5">
-        <div className="flex w-full min-w-0 items-center justify-between gap-3 overflow-hidden">
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span className="text-3xl font-semibold tracking-tight text-[#7F22FE]">Merch</span>
-            <span className="text-3xl font-semibold tracking-tight text-white">Quantum</span>
-            <span className="text-sm font-medium tracking-[0.18em] text-slate-400 sm:text-xs">AI Auto Listings</span>
+      <div className="mx-auto max-w-6xl space-y-3">
+        <div className="flex w-full min-w-0 items-start justify-between gap-2 overflow-hidden">
+          <div className="flex min-w-0 flex-col justify-center">
+            <div className="flex min-w-0 items-baseline gap-1.5">
+              <span className="truncate text-[1.7rem] font-semibold tracking-tight text-[#7F22FE] sm:text-[1.9rem]">Merch</span>
+              <span className="truncate text-[1.7rem] font-semibold tracking-tight text-white sm:text-[1.9rem]">Quantum</span>
+            </div>
+            <span className="-mt-0.5 pl-px text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+              AI Auto Listings
+            </span>
           </div>
           {workspaceMode ? (
             <button
@@ -3829,149 +3920,214 @@ export default function MerchQuantumApp() {
 
         <div className={`overflow-hidden transition-all duration-500 ${isRoutingGridCollapsed ? "pointer-events-none max-h-0 -translate-y-3 opacity-0" : "pointer-events-auto max-h-[32rem] translate-y-0 opacity-100"}`}>
           <Box
-            className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${guidanceStep === "connect" ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""}`}
+            className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${routingGuidanceTarget ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""}`}
           >
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" />
-          <div className={`pointer-events-none absolute -right-10 top-0 h-36 w-36 blur-3xl transition-all duration-700 sm:-right-16 sm:h-40 sm:w-40 md:-right-20 md:h-48 md:w-48 ${connected ? "bg-[#00BC7D]/12" : "bg-[#7F22FE]/12"} ${guidanceStep === "connect" ? "animate-pulse" : ""}`} />
+          <div className={`pointer-events-none absolute -right-10 top-0 h-36 w-36 blur-3xl transition-all duration-700 sm:-right-16 sm:h-40 sm:w-40 md:-right-20 md:h-48 md:w-48 ${connected ? "bg-[#00BC7D]/12" : "bg-[#7F22FE]/12"} ${routingGuidanceTarget ? "animate-pulse" : ""}`} />
           <div className="pointer-events-none absolute -left-6 bottom-0 h-24 w-24 rounded-full bg-white/5 blur-3xl sm:-left-8 sm:h-28 sm:w-28 md:-left-12 md:h-32 md:w-32" />
           <div
-            className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-[#00BC7D]/90 to-transparent" : "bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent"} ${pulseConnected || guidanceStep === "connect" ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
+            className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-[#00BC7D]/90 to-transparent" : "bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent"} ${pulseConnected || routingGuidanceTarget ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
           />
-          <div className="flex w-full flex-col gap-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-center">
-              <div className={`min-w-0 ${attentionTarget === "provider" ? "rounded-2xl ring-1 ring-[#7F22FE]/35" : ""}`}>
-                <Select
-                  value={provider}
-                  onChange={(e) => {
-                    const nextProvider = e.target.value as ProviderChoiceId | "";
-                    setProvider(nextProvider);
-                    setToken("");
-                    resetProviderState(false);
-                    const nextMeta = PROVIDERS.find((entry) => entry.id === nextProvider);
-                    setApiStatus(nextMeta && !nextMeta.isLive ? `${nextMeta.label} is coming soon.` : "");
+          <div className="grid w-full grid-cols-2 gap-2">
+            <div className={`min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
+              <Select
+                value={provider}
+                className={provider ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
+                onChange={(e) => {
+                  const nextProvider = e.target.value as ProviderChoiceId | "";
+                  setProvider(nextProvider);
+                  setToken("");
+                  setIsDisconnectArmed(false);
+                  setIsShopPickerOpen(false);
+                  setIsModePickerOpen(false);
+                  resetProviderState(false);
+                  const nextMeta = PROVIDERS.find((entry) => entry.id === nextProvider);
+                  setApiStatus(nextMeta && !nextMeta.isLive ? `${nextMeta.label} is coming soon.` : "");
+                }}
+              >
+                <option value="">Choose Provider</option>
+                {PROVIDERS.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div
+              onMouseEnter={() => {
+                nudgeProviderSelectionFromTokenArea();
+                if (connected) setIsDisconnectArmed(true);
+              }}
+              onMouseLeave={() => setIsDisconnectArmed(false)}
+              onFocusCapture={() => {
+                nudgeProviderSelectionFromTokenArea();
+                if (connected) setIsDisconnectArmed(true);
+              }}
+              onBlurCapture={(event) => {
+                const relatedTarget = event.relatedTarget as Node | null;
+                if (!relatedTarget || !event.currentTarget.contains(relatedTarget)) {
+                  setIsDisconnectArmed(false);
+                }
+              }}
+              onPointerDownCapture={nudgeProviderSelectionFromTokenArea}
+              className={`min-w-0 ${getRoutingFieldGlowClass("token")}`}
+            >
+              <div className="relative flex min-w-0 items-center">
+                <Input
+                  type={connected ? "text" : "password"}
+                  value={connected ? maskTokenCompact(token) : token}
+                  disabled={!provider}
+                  readOnly={connected}
+                  placeholder="API Key"
+                  onChange={(e) => setToken(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && canSubmitProviderConnectionWithToken(e.currentTarget.value)) {
+                      e.preventDefault();
+                      void connectProvider(e.currentTarget.value);
+                    }
+                  }}
+                  className="min-w-0 pr-20 text-ellipsis disabled:cursor-not-allowed sm:pr-24"
+                />
+                <div
+                  className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center"
+                  onMouseEnter={() => {
+                    if (connected) setIsDisconnectArmed(true);
+                  }}
+                  onMouseLeave={() => setIsDisconnectArmed(false)}
+                  onFocusCapture={() => {
+                    if (connected) setIsDisconnectArmed(true);
+                  }}
+                  onBlurCapture={(event) => {
+                    const relatedTarget = event.relatedTarget as Node | null;
+                    if (!relatedTarget || !event.currentTarget.contains(relatedTarget)) {
+                      setIsDisconnectArmed(false);
+                    }
                   }}
                 >
-                  <option value="">Choose Provider</option>
-                  {PROVIDERS.map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                      {entry.label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-
-              <div
-                onMouseEnter={nudgeProviderSelectionFromTokenArea}
-                onFocusCapture={nudgeProviderSelectionFromTokenArea}
-                onPointerDownCapture={nudgeProviderSelectionFromTokenArea}
-                className={`min-w-0 ${attentionTarget === "token" ? "rounded-2xl ring-1 ring-[#7F22FE]/35" : ""}`}
-              >
-                <div className="flex w-full min-w-0 flex-row flex-nowrap items-center gap-2">
-                  <div className="relative min-w-0 flex-1">
-                    <Input
-                      type={connected ? "text" : "password"}
-                      value={connected ? maskToken(token) : token}
-                      disabled={!provider}
-                      readOnly={connected}
-                      placeholder="API unlocks shops"
-                      onChange={(e) => setToken(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && canSubmitProviderConnectionWithToken(e.currentTarget.value)) {
-                          e.preventDefault();
-                          void connectProvider(e.currentTarget.value);
-                        }
-                      }}
-                      className="min-w-0 flex-1 truncate pr-11 disabled:cursor-not-allowed"
-                    />
-                    <span className="pointer-events-none absolute right-3 top-1/2 hidden h-7 w-7 shrink-0 -translate-y-1/2 sm:inline-flex">
-                      <span className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(255,255,255,0.95),rgba(177,123,255,0.72)_20%,rgba(127,34,254,0.3)_55%,transparent_78%)] blur-[1px]" />
-                      <span className="absolute inset-[4px] rounded-full border border-[#7F22FE]/45 animate-pulse" />
+                  {loadingApi ? (
+                    <span className="inline-flex h-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-slate-300">
+                      <QuantOrbLoader />
                     </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => { void connectProvider(); }}
-                    disabled={!canSubmitProviderConnection}
-                    className={`min-h-[40px] shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition-colors sm:px-4 sm:text-sm ${connected ? "bg-[#00BC7D] text-white disabled:cursor-default" : "bg-[#7F22FE] text-white hover:bg-[#6d1ee0] disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"}`}
-                  >
-                    {loadingApi ? "Connecting..." : connected ? "Connected" : "Connect"}
-                  </button>
-                  {connected ? (
+                  ) : connected ? (
+                    isDisconnectArmed ? (
+                      <button
+                        type="button"
+                        onClick={() => { void disconnectProvider(); }}
+                        className="inline-flex h-8 items-center rounded-lg border border-[#FF2056]/40 bg-[#FF2056]/12 px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#FF8CA8] transition hover:bg-[#FF2056]/18"
+                      >
+                        Off
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        aria-label="Provider connected. Hover or click to disconnect."
+                        onClick={() => setIsDisconnectArmed(true)}
+                        className="relative inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#00BC7D]/35 bg-[#00BC7D]/10 transition hover:bg-[#00BC7D]/14"
+                      >
+                        <span className="absolute inset-[7px] rounded-full bg-[#00BC7D] shadow-[0_0_14px_rgba(0,188,125,0.95)]" />
+                        <span className="absolute inset-[3px] rounded-full border border-[#00BC7D]/55 animate-pulse" />
+                      </button>
+                    )
+                  ) : (
                     <button
                       type="button"
-                      onClick={() => { void disconnectProvider(); }}
-                      className="min-h-[40px] shrink-0 whitespace-nowrap rounded-lg px-2.5 py-2 text-xs font-medium text-slate-400 transition-colors hover:text-white sm:px-3 sm:text-sm"
+                      onClick={() => { void connectProvider(); }}
+                      disabled={!canSubmitProviderConnection}
+                      className="inline-flex h-8 items-center rounded-lg border border-white/10 bg-white/5 px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/80 disabled:text-slate-500"
                     >
-                      Disconnect
+                      Connect
                     </button>
-                  ) : null}
+                  )}
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-center">
-              <div className={`min-w-0 ${attentionTarget === "shop" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}>
-                <Select
-                  value={shopId}
-                  className={shopId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
-                  disabled={!availableShops.length}
-                  onChange={(e) => {
-                    const nextShopId = e.target.value;
-                    setShopId(nextShopId);
-                    setApiProducts([]);
-                    setSearch("");
-                    setWorkspaceMode("");
-                    setIsRoutingGridExpanded(true);
-                    setProductId("");
-                    setTemplate(null);
-                    setTemplateDescription("");
-                    setImportedListingTitle("");
-                    setImportedListingDescription("");
-                    setSelectedImportIds([]);
-                    setPendingTemplateSelectionIds([]);
-                    setIsTemplatePickerOpen(false);
-                    clearPreviewWorkspace();
-                    setEditingField(null);
-                    setInlineSaveFeedback(null);
-                  }}
-                >
-                  <option value="">
-                    {loadingApi
-                      ? "Loading shops..."
-                      : !connected
-                        ? "Locked until connection"
-                        : connected && isLiveProvider && availableShops.length === 0
-                          ? "No shops returned"
-                          : "Select Shop"}
-                  </option>
-                  {availableShops.map((shop) => (
-                    <option key={shop.id} value={shop.id}>
-                      {shop.title}
-                    </option>
-                  ))}
-                </Select>
-              </div>
+            <div
+              ref={shopPickerRef}
+              className={`relative min-w-0 ${getRoutingFieldGlowClass("shop")}`}
+            >
+              <button
+                type="button"
+                disabled={!connected || !availableShops.length}
+                onClick={() => {
+                  if (!connected || !availableShops.length) return;
+                  setIsModePickerOpen(false);
+                  setIsShopPickerOpen((current) => !current);
+                }}
+                className="flex h-11 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-3 text-left text-sm transition hover:border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500"
+              >
+                <span className={`min-w-0 flex-1 truncate ${shopId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}`}>
+                  {selectedShop?.title || "Select Shop"}
+                </span>
+                <ChevronIcon open={isShopPickerOpen} className="h-4 w-4 shrink-0 text-slate-400" />
+              </button>
+              {isShopPickerOpen && availableShops.length > 0 ? (
+                <div className="pointer-events-auto absolute left-0 right-0 top-[calc(100%+0.35rem)] z-[100] w-full rounded-2xl border border-slate-800 bg-[#020616] p-2 shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)]">
+                  <div className="max-h-56 overflow-auto pr-1">
+                    <div className="grid gap-1.5">
+                      {availableShops.map((shop) => (
+                        <button
+                          key={shop.id}
+                          type="button"
+                          onClick={() => handleShopSelection(shop.id)}
+                          className={`flex w-full min-w-0 items-center rounded-xl px-3 py-2 text-left text-sm transition ${
+                            shop.id === shopId
+                              ? "bg-[#7F22FE]/12 text-white"
+                              : "text-slate-200 hover:bg-white/5"
+                          }`}
+                        >
+                          <span className="min-w-0 flex-1 truncate">{shop.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
 
-              <div className={`min-w-0 ${attentionTarget === "mode" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}>
-                <Select
-                  value={workspaceMode}
-                  disabled={!connected || !shopId}
-                  className={workspaceMode ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
-                  onChange={(e) => {
-                    handleWorkspaceModeChange(e.target.value as WorkspaceMode);
-                  }}
-                >
-                  <option value="">
-                    {!connected
-                      ? "Locked until connection"
-                      : !shopId
-                        ? "Select Shop First"
-                        : "Workspace Mode"}
-                  </option>
-                  <option value="create">Create Listings</option>
-                  <option value="edit">Bulk Edit</option>
-                </Select>
-              </div>
+            <div
+              ref={modePickerRef}
+              className={`relative min-w-0 ${getRoutingFieldGlowClass("mode")}`}
+            >
+              <button
+                type="button"
+                disabled={!connected || !shopId}
+                onClick={() => {
+                  if (!connected || !shopId) return;
+                  setIsShopPickerOpen(false);
+                  setIsModePickerOpen((current) => !current);
+                }}
+                className="flex h-11 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-3 text-left text-sm transition hover:border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500"
+              >
+                <span className={`min-w-0 flex-1 truncate ${workspaceMode ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}`}>
+                  {workspaceModePickerLabel}
+                </span>
+                <ChevronIcon open={isModePickerOpen} className="h-4 w-4 shrink-0 text-slate-400" />
+              </button>
+              {isModePickerOpen && connected && shopId ? (
+                <div className="pointer-events-auto absolute left-0 right-0 top-[calc(100%+0.35rem)] z-[100] w-full rounded-2xl border border-slate-800 bg-[#020616] p-2 shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)]">
+                  <div className="grid gap-1.5">
+                    {([
+                      { value: "create", label: "Create new" },
+                      { value: "edit", label: "Edit old" },
+                    ] as const).map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => handleWorkspaceModeChange(option.value)}
+                        className={`flex w-full min-w-0 items-center rounded-xl px-3 py-2 text-left text-sm transition ${
+                          workspaceMode === option.value
+                            ? "bg-[#7F22FE]/12 text-white"
+                            : "text-slate-200 hover:bg-white/5"
+                        }`}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
 
