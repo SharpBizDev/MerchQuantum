@@ -3163,12 +3163,15 @@ export default function MerchQuantumApp() {
     }
   }
 
-  function togglePendingTemplateSelection(sourceId: string) {
-    setPendingTemplateSelectionIds((current) => (
-      current.includes(sourceId)
-        ? current.filter((entry) => entry !== sourceId)
-        : normalizeSelectionIds([...current, sourceId])
-    ));
+  function getNextTemplateSelections(sourceId: string) {
+    return pendingTemplateSelectionIds.includes(sourceId)
+      ? pendingTemplateSelectionIds.filter((entry) => entry !== sourceId)
+      : normalizeSelectionIds([...pendingTemplateSelectionIds, sourceId]);
+  }
+
+  async function commitTemplateSelectionFromMenu(sourceId: string) {
+    const nextSelections = getNextTemplateSelections(sourceId);
+    await commitTemplateSelections(nextSelections);
   }
 
   function openTemplatePicker() {
@@ -3863,7 +3866,7 @@ export default function MerchQuantumApp() {
                 </button>
 
                 {isTemplatePickerOpen ? (
-                  <div className="absolute left-0 right-0 top-[calc(100%+0.55rem)] z-[100] rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)]">
+                  <div className="pointer-events-auto absolute left-0 right-0 top-[calc(100%+0.55rem)] z-[100] rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)]">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
                         {pendingTemplateModeLabel}
@@ -3890,18 +3893,32 @@ export default function MerchQuantumApp() {
                             return (
                               <label
                                 key={`template-${product.id}`}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  void commitTemplateSelectionFromMenu(product.id);
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    void commitTemplateSelectionFromMenu(product.id);
+                                  }
+                                }}
+                                tabIndex={0}
                                 className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition ${
                                   isPendingSelection
                                     ? "border-[#7F22FE]/70 bg-[#7F22FE]/10"
                                     : alreadyImported
                                       ? "border-[#00BC7D]/45 bg-[#00BC7D]/[0.04]"
                                       : "border-slate-800 bg-[#010512] hover:border-slate-700"
-                                }`}
+                                } pointer-events-auto`}
                               >
                                 <input
                                   type="checkbox"
                                   checked={isPendingSelection}
-                                  onChange={() => togglePendingTemplateSelection(product.id)}
+                                  readOnly
+                                  tabIndex={-1}
                                   className="mt-1 h-4 w-4 rounded border-slate-600 bg-[#020616] text-[#7F22FE] focus:ring-[#7F22FE]/40"
                                 />
                                 <div className="min-w-0 flex-1">
