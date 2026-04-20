@@ -1839,7 +1839,6 @@ function getResolvedItemStatus(image: Img): ItemStatus {
 export default function MerchQuantumApp() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const templatePickerRef = useRef<HTMLDivElement | null>(null);
-  const modePickerRef = useRef<HTMLDivElement | null>(null);
   const previousPreviewUrlsRef = useRef<string[]>([]);
   const aiLoopBusyRef = useRef<symbol | null>(null);
   const activeTemplateKeyRef = useRef("");
@@ -1865,7 +1864,6 @@ export default function MerchQuantumApp() {
   const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
   const [pendingTemplateSelectionIds, setPendingTemplateSelectionIds] = useState<string[]>([]);
   const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
-  const [isModePickerOpen, setIsModePickerOpen] = useState(false);
   const [isDisconnectArmed, setIsDisconnectArmed] = useState(false);
   const [isTokenInputFocused, setIsTokenInputFocused] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("");
@@ -2889,32 +2887,6 @@ export default function MerchQuantumApp() {
   }, [isTemplatePickerOpen, pendingTemplateSelectionIds, selectedImportIds]);
 
   useEffect(() => {
-    if (!isModePickerOpen) return;
-
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node;
-      if (!modePickerRef.current?.contains(target)) {
-        setIsModePickerOpen(false);
-      }
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setIsModePickerOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isModePickerOpen]);
-
-  useEffect(() => {
     if (!shopId) {
       setApiProducts([]);
       setProductId("");
@@ -2927,7 +2899,6 @@ export default function MerchQuantumApp() {
       setSelectedImportIds([]);
       setPendingTemplateSelectionIds([]);
       setIsTemplatePickerOpen(false);
-      setIsModePickerOpen(false);
       setImportStatus("");
       setEditingField(null);
       setInlineSaveFeedback(null);
@@ -3034,7 +3005,6 @@ export default function MerchQuantumApp() {
     setImportedListingDescription("");
     setWorkspaceMode("");
     setIsRoutingGridExpanded(true);
-    setIsModePickerOpen(false);
     setManualPrebufferOverride(false);
     setBatchResults([]);
     setRunStatus("");
@@ -3072,7 +3042,6 @@ export default function MerchQuantumApp() {
   function handleWorkspaceModeChange(nextMode: WorkspaceMode) {
     setWorkspaceMode(nextMode);
     setIsRoutingGridExpanded(!nextMode);
-    setIsModePickerOpen(false);
     setSearch("");
     setProductId("");
     setTemplate(null);
@@ -3105,7 +3074,6 @@ export default function MerchQuantumApp() {
     setSelectedImportIds([]);
     setPendingTemplateSelectionIds([]);
     setIsTemplatePickerOpen(false);
-    setIsModePickerOpen(false);
     clearPreviewWorkspace();
     setEditingField(null);
     setInlineSaveFeedback(null);
@@ -3940,7 +3908,6 @@ export default function MerchQuantumApp() {
                   setToken("");
                   setIsDisconnectArmed(false);
                   setIsTokenInputFocused(false);
-                  setIsModePickerOpen(false);
                   resetProviderState(false);
                   const nextMeta = PROVIDERS.find((entry) => entry.id === nextProvider);
                   setApiStatus(nextMeta && !nextMeta.isLive ? `${nextMeta.label} is coming soon.` : "");
@@ -4082,47 +4049,19 @@ export default function MerchQuantumApp() {
               </Select>
             </div>
 
-            <div
-              ref={modePickerRef}
-              className={`relative min-w-0 ${getRoutingFieldGlowClass("mode")}`}
-            >
-              <button
-                type="button"
+            <div className={`relative min-w-0 ${getRoutingFieldGlowClass("mode")}`}>
+              <Select
+                value={workspaceMode}
                 disabled={!connected || !shopId}
-                onClick={() => {
-                  if (!connected || !shopId) return;
-                  setIsModePickerOpen((current) => !current);
+                className={workspaceMode ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
+                onChange={(event) => {
+                  handleWorkspaceModeChange(event.target.value as WorkspaceMode);
                 }}
-                className="flex h-11 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-3 text-left text-sm transition hover:border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500"
               >
-                <span className={`min-w-0 flex-1 truncate ${workspaceMode ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}`}>
-                  {workspaceModePickerLabel}
-                </span>
-                <ChevronIcon open={isModePickerOpen} className="h-4 w-4 shrink-0 text-slate-400" />
-              </button>
-              {isModePickerOpen && connected && shopId ? (
-                <div className="pointer-events-auto absolute left-0 right-0 top-[calc(100%+0.35rem)] z-[100] w-full rounded-2xl border border-slate-800 bg-[#020616] p-2 shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)]">
-                  <div className="grid gap-1.5">
-                    {([
-                      { value: "create", label: "Create new" },
-                      { value: "edit", label: "Edit old" },
-                    ] as const).map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => handleWorkspaceModeChange(option.value)}
-                        className={`flex w-full min-w-0 items-center rounded-xl px-3 py-2 text-left text-sm transition ${
-                          workspaceMode === option.value
-                            ? "bg-[#7F22FE]/12 text-white"
-                            : "text-slate-200 hover:bg-white/5"
-                        }`}
-                      >
-                        <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+                <option value="">{workspaceModePickerLabel}</option>
+                <option value="create">Create new</option>
+                <option value="edit">Edit old</option>
+              </Select>
             </div>
           </div>
 
