@@ -3776,7 +3776,7 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <div className="relative min-h-screen bg-[#000000] px-6 pb-6 pt-3 text-white transition-colors md:px-8 md:pb-8 md:pt-4">
+    <div className="relative min-h-screen overflow-x-clip bg-[#000000] px-6 pb-6 pt-3 text-white transition-colors md:px-8 md:pb-8 md:pt-4">
       {isBootOverlayMounted ? (
         <div
           onClick={dismissBootOverlay}
@@ -3799,8 +3799,8 @@ export default function MerchQuantumApp() {
       ) : null}
 
       <div className="mx-auto max-w-6xl space-y-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="text-3xl font-semibold tracking-tight text-[#7F22FE]">Merch</span>
             <span className="text-3xl font-semibold tracking-tight text-white">Quantum</span>
             <span className="text-sm font-medium tracking-[0.18em] text-slate-400 sm:text-xs">AI Auto Listings</span>
@@ -3809,9 +3809,9 @@ export default function MerchQuantumApp() {
             <button
               type="button"
               onClick={() => setIsRoutingGridExpanded((current) => !current)}
-              className="inline-flex -translate-y-1 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-200 transition hover:border-[#7F22FE]/35 hover:text-white"
+              className="inline-flex max-w-full items-center gap-2 self-start rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-200 transition hover:border-[#7F22FE]/35 hover:text-white sm:-translate-y-1"
             >
-              <span className="max-w-[18rem] truncate">{routeSummaryLabel}</span>
+              <span className="max-w-[10rem] truncate sm:max-w-[14rem] lg:max-w-[18rem]">{routeSummaryLabel}</span>
               <ChevronIcon open={isRoutingGridExpanded} className="h-3.5 w-3.5 text-slate-400" />
             </button>
           ) : null}
@@ -3822,8 +3822,8 @@ export default function MerchQuantumApp() {
             className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${guidanceStep === "connect" ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""}`}
           >
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" />
-          <div className={`pointer-events-none absolute -right-20 top-0 h-48 w-48 rounded-full blur-3xl transition-all duration-700 ${connected ? "bg-[#00BC7D]/12" : "bg-[#7F22FE]/12"} ${guidanceStep === "connect" ? "animate-pulse" : ""}`} />
-          <div className="pointer-events-none absolute -left-12 bottom-0 h-32 w-32 rounded-full bg-white/5 blur-3xl" />
+          <div className={`pointer-events-none absolute -right-10 top-0 h-36 w-36 blur-3xl transition-all duration-700 sm:-right-16 sm:h-40 sm:w-40 md:-right-20 md:h-48 md:w-48 ${connected ? "bg-[#00BC7D]/12" : "bg-[#7F22FE]/12"} ${guidanceStep === "connect" ? "animate-pulse" : ""}`} />
+          <div className="pointer-events-none absolute -left-6 bottom-0 h-24 w-24 rounded-full bg-white/5 blur-3xl sm:-left-8 sm:h-28 sm:w-28 md:-left-12 md:h-32 md:w-32" />
           <div
             className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-[#00BC7D]/90 to-transparent" : "bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent"} ${pulseConnected || guidanceStep === "connect" ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
           />
@@ -4148,16 +4148,23 @@ export default function MerchQuantumApp() {
               <>
                 <div className="mt-3">
                   <div className="space-y-3" onPointerDownCapture={() => nudgeWorkflow(true)}>
-                      <div className="grid items-stretch gap-3 lg:grid-cols-[296px_minmax(0,1fr)]">
-                        <div className="flex h-full flex-col gap-3">
+                      <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-[296px_minmax(0,1fr)]">
+                        <div className="flex min-w-0 h-full flex-col gap-3">
                           <div
                             className={`space-y-1.5 ${isCreateMode ? "cursor-pointer" : ""}`}
                             onClick={isCreateMode ? openArtworkPicker : undefined}
                           >
-                            <div className="flex min-h-[20px] items-center justify-between gap-3 text-sm font-medium leading-5 tracking-tight text-slate-200">
+                            <div className="flex min-h-[20px] flex-col items-start gap-1.5 text-sm font-medium leading-5 tracking-tight text-slate-200 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                               <span>{isCreateMode ? "Upload Artwork" : "Loaded Artwork"}</span>
-                              <span className="text-[11px] font-normal tracking-normal text-slate-500">
-                                {isCreateMode ? `Drop or click • Max ${CONNECTED_TOTAL_BATCH_FILES} items` : "Recovered from selected provider listings"}
+                              <span className="block max-w-full text-[11px] font-normal tracking-normal text-slate-500 sm:max-w-[15rem] sm:text-right">
+                                {isCreateMode ? (
+                                  `Drop or click • Max ${CONNECTED_TOTAL_BATCH_FILES} items`
+                                ) : (
+                                  <>
+                                    <span className="sm:hidden">Provider artwork rescue</span>
+                                    <span className="hidden sm:inline">Recovered from selected provider listings</span>
+                                  </>
+                                )}
                               </span>
                             </div>
                             <div
@@ -4341,7 +4348,7 @@ export default function MerchQuantumApp() {
                           ) : null}
                         </div>
 
-                        <div className="flex h-full flex-col space-y-3">
+                        <div className="flex min-w-0 h-full flex-col space-y-3">
                           <div className="space-y-1.5">
                             <button
                               type="button"
