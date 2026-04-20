@@ -215,8 +215,6 @@ const DISPLAY_DARK_BACKGROUND = "#000000";
 const DISPLAY_LIGHT_BACKGROUND = "#FFFFFF";
 const DISPLAY_NEUTRAL_BACKGROUND = "#020616";
 const ARTWORK_SAFE_ZONE_PCT = 0.08;
-const ARTWORK_SAFE_ZONE_LABEL = "Max 50 items. System will queue additional listings. (API Rate Limit Safety Enforced)";
-
 const STOP_WORDS = new Set([
   "the",
   "a",
@@ -1654,7 +1652,7 @@ type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
 function Input({ className = "", ...props }: InputProps) {
   return (
     <input
-      className={`h-11 w-full min-w-0 rounded-xl border border-slate-700 bg-[#020616] px-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500 ${className}`}
+      className={`h-11 w-full min-w-0 rounded-xl border border-slate-700 bg-[#020616] px-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500 disabled:opacity-60 ${className}`}
       {...props}
     />
   );
@@ -1664,9 +1662,9 @@ type SelectProps = React.SelectHTMLAttributes<HTMLSelectElement>;
 
 function Select({ className = "", children, ...props }: SelectProps) {
   return (
-    <div className={`group relative min-w-0 w-full ${props.disabled ? "cursor-not-allowed" : ""}`}>
+    <div className={`relative min-w-0 w-full ${props.disabled ? "cursor-not-allowed" : ""}`}>
       <select
-        className={`h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 pr-9 text-sm text-white outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500 ${className}`}
+        className={`h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 pr-9 text-sm text-white outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500 disabled:opacity-60 ${className}`}
         {...props}
       >
         {children}
@@ -1674,11 +1672,6 @@ function Select({ className = "", children, ...props }: SelectProps) {
       <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
       </svg>
-      {props.disabled ? (
-        <span className="pointer-events-none absolute right-8 top-1/2 hidden -translate-y-1/2 rounded-full border border-white/10 bg-[#0b1024]/95 p-1 text-slate-400 shadow-lg group-hover:inline-flex">
-          <DisabledSlashIcon className="h-3.5 w-3.5" />
-        </span>
-      ) : null}
     </div>
   );
 }
@@ -1745,24 +1738,6 @@ function QuantOrbLoader({ className = "" }: { className?: string }) {
       </span>
       <span className="absolute inset-[4px] rounded-full bg-[#7F22FE] shadow-[0_0_12px_rgba(127,34,254,0.9)]" />
     </span>
-  );
-}
-
-function DisabledSlashIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.25"
-    >
-      <circle cx="8" cy="8" r="5.1" />
-      <path d="M4.55 11.45 11.45 4.55" />
-    </svg>
   );
 }
 
@@ -2101,21 +2076,7 @@ export default function MerchQuantumApp() {
     : selectedTemplateProducts.length === 1
       ? selectedTemplateProducts[0]?.title || templatePickerBaseLabel
       : `${selectedTemplateProducts.length} Listings Selected`;
-  const templatePickerModeLabel = isCreateMode
-    ? "Create Listings"
-    : isBulkEditMode
-      ? "Bulk Edit"
-      : "";
-  const pendingTemplateModeLabel = isCreateMode
-    ? (pendingTemplateSelectionIds.length === 1
-      ? "Template ready for Create Listings."
-      : "Select a template to arm Create Listings.")
-    : pendingTemplateSelectionIds.length > 0
-      ? `${pendingTemplateSelectionIds.length} listing${pendingTemplateSelectionIds.length === 1 ? "" : "s"} will load into Bulk Edit Mode.`
-      : "Select active listings to load into Bulk Edit Mode.";
-  const workspaceModeLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "";
   const workspaceModePickerLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "Edit mode";
-  const routingToggleLabel = isRoutingGridExpanded ? "Hide" : "Show";
   const previewOverlayUsesLightText = selectedImage?.preview
     ? shouldUseLightPreviewText(selectedImage.previewBackground || DISPLAY_NEUTRAL_BACKGROUND)
     : true;
@@ -4006,20 +3967,7 @@ export default function MerchQuantumApp() {
       ) : null}
 
       <div className="mx-auto max-w-6xl space-y-3">
-        <div className="relative pt-3">
-          {workspaceMode ? (
-            <button
-              type="button"
-              aria-label={`${routingToggleLabel} setup`}
-              title="Collapse / Expand"
-              onClick={() => setIsRoutingGridExpanded((current) => !current)}
-              className="absolute right-4 top-0 z-20 inline-flex h-6 items-center gap-1 rounded-b-lg rounded-t-sm border border-white/10 bg-[#0c1120] px-2 text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-300 transition hover:border-[#7F22FE]/35 hover:text-white"
-            >
-              <span>{routingToggleLabel}</span>
-              <ChevronIcon open={isRoutingGridExpanded} className="h-3 w-3 text-slate-500" />
-            </button>
-          ) : null}
-
+        <div className="relative">
         <div className={`overflow-hidden transition-all duration-500 ${isRoutingGridCollapsed ? "pointer-events-none max-h-0 -translate-y-3 opacity-0" : "pointer-events-auto max-h-[32rem] translate-y-0 opacity-100"}`}>
           <Box
             className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${routingGuidanceTarget ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""}`}
@@ -4030,8 +3978,19 @@ export default function MerchQuantumApp() {
           <div
             className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-[#00BC7D]/90 to-transparent" : "bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent"} ${pulseConnected || routingGuidanceTarget ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
           />
-          <div className="mb-4 flex min-w-0 items-start pr-14">
+          <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
             <MerchQuantumInlineHeading className="max-w-full" />
+            {workspaceMode ? (
+              <button
+                type="button"
+                aria-label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
+                title="Collapse / Expand"
+                onClick={() => setIsRoutingGridExpanded((current) => !current)}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#0c1120] text-slate-400 transition hover:border-[#7F22FE]/35 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
+              >
+                <ChevronIcon open={isRoutingGridExpanded} className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
           </div>
           <div className="grid w-full grid-cols-2 gap-2">
             <div className={`min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
@@ -4227,11 +4186,6 @@ export default function MerchQuantumApp() {
             <div className="space-y-1.5">
               <div className="flex min-w-0 items-start justify-between gap-3">
                 <MerchQuantumInlineHeading className="max-w-full" />
-                {workspaceModeLabel ? (
-                  <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
-                    {workspaceModeLabel}
-                  </span>
-                ) : null}
               </div>
 
               <div
@@ -4253,15 +4207,10 @@ export default function MerchQuantumApp() {
                   }}
                   className="flex h-11 w-full items-center justify-between gap-3 overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-3 text-left text-sm text-white transition hover:border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30"
                 >
-                  <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+                  <div className="flex min-w-0 flex-1 items-center overflow-hidden">
                     <span className={`min-w-0 flex-1 truncate ${selectedImportIds.length === 0 ? "font-medium text-slate-400" : "font-normal text-white"}`}>
                       {loadingProducts && isTemplatePickerOpen && productSource.length === 0 ? "Loading products..." : templatePickerLabel}
                     </span>
-                    {templatePickerModeLabel ? (
-                      <span className="flex-shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
-                        {templatePickerModeLabel}
-                      </span>
-                    ) : null}
                   </div>
                   <svg
                     className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${isTemplatePickerOpen ? "rotate-180" : ""}`}
@@ -4275,12 +4224,11 @@ export default function MerchQuantumApp() {
 
                 {isTemplatePickerOpen ? (
                   <div className="pointer-events-auto absolute left-0 right-0 top-[calc(100%+0.55rem)] z-[100] rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)]">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                        {pendingTemplateModeLabel}
-                      </p>
-                      {loadingProducts ? <QuantOrbLoader /> : null}
-                    </div>
+                    {loadingProducts ? (
+                      <div className="flex items-center justify-end">
+                        <QuantOrbLoader />
+                      </div>
+                    ) : null}
                     <div className="mt-2">
                       <Input
                         value={search}
@@ -4522,44 +4470,86 @@ export default function MerchQuantumApp() {
                                 </div>
                               ) : (
                                 <div className="flex h-full w-full p-4">
-                                  <div className="flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-6 text-center transition-colors hover:bg-[#0b1024]">
-                                    <span className="text-sm font-medium text-white">{isCreateMode ? "Drag images here" : "Awaiting rescued artwork"}</span>
-                                    <span className="mt-1 text-xs text-slate-400">{isCreateMode ? "or click to add images" : "Choose provider listings above to load previews."}</span>
-                                    <span className="mt-3 max-w-[18rem] text-[11px] leading-5 text-slate-500">
-                                      {ARTWORK_SAFE_ZONE_LABEL}
-                                    </span>
+                                  <div className="relative flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-6 pb-14 pt-6 text-center transition-colors hover:bg-[#0b1024]">
+                                    <div className="flex max-w-[18rem] flex-col items-center gap-1">
+                                      {isCreateMode ? (
+                                        <>
+                                          <p className="font-bold text-white">Drag images here or click to add images</p>
+                                          <p className="text-sm text-slate-300">Max 50 images.</p>
+                                          <p className="text-xs text-slate-400">System will queue additional listings.</p>
+                                          <p className="text-xs text-slate-500">(API Rate Limit Safety Enforced)</p>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <p className="font-bold text-white">Awaiting rescued artwork</p>
+                                          <p className="text-sm text-slate-300">Choose provider listings above to load previews.</p>
+                                          <p className="text-xs text-slate-400">System will queue additional listings.</p>
+                                          <p className="text-xs text-slate-500">(API Rate Limit Safety Enforced)</p>
+                                        </>
+                                      )}
+                                    </div>
+                                    <div className={`absolute bottom-4 left-4 z-10 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
+                                      <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                        <span>{readyCount}</span>
+                                        <StatusThumbIcon tone="ready" direction="up" />
+                                      </div>
+                                      <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                        <span>{errorCount}</span>
+                                        <StatusThumbIcon tone="error" direction="down" />
+                                      </div>
+                                      <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                        <span>{completedGenerationCount} Done</span>
+                                      </div>
+                                      <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                        <span>Queue {queuedStatCount}</span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        disabled={!hasAnyLoadedImages}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          if (!hasAnyLoadedImages) return;
+                                          clearPreviewWorkspace();
+                                        }}
+                                        className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none transition sm:text-xs ${previewOverlayUsesLightText ? "hover:text-white" : "hover:text-slate-950"} disabled:cursor-default disabled:opacity-100`}
+                                      >
+                                        Clear
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
                               )}
 
-                              <div className={`absolute bottom-3 left-3 z-10 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
-                                <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                  <span>{readyCount}</span>
-                                  <StatusThumbIcon tone="ready" direction="up" />
+                              {selectedImage?.preview ? (
+                                <div className={`absolute bottom-6 left-6 z-10 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
+                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                    <span>{readyCount}</span>
+                                    <StatusThumbIcon tone="ready" direction="up" />
+                                  </div>
+                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                    <span>{errorCount}</span>
+                                    <StatusThumbIcon tone="error" direction="down" />
+                                  </div>
+                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                    <span>{completedGenerationCount} Done</span>
+                                  </div>
+                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                    <span>Queue {queuedStatCount}</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    disabled={!hasAnyLoadedImages}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      if (!hasAnyLoadedImages) return;
+                                      clearPreviewWorkspace();
+                                    }}
+                                    className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none transition sm:text-xs ${previewOverlayUsesLightText ? "hover:text-white" : "hover:text-slate-950"} disabled:cursor-default disabled:opacity-100`}
+                                  >
+                                    Clear
+                                  </button>
                                 </div>
-                                <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                  <span>{errorCount}</span>
-                                  <StatusThumbIcon tone="error" direction="down" />
-                                </div>
-                                <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                  <span>{completedGenerationCount} Done</span>
-                                </div>
-                                <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                  <span>Q: {queuedStatCount}</span>
-                                </div>
-                                <button
-                                  type="button"
-                                  disabled={!hasAnyLoadedImages}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    if (!hasAnyLoadedImages) return;
-                                    clearPreviewWorkspace();
-                                  }}
-                                  className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none transition sm:text-xs ${previewOverlayUsesLightText ? "hover:text-white" : "hover:text-slate-950"} disabled:cursor-default disabled:opacity-100`}
-                                >
-                                  Clear
-                                </button>
-                              </div>
+                              ) : null}
 
                               <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[2px] rounded-full bg-slate-800/90">
                                 <div
@@ -4788,6 +4778,19 @@ export default function MerchQuantumApp() {
                                     <ReRollIcon className="h-3.5 w-3.5" />
                                   </button>
                                 ) : null}
+                                <Button
+                                  className="min-h-[30px] shrink-0 rounded-lg px-4 py-1.5 text-sm !bg-[#7F22FE] !text-white hover:!bg-[#6d1ee0]"
+                                  disabled={isCreateMode ? uploadDisabled : bulkEditPublishDisabled}
+                                  onClick={() => {
+                                    if (isCreateMode) {
+                                      void runDraftBatch();
+                                      return;
+                                    }
+                                    void runBulkEditPublishAction();
+                                  }}
+                                >
+                                  {descriptionActionLabel}
+                                </Button>
                               </div>
                               {metadataSectionState.description ? (
                                 <div className="space-y-2">
@@ -4893,34 +4896,22 @@ export default function MerchQuantumApp() {
                                       {aiAssistStatus}
                                     </p>
                                   ) : null}
-                                  <div className="flex items-center justify-start">
-                                    <Button
-                                      className="px-3 !bg-[#7F22FE] !text-white hover:!bg-[#6d1ee0]"
-                                      disabled={isCreateMode ? uploadDisabled : bulkEditPublishDisabled}
-                                      onClick={() => {
-                                        if (isCreateMode) {
-                                          void runDraftBatch();
-                                          return;
-                                        }
-                                        void runBulkEditPublishAction();
-                                      }}
-                                    >
-                                      {descriptionActionLabel}
-                                    </Button>
-                                  </div>
                                 </div>
                               ) : null}
                             </div>
                           </div>
-                          <div className="pt-0.5">
+                          <div className="pt-0">
                             <div className="space-y-2">
                               <button
                                 type="button"
                                 onClick={() => toggleMetadataSection("tags")}
-                                className="flex w-full items-center justify-between gap-3 text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
+                                className="flex min-h-[20px] w-full items-center justify-between gap-3 text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
                                 aria-expanded={metadataSectionState.tags}
                               >
-                                <span>Tags</span>
+                                <span className="inline-flex items-center text-sm font-semibold">
+                                  <span className="text-[#7F22FE]">Quantum</span>
+                                  <span className="ml-1 text-white">AI Tags</span>
+                                </span>
                                 <ChevronIcon open={metadataSectionState.tags} className="h-4 w-4 text-slate-500" />
                               </button>
                               {metadataSectionState.tags ? (
