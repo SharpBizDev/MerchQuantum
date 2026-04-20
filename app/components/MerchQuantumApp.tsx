@@ -2075,10 +2075,7 @@ export default function MerchQuantumApp() {
       : "Select active listings to load into Bulk Edit Mode.";
   const workspaceModeLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "";
   const workspaceModePickerLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "Edit mode";
-  const routeSummaryLabel = [selectedProvider?.label, selectedShop?.title, workspaceModeLabel].filter(Boolean).join(" • ");
-  const routeSummaryProviderLabel = selectedProvider?.label || "";
-  const routeSummaryShopLabel = selectedShop?.title || "";
-  const routeSummaryModeLabel = workspaceModeLabel || "";
+  const routingToggleLabel = isRoutingGridExpanded ? "Close Setup" : "Open Setup";
   const routingGuidanceTarget =
     !provider
       ? "provider"
@@ -3871,18 +3868,12 @@ export default function MerchQuantumApp() {
           {workspaceMode ? (
             <button
               type="button"
-              aria-label={routeSummaryLabel}
+              aria-label={routingToggleLabel}
               onClick={() => setIsRoutingGridExpanded((current) => !current)}
-              className="inline-flex min-w-0 max-w-[58vw] shrink-0 items-center gap-1.5 overflow-hidden rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-200 transition hover:border-[#7F22FE]/35 hover:text-white sm:max-w-[50vw] md:max-w-md"
+              className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-b-xl rounded-t-md border border-white/10 bg-[#0c1120] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300 transition hover:border-[#7F22FE]/35 hover:text-white"
             >
-              {routeSummaryProviderLabel || routeSummaryShopLabel ? (
-                <span className="min-w-0 flex-1 truncate">
-                  {[routeSummaryProviderLabel, routeSummaryShopLabel].filter(Boolean).join(" • ")}
-                </span>
-              ) : null}
-              {routeSummaryModeLabel ? <span className="shrink-0 text-slate-500">•</span> : null}
-              {routeSummaryModeLabel ? <span className="shrink-0">{routeSummaryModeLabel}</span> : null}
-              <ChevronIcon open={isRoutingGridExpanded} className="h-3.5 w-3.5 text-slate-400" />
+              <span>{routingToggleLabel}</span>
+              <ChevronIcon open={isRoutingGridExpanded} className="h-3.5 w-3.5 text-slate-500" />
             </button>
           ) : null}
         </div>
