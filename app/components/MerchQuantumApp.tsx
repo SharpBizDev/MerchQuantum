@@ -121,6 +121,7 @@ type InlineSaveFeedback = {
 };
 
 type MetadataSectionKey = "title" | "description" | "tags";
+type WorkspaceMode = "" | "create" | "edit";
 
 type Template = {
   reference: string;
@@ -1857,6 +1858,8 @@ export default function MerchQuantumApp() {
   const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
   const [pendingTemplateSelectionIds, setPendingTemplateSelectionIds] = useState<string[]>([]);
   const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("");
+  const [isRoutingGridExpanded, setIsRoutingGridExpanded] = useState(true);
   const [isImportingListings, setIsImportingListings] = useState(false);
   const [importStatus, setImportStatus] = useState("");
   const [isSyncingImportedListings, setIsSyncingImportedListings] = useState(false);
@@ -1869,13 +1872,15 @@ export default function MerchQuantumApp() {
   const [runStatus, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
-  const [attentionTarget, setAttentionTarget] = useState<"provider" | "token" | "import" | "shop" | "template" | null>(null);
+  const [attentionTarget, setAttentionTarget] = useState<"provider" | "token" | "import" | "shop" | "template" | "mode" | null>(null);
   const [editingField, setEditingField] = useState<InlineEditableField>(null);
   const [editableTitleDraft, setEditableTitleDraft] = useState("");
   const [editableDescriptionDraft, setEditableDescriptionDraft] = useState("");
   const [inlineSaveFeedback, setInlineSaveFeedback] = useState<InlineSaveFeedback | null>(null);
   const [aiAssistStatus, setAiAssistStatus] = useState("");
   const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
+  const [isBootOverlayMounted, setIsBootOverlayMounted] = useState(true);
+  const [isBootOverlayVisible, setIsBootOverlayVisible] = useState(true);
   const [metadataSectionState, setMetadataSectionState] = useState<Record<MetadataSectionKey, boolean>>({
     title: true,
     description: true,
@@ -1885,6 +1890,8 @@ export default function MerchQuantumApp() {
   const resolvedProviderId = provider === "spreadconnect" ? "spod" : provider;
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
   const isLiveProvider = selectedProvider?.isLive || false;
+  const isCreateMode = workspaceMode === "create";
+  const isBulkEditMode = workspaceMode === "edit";
   const supportsProviderMetadataSync = resolvedProviderId === "printify";
   const supportsImportedListingSync = resolvedProviderId === "printify" || resolvedProviderId === "printful";
   const supportsImportedPublish = resolvedProviderId === "printify";
@@ -1896,9 +1903,11 @@ export default function MerchQuantumApp() {
     [queuedImages]
   );
   const availableShops = connected && isLiveProvider ? apiShops : [];
+  const selectedShop = availableShops.find((shop) => shop.id === shopId) || null;
   const productSource = connected && isLiveProvider ? apiProducts : [];
   const templateKey = useMemo(() => `${template?.reference || "no-template"}::${templateDescription.trim()}`, [template?.reference, templateDescription]);
   const templateReadyForAi = !!template && !loadingTemplateDetails;
+  const hasWorkspaceRoute = connected && !!shopId && !!workspaceMode;
 
   const visibleProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1941,11 +1950,11 @@ export default function MerchQuantumApp() {
   const hasAnyLoadedImages = allImages.length > 0 || queuedImages.length > 0;
   const completedGenerationCount = readyCount + errorCount;
   const generationProgressPct = images.length > 0 ? Math.round((completedGenerationCount / images.length) * 100) : 0;
-  const isWorkspaceConfigured = connected && !!shopId && !!template;
+  const isWorkspaceConfigured = isCreateMode ? connected && !!shopId && !!template : hasWorkspaceRoute;
   const canSubmitProviderConnection = Boolean(provider && isLiveProvider && token.trim() && !loadingApi && !connected);
-  const uploadDisabled = !isWorkspaceConfigured || draftReadyCount === 0 || isRunningBatch || processingCount > 0;
-  const canShowDetailWorkspace = isWorkspaceConfigured;
-  const canShowDetailPanel = canShowDetailWorkspace || !!selectedImage;
+  const uploadDisabled = !isCreateMode || !isWorkspaceConfigured || draftReadyCount === 0 || isRunningBatch || processingCount > 0;
+  const canShowDetailWorkspace = hasWorkspaceRoute;
+  const canShowDetailPanel = isCreateMode ? canShowDetailWorkspace : canShowDetailWorkspace && (hasAnyLoadedImages || !!selectedImage);
   const selectedImageFieldStates = selectedImage?.aiFieldStates ?? createAiFieldStates("idle");
   const detailTemplateDescription = selectedImage?.templateDescriptionOverride ?? templateDescription;
   const selectedImageTemplateKey = selectedImage
@@ -1974,16 +1983,20 @@ export default function MerchQuantumApp() {
     ? selectedImageFieldStates.title === "ready"
       ? selectedImage.final
       : ""
-    : !templateReadyForAi
+    : !hasWorkspaceRoute
+      ? ""
+      : !templateReadyForAi
       ? template?.nickname
       || selectedProduct?.title
-      || "Loading selected product..."
+      || ""
       : importedListingTitle;
   const detailDescription = selectedImage
     ? selectedImageFieldStates.description === "ready"
       ? selectedImage.finalDescription
       : ""
-    : (!templateReadyForAi
+    : (!hasWorkspaceRoute
+      ? ""
+      : !templateReadyForAi
       ? (templateDescription
       ? templateDescription
       : canShowDetailWorkspace
@@ -2028,29 +2041,39 @@ export default function MerchQuantumApp() {
     () => new Set([...allImages, ...queuedImages].map((img) => img.providerProductId).filter((value): value is string => !!value)),
     [allImages, queuedImages]
   );
+  const templatePickerBaseLabel = isBulkEditMode ? "Choose Listings to Edit" : "Choose Product Template";
   const templatePickerLabel = selectedTemplateProducts.length === 0
-    ? "Choose Product Template"
+    ? templatePickerBaseLabel
     : selectedTemplateProducts.length === 1
-      ? selectedTemplateProducts[0]?.title || "Choose Product Template"
-      : `${selectedTemplateProducts.length} Templates Selected`;
-  const templatePickerModeLabel = selectedImportIds.length === 1
-    ? "Creation Mode"
-    : selectedImportIds.length >= 2
-      ? "Bulk Edit Mode"
+      ? selectedTemplateProducts[0]?.title || templatePickerBaseLabel
+      : `${selectedTemplateProducts.length} Listings Selected`;
+  const templatePickerModeLabel = isCreateMode
+    ? "Create Listings"
+    : isBulkEditMode
+      ? "Bulk Edit"
       : "";
-  const pendingTemplateModeLabel = pendingTemplateSelectionIds.length === 1
-    ? "1 selection routes to Creation Mode"
-    : pendingTemplateSelectionIds.length >= 2
-      ? `${pendingTemplateSelectionIds.length} selections route to Bulk Edit Mode`
-      : "Select 1 template for Creation Mode or 2+ for Bulk Edit Mode.";
+  const pendingTemplateModeLabel = isCreateMode
+    ? (pendingTemplateSelectionIds.length === 1
+      ? "Template ready for Create Listings."
+      : "Select a template to arm Create Listings.")
+    : pendingTemplateSelectionIds.length > 0
+      ? `${pendingTemplateSelectionIds.length} listing${pendingTemplateSelectionIds.length === 1 ? "" : "s"} will load into Bulk Edit Mode.`
+      : "Select active listings to load into Bulk Edit Mode.";
+  const workspaceModeLabel = isCreateMode ? "Create" : isBulkEditMode ? "Bulk Edit" : "";
+  const routeSummaryLabel = [selectedProvider?.label, selectedShop?.title, workspaceModeLabel].filter(Boolean).join(" • ");
+  const isRoutingGridCollapsed = !!workspaceMode && !isRoutingGridExpanded;
   const guidanceStep = !connected
     ? "connect"
     : !shopId
-      ? "template"
-      : !template && images.length === 0
+      ? "shop"
+      : !workspaceMode
+        ? "mode"
+        : isCreateMode && !template && images.length === 0
         ? "template"
-      : images.length === 0
-        ? "import"
+        : isCreateMode && images.length === 0
+          ? "import"
+          : isBulkEditMode && !hasAnyLoadedImages
+            ? "template"
         : "settled";
   const processingBanner = processingCount > 0
     ? `Quantum AI is generating listing copy for ${processingCount} image${processingCount === 1 ? "" : "s"} in this batch.`
@@ -2067,7 +2090,7 @@ export default function MerchQuantumApp() {
     }));
   }
 
-  function triggerAttentionCue(target: "provider" | "token" | "import" | "shop" | "template") {
+  function triggerAttentionCue(target: "provider" | "token" | "import" | "shop" | "template" | "mode") {
     setAttentionTarget(target);
     window.clearTimeout((triggerAttentionCue as typeof triggerAttentionCue & { timeoutId?: number }).timeoutId);
     (triggerAttentionCue as typeof triggerAttentionCue & { timeoutId?: number }).timeoutId = window.setTimeout(() => {
@@ -2079,8 +2102,10 @@ export default function MerchQuantumApp() {
     if (!provider) return "provider" as const;
     if (!connected) return "token" as const;
     if (!shopId) return "shop" as const;
-    if (!template) return "template" as const;
-    if (includeImportStep && images.length === 0) return "import" as const;
+    if (!workspaceMode) return "mode" as const;
+    if (isCreateMode && !template) return "template" as const;
+    if (isBulkEditMode && !selectedImportIds.length && !hasAnyLoadedImages) return "template" as const;
+    if (includeImportStep && isCreateMode && images.length === 0) return "import" as const;
     return null;
   }
 
@@ -2744,6 +2769,30 @@ export default function MerchQuantumApp() {
   }, []);
 
   useEffect(() => {
+    if (!isBootOverlayMounted) return;
+
+    const timer = window.setTimeout(() => {
+      setIsBootOverlayVisible(false);
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [isBootOverlayMounted]);
+
+  useEffect(() => {
+    if (isBootOverlayVisible || !isBootOverlayMounted) return;
+
+    const timer = window.setTimeout(() => {
+      setIsBootOverlayMounted(false);
+    }, 420);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [isBootOverlayMounted, isBootOverlayVisible]);
+
+  useEffect(() => {
     activeTemplateKeyRef.current = templateKey;
     aiLoopBusyRef.current = null;
     setImages((current) =>
@@ -2811,6 +2860,8 @@ export default function MerchQuantumApp() {
       setTemplateDescription("");
       setImportedListingTitle("");
       setImportedListingDescription("");
+      setWorkspaceMode("");
+      setIsRoutingGridExpanded(true);
       setSelectedImportIds([]);
       setPendingTemplateSelectionIds([]);
       setIsTemplatePickerOpen(false);
@@ -2916,6 +2967,8 @@ export default function MerchQuantumApp() {
     setTemplateDescription("");
     setImportedListingTitle("");
     setImportedListingDescription("");
+    setWorkspaceMode("");
+    setIsRoutingGridExpanded(true);
     setManualPrebufferOverride(false);
     setBatchResults([]);
     setRunStatus("");
@@ -2933,6 +2986,10 @@ export default function MerchQuantumApp() {
     setSelectedId("");
   }
 
+  function dismissBootOverlay() {
+    setIsBootOverlayVisible(false);
+  }
+
   function clearPreviewWorkspace() {
     setImages([]);
     setCompletedImportedImages([]);
@@ -2946,8 +3003,29 @@ export default function MerchQuantumApp() {
     setManualPrebufferOverride(false);
   }
 
+  function handleWorkspaceModeChange(nextMode: WorkspaceMode) {
+    setWorkspaceMode(nextMode);
+    setIsRoutingGridExpanded(!nextMode);
+    setSearch("");
+    setProductId("");
+    setTemplate(null);
+    setTemplateDescription("");
+    setImportedListingTitle("");
+    setImportedListingDescription("");
+    setSelectedImportIds([]);
+    setPendingTemplateSelectionIds([]);
+    setIsTemplatePickerOpen(false);
+    setEditingField(null);
+    setInlineSaveFeedback(null);
+    clearPreviewWorkspace();
+
+    if (nextMode === "edit") {
+      setImportStatus("Choose active provider listings to load into Bulk Edit Mode.");
+    }
+  }
+
   function openArtworkPicker() {
-    if (!connected || !isWorkspaceConfigured) {
+    if (!isCreateMode || !connected || !isWorkspaceConfigured) {
       nudgeWorkflow(true);
       return;
     }
@@ -3065,6 +3143,8 @@ export default function MerchQuantumApp() {
       setApiShops(shopsFromApi);
       setConnected(true);
       setShopId("");
+      setWorkspaceMode("");
+      setIsRoutingGridExpanded(true);
       setProductId("");
       setTemplate(null);
       setTemplateDescription("");
@@ -3164,6 +3244,10 @@ export default function MerchQuantumApp() {
   }
 
   function getNextTemplateSelections(sourceId: string) {
+    if (isCreateMode) {
+      return [sourceId];
+    }
+
     return pendingTemplateSelectionIds.includes(sourceId)
       ? pendingTemplateSelectionIds.filter((entry) => entry !== sourceId)
       : normalizeSelectionIds([...pendingTemplateSelectionIds, sourceId]);
@@ -3180,6 +3264,11 @@ export default function MerchQuantumApp() {
       return;
     }
 
+    if (!workspaceMode) {
+      triggerAttentionCue("mode");
+      return;
+    }
+
     setPendingTemplateSelectionIds(selectedImportIds);
     setIsTemplatePickerOpen(true);
     setImportStatus("");
@@ -3190,7 +3279,8 @@ export default function MerchQuantumApp() {
   }
 
   async function commitTemplateSelections(sourceIds: string[]) {
-    const nextSelections = normalizeSelectionIds(sourceIds);
+    const normalizedSelections = normalizeSelectionIds(sourceIds);
+    const nextSelections = isCreateMode ? normalizedSelections.slice(0, 1) : normalizedSelections;
     const selectionChanged = !selectionsMatch(nextSelections, selectedImportIds);
 
     setSelectedImportIds(nextSelections);
@@ -3200,7 +3290,7 @@ export default function MerchQuantumApp() {
     setInlineSaveFeedback(null);
 
     if (!selectionChanged) {
-      if (nextSelections.length >= 2) {
+      if (isBulkEditMode && nextSelections.length > 0) {
         setImportStatus(`Bulk Edit Mode is staged for ${nextSelections.length} listing${nextSelections.length === 1 ? "" : "s"}.`);
       } else {
         setImportStatus("");
@@ -3216,11 +3306,11 @@ export default function MerchQuantumApp() {
     setImportedListingDescription("");
 
     if (nextSelections.length === 0) {
-      setImportStatus("");
+      setImportStatus(isBulkEditMode ? "Choose active provider listings to load into Bulk Edit Mode." : "");
       return;
     }
 
-    if (nextSelections.length === 1) {
+    if (isCreateMode) {
       setImportStatus("");
       setProductId(nextSelections[0]);
       return;
@@ -3686,37 +3776,51 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <div className="min-h-screen bg-[#000000] px-6 pb-6 pt-3 text-white transition-colors md:px-8 md:pb-8 md:pt-4">
-      <div className="mx-auto max-w-6xl space-y-5">
-        <div className="flex flex-wrap items-center gap-3">
-          <BrandMark />
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight">
-              <span className="text-[#7F22FE]">Merch</span>
-              <span className="text-white">Quantum</span>
-            </h1>
-            <p className="mt-1 text-sm text-slate-300">{APP_TAGLINE}</p>
+    <div className="relative min-h-screen bg-[#000000] px-6 pb-6 pt-3 text-white transition-colors md:px-8 md:pb-8 md:pt-4">
+      {isBootOverlayMounted ? (
+        <div
+          onClick={dismissBootOverlay}
+          className={`fixed inset-0 z-[140] flex items-center justify-center bg-[radial-gradient(circle_at_top,rgba(127,34,254,0.16),rgba(0,0,0,0.94)_55%)] px-6 backdrop-blur-xl transition-opacity duration-500 ${isBootOverlayVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        >
+          <div className="relative flex min-h-[20rem] w-full max-w-3xl items-center justify-center overflow-hidden rounded-[36px] border border-white/10 bg-[#03050d]/80 px-8 py-12 shadow-[0_40px_120px_-48px_rgba(127,34,254,0.7)]">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.26),rgba(127,34,254,0.12)_24%,transparent_60%)]" />
+            <div className="pointer-events-none absolute h-[21rem] w-[21rem] rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(255,255,255,0.92),rgba(174,121,255,0.7)_18%,rgba(127,34,254,0.34)_42%,rgba(127,34,254,0.08)_68%,transparent_80%)] blur-xl animate-pulse" />
+            <div className="pointer-events-none absolute h-[27rem] w-[27rem] rounded-full border border-[#7F22FE]/20" />
+            <div className="pointer-events-none absolute h-[31rem] w-[31rem] rounded-full border border-white/5" />
+            <div className="relative z-10 flex max-w-xl flex-col items-center gap-3 text-center">
+              <div className="flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1 text-4xl font-semibold tracking-tight sm:text-5xl">
+                <span className="text-[#7F22FE]">Merch</span>
+                <span className="text-white">Quantum</span>
+              </div>
+              <p className="text-sm text-slate-300 sm:text-base">{APP_TAGLINE}</p>
+            </div>
           </div>
         </div>
+      ) : null}
 
-        <Box
-          className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${guidanceStep === "connect" ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""}`}
-          headerClassName="mb-4"
-          title={
-            <div className="flex items-end justify-between gap-3">
-              <span className="inline-flex items-center gap-2 font-semibold tracking-tight">
-                <span className="font-semibold text-[#7F22FE]">Quantum</span>
-                <span className="ml-1 font-semibold text-white">AI</span>
-                <span className={`ml-1 font-semibold ${connected ? `text-[#00BC7D] ${pulseConnected ? "animate-pulse" : ""}` : "text-white"}`}>
-                  {connected ? "Connection" : "Connect"}
-                </span>
-              </span>
-              <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-200">
-                Auto Listings
-              </span>
-            </div>
-          }
-        >
+      <div className="mx-auto max-w-6xl space-y-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="text-3xl font-semibold tracking-tight text-[#7F22FE]">Merch</span>
+            <span className="text-3xl font-semibold tracking-tight text-white">Quantum</span>
+            <span className="text-sm font-medium tracking-[0.18em] text-slate-400 sm:text-xs">AI Auto Listings</span>
+          </div>
+          {workspaceMode ? (
+            <button
+              type="button"
+              onClick={() => setIsRoutingGridExpanded((current) => !current)}
+              className="inline-flex -translate-y-1 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-200 transition hover:border-[#7F22FE]/35 hover:text-white"
+            >
+              <span className="max-w-[18rem] truncate">{routeSummaryLabel}</span>
+              <ChevronIcon open={isRoutingGridExpanded} className="h-3.5 w-3.5 text-slate-400" />
+            </button>
+          ) : null}
+        </div>
+
+        <div className={`overflow-hidden transition-all duration-500 ${isRoutingGridCollapsed ? "pointer-events-none max-h-0 -translate-y-3 opacity-0" : "pointer-events-auto max-h-[32rem] translate-y-0 opacity-100"}`}>
+          <Box
+            className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${guidanceStep === "connect" ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""}`}
+          >
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" />
           <div className={`pointer-events-none absolute -right-20 top-0 h-48 w-48 rounded-full blur-3xl transition-all duration-700 ${connected ? "bg-[#00BC7D]/12" : "bg-[#7F22FE]/12"} ${guidanceStep === "connect" ? "animate-pulse" : ""}`} />
           <div className="pointer-events-none absolute -left-12 bottom-0 h-32 w-32 rounded-full bg-white/5 blur-3xl" />
@@ -3768,6 +3872,10 @@ export default function MerchQuantumApp() {
                     }}
                     className="min-w-0 flex-1 disabled:cursor-not-allowed"
                   />
+                  <span className="pointer-events-none relative hidden h-7 w-7 shrink-0 sm:inline-flex">
+                    <span className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(255,255,255,0.95),rgba(177,123,255,0.72)_20%,rgba(127,34,254,0.3)_55%,transparent_78%)] blur-[1px]" />
+                    <span className="absolute inset-[4px] rounded-full border border-[#7F22FE]/45 animate-pulse" />
+                  </span>
                   <button
                     type="button"
                     onClick={() => { void connectProvider(); }}
@@ -3800,6 +3908,8 @@ export default function MerchQuantumApp() {
                     setShopId(nextShopId);
                     setApiProducts([]);
                     setSearch("");
+                    setWorkspaceMode("");
+                    setIsRoutingGridExpanded(true);
                     setProductId("");
                     setTemplate(null);
                     setTemplateDescription("");
@@ -3828,6 +3938,61 @@ export default function MerchQuantumApp() {
                     </option>
                   ))}
                 </Select>
+              </div>
+
+              <div className={attentionTarget === "mode" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}>
+                <Select
+                  value={workspaceMode}
+                  disabled={!connected || !shopId}
+                  className={workspaceMode ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
+                  onChange={(e) => {
+                    handleWorkspaceModeChange(e.target.value as WorkspaceMode);
+                  }}
+                >
+                  <option value="">
+                    {!connected
+                      ? "Locked until connection"
+                      : !shopId
+                        ? "Select Shop First"
+                        : "Workspace Mode"}
+                  </option>
+                  <option value="create">Create Listings</option>
+                  <option value="edit">Bulk Edit</option>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {apiStatus ? <p className="mt-3 text-sm text-[#FE9A00]">{apiStatus}</p> : null}
+        </Box>
+        </div>
+
+        {connected && shopId && workspaceMode ? (
+          <Box className="border-slate-800 bg-[#020616] shadow-[0_24px_70px_-38px_rgba(2,6,22,0.95)]">
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg"
+              className="hidden"
+              onChange={(e) => {
+                if (isCreateMode && connected && isWorkspaceConfigured) {
+                  void addFiles(e.target.files);
+                } else {
+                  nudgeWorkflow(true);
+                }
+                e.currentTarget.value = "";
+              }}
+            />
+
+            <div className="space-y-1.5">
+              <div className="flex min-h-[20px] items-center justify-between gap-3 text-sm font-medium leading-5 tracking-tight text-slate-200">
+                <span>{templatePickerBaseLabel}</span>
+                {workspaceModeLabel ? (
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
+                    {workspaceModeLabel}
+                  </span>
+                ) : null}
               </div>
 
               <div
@@ -3931,11 +4096,11 @@ export default function MerchQuantumApp() {
                                     ) : null}
                                     {isCreationSelection ? (
                                       <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
-                                        Creation
+                                        Create
                                       </span>
                                     ) : isPendingSelection ? (
                                       <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
-                                        Bulk Edit
+                                        Edit
                                       </span>
                                     ) : null}
                                   </div>
@@ -3960,7 +4125,7 @@ export default function MerchQuantumApp() {
                             ? "Loading provider listings..."
                             : search.trim()
                               ? "No products matched this search."
-                              : "Open this picker to deliberately load product templates from the selected shop."}
+                              : "Open this picker to load products from the selected shop."}
                         </div>
                       )}
                     </div>
@@ -3968,28 +4133,6 @@ export default function MerchQuantumApp() {
                 ) : null}
               </div>
             </div>
-          </div>
-
-          {apiStatus ? <p className="mt-3 text-sm text-[#FE9A00]">{apiStatus}</p> : null}
-        </Box>
-
-        {connected && ((shopId && canShowDetailPanel) || importStatus || processingBanner || runStatus || batchResults.length > 0) ? (
-          <Box className="border-slate-800 bg-[#020616] shadow-[0_24px_70px_-38px_rgba(2,6,22,0.95)]">
-            <input
-              ref={fileRef}
-              type="file"
-              multiple
-              accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg"
-              className="hidden"
-              onChange={(e) => {
-                if (connected && isWorkspaceConfigured) {
-                  void addFiles(e.target.files);
-                } else {
-                  nudgeWorkflow(true);
-                }
-                e.currentTarget.value = "";
-              }}
-            />
 
             {importStatus ? (
               <p className="mt-3 text-sm text-slate-300">{importStatus}</p>
@@ -3997,30 +4140,36 @@ export default function MerchQuantumApp() {
               <p className="mt-3 text-sm text-slate-300">{processingBanner}</p>
             ) : null}
 
-            {shopId && canShowDetailPanel ? (
+            {isBulkEditMode && !hasAnyLoadedImages ? (
+              <div className="mt-3 rounded-2xl border border-slate-800 bg-[#020616] px-5 py-6 text-sm text-slate-400">
+                Choose active provider listings above to load rescued artwork and SEO fields into Bulk Edit Mode.
+              </div>
+            ) : shopId && canShowDetailPanel ? (
               <>
                 <div className="mt-3">
                   <div className="space-y-3" onPointerDownCapture={() => nudgeWorkflow(true)}>
                       <div className="grid items-stretch gap-3 lg:grid-cols-[296px_minmax(0,1fr)]">
                         <div className="flex h-full flex-col gap-3">
                           <div
-                            className="space-y-1.5 cursor-pointer"
-                            onClick={openArtworkPicker}
+                            className={`space-y-1.5 ${isCreateMode ? "cursor-pointer" : ""}`}
+                            onClick={isCreateMode ? openArtworkPicker : undefined}
                           >
                             <div className="flex min-h-[20px] items-center justify-between gap-3 text-sm font-medium leading-5 tracking-tight text-slate-200">
-                              <span>Upload Artwork</span>
+                              <span>{isCreateMode ? "Upload Artwork" : "Loaded Artwork"}</span>
                               <span className="text-[11px] font-normal tracking-normal text-slate-500">
-                                Drop or click • Max {CONNECTED_TOTAL_BATCH_FILES} items
+                                {isCreateMode ? `Drop or click • Max ${CONNECTED_TOTAL_BATCH_FILES} items` : "Recovered from selected provider listings"}
                               </span>
                             </div>
                             <div
                               className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-[#020616] lg:h-[19rem]"
                               onDragOver={(e) => {
-                                e.preventDefault();
+                                if (isCreateMode) {
+                                  e.preventDefault();
+                                }
                               }}
                               onDrop={(e) => {
                                 e.preventDefault();
-                                if (!connected || !isWorkspaceConfigured) {
+                                if (!isCreateMode || !connected || !isWorkspaceConfigured) {
                                   nudgeWorkflow(true);
                                   return;
                                 }
@@ -4037,8 +4186,8 @@ export default function MerchQuantumApp() {
                               ) : (
                                 <div className="flex h-full w-full p-4">
                                   <div className="flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-6 text-center transition-colors hover:bg-[#0b1024]">
-                                    <span className="text-sm font-medium text-white">Drag images here</span>
-                                    <span className="mt-1 text-xs text-slate-400">or click Add Images</span>
+                                    <span className="text-sm font-medium text-white">{isCreateMode ? "Drag images here" : "Awaiting rescued artwork"}</span>
+                                    <span className="mt-1 text-xs text-slate-400">{isCreateMode ? "or click Add Images" : "Choose provider listings above to load previews."}</span>
                                   </div>
                                 </div>
                               )}
@@ -4071,13 +4220,15 @@ export default function MerchQuantumApp() {
                                   Clear
                                 </button>
                               </div>
-                              <Button
-                                className="shrink-0 px-3 !bg-[#7F22FE] !text-white hover:!bg-[#6d1ee0]"
-                                disabled={uploadDisabled}
-                                onClick={() => { void runDraftBatch(); }}
-                              >
-                                {isRunningBatch ? "Uploading..." : "Upload"}
-                              </Button>
+                              {isCreateMode ? (
+                                <Button
+                                  className="shrink-0 px-3 !bg-[#7F22FE] !text-white hover:!bg-[#6d1ee0]"
+                                  disabled={uploadDisabled}
+                                  onClick={() => { void runDraftBatch(); }}
+                                >
+                                  {isRunningBatch ? "Uploading..." : "Upload"}
+                                </Button>
+                              ) : null}
                             </div>
                             <div className="pointer-events-none h-[2px] rounded-full bg-slate-800">
                               <div
@@ -4466,3 +4617,4 @@ export default function MerchQuantumApp() {
     </div>
   );
 }
+
