@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start -p $PORT",
+    "start": "node -e \"process.argv=['node','next','start','-p',process.env.PORT||'3000']; require('next/dist/bin/next')\"",
     "lint": "next lint"
   },
   "dependencies": {
