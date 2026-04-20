@@ -1869,6 +1869,7 @@ export default function MerchQuantumApp() {
   const [isShopPickerOpen, setIsShopPickerOpen] = useState(false);
   const [isModePickerOpen, setIsModePickerOpen] = useState(false);
   const [isDisconnectArmed, setIsDisconnectArmed] = useState(false);
+  const [isTokenInputFocused, setIsTokenInputFocused] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("");
   const [isRoutingGridExpanded, setIsRoutingGridExpanded] = useState(true);
   const [isImportingListings, setIsImportingListings] = useState(false);
@@ -1915,6 +1916,12 @@ export default function MerchQuantumApp() {
   );
   const availableShops = connected && isLiveProvider ? apiShops : [];
   const selectedShop = availableShops.find((shop) => shop.id === shopId) || null;
+  const hasTokenValue = token.trim().length > 0;
+  const showCompactDisconnectedToken = !connected && hasTokenValue && !isTokenInputFocused;
+  const tokenFieldValue = connected || showCompactDisconnectedToken ? maskTokenCompact(token) : token;
+  const shopTriggerLabel = loadingApi
+    ? "Loading..."
+    : selectedShop?.title || (connected && availableShops.length === 0 ? "No Shops" : "Select Shop");
   const productSource = connected && isLiveProvider ? apiProducts : [];
   const templateKey = useMemo(() => `${template?.reference || "no-template"}::${templateDescription.trim()}`, [template?.reference, templateDescription]);
   const templateReadyForAi = !!template && !loadingTemplateDetails;
@@ -3021,6 +3028,7 @@ export default function MerchQuantumApp() {
     setLoadingApi(false);
     setPulseConnected(false);
     setIsDisconnectArmed(false);
+    setIsTokenInputFocused(false);
     if (clearStatus) setApiStatus("");
     setApiShops([]);
     setApiProducts([]);
@@ -3231,6 +3239,7 @@ export default function MerchQuantumApp() {
       setApiShops(shopsFromApi);
       setConnected(true);
       setIsDisconnectArmed(false);
+      setIsTokenInputFocused(false);
       setShopId("");
       setWorkspaceMode("");
       setIsRoutingGridExpanded(true);
@@ -3260,6 +3269,7 @@ export default function MerchQuantumApp() {
       // local reset only
     } finally {
       setIsDisconnectArmed(false);
+      setIsTokenInputFocused(false);
       setToken("");
       resetProviderState(true);
       setApiStatus("");
@@ -3938,6 +3948,7 @@ export default function MerchQuantumApp() {
                   setProvider(nextProvider);
                   setToken("");
                   setIsDisconnectArmed(false);
+                  setIsTokenInputFocused(false);
                   setIsShopPickerOpen(false);
                   setIsModePickerOpen(false);
                   resetProviderState(false);
@@ -3975,19 +3986,37 @@ export default function MerchQuantumApp() {
             >
               <div className="relative flex min-w-0 items-center">
                 <Input
-                  type={connected ? "text" : "password"}
-                  value={connected ? maskTokenCompact(token) : token}
+                  type={connected || showCompactDisconnectedToken ? "text" : "password"}
+                  value={tokenFieldValue}
                   disabled={!provider}
-                  readOnly={connected}
+                  readOnly={connected || showCompactDisconnectedToken}
                   placeholder="API Key"
                   onChange={(e) => setToken(e.target.value)}
+                  onPaste={(event) => {
+                    if (connected) return;
+                    const pastedToken = event.clipboardData.getData("text").trim();
+                    if (!pastedToken) return;
+                    event.preventDefault();
+                    setToken(pastedToken);
+                    setIsTokenInputFocused(false);
+                  }}
+                  onFocus={() => {
+                    if (!connected) {
+                      setIsTokenInputFocused(true);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (!connected) {
+                      setIsTokenInputFocused(false);
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && canSubmitProviderConnectionWithToken(e.currentTarget.value)) {
                       e.preventDefault();
                       void connectProvider(e.currentTarget.value);
                     }
                   }}
-                  className="min-w-0 pr-20 text-ellipsis disabled:cursor-not-allowed sm:pr-24"
+                  className="min-w-0 truncate pr-20 disabled:cursor-not-allowed sm:pr-24"
                 />
                 <div
                   className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center"
@@ -4049,16 +4078,21 @@ export default function MerchQuantumApp() {
             >
               <button
                 type="button"
-                disabled={!connected || !availableShops.length}
+                disabled={!connected || loadingApi}
                 onClick={() => {
-                  if (!connected || !availableShops.length) return;
+                  if (!connected || loadingApi) return;
                   setIsModePickerOpen(false);
+                  if (availableShops.length === 0) {
+                    setApiStatus("No shops were returned for this provider connection.");
+                    setIsShopPickerOpen(false);
+                    return;
+                  }
                   setIsShopPickerOpen((current) => !current);
                 }}
-                className="flex h-11 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-3 text-left text-sm transition hover:border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500"
+                className="pointer-events-auto flex h-11 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-3 text-left text-sm transition hover:border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500"
               >
                 <span className={`min-w-0 flex-1 truncate ${shopId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}`}>
-                  {selectedShop?.title || "Select Shop"}
+                  {shopTriggerLabel}
                 </span>
                 <ChevronIcon open={isShopPickerOpen} className="h-4 w-4 shrink-0 text-slate-400" />
               </button>
