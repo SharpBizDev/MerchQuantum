@@ -1839,7 +1839,6 @@ function getResolvedItemStatus(image: Img): ItemStatus {
 export default function MerchQuantumApp() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const templatePickerRef = useRef<HTMLDivElement | null>(null);
-  const shopPickerRef = useRef<HTMLDivElement | null>(null);
   const modePickerRef = useRef<HTMLDivElement | null>(null);
   const previousPreviewUrlsRef = useRef<string[]>([]);
   const aiLoopBusyRef = useRef<symbol | null>(null);
@@ -1866,7 +1865,6 @@ export default function MerchQuantumApp() {
   const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
   const [pendingTemplateSelectionIds, setPendingTemplateSelectionIds] = useState<string[]>([]);
   const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
-  const [isShopPickerOpen, setIsShopPickerOpen] = useState(false);
   const [isModePickerOpen, setIsModePickerOpen] = useState(false);
   const [isDisconnectArmed, setIsDisconnectArmed] = useState(false);
   const [isTokenInputFocused, setIsTokenInputFocused] = useState(false);
@@ -2891,14 +2889,11 @@ export default function MerchQuantumApp() {
   }, [isTemplatePickerOpen, pendingTemplateSelectionIds, selectedImportIds]);
 
   useEffect(() => {
-    if (!isShopPickerOpen && !isModePickerOpen) return;
+    if (!isModePickerOpen) return;
 
     function handlePointerDown(event: MouseEvent) {
       const target = event.target as Node;
-      if (isShopPickerOpen && !shopPickerRef.current?.contains(target)) {
-        setIsShopPickerOpen(false);
-      }
-      if (isModePickerOpen && !modePickerRef.current?.contains(target)) {
+      if (!modePickerRef.current?.contains(target)) {
         setIsModePickerOpen(false);
       }
     }
@@ -2906,7 +2901,6 @@ export default function MerchQuantumApp() {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        setIsShopPickerOpen(false);
         setIsModePickerOpen(false);
       }
     }
@@ -2918,7 +2912,7 @@ export default function MerchQuantumApp() {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isModePickerOpen, isShopPickerOpen]);
+  }, [isModePickerOpen]);
 
   useEffect(() => {
     if (!shopId) {
@@ -2933,7 +2927,6 @@ export default function MerchQuantumApp() {
       setSelectedImportIds([]);
       setPendingTemplateSelectionIds([]);
       setIsTemplatePickerOpen(false);
-      setIsShopPickerOpen(false);
       setIsModePickerOpen(false);
       setImportStatus("");
       setEditingField(null);
@@ -3041,7 +3034,6 @@ export default function MerchQuantumApp() {
     setImportedListingDescription("");
     setWorkspaceMode("");
     setIsRoutingGridExpanded(true);
-    setIsShopPickerOpen(false);
     setIsModePickerOpen(false);
     setManualPrebufferOverride(false);
     setBatchResults([]);
@@ -3113,7 +3105,6 @@ export default function MerchQuantumApp() {
     setSelectedImportIds([]);
     setPendingTemplateSelectionIds([]);
     setIsTemplatePickerOpen(false);
-    setIsShopPickerOpen(false);
     setIsModePickerOpen(false);
     clearPreviewWorkspace();
     setEditingField(null);
@@ -3949,7 +3940,6 @@ export default function MerchQuantumApp() {
                   setToken("");
                   setIsDisconnectArmed(false);
                   setIsTokenInputFocused(false);
-                  setIsShopPickerOpen(false);
                   setIsModePickerOpen(false);
                   resetProviderState(false);
                   const nextMeta = PROVIDERS.find((entry) => entry.id === nextProvider);
@@ -4072,52 +4062,24 @@ export default function MerchQuantumApp() {
               </div>
             </div>
 
-            <div
-              ref={shopPickerRef}
-              className={`relative min-w-0 ${getRoutingFieldGlowClass("shop")}`}
-            >
-              <button
-                type="button"
+            <div className={`relative min-w-0 ${getRoutingFieldGlowClass("shop")}`}>
+              <Select
+                value={shopId}
                 disabled={!connected || loadingApi}
-                onClick={() => {
-                  if (!connected || loadingApi) return;
-                  setIsModePickerOpen(false);
-                  if (availableShops.length === 0) {
-                    setApiStatus("No shops were returned for this provider connection.");
-                    setIsShopPickerOpen(false);
-                    return;
-                  }
-                  setIsShopPickerOpen((current) => !current);
+                className={shopId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}
+                onChange={(event) => {
+                  handleShopSelection(event.target.value);
                 }}
-                className="pointer-events-auto flex h-11 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-3 text-left text-sm transition hover:border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500"
               >
-                <span className={`min-w-0 flex-1 truncate ${shopId ? "text-[13px] font-normal text-white" : "font-medium text-slate-400"}`}>
+                <option value="">
                   {shopTriggerLabel}
-                </span>
-                <ChevronIcon open={isShopPickerOpen} className="h-4 w-4 shrink-0 text-slate-400" />
-              </button>
-              {isShopPickerOpen && availableShops.length > 0 ? (
-                <div className="pointer-events-auto absolute left-0 right-0 top-[calc(100%+0.35rem)] z-[100] w-full rounded-2xl border border-slate-800 bg-[#020616] p-2 shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)]">
-                  <div className="max-h-56 overflow-auto pr-1">
-                    <div className="grid gap-1.5">
-                      {availableShops.map((shop) => (
-                        <button
-                          key={shop.id}
-                          type="button"
-                          onClick={() => handleShopSelection(shop.id)}
-                          className={`flex w-full min-w-0 items-center rounded-xl px-3 py-2 text-left text-sm transition ${
-                            shop.id === shopId
-                              ? "bg-[#7F22FE]/12 text-white"
-                              : "text-slate-200 hover:bg-white/5"
-                          }`}
-                        >
-                          <span className="min-w-0 flex-1 truncate">{shop.title}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+                </option>
+                {availableShops.map((shop) => (
+                  <option key={shop.id} value={shop.id}>
+                    {shop.title}
+                  </option>
+                ))}
+              </Select>
             </div>
 
             <div
@@ -4129,7 +4091,6 @@ export default function MerchQuantumApp() {
                 disabled={!connected || !shopId}
                 onClick={() => {
                   if (!connected || !shopId) return;
-                  setIsShopPickerOpen(false);
                   setIsModePickerOpen((current) => !current);
                 }}
                 className="flex h-11 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-3 text-left text-sm transition hover:border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-500"
