@@ -1903,6 +1903,7 @@ export default function MerchQuantumApp() {
   const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
   const [isBootOverlayMounted, setIsBootOverlayMounted] = useState(true);
   const [isBootOverlayVisible, setIsBootOverlayVisible] = useState(true);
+  const [isBootOverlayPrimed, setIsBootOverlayPrimed] = useState(false);
   const [metadataSectionState, setMetadataSectionState] = useState<Record<MetadataSectionKey, boolean>>({
     title: true,
     description: true,
@@ -2122,10 +2123,6 @@ export default function MerchQuantumApp() {
           : isBulkEditMode && !hasAnyLoadedImages
             ? "template"
         : "settled";
-  const processingBanner = processingCount > 0
-    ? `Quantum AI is generating listing copy for ${processingCount} image${processingCount === 1 ? "" : "s"} in this batch.`
-    : "";
-
   function getProviderRoute(path: "connect" | "disconnect" | "products" | "product" | "batch-create") {
     return `/api/providers/${path}`;
   }
@@ -2824,11 +2821,18 @@ export default function MerchQuantumApp() {
   useEffect(() => {
     if (!isBootOverlayMounted) return;
 
+    setIsBootOverlayPrimed(false);
+
+    const primeTimer = window.setTimeout(() => {
+      setIsBootOverlayPrimed(true);
+    }, 24);
+
     const timer = window.setTimeout(() => {
       setIsBootOverlayVisible(false);
-    }, 2000);
+    }, 1500);
 
     return () => {
+      window.clearTimeout(primeTimer);
       window.clearTimeout(timer);
     };
   }, [isBootOverlayMounted]);
@@ -2838,7 +2842,8 @@ export default function MerchQuantumApp() {
 
     const timer = window.setTimeout(() => {
       setIsBootOverlayMounted(false);
-    }, 420);
+      setIsBootOverlayPrimed(false);
+    }, 280);
 
     return () => {
       window.clearTimeout(timer);
@@ -3041,9 +3046,10 @@ export default function MerchQuantumApp() {
     setSelectedId("");
   }
 
-  function dismissBootOverlay() {
-    setIsBootOverlayVisible(false);
-  }
+function dismissBootOverlay() {
+  setIsBootOverlayVisible(false);
+  setIsBootOverlayPrimed(false);
+}
 
   function clearPreviewWorkspace() {
     setImages([]);
@@ -3948,7 +3954,7 @@ export default function MerchQuantumApp() {
       {isBootOverlayMounted ? (
         <div
           onClick={dismissBootOverlay}
-          className={`fixed inset-0 z-[140] flex items-center justify-center bg-[radial-gradient(circle_at_top,rgba(127,34,254,0.16),rgba(0,0,0,0.94)_55%)] px-6 backdrop-blur-xl transition-opacity duration-500 ${isBootOverlayVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
+          className={`fixed inset-0 z-[140] flex items-center justify-center bg-[radial-gradient(circle_at_top,rgba(127,34,254,0.16),rgba(0,0,0,0.94)_55%)] px-6 backdrop-blur-xl transition-opacity duration-300 ${isBootOverlayVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
         >
           <div className="relative flex min-h-[20rem] w-full max-w-3xl items-center justify-center overflow-hidden rounded-[36px] border border-white/10 bg-[#03050d]/80 px-8 py-12 shadow-[0_40px_120px_-48px_rgba(127,34,254,0.7)]">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.26),rgba(127,34,254,0.12)_24%,transparent_60%)]" />
@@ -3956,11 +3962,11 @@ export default function MerchQuantumApp() {
             <div className="pointer-events-none absolute h-[27rem] w-[27rem] rounded-full border border-[#7F22FE]/20" />
             <div className="pointer-events-none absolute h-[31rem] w-[31rem] rounded-full border border-white/5" />
             <div className="relative z-10 flex max-w-xl flex-col items-center gap-3 text-center">
-              <div className="flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1 text-4xl font-semibold tracking-tight sm:text-5xl">
+              <div className={`flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1 text-4xl font-semibold tracking-tight transition-all duration-[600ms] ease-out sm:text-5xl ${isBootOverlayPrimed ? "translate-y-0 scale-100 blur-0 opacity-100" : "translate-y-2 scale-[0.985] blur-[10px] opacity-0"}`}>
                 <span className="text-[#7F22FE]">Merch</span>
                 <span className="text-white">Quantum</span>
               </div>
-              <p className="text-sm text-slate-300 sm:text-base">{APP_TAGLINE}</p>
+              <p className={`text-sm text-slate-300 transition-all duration-[400ms] ease-out sm:text-base ${isBootOverlayPrimed ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"}`}>{APP_TAGLINE}</p>
             </div>
           </div>
         </div>
@@ -3968,9 +3974,8 @@ export default function MerchQuantumApp() {
 
       <div className="mx-auto max-w-6xl space-y-3">
         <div className="relative">
-        <div className={`overflow-hidden transition-all duration-500 ${isRoutingGridCollapsed ? "pointer-events-none max-h-0 -translate-y-3 opacity-0" : "pointer-events-auto max-h-[32rem] translate-y-0 opacity-100"}`}>
           <Box
-            className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${routingGuidanceTarget ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""}`}
+            className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${routingGuidanceTarget ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""} ${isRoutingGridCollapsed ? "pb-3" : ""}`}
           >
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" />
           <div className={`pointer-events-none absolute -right-10 top-0 h-36 w-36 blur-3xl transition-all duration-700 sm:-right-16 sm:h-40 sm:w-40 md:-right-20 md:h-48 md:w-48 ${connected ? "bg-[#00BC7D]/12" : "bg-[#7F22FE]/12"} ${routingGuidanceTarget ? "animate-pulse" : ""}`} />
@@ -3978,20 +3983,21 @@ export default function MerchQuantumApp() {
           <div
             className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-[#00BC7D]/90 to-transparent" : "bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent"} ${pulseConnected || routingGuidanceTarget ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
           />
-          <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
+          <div className="mb-3 flex min-w-0 items-center pr-10">
             <MerchQuantumInlineHeading className="max-w-full" />
-            {workspaceMode ? (
-              <button
-                type="button"
-                aria-label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
-                title="Collapse / Expand"
-                onClick={() => setIsRoutingGridExpanded((current) => !current)}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#0c1120] text-slate-400 transition hover:border-[#7F22FE]/35 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
-              >
-                <ChevronIcon open={isRoutingGridExpanded} className="h-3.5 w-3.5" />
-              </button>
-            ) : null}
           </div>
+          {workspaceMode ? (
+            <button
+              type="button"
+              aria-label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
+              title="Collapse / Expand"
+              onClick={() => setIsRoutingGridExpanded((current) => !current)}
+              className="absolute right-4 top-4 inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-[#0c1120] text-slate-400 transition hover:border-[#7F22FE]/35 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
+            >
+              <ChevronIcon open={isRoutingGridExpanded} className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+          <div className={`overflow-hidden transition-all duration-300 ${isRoutingGridCollapsed ? "pointer-events-none max-h-0 -translate-y-2 opacity-0" : "pointer-events-auto max-h-[28rem] translate-y-0 opacity-100"}`}>
           <div className="grid w-full grid-cols-2 gap-2">
             <div className={`min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
               <Select
@@ -4161,8 +4167,8 @@ export default function MerchQuantumApp() {
           </div>
 
           {apiStatus ? <p className="mt-3 text-sm text-[#FE9A00]">{apiStatus}</p> : null}
+          </div>
         </Box>
-        </div>
         </div>
 
         {connected && shopId && workspaceMode ? (
@@ -4425,8 +4431,6 @@ export default function MerchQuantumApp() {
             </div>
             {importStatus ? (
               <p className="mt-3 text-sm text-slate-300">{importStatus}</p>
-            ) : processingBanner ? (
-              <p className="mt-3 text-sm text-slate-300">{processingBanner}</p>
             ) : null}
 
             {isBulkEditMode && !hasAnyLoadedImages ? (
@@ -4758,39 +4762,48 @@ export default function MerchQuantumApp() {
                                 <button
                                   type="button"
                                   onClick={() => toggleMetadataSection("description")}
-                                  className="flex min-h-[20px] min-w-0 flex-1 items-center justify-between gap-3 text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
+                                  className="flex min-h-[20px] min-w-0 flex-1 items-center text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
                                   aria-expanded={metadataSectionState.description}
                                 >
                                   <span className="inline-flex min-w-0 items-center text-sm font-semibold">
                                     <span className="text-[#7F22FE]">Quantum</span>
                                     <span className="ml-1 truncate text-white">AI Description</span>
                                   </span>
-                                  <ChevronIcon open={metadataSectionState.description} className="h-4 w-4 text-slate-500" />
                                 </button>
-                                {canRerollSelectedImage ? (
+                                <div className="flex shrink-0 items-center gap-2">
+                                  {canRerollSelectedImage ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => { void rerollSelectedImageField("description"); }}
+                                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
+                                      aria-label="Re-roll description with Quantum AI"
+                                      title="Re-Roll description"
+                                    >
+                                      <ReRollIcon className="h-3.5 w-3.5" />
+                                    </button>
+                                  ) : null}
+                                  <Button
+                                    className="min-h-0 h-fit shrink-0 rounded-md px-3 py-1 text-xs !bg-[#7F22FE] !text-white hover:!bg-[#6d1ee0]"
+                                    disabled={isCreateMode ? uploadDisabled : bulkEditPublishDisabled}
+                                    onClick={() => {
+                                      if (isCreateMode) {
+                                        void runDraftBatch();
+                                        return;
+                                      }
+                                      void runBulkEditPublishAction();
+                                    }}
+                                  >
+                                    {descriptionActionLabel}
+                                  </Button>
                                   <button
                                     type="button"
-                                    onClick={() => { void rerollSelectedImageField("description"); }}
-                                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
-                                    aria-label="Re-roll description with Quantum AI"
-                                    title="Re-Roll description"
+                                    onClick={() => toggleMetadataSection("description")}
+                                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 text-slate-400 transition hover:border-[#7F22FE]/35 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
+                                    aria-label={metadataSectionState.description ? "Collapse Quantum AI Description" : "Expand Quantum AI Description"}
                                   >
-                                    <ReRollIcon className="h-3.5 w-3.5" />
+                                    <ChevronIcon open={metadataSectionState.description} className="h-4 w-4 text-slate-500" />
                                   </button>
-                                ) : null}
-                                <Button
-                                  className="min-h-[30px] shrink-0 rounded-lg px-4 py-1.5 text-sm !bg-[#7F22FE] !text-white hover:!bg-[#6d1ee0]"
-                                  disabled={isCreateMode ? uploadDisabled : bulkEditPublishDisabled}
-                                  onClick={() => {
-                                    if (isCreateMode) {
-                                      void runDraftBatch();
-                                      return;
-                                    }
-                                    void runBulkEditPublishAction();
-                                  }}
-                                >
-                                  {descriptionActionLabel}
-                                </Button>
+                                </div>
                               </div>
                               {metadataSectionState.description ? (
                                 <div className="space-y-2">
@@ -4916,12 +4929,6 @@ export default function MerchQuantumApp() {
                               </button>
                               {metadataSectionState.tags ? (
                                 <div className="flex flex-wrap items-center justify-start gap-1.5">
-                                  <div className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-[#7F22FE]/35 bg-[#7F22FE]/12 px-2.5 py-1.5 text-center text-sm leading-5 text-white">
-                                    <span className="inline-flex items-center gap-1">
-                                      <span className="font-semibold text-[#D8B4FE]">Quantum</span>
-                                      <span className="font-semibold text-white">AI Tags</span>
-                                    </span>
-                                  </div>
                                   {isDetailTagsLoading ? (
                                     Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
                                       <div
