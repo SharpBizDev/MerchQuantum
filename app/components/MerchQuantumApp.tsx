@@ -11,7 +11,6 @@ const CONNECTED_TOTAL_BATCH_FILES = 50;
 const FIXED_TAG_COUNT = 13;
 const BOOT_SWEEP_START_MS = 1200;
 const BOOT_OVERLAY_FADE_MS = 1520;
-const BOOT_OVERLAY_UNMOUNT_MS = 220;
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
 export const QUANTUM_DESCRIPTION_AWAITING_TEXT = "Awaiting Quantum AI description...";
 
@@ -1529,6 +1528,26 @@ function getImagePreviewSnippet(image: Img) {
   );
 }
 
+function buildProductHoverPreview(product: Product): ThumbnailHoverPreview {
+  return {
+    key: product.id,
+    title: product.title,
+    snippet: getProductPreviewSnippet(product),
+    imageUrl: product.previewUrl,
+    background: DISPLAY_NEUTRAL_BACKGROUND,
+  };
+}
+
+function buildImageHoverPreview(image: Img): ThumbnailHoverPreview {
+  return {
+    key: image.id,
+    title: image.final || image.name,
+    snippet: getImagePreviewSnippet(image),
+    imageUrl: image.preview,
+    background: image.previewBackground,
+  };
+}
+
 function autosizeTextarea(element: HTMLTextAreaElement | null) {
   if (!element) return;
   element.style.height = "0px";
@@ -1778,7 +1797,7 @@ function CreativeWellspringBootOverlay({
   return (
     <div
       onClick={onDismiss}
-      className={`fixed inset-0 z-[140] overflow-hidden bg-[#03050d] transition-opacity duration-300 ${visible ? "opacity-100" : "pointer-events-none opacity-0"}`}
+      className={`fixed inset-0 overflow-hidden bg-[#03050d] transition-opacity duration-500 ${visible ? "z-[140] opacity-100 pointer-events-auto" : "z-0 opacity-[0.18] pointer-events-none"}`}
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.16),rgba(3,5,13,0.95)_42%,rgba(0,0,0,1)_82%)]" />
 
@@ -2043,6 +2062,7 @@ export default function MerchQuantumApp() {
   const [productId, setProductId] = useState("");
   const [bulkEditGridPage, setBulkEditGridPage] = useState(0);
   const [createTemplateGridPage, setCreateTemplateGridPage] = useState(0);
+  const [selectorPageSize, setSelectorPageSize] = useState<1 | 25>(25);
   const [isCreateThumbExpandedView, setIsCreateThumbExpandedView] = useState(false);
   const [createThumbGridPage, setCreateThumbGridPage] = useState(0);
   const [templateDescription, setTemplateDescription] = useState("");
@@ -2075,7 +2095,6 @@ export default function MerchQuantumApp() {
   const [inlineSaveFeedback, setInlineSaveFeedback] = useState<InlineSaveFeedback | null>(null);
   const [aiAssistStatus, setAiAssistStatus] = useState("");
   const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
-  const [isBootOverlayMounted, setIsBootOverlayMounted] = useState(true);
   const [isBootOverlayVisible, setIsBootOverlayVisible] = useState(true);
   const [isBootOverlayPrimed, setIsBootOverlayPrimed] = useState(false);
   const [isBootOverlaySweepActive, setIsBootOverlaySweepActive] = useState(false);
@@ -2260,7 +2279,7 @@ export default function MerchQuantumApp() {
   const bulkEditSelectionCountLabel = pendingTemplateSelectionIds.length > 0
     ? `${pendingTemplateSelectionIds.length} listing${pendingTemplateSelectionIds.length === 1 ? "" : "s"} staged`
     : "No listings staged yet";
-  const selectionPageSize = 25;
+  const selectionPageSize = selectorPageSize;
   const createTemplatePageSize = selectionPageSize;
   const createTemplateTotalPages = Math.max(1, Math.ceil(visibleProducts.length / createTemplatePageSize));
   const safeCreateTemplatePage = Math.min(createTemplateGridPage, createTemplateTotalPages - 1);
@@ -3035,8 +3054,6 @@ export default function MerchQuantumApp() {
   }, []);
 
   useEffect(() => {
-    if (!isBootOverlayMounted) return;
-
     setIsBootOverlayPrimed(false);
     setIsBootOverlaySweepActive(false);
 
@@ -3057,21 +3074,12 @@ export default function MerchQuantumApp() {
       window.clearTimeout(sweepTimer);
       window.clearTimeout(timer);
     };
-  }, [isBootOverlayMounted]);
+  }, []);
 
   useEffect(() => {
-    if (isBootOverlayVisible || !isBootOverlayMounted) return;
-
-    const timer = window.setTimeout(() => {
-      setIsBootOverlayMounted(false);
-      setIsBootOverlayPrimed(false);
-      setIsBootOverlaySweepActive(false);
-    }, BOOT_OVERLAY_UNMOUNT_MS);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [isBootOverlayMounted, isBootOverlayVisible]);
+    setCreateTemplateGridPage(0);
+    setBulkEditGridPage(0);
+  }, [selectorPageSize]);
 
   useEffect(() => {
     activeTemplateKeyRef.current = templateKey;
@@ -3281,10 +3289,9 @@ export default function MerchQuantumApp() {
     setSelectedId("");
   }
 
-function dismissBootOverlay() {
+  function dismissBootOverlay() {
   setIsBootOverlaySweepActive(true);
   setIsBootOverlayVisible(false);
-  setIsBootOverlayPrimed(false);
 }
 
   function clearPreviewWorkspace() {
@@ -4165,6 +4172,7 @@ function dismissBootOverlay() {
     selectedIds,
     rangeLabel,
     page,
+    pageSize,
     totalPages,
     onSelectAll,
     onClearSelection,
@@ -4178,6 +4186,7 @@ function dismissBootOverlay() {
     selectedIds: string[];
     rangeLabel: string;
     page: number;
+    pageSize: number;
     totalPages: number;
     onSelectAll?: () => void;
     onClearSelection: () => void;
@@ -4191,9 +4200,9 @@ function dismissBootOverlay() {
     loading: boolean;
   }) => (
     <>
-      <div className="mt-2 flex items-center justify-between gap-3">
-        <span className="text-[11px] font-medium tracking-tight text-white">{heading}</span>
-        <div className="flex items-center gap-3 text-[11px]">
+      <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-[11px] font-medium tracking-tight text-white">{heading}</span>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 text-[11px]">
           {onSelectAll ? (
             <button
               type="button"
@@ -4212,14 +4221,25 @@ function dismissBootOverlay() {
           >
             Clear Selection
           </button>
+          <div className="w-[4.5rem] shrink-0">
+            <Select
+              value={String(selectorPageSize)}
+              onChange={(event) => setSelectorPageSize(event.target.value === "1" ? 1 : 25)}
+              className="h-8 rounded-lg border-slate-800 bg-[#050918] px-2 pr-7 text-[11px] text-slate-300 focus:border-[#7F22FE]"
+              aria-label="Items per page"
+            >
+              <option value="25">25</option>
+              <option value="1">1</option>
+            </Select>
+          </div>
         </div>
       </div>
 
-      <div className="mt-3">
+      <div className="mt-3 max-w-full overflow-hidden">
         {items.length > 0 ? (
-          <div className="grid grid-cols-5 gap-2.5 sm:gap-3">
+          <div className="grid max-w-full grid-cols-5 gap-2.5 overflow-hidden sm:gap-3">
             {items.map((product, index) => {
-              const globalIndex = page * selectionPageSize + index;
+              const globalIndex = page * pageSize + index;
               const isSelected = selectedIds.includes(product.id);
               const alreadyImported = importedProductIds.has(product.id);
               const cardTone = isSelected
@@ -4227,39 +4247,28 @@ function dismissBootOverlay() {
                 : alreadyImported
                   ? "border-[#00BC7D]/45 opacity-60 hover:opacity-100"
                   : "border-slate-800/80 opacity-60 hover:opacity-100";
+              const hoverPreview = buildProductHoverPreview(product);
 
               return (
                 <button
                   key={`${heading}-${product.id}`}
                   type="button"
-                  onPointerEnter={() =>
-                    openThumbnailHoverPreview({
-                      key: product.id,
-                      title: product.title,
-                      snippet: getProductPreviewSnippet(product),
-                      imageUrl: product.previewUrl,
-                      background: DISPLAY_NEUTRAL_BACKGROUND,
-                    })
-                  }
+                  onPointerEnter={() => openThumbnailHoverPreview(hoverPreview)}
                   onPointerLeave={() => closeThumbnailHoverPreview(product.id)}
-                  onFocus={() =>
-                    openThumbnailHoverPreview({
-                      key: product.id,
-                      title: product.title,
-                      snippet: getProductPreviewSnippet(product),
-                      imageUrl: product.previewUrl,
-                      background: DISPLAY_NEUTRAL_BACKGROUND,
-                    })
-                  }
+                  onFocus={() => openThumbnailHoverPreview(hoverPreview)}
                   onBlur={() => closeThumbnailHoverPreview(product.id)}
-                  onClick={(event) => onItemActivate(product, globalIndex, event)}
+                  onClick={(event) => {
+                    openThumbnailHoverPreview(hoverPreview);
+                    onItemActivate(product, globalIndex, event);
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
+                      openThumbnailHoverPreview(hoverPreview);
                       onItemActivate(product, globalIndex, event);
                     }
                   }}
-                  className={`group relative aspect-square w-full min-w-0 cursor-pointer overflow-hidden rounded-xl border bg-[#020616] transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/40 hover:z-10 hover:shadow-2xl active:scale-[1.02] ${cardTone}`}
+                  className={`group relative aspect-square w-full min-w-0 max-w-full cursor-pointer overflow-hidden rounded-xl border bg-[#020616] transition-opacity duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/40 active:scale-[1.02] ${cardTone}`}
                   aria-label={product.title}
                 >
                   <div className="absolute inset-0" style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }} />
@@ -4275,11 +4284,6 @@ function dismissBootOverlay() {
                   <div className={`pointer-events-none absolute inset-0 transition ${
                     isSelected ? "bg-[#7F22FE]/14" : "bg-black/10"
                   }`} />
-                  <div className="pointer-events-none absolute inset-0 flex items-end bg-black/80 p-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100">
-                    <span className="line-clamp-3 text-[10px] font-medium leading-tight text-white">
-                      {product.title}
-                    </span>
-                  </div>
                   {(isSelected || alreadyImported) ? (
                     <span
                       className={`absolute left-2 top-2 h-2.5 w-2.5 rounded-full ${
@@ -4300,7 +4304,7 @@ function dismissBootOverlay() {
         )}
       </div>
 
-      <div className="mt-3 flex items-center justify-end gap-3 text-[11px]">
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-3 text-[11px]">
         {visibleProducts.length > 0 ? (
           <span className="text-xs text-slate-500">{rangeLabel}</span>
         ) : null}
@@ -4310,7 +4314,7 @@ function dismissBootOverlay() {
           disabled={page <= 0}
           onClick={onPreviousPage}
         >
-          Prev 25
+          {`Prev ${pageSize}`}
         </button>
         <button
           type="button"
@@ -4318,7 +4322,7 @@ function dismissBootOverlay() {
           disabled={totalPages <= 1 || page >= totalPages - 1}
           onClick={onNextPage}
         >
-          Next 25
+          {`Next ${pageSize}`}
         </button>
       </div>
     </>
@@ -4326,16 +4330,14 @@ function dismissBootOverlay() {
 
   return (
     <div className="relative min-h-screen max-w-full overflow-x-hidden bg-[#000000] px-6 pb-6 pt-3 text-white transition-colors md:px-8 md:pb-8 md:pt-4">
-      {isBootOverlayMounted ? (
-        <CreativeWellspringBootOverlay
-          visible={isBootOverlayVisible}
-          primed={isBootOverlayPrimed}
-          sweepActive={isBootOverlaySweepActive}
-          onDismiss={dismissBootOverlay}
-        />
-      ) : null}
+      <CreativeWellspringBootOverlay
+        visible={isBootOverlayVisible}
+        primed={isBootOverlayPrimed}
+        sweepActive={isBootOverlaySweepActive}
+        onDismiss={dismissBootOverlay}
+      />
 
-      <div className={`mx-auto max-w-6xl space-y-3 transition-all duration-300 ${isBootOverlayVisible ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"}`}>
+      <div className={`relative z-10 mx-auto max-w-6xl space-y-3 transition-all duration-300 ${isBootOverlayVisible ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"}`}>
         {!workspaceMode || isRoutingGridExpanded ? (
         <div className="relative">
           <Box
@@ -4563,6 +4565,7 @@ function dismissBootOverlay() {
                     selectedIds: pendingTemplateSelectionIds,
                     rangeLabel: bulkEditVisibleRangeLabel,
                     page: safeBulkEditPage,
+                    pageSize: bulkEditPageSize,
                     totalPages: bulkEditTotalPages,
                     loading: loadingProducts,
                     onSelectAll: () => {
@@ -4617,6 +4620,7 @@ function dismissBootOverlay() {
                     selectedIds: selectedImportIds,
                     rangeLabel: createTemplateVisibleRangeLabel,
                     page: safeCreateTemplatePage,
+                    pageSize: createTemplatePageSize,
                     totalPages: createTemplateTotalPages,
                     loading: loadingProducts,
                     onClearSelection: () => { void commitTemplateSelections([]); },
@@ -4786,32 +4790,19 @@ function dismissBootOverlay() {
                                   return (
                                     <div
                                       key={img.id}
-                                      onClick={() => setSelectedId(img.id)}
+                                      onClick={() => {
+                                        setSelectedId(img.id);
+                                        openThumbnailHoverPreview(buildImageHoverPreview(img));
+                                      }}
                                       className={`w-full rounded-lg transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
                                     >
                                       <div className="relative">
                                         {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
                                         <div
                                           className={`group relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border bg-[#020616] transition-all duration-500 ${previewFrameTone}`}
-                                          onPointerEnter={() =>
-                                            openThumbnailHoverPreview({
-                                              key: img.id,
-                                              title: img.final || img.name,
-                                              snippet: getImagePreviewSnippet(img),
-                                              imageUrl: img.preview,
-                                              background: img.previewBackground,
-                                            })
-                                          }
+                                          onPointerEnter={() => openThumbnailHoverPreview(buildImageHoverPreview(img))}
                                           onPointerLeave={() => closeThumbnailHoverPreview(img.id)}
-                                          onFocus={() =>
-                                            openThumbnailHoverPreview({
-                                              key: img.id,
-                                              title: img.final || img.name,
-                                              snippet: getImagePreviewSnippet(img),
-                                              imageUrl: img.preview,
-                                              background: img.previewBackground,
-                                            })
-                                          }
+                                          onFocus={() => openThumbnailHoverPreview(buildImageHoverPreview(img))}
                                           onBlur={() => closeThumbnailHoverPreview(img.id)}
                                         >
                                           {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
@@ -5236,21 +5227,20 @@ function dismissBootOverlay() {
       </div>
       {thumbnailHoverPreview && typeof document !== "undefined"
         ? createPortal(
-            <div className="pointer-events-none fixed inset-0 z-[160] flex items-center justify-center p-3 sm:p-4">
-              <div className="absolute inset-0 bg-transparent" />
-              <div className="pointer-events-none relative w-full max-w-xs max-h-64 overflow-hidden rounded-[24px] border border-white/10 bg-[#020616]/96 shadow-[0_24px_72px_-40px_rgba(0,0,0,0.92)] backdrop-blur-xl">
+            <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[120] flex items-end justify-center p-3 sm:justify-end sm:p-4">
+              <div className="pointer-events-none relative w-full max-w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-[20px] border border-white/10 bg-[#020616]/94 shadow-[0_24px_72px_-40px_rgba(0,0,0,0.92)] backdrop-blur-xl">
                 <div className="absolute inset-0 opacity-90" style={{ backgroundColor: thumbnailHoverPreview.background || DISPLAY_NEUTRAL_BACKGROUND }} />
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(192,132,252,0.22),transparent_55%),linear-gradient(180deg,rgba(2,6,22,0.08),rgba(2,6,22,0.8))]" />
-                <div className="relative flex flex-col gap-3 p-3">
-                  <div className="overflow-hidden rounded-[18px] border border-white/10 bg-black/10">
+                <div className="relative flex flex-col gap-2.5 p-3">
+                  <div className="overflow-hidden rounded-[16px] border border-white/10 bg-black/10">
                     {thumbnailHoverPreview.imageUrl ? (
                       <img
                         src={thumbnailHoverPreview.imageUrl}
                         alt={thumbnailHoverPreview.title}
-                        className="h-auto max-h-40 w-full object-contain"
+                        className="h-auto max-h-36 w-full object-contain"
                       />
                     ) : (
-                      <div className="flex aspect-square w-full max-h-40 items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))] text-xs text-slate-300">
+                      <div className="flex aspect-square w-full max-h-36 items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))] text-xs text-slate-300">
                         Preview unavailable
                       </div>
                     )}
