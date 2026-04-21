@@ -1975,6 +1975,8 @@ export default function MerchQuantumApp() {
   const [search, setSearch] = useState("");
   const [isBulkEditExpandedView, setIsBulkEditExpandedView] = useState(false);
   const [bulkEditGridPage, setBulkEditGridPage] = useState(0);
+  const [isCreateThumbExpandedView, setIsCreateThumbExpandedView] = useState(false);
+  const [createThumbGridPage, setCreateThumbGridPage] = useState(0);
   const [templateDescription, setTemplateDescription] = useState("");
   const [importedListingTitle, setImportedListingTitle] = useState("");
   const [importedListingDescription, setImportedListingDescription] = useState("");
@@ -2189,14 +2191,28 @@ export default function MerchQuantumApp() {
     : "No listings staged yet";
   const bulkEditCompactVisibleCount = 5;
   const bulkEditExpandedPageSize = 25;
-  const bulkEditTotalPages = Math.max(1, Math.ceil(visibleProducts.length / bulkEditExpandedPageSize));
+  const bulkEditPageSize = isBulkEditExpandedView ? bulkEditExpandedPageSize : bulkEditCompactVisibleCount;
+  const bulkEditTotalPages = Math.max(1, Math.ceil(visibleProducts.length / bulkEditPageSize));
   const safeBulkEditPage = Math.min(bulkEditGridPage, bulkEditTotalPages - 1);
-  const bulkEditVisibleProducts = isBulkEditExpandedView
-    ? visibleProducts.slice(
-      safeBulkEditPage * bulkEditExpandedPageSize,
-      safeBulkEditPage * bulkEditExpandedPageSize + bulkEditExpandedPageSize
-    )
-    : visibleProducts.slice(0, bulkEditCompactVisibleCount);
+  const bulkEditVisibleProducts = visibleProducts.slice(
+    safeBulkEditPage * bulkEditPageSize,
+    safeBulkEditPage * bulkEditPageSize + bulkEditPageSize
+  );
+  const bulkEditVisibleRangeLabel = visibleProducts.length > 0
+    ? `${safeBulkEditPage * bulkEditPageSize + 1}-${Math.min(visibleProducts.length, safeBulkEditPage * bulkEditPageSize + bulkEditVisibleProducts.length)} of ${visibleProducts.length}`
+    : "0 of 0";
+  const createThumbCompactVisibleCount = 5;
+  const createThumbExpandedPageSize = 25;
+  const createThumbPageSize = isCreateThumbExpandedView ? createThumbExpandedPageSize : createThumbCompactVisibleCount;
+  const createThumbTotalPages = Math.max(1, Math.ceil(sortedImages.length / createThumbPageSize));
+  const safeCreateThumbPage = Math.min(createThumbGridPage, createThumbTotalPages - 1);
+  const visibleCreateThumbnails = sortedImages.slice(
+    safeCreateThumbPage * createThumbPageSize,
+    safeCreateThumbPage * createThumbPageSize + createThumbPageSize
+  );
+  const createThumbVisibleRangeLabel = sortedImages.length > 0
+    ? `${safeCreateThumbPage * createThumbPageSize + 1}-${Math.min(sortedImages.length, safeCreateThumbPage * createThumbPageSize + visibleCreateThumbnails.length)} of ${sortedImages.length}`
+    : "0 of 0";
   const workspaceModePickerLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "Edit mode";
   const previewOverlayUsesLightText = selectedImage?.preview
     ? shouldUseLightPreviewText(selectedImage.previewBackground || DISPLAY_NEUTRAL_BACKGROUND)
@@ -3075,6 +3091,18 @@ export default function MerchQuantumApp() {
   }, [bulkEditGridPage, bulkEditTotalPages, isBulkEditMode]);
 
   useEffect(() => {
+    if (!isCreateMode) {
+      setIsCreateThumbExpandedView(false);
+      setCreateThumbGridPage(0);
+      return;
+    }
+
+    if (createThumbGridPage > createThumbTotalPages - 1) {
+      setCreateThumbGridPage(Math.max(0, createThumbTotalPages - 1));
+    }
+  }, [createThumbGridPage, createThumbTotalPages, isCreateMode]);
+
+  useEffect(() => {
     setBulkEditGridPage(0);
   }, [search, shopId, workspaceMode]);
 
@@ -3201,6 +3229,8 @@ function dismissBootOverlay() {
     setCompletedImportedImages([]);
     setQueuedImages([]);
     setSelectedId("");
+    setIsCreateThumbExpandedView(false);
+    setCreateThumbGridPage(0);
     setMessage("");
     setBatchResults([]);
     setRunStatus("");
@@ -4430,45 +4460,49 @@ function dismissBootOverlay() {
                       </div>
                     )}
                   </div>
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <span className="text-xs text-slate-400">{bulkEditSelectionCountLabel}</span>
-                    <div className="flex items-center gap-2 text-[11px]">
-                      {visibleProducts.length > bulkEditCompactVisibleCount ? (
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <span className="text-xs text-slate-400">{bulkEditSelectionCountLabel}</span>
+                      <div className="flex flex-wrap items-center justify-end gap-2 text-[11px]">
+                        {visibleProducts.length > 0 ? (
+                          <span className="text-slate-500">{bulkEditVisibleRangeLabel}</span>
+                        ) : null}
+                        {bulkEditTotalPages > 1 ? (
+                          <>
+                            <button
+                              type="button"
+                              aria-label="Previous listings"
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+                              disabled={safeBulkEditPage <= 0}
+                              onClick={() => setBulkEditGridPage((current) => Math.max(0, current - 1))}
+                            >
+                              <ChevronIcon open={false} className="h-3.5 w-3.5 rotate-90" />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label="Next listings"
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+                              disabled={safeBulkEditPage >= bulkEditTotalPages - 1}
+                              onClick={() => setBulkEditGridPage((current) => Math.min(bulkEditTotalPages - 1, current + 1))}
+                            >
+                              <ChevronIcon open={false} className="h-3.5 w-3.5 -rotate-90" />
+                            </button>
+                          </>
+                        ) : null}
+                        {visibleProducts.length > bulkEditCompactVisibleCount ? (
+                          <button
+                            type="button"
+                            className="font-medium text-slate-400 transition hover:text-white"
+                            onClick={() => {
+                              setIsBulkEditExpandedView((current) => !current);
+                              setBulkEditGridPage(0);
+                            }}
+                          >
+                            {isBulkEditExpandedView ? "Compact" : "View All"}
+                          </button>
+                        ) : null}
                         <button
                           type="button"
-                          className="font-medium text-slate-400 transition hover:text-white"
-                          onClick={() => {
-                            setIsBulkEditExpandedView((current) => !current);
-                            setBulkEditGridPage(0);
-                          }}
-                        >
-                          {isBulkEditExpandedView ? "Compact" : "View All"}
-                        </button>
-                      ) : null}
-                      {isBulkEditExpandedView && bulkEditTotalPages > 1 ? (
-                        <>
-                          <span className="text-slate-500">{safeBulkEditPage + 1}/{bulkEditTotalPages}</span>
-                          <button
-                            type="button"
-                            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-                            disabled={safeBulkEditPage <= 0}
-                            onClick={() => setBulkEditGridPage((current) => Math.max(0, current - 1))}
-                          >
-                            Prev
-                          </button>
-                          <button
-                            type="button"
-                            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-                            disabled={safeBulkEditPage >= bulkEditTotalPages - 1}
-                            onClick={() => setBulkEditGridPage((current) => Math.min(bulkEditTotalPages - 1, current + 1))}
-                          >
-                            Next
-                          </button>
-                        </>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+                          className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
                         onClick={() => {
                           setPendingTemplateSelectionIds([]);
                           setTemplateSelectionAnchorIndex(null);
@@ -4760,9 +4794,9 @@ function dismissBootOverlay() {
                             </div>
                           </div>
                           {sortedImages.length > 0 ? (
-                            <div className="overflow-x-auto pb-1 [scrollbar-color:rgba(127,34,254,0.45)_transparent] [scrollbar-width:thin]">
-                              <div className="flex min-w-max gap-2 pr-1">
-                                {sortedImages.map((img, index) => {
+                            <div className="rounded-xl border border-slate-800 bg-[#020616] p-2.5">
+                              <div className="grid grid-cols-5 gap-2">
+                                {visibleCreateThumbnails.map((img, index) => {
                                   const isSelected = selectedImage?.id === img.id;
                                   const resolvedStatus = getResolvedItemStatus(img);
                                   const isProcessing = resolvedStatus === "pending";
@@ -4773,7 +4807,7 @@ function dismissBootOverlay() {
                                       : resolvedStatus === "error"
                                         ? "border-[#FF2056]/55"
                                         : "border-slate-700";
-                                  const previewAlignRight = index >= sortedImages.length - 2;
+                                  const previewAlignRight = index >= visibleCreateThumbnails.length - 2;
                                   const statusIndicator = resolvedStatus === "ready"
                                     ? { tone: "ready" as const, direction: "up" as const }
                                     : resolvedStatus === "error"
@@ -4784,7 +4818,7 @@ function dismissBootOverlay() {
                                     <div
                                       key={img.id}
                                       onClick={() => setSelectedId(img.id)}
-                                      className={`w-[88px] shrink-0 rounded-lg transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
+                                      className={`w-full rounded-lg transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
                                     >
                                       <div className="relative">
                                         {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
@@ -4829,6 +4863,46 @@ function dismissBootOverlay() {
                                     </div>
                                   );
                                 })}
+                              </div>
+                              <div className="mt-3 flex items-center justify-between gap-3">
+                                <span className="text-xs text-slate-400">{sortedImages.length} image{sortedImages.length === 1 ? "" : "s"} loaded</span>
+                                <div className="flex flex-wrap items-center justify-end gap-2 text-[11px]">
+                                  <span className="text-slate-500">{createThumbVisibleRangeLabel}</span>
+                                  {createThumbTotalPages > 1 ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        aria-label="Previous image set"
+                                        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+                                        disabled={safeCreateThumbPage <= 0}
+                                        onClick={() => setCreateThumbGridPage((current) => Math.max(0, current - 1))}
+                                      >
+                                        <ChevronIcon open={false} className="h-3.5 w-3.5 rotate-90" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        aria-label="Next image set"
+                                        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+                                        disabled={safeCreateThumbPage >= createThumbTotalPages - 1}
+                                        onClick={() => setCreateThumbGridPage((current) => Math.min(createThumbTotalPages - 1, current + 1))}
+                                      >
+                                        <ChevronIcon open={false} className="h-3.5 w-3.5 -rotate-90" />
+                                      </button>
+                                    </>
+                                  ) : null}
+                                  {sortedImages.length > createThumbCompactVisibleCount ? (
+                                    <button
+                                      type="button"
+                                      className="font-medium text-slate-400 transition hover:text-white"
+                                      onClick={() => {
+                                        setIsCreateThumbExpandedView((current) => !current);
+                                        setCreateThumbGridPage(0);
+                                      }}
+                                    >
+                                      {isCreateThumbExpandedView ? "Compact" : "View All"}
+                                    </button>
+                                  ) : null}
+                                </div>
                               </div>
                             </div>
                           ) : null}
