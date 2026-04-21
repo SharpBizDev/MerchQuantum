@@ -1954,7 +1954,6 @@ function getResolvedItemStatus(image: Img): ItemStatus {
 
 export default function MerchQuantumApp() {
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const templatePickerRef = useRef<HTMLDivElement | null>(null);
   const previousPreviewUrlsRef = useRef<string[]>([]);
   const aiLoopBusyRef = useRef<symbol | null>(null);
   const activeTemplateKeyRef = useRef("");
@@ -1972,10 +1971,7 @@ export default function MerchQuantumApp() {
   const [loadingTemplateDetails, setLoadingTemplateDetails] = useState(false);
   const [shopId, setShopId] = useState("");
   const [productId, setProductId] = useState("");
-  const [search, setSearch] = useState("");
-  const [isBulkEditExpandedView, setIsBulkEditExpandedView] = useState(false);
   const [bulkEditGridPage, setBulkEditGridPage] = useState(0);
-  const [isCreateTemplateExpandedView, setIsCreateTemplateExpandedView] = useState(false);
   const [createTemplateGridPage, setCreateTemplateGridPage] = useState(0);
   const [isCreateThumbExpandedView, setIsCreateThumbExpandedView] = useState(false);
   const [createThumbGridPage, setCreateThumbGridPage] = useState(0);
@@ -1985,8 +1981,7 @@ export default function MerchQuantumApp() {
   const [template, setTemplate] = useState<Template | null>(null);
   const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
   const [pendingTemplateSelectionIds, setPendingTemplateSelectionIds] = useState<string[]>([]);
-  const [templateSelectionAnchorIndex, setTemplateSelectionAnchorIndex] = useState<number | null>(null);
-  const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [isDisconnectArmed, setIsDisconnectArmed] = useState(false);
   const [isTokenInputFocused, setIsTokenInputFocused] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("");
@@ -2049,13 +2044,8 @@ export default function MerchQuantumApp() {
   const hasWorkspaceRoute = connected && !!shopId && !!workspaceMode;
 
   const visibleProducts = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return productSource.filter(
-      (p) =>
-        p.shopId === shopId &&
-        (!q || p.title.toLowerCase().includes(q) || p.type.toLowerCase().includes(q))
-    );
-  }, [shopId, search, productSource]);
+    return productSource.filter((p) => p.shopId === shopId);
+  }, [shopId, productSource]);
   const selectedTemplateProducts = useMemo(
     () => productSource.filter((product) => selectedImportIds.includes(product.id)),
     [productSource, selectedImportIds]
@@ -2182,21 +2172,14 @@ export default function MerchQuantumApp() {
     [allImages, queuedImages]
   );
   const queuedStatCount = queuedImages.length;
-  const templatePickerBaseLabel = isBulkEditMode ? "Choose Listings to Edit" : "Choose Product Template";
-  const templatePickerLabel = selectedTemplateProducts.length === 0
-    ? templatePickerBaseLabel
-    : selectedTemplateProducts.length === 1
-      ? selectedTemplateProducts[0]?.title || templatePickerBaseLabel
-      : `${selectedTemplateProducts.length} Listings Selected`;
   const bulkEditSelectionCountLabel = pendingTemplateSelectionIds.length > 0
     ? `${pendingTemplateSelectionIds.length} listing${pendingTemplateSelectionIds.length === 1 ? "" : "s"} staged`
     : "No listings staged yet";
   const createTemplateSelectionLabel = selectedTemplateProducts.length > 0
     ? selectedTemplateProducts[0]?.title || "1 template selected"
     : "No template selected";
-  const createTemplateCompactVisibleCount = 5;
-  const createTemplateExpandedPageSize = 25;
-  const createTemplatePageSize = isCreateTemplateExpandedView ? createTemplateExpandedPageSize : createTemplateCompactVisibleCount;
+  const selectionPageSize = 25;
+  const createTemplatePageSize = selectionPageSize;
   const createTemplateTotalPages = Math.max(1, Math.ceil(visibleProducts.length / createTemplatePageSize));
   const safeCreateTemplatePage = Math.min(createTemplateGridPage, createTemplateTotalPages - 1);
   const createTemplateVisibleProducts = visibleProducts.slice(
@@ -2206,9 +2189,7 @@ export default function MerchQuantumApp() {
   const createTemplateVisibleRangeLabel = visibleProducts.length > 0
     ? `${safeCreateTemplatePage * createTemplatePageSize + 1}-${Math.min(visibleProducts.length, safeCreateTemplatePage * createTemplatePageSize + createTemplateVisibleProducts.length)} of ${visibleProducts.length}`
     : "0 of 0";
-  const bulkEditCompactVisibleCount = 5;
-  const bulkEditExpandedPageSize = 25;
-  const bulkEditPageSize = isBulkEditExpandedView ? bulkEditExpandedPageSize : bulkEditCompactVisibleCount;
+  const bulkEditPageSize = selectionPageSize;
   const bulkEditTotalPages = Math.max(1, Math.ceil(visibleProducts.length / bulkEditPageSize));
   const safeBulkEditPage = Math.min(bulkEditGridPage, bulkEditTotalPages - 1);
   const bulkEditVisibleProducts = visibleProducts.slice(
@@ -2231,7 +2212,6 @@ export default function MerchQuantumApp() {
     ? `${safeCreateThumbPage * createThumbPageSize + 1}-${Math.min(sortedImages.length, safeCreateThumbPage * createThumbPageSize + visibleCreateThumbnails.length)} of ${sortedImages.length}`
     : "0 of 0";
   const selectorShellClassName = `rounded-xl border border-slate-800 bg-[#020616] p-4 ${attentionTarget === "template" ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`;
-  const selectorGridClassName = "mt-2 rounded-xl border border-slate-800 bg-[#010512] p-2.5";
   const workspaceModePickerLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "Edit mode";
   const previewOverlayUsesLightText = selectedImage?.preview
     ? shouldUseLightPreviewText(selectedImage.previewBackground || DISPLAY_NEUTRAL_BACKGROUND)
@@ -3047,31 +3027,6 @@ export default function MerchQuantumApp() {
   }, [templateKey]);
 
   useEffect(() => {
-    if (!isTemplatePickerOpen) return;
-
-    function handlePointerDown(event: MouseEvent) {
-      if (!templatePickerRef.current?.contains(event.target as Node)) {
-        void commitTemplateSelections(pendingTemplateSelectionIds);
-      }
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        cancelTemplatePicker();
-      }
-    }
-
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isTemplatePickerOpen, pendingTemplateSelectionIds, selectedImportIds]);
-
-  useEffect(() => {
     if (!shopId) {
       setApiProducts([]);
       setProductId("");
@@ -3083,9 +3038,9 @@ export default function MerchQuantumApp() {
       setIsRoutingGridExpanded(true);
       setSelectedImportIds([]);
       setPendingTemplateSelectionIds([]);
-      setIsBulkEditExpandedView(false);
       setBulkEditGridPage(0);
-      setIsTemplatePickerOpen(false);
+      setCreateTemplateGridPage(0);
+      setLastSelectedIndex(null);
       setImportStatus("");
       setEditingField(null);
       setInlineSaveFeedback(null);
@@ -3098,24 +3053,12 @@ export default function MerchQuantumApp() {
   }, [shopId, visibleProducts, productId]);
 
   useEffect(() => {
-    if (!isBulkEditMode) {
-      setIsBulkEditExpandedView(false);
-      setBulkEditGridPage(0);
-      return;
-    }
-
     if (bulkEditGridPage > bulkEditTotalPages - 1) {
       setBulkEditGridPage(Math.max(0, bulkEditTotalPages - 1));
     }
   }, [bulkEditGridPage, bulkEditTotalPages, isBulkEditMode]);
 
   useEffect(() => {
-    if (!isCreateMode) {
-      setIsCreateTemplateExpandedView(false);
-      setCreateTemplateGridPage(0);
-      return;
-    }
-
     if (createTemplateGridPage > createTemplateTotalPages - 1) {
       setCreateTemplateGridPage(Math.max(0, createTemplateTotalPages - 1));
     }
@@ -3135,11 +3078,9 @@ export default function MerchQuantumApp() {
 
   useEffect(() => {
     setBulkEditGridPage(0);
-  }, [search, shopId, workspaceMode]);
-
-  useEffect(() => {
     setCreateTemplateGridPage(0);
-  }, [search, shopId, workspaceMode]);
+    setLastSelectedIndex(null);
+  }, [shopId, workspaceMode]);
 
   useEffect(() => {
     if (!connected || !shopId || !workspaceMode || loadingProducts || apiProducts.length > 0 || !!apiStatus) return;
@@ -3282,7 +3223,6 @@ function dismissBootOverlay() {
   function handleWorkspaceModeChange(nextMode: WorkspaceMode) {
     setWorkspaceMode(nextMode);
     setIsRoutingGridExpanded(!nextMode);
-    setSearch("");
     setProductId("");
     setTemplate(null);
     setTemplateDescription("");
@@ -3290,8 +3230,7 @@ function dismissBootOverlay() {
     setImportedListingDescription("");
     setSelectedImportIds([]);
     setPendingTemplateSelectionIds([]);
-    setTemplateSelectionAnchorIndex(null);
-    setIsTemplatePickerOpen(false);
+    setLastSelectedIndex(null);
     setEditingField(null);
     setInlineSaveFeedback(null);
     clearPreviewWorkspace();
@@ -3304,7 +3243,6 @@ function dismissBootOverlay() {
   function handleShopSelection(nextShopId: string) {
     setShopId(nextShopId);
     setApiProducts([]);
-    setSearch("");
     setWorkspaceMode("");
     setIsRoutingGridExpanded(true);
     setProductId("");
@@ -3314,8 +3252,9 @@ function dismissBootOverlay() {
     setImportedListingDescription("");
     setSelectedImportIds([]);
     setPendingTemplateSelectionIds([]);
-    setTemplateSelectionAnchorIndex(null);
-    setIsTemplatePickerOpen(false);
+    setBulkEditGridPage(0);
+    setCreateTemplateGridPage(0);
+    setLastSelectedIndex(null);
     clearPreviewWorkspace();
     setEditingField(null);
     setInlineSaveFeedback(null);
@@ -3556,49 +3495,30 @@ function dismissBootOverlay() {
     }
   }
 
-  function getNextTemplateSelections(sourceId: string) {
-    if (isCreateMode) {
-      return [sourceId];
-    }
-
-    return pendingTemplateSelectionIds.includes(sourceId)
-      ? pendingTemplateSelectionIds.filter((entry) => entry !== sourceId)
-      : normalizeSelectionIds([...pendingTemplateSelectionIds, sourceId]);
+  function getSelectionRangeIds(startIndex: number, endIndex: number) {
+    const rangeStart = Math.min(startIndex, endIndex);
+    const rangeEnd = Math.max(startIndex, endIndex);
+    return visibleProducts.slice(rangeStart, rangeEnd + 1).map((product) => product.id);
   }
 
-  function stageBulkEditTemplateSelection(sourceId: string, index: number, options?: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) {
-    const nextSelections = pendingTemplateSelectionIds.includes(sourceId)
-      ? pendingTemplateSelectionIds.filter((entry) => entry !== sourceId)
-      : normalizeSelectionIds([...pendingTemplateSelectionIds, sourceId]);
+  function handleBulkEditThumbnailSelection(
+    sourceId: string,
+    index: number,
+    options?: { shiftKey?: boolean }
+  ) {
+    const nextSelections = options?.shiftKey && lastSelectedIndex !== null
+      ? normalizeSelectionIds([...pendingTemplateSelectionIds, ...getSelectionRangeIds(lastSelectedIndex, index)])
+      : pendingTemplateSelectionIds.includes(sourceId)
+        ? pendingTemplateSelectionIds.filter((entry) => entry !== sourceId)
+        : normalizeSelectionIds([...pendingTemplateSelectionIds, sourceId]);
 
     setPendingTemplateSelectionIds(nextSelections);
-    setTemplateSelectionAnchorIndex(index);
+    setLastSelectedIndex(index);
   }
 
-  async function commitTemplateSelectionFromMenu(sourceId: string) {
-    const nextSelections = isCreateMode ? getNextTemplateSelections(sourceId) : pendingTemplateSelectionIds;
-    await commitTemplateSelections(nextSelections);
-  }
-
-  function openTemplatePicker() {
-    if (!shopId) {
-      triggerAttentionCue("shop");
-      return;
-    }
-
-    if (!workspaceMode) {
-      triggerAttentionCue("mode");
-      return;
-    }
-
-    setPendingTemplateSelectionIds(selectedImportIds);
-    setTemplateSelectionAnchorIndex(null);
-    setIsTemplatePickerOpen(true);
-    setImportStatus("");
-
-    if (!loadingProducts && apiProducts.length === 0) {
-      void loadProductsForShop(shopId);
-    }
+  async function handleCreateTemplateSelection(sourceId: string, index: number) {
+    setLastSelectedIndex(index);
+    await commitTemplateSelections(selectedImportIds.includes(sourceId) ? [] : [sourceId]);
   }
 
   async function commitTemplateSelections(sourceIds: string[]) {
@@ -3608,15 +3528,14 @@ function dismissBootOverlay() {
 
     setSelectedImportIds(nextSelections);
     setPendingTemplateSelectionIds(nextSelections);
-    setTemplateSelectionAnchorIndex(null);
-    setIsTemplatePickerOpen(false);
+    if (nextSelections.length === 0) {
+      setLastSelectedIndex(null);
+    }
     setEditingField(null);
     setInlineSaveFeedback(null);
 
     if (!selectionChanged) {
       if (isBulkEditMode && nextSelections.length > 0) {
-        setImportStatus(`Bulk Edit Mode is staged for ${nextSelections.length} listing${nextSelections.length === 1 ? "" : "s"}.`);
-      } else {
         setImportStatus("");
       }
       return;
@@ -3642,12 +3561,6 @@ function dismissBootOverlay() {
 
     setImportStatus(`Loading ${nextSelections.length} provider listing${nextSelections.length === 1 ? "" : "s"} for SEO tuning...`);
     await importSelectedListings(nextSelections, { replaceExisting: true });
-  }
-
-  function cancelTemplatePicker() {
-    setPendingTemplateSelectionIds(selectedImportIds);
-    setTemplateSelectionAnchorIndex(null);
-    setIsTemplatePickerOpen(false);
   }
 
   function buildImportedImageSeed(record: ImportedListingRecord, file: File, preview: { src: string; background: string }, artworkBounds: ArtworkBounds): Img {
@@ -4152,6 +4065,151 @@ function dismissBootOverlay() {
     if (selectedId === targetId) setSelectedId(nextActive[0]?.id || "");
   }
 
+  const renderProductSelectionGrid = ({
+    heading,
+    items,
+    selectedIds,
+    rangeLabel,
+    page,
+    totalPages,
+    onSelectAll,
+    onClearSelection,
+    onItemActivate,
+    onPreviousPage,
+    onNextPage,
+    loading,
+  }: {
+    heading: string;
+    items: Product[];
+    selectedIds: string[];
+    rangeLabel: string;
+    page: number;
+    totalPages: number;
+    onSelectAll?: () => void;
+    onClearSelection: () => void;
+    onItemActivate: (
+      product: Product,
+      index: number,
+      event: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>
+    ) => void;
+    onPreviousPage: () => void;
+    onNextPage: () => void;
+    loading: boolean;
+  }) => (
+    <>
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <span className="text-[11px] font-medium tracking-tight text-white">{heading}</span>
+        <div className="flex items-center gap-3 text-[11px]">
+          {onSelectAll ? (
+            <button
+              type="button"
+              className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+              disabled={visibleProducts.length === 0}
+              onClick={onSelectAll}
+            >
+              Select All
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={selectedIds.length === 0}
+            onClick={onClearSelection}
+          >
+            Clear Selection
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3">
+        {items.length > 0 ? (
+          <div className="grid grid-cols-5 gap-2.5 sm:gap-3">
+            {items.map((product, index) => {
+              const globalIndex = page * selectionPageSize + index;
+              const isSelected = selectedIds.includes(product.id);
+              const alreadyImported = importedProductIds.has(product.id);
+              const cardTone = isSelected
+                ? "border-[#7F22FE] ring-2 ring-[#7F22FE]/80 shadow-[0_0_10px_rgba(147,51,234,0.5)] opacity-100"
+                : alreadyImported
+                  ? "border-[#00BC7D]/45 opacity-60 hover:opacity-100"
+                  : "border-slate-800/80 opacity-60 hover:opacity-100";
+
+              return (
+                <button
+                  key={`${heading}-${product.id}`}
+                  type="button"
+                  onClick={(event) => onItemActivate(product, globalIndex, event)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onItemActivate(product, globalIndex, event);
+                    }
+                  }}
+                  className={`group relative aspect-square w-full min-w-0 cursor-pointer overflow-hidden rounded-xl border bg-[#020616] transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/40 hover:z-10 hover:scale-110 hover:shadow-2xl active:scale-[1.04] ${cardTone}`}
+                  aria-label={product.title}
+                >
+                  <div className="absolute inset-0" style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }} />
+                  {product.previewUrl ? (
+                    <img
+                      src={product.previewUrl}
+                      alt={product.title}
+                      className="relative z-[1] h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="relative z-[1] flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))]" />
+                  )}
+                  <div className={`pointer-events-none absolute inset-0 transition ${
+                    isSelected ? "bg-[#7F22FE]/14" : "bg-black/10"
+                  }`} />
+                  <div className="pointer-events-none absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/40 to-transparent p-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100">
+                    <span className="line-clamp-3 text-[10px] font-medium leading-tight text-white">
+                      {product.title}
+                    </span>
+                  </div>
+                  {(isSelected || alreadyImported) ? (
+                    <span
+                      className={`absolute left-2 top-2 h-2.5 w-2.5 rounded-full ${
+                        isSelected
+                          ? "bg-[#C084FC] shadow-[0_0_10px_rgba(192,132,252,0.95)]"
+                          : "bg-[#00BC7D] shadow-[0_0_8px_rgba(0,188,125,0.9)]"
+                      }`}
+                    />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex min-h-[120px] items-center justify-center rounded-xl px-3 py-6 text-sm text-slate-400">
+            {loading ? "Loading provider listings..." : "Provider product thumbnails will appear here."}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center justify-end gap-3 text-[11px]">
+        {visibleProducts.length > 0 ? (
+          <span className="text-xs text-slate-500">{rangeLabel}</span>
+        ) : null}
+        <button
+          type="button"
+          className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+          disabled={page <= 0}
+          onClick={onPreviousPage}
+        >
+          Prev 25
+        </button>
+        <button
+          type="button"
+          className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+          disabled={totalPages <= 1 || page >= totalPages - 1}
+          onClick={onNextPage}
+        >
+          Next 25
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <div className="relative min-h-screen max-w-full overflow-x-hidden bg-[#000000] px-6 pb-6 pt-3 text-white transition-colors md:px-8 md:pb-8 md:pt-4">
       {isBootOverlayMounted ? (
@@ -4388,162 +4446,39 @@ function dismissBootOverlay() {
                   <div className="flex items-center justify-end">
                     {loadingProducts || isImportingListings ? <QuantOrbLoader /> : null}
                   </div>
-                  <div className="mt-2">
-                    <Input
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search My Products"
-                    />
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <span className="text-[11px] font-medium tracking-tight text-white">Choose Listings to Edit</span>
-                    <div className="flex items-center gap-2 text-[11px]">
-                      <button
-                        type="button"
-                        className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-                        disabled={visibleProducts.length === 0}
-                        onClick={() => {
-                          setPendingTemplateSelectionIds(normalizeSelectionIds(visibleProducts.map((product) => product.id)));
-                          setTemplateSelectionAnchorIndex(null);
-                        }}
-                      >
-                        Select All
-                      </button>
-                      <button
-                        type="button"
-                        className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-                        disabled={pendingTemplateSelectionIds.length === 0}
-                        onClick={() => {
-                          setPendingTemplateSelectionIds([]);
-                          setTemplateSelectionAnchorIndex(null);
-                        }}
-                      >
-                        Clear All
-                      </button>
-                    </div>
-                  </div>
-                  <div className={selectorGridClassName}>
-                    {bulkEditVisibleProducts.length > 0 ? (
-                      <div className="grid grid-cols-5 gap-2">
-                        {bulkEditVisibleProducts.map((product, index) => {
-                        const alreadyImported = importedProductIds.has(product.id);
-                        const isPendingSelection = pendingTemplateSelectionIds.includes(product.id);
-
-                        return (
-                          <button
-                            key={`bulk-edit-template-${product.id}`}
-                            type="button"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              stageBulkEditTemplateSelection(product.id, index);
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                stageBulkEditTemplateSelection(product.id, index);
-                              }
-                            }}
-                            className={`group relative aspect-square w-full min-w-0 overflow-hidden rounded-lg border bg-[#020616] text-left transition ${
-                              isPendingSelection
-                                ? "border-[#7F22FE] ring-2 ring-[#7F22FE]/80 shadow-[0_0_10px_rgba(147,51,234,0.5)] opacity-100"
-                                : alreadyImported
-                                  ? "border-[#00BC7D]/45 opacity-60 hover:opacity-100"
-                                  : "border-slate-800 opacity-60 hover:border-slate-700 hover:opacity-100"
-                            }`}
-                            aria-label={product.title}
-                          >
-                            <div className="absolute inset-0" style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }} />
-                            {product.previewUrl ? (
-                              <img
-                                src={product.previewUrl}
-                                alt={product.title}
-                                className="relative z-10 h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="relative z-10 flex h-full w-full items-center justify-center px-2 text-center text-[10px] font-medium text-slate-400">
-                                <span className="line-clamp-4">{product.title}</span>
-                              </div>
-                            )}
-                            <div className={`pointer-events-none absolute inset-0 transition ${
-                              isPendingSelection
-                                ? "bg-[#7F22FE]/18"
-                                : "bg-black/10"
-                            }`} />
-                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/85 p-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                              <span className="line-clamp-4 text-center text-[10px] text-white">
-                                {product.title}
-                              </span>
-                            </div>
-                            {alreadyImported || isPendingSelection ? (
-                              <span
-                                className={`absolute left-2 top-2 h-2.5 w-2.5 rounded-full ${
-                                  isPendingSelection
-                                    ? "bg-[#C084FC] shadow-[0_0_10px_rgba(192,132,252,0.95)]"
-                                    : "bg-[#00BC7D] shadow-[0_0_8px_rgba(0,188,125,0.9)]"
-                                }`}
-                              />
-                            ) : null}
-                          </button>
-                        );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="flex min-h-[88px] items-center justify-center rounded-xl px-3 py-4 text-sm text-slate-400">
-                        {loadingProducts
-                          ? "Loading provider listings..."
-                          : search.trim()
-                            ? "No products matched this search."
-                            : "Provider product thumbnails will appear here."}
-                      </div>
-                    )}
-                  </div>
+                  {renderProductSelectionGrid({
+                    heading: "Choose Listings to Edit",
+                    items: bulkEditVisibleProducts,
+                    selectedIds: pendingTemplateSelectionIds,
+                    rangeLabel: bulkEditVisibleRangeLabel,
+                    page: safeBulkEditPage,
+                    totalPages: bulkEditTotalPages,
+                    loading: loadingProducts,
+                    onSelectAll: () => {
+                      setPendingTemplateSelectionIds(normalizeSelectionIds(visibleProducts.map((product) => product.id)));
+                      setLastSelectedIndex(null);
+                    },
+                    onClearSelection: () => {
+                      setPendingTemplateSelectionIds([]);
+                      setLastSelectedIndex(null);
+                    },
+                    onItemActivate: (product, index, event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      handleBulkEditThumbnailSelection(product.id, index, { shiftKey: "shiftKey" in event ? event.shiftKey : false });
+                    },
+                    onPreviousPage: () => setBulkEditGridPage((current) => Math.max(0, current - 1)),
+                    onNextPage: () => setBulkEditGridPage((current) => Math.min(bulkEditTotalPages - 1, current + 1)),
+                  })}
                     <div className="mt-3 flex items-center justify-between gap-3">
                       <span className="text-xs text-slate-400">{bulkEditSelectionCountLabel}</span>
                       <div className="flex flex-wrap items-center justify-end gap-2 text-[11px]">
-                        {visibleProducts.length > 0 ? (
-                          <span className="text-slate-500">{bulkEditVisibleRangeLabel}</span>
-                        ) : null}
-                        {bulkEditTotalPages > 1 ? (
-                          <>
-                            <button
-                              type="button"
-                              aria-label="Previous listings"
-                              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
-                              disabled={safeBulkEditPage <= 0}
-                              onClick={() => setBulkEditGridPage((current) => Math.max(0, current - 1))}
-                            >
-                              <ChevronIcon open={false} className="h-3.5 w-3.5 rotate-90" />
-                            </button>
-                            <button
-                              type="button"
-                              aria-label="Next listings"
-                              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
-                              disabled={safeBulkEditPage >= bulkEditTotalPages - 1}
-                              onClick={() => setBulkEditGridPage((current) => Math.min(bulkEditTotalPages - 1, current + 1))}
-                            >
-                              <ChevronIcon open={false} className="h-3.5 w-3.5 -rotate-90" />
-                            </button>
-                          </>
-                        ) : null}
-                        {visibleProducts.length > bulkEditCompactVisibleCount ? (
-                          <button
-                            type="button"
-                            className="font-medium text-slate-400 transition hover:text-white"
-                            onClick={() => {
-                              setIsBulkEditExpandedView((current) => !current);
-                              setBulkEditGridPage(0);
-                            }}
-                          >
-                            {isBulkEditExpandedView ? "Compact" : "View All"}
-                          </button>
-                        ) : null}
                         <button
                           type="button"
                           className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
                         onClick={() => {
                           setPendingTemplateSelectionIds([]);
-                          setTemplateSelectionAnchorIndex(null);
+                          setLastSelectedIndex(null);
                         }}
                         disabled={pendingTemplateSelectionIds.length === 0}
                       >
@@ -4565,133 +4500,25 @@ function dismissBootOverlay() {
                   <div className="flex items-center justify-end">
                     {loadingProducts || loadingTemplateDetails ? <QuantOrbLoader /> : null}
                   </div>
-                  <div className="mt-2">
-                    <Input
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search My Products"
-                    />
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <span className="text-[11px] font-medium tracking-tight text-white">Choose Product Template</span>
-                    <div className="flex items-center gap-2 text-[11px]">
-                      <button
-                        type="button"
-                        className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-                        disabled={selectedImportIds.length === 0}
-                        onClick={() => { void commitTemplateSelections([]); }}
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                  <div className={selectorGridClassName}>
-                    {createTemplateVisibleProducts.length > 0 ? (
-                      <div className="grid grid-cols-5 gap-2">
-                        {createTemplateVisibleProducts.map((product, index) => {
-                          const isSelectedTemplate = selectedImportIds.includes(product.id);
-
-                          return (
-                            <button
-                              key={`create-template-${product.id}`}
-                              type="button"
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                void commitTemplateSelections(isSelectedTemplate ? [] : [product.id]);
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter" || event.key === " ") {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  void commitTemplateSelections(isSelectedTemplate ? [] : [product.id]);
-                                }
-                              }}
-                              className={`group relative aspect-square w-full min-w-0 overflow-hidden rounded-lg border bg-[#020616] text-left transition ${
-                                isSelectedTemplate
-                                  ? "border-[#7F22FE] ring-2 ring-[#7F22FE]/80 shadow-[0_0_10px_rgba(147,51,234,0.5)] opacity-100"
-                                  : "border-slate-800 opacity-60 hover:border-slate-700 hover:opacity-100"
-                              }`}
-                              aria-label={product.title}
-                            >
-                              <div className="absolute inset-0" style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }} />
-                              {product.previewUrl ? (
-                                <img
-                                  src={product.previewUrl}
-                                  alt={product.title}
-                                  className="relative z-10 h-full w-full object-cover"
-                                />
-                              ) : (
-                                <div className="relative z-10 flex h-full w-full items-center justify-center px-2 text-center text-[10px] font-medium text-slate-400">
-                                  <span className="line-clamp-4">{product.title}</span>
-                                </div>
-                              )}
-                              <div className={`pointer-events-none absolute inset-0 transition ${
-                                isSelectedTemplate ? "bg-[#7F22FE]/18" : "bg-black/10"
-                              }`} />
-                              <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/85 p-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                                <span className="line-clamp-4 text-center text-[10px] text-white">
-                                  {product.title}
-                                </span>
-                              </div>
-                              {isSelectedTemplate ? (
-                                <span className="absolute left-2 top-2 h-2.5 w-2.5 rounded-full bg-[#C084FC] shadow-[0_0_10px_rgba(192,132,252,0.95)]" />
-                              ) : null}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="flex min-h-[88px] items-center justify-center rounded-xl px-3 py-4 text-sm text-slate-400">
-                        {loadingProducts
-                          ? "Loading provider listings..."
-                          : search.trim()
-                            ? "No products matched this search."
-                            : "Provider product thumbnails will appear here."}
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-3">
+                  {renderProductSelectionGrid({
+                    heading: "Choose Product Template",
+                    items: createTemplateVisibleProducts,
+                    selectedIds: selectedImportIds,
+                    rangeLabel: createTemplateVisibleRangeLabel,
+                    page: safeCreateTemplatePage,
+                    totalPages: createTemplateTotalPages,
+                    loading: loadingProducts,
+                    onClearSelection: () => { void commitTemplateSelections([]); },
+                    onItemActivate: (product, index, event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void handleCreateTemplateSelection(product.id, index);
+                    },
+                    onPreviousPage: () => setCreateTemplateGridPage((current) => Math.max(0, current - 1)),
+                    onNextPage: () => setCreateTemplateGridPage((current) => Math.min(createTemplateTotalPages - 1, current + 1)),
+                  })}
+                  <div className="mt-3 flex items-center gap-3">
                     <span className="text-xs text-slate-400">{createTemplateSelectionLabel}</span>
-                    <div className="flex flex-wrap items-center justify-end gap-2 text-[11px]">
-                      {visibleProducts.length > 0 ? (
-                        <span className="text-slate-500">{createTemplateVisibleRangeLabel}</span>
-                      ) : null}
-                      {createTemplateTotalPages > 1 ? (
-                        <>
-                          <button
-                            type="button"
-                            aria-label="Previous templates"
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
-                            disabled={safeCreateTemplatePage <= 0}
-                            onClick={() => setCreateTemplateGridPage((current) => Math.max(0, current - 1))}
-                          >
-                            <ChevronIcon open={false} className="h-3.5 w-3.5 rotate-90" />
-                          </button>
-                          <button
-                            type="button"
-                            aria-label="Next templates"
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
-                            disabled={safeCreateTemplatePage >= createTemplateTotalPages - 1}
-                            onClick={() => setCreateTemplateGridPage((current) => Math.min(createTemplateTotalPages - 1, current + 1))}
-                          >
-                            <ChevronIcon open={false} className="h-3.5 w-3.5 -rotate-90" />
-                          </button>
-                        </>
-                      ) : null}
-                      {visibleProducts.length > createTemplateCompactVisibleCount ? (
-                        <button
-                          type="button"
-                          className="font-medium text-slate-400 transition hover:text-white"
-                          onClick={() => {
-                            setIsCreateTemplateExpandedView((current) => !current);
-                            setCreateTemplateGridPage(0);
-                          }}
-                        >
-                          {isCreateTemplateExpandedView ? "Compact" : "View All"}
-                        </button>
-                      ) : null}
-                    </div>
                   </div>
                 </div>
               )}
