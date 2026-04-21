@@ -1748,19 +1748,19 @@ function CreativeWellspringBootOverlay({
   visible,
   primed,
   sweepActive,
-  ambientVisible,
   onDismiss,
 }: {
   visible: boolean;
   primed: boolean;
   sweepActive: boolean;
-  ambientVisible: boolean;
   onDismiss: () => void;
 }) {
+  if (!visible) return null;
+
   return (
     <div
       onClick={onDismiss}
-      className={`fixed inset-0 overflow-hidden bg-[#03050d] transition-opacity duration-500 ${visible ? "z-[140] opacity-100 pointer-events-auto" : ambientVisible ? "z-0 opacity-[0.05] pointer-events-none" : "z-0 opacity-0 pointer-events-none"}`}
+      className="fixed inset-0 z-[140] overflow-hidden bg-[#03050d] transition-opacity duration-500 opacity-100 pointer-events-auto"
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.16),rgba(3,5,13,0.95)_42%,rgba(0,0,0,1)_82%)]" />
 
@@ -1923,31 +1923,35 @@ function ProductGrid({
                       onItemActivate(product, globalIndex, event);
                     }
                   }}
-                  className={`group relative aspect-square w-full min-w-0 max-w-full cursor-pointer overflow-hidden rounded-xl border bg-[#020616] transition duration-200 ease-out hover:z-10 hover:scale-[1.05] hover:ring-2 hover:ring-[#7F22FE]/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/80 ${cardTone}`}
+                  className="group w-full min-w-0 max-w-full cursor-pointer focus-visible:outline-none"
                   aria-label={product.title}
                 >
-                  <div className="absolute inset-0" style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }} />
-                  {product.previewUrl ? (
-                    <img
-                      src={product.previewUrl}
-                      alt={product.title}
-                      className="relative z-[1] h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="relative z-[1] flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))]" />
-                  )}
-                  <div className={`pointer-events-none absolute inset-0 transition ${
-                    isSelected ? "bg-[#7F22FE]/14" : isActive ? "bg-[#7F22FE]/8" : "bg-black/10"
-                  }`} />
-                  {(isSelected || alreadyImported) ? (
-                    <span
-                      className={`absolute left-2 top-2 h-2.5 w-2.5 rounded-full ${
-                        isSelected
-                          ? "bg-[#C084FC] shadow-[0_0_10px_rgba(192,132,252,0.95)]"
-                          : "bg-[#00BC7D] shadow-[0_0_8px_rgba(0,188,125,0.9)]"
-                      }`}
-                    />
-                  ) : null}
+                  <div
+                    className={`relative overflow-hidden w-full aspect-square rounded-md bg-gray-800/50 border transition duration-200 ease-out group-hover:z-10 group-hover:scale-[1.05] group-hover:ring-2 group-hover:ring-[#7F22FE]/80 group-focus-visible:ring-2 group-focus-visible:ring-[#7F22FE]/80 ${cardTone}`}
+                  >
+                    <div className="absolute inset-0" style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }} />
+                    {product.previewUrl ? (
+                      <img
+                        src={product.previewUrl}
+                        alt={product.title}
+                        className="absolute inset-0 w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))]" />
+                    )}
+                    <div className={`pointer-events-none absolute inset-0 transition ${
+                      isSelected ? "bg-[#7F22FE]/14" : isActive ? "bg-[#7F22FE]/8" : "bg-black/10"
+                    }`} />
+                    {(isSelected || alreadyImported) ? (
+                      <span
+                        className={`absolute left-2 top-2 h-2.5 w-2.5 rounded-full ${
+                          isSelected
+                            ? "bg-[#C084FC] shadow-[0_0_10px_rgba(192,132,252,0.95)]"
+                            : "bg-[#00BC7D] shadow-[0_0_8px_rgba(0,188,125,0.9)]"
+                        }`}
+                      />
+                    ) : null}
+                  </div>
                 </button>
               );
             })}
@@ -2387,6 +2391,14 @@ export default function MerchQuantumApp() {
   );
   const detailBuyerDescription = detailDescriptionSections.buyerFacingDescription;
   const detailTemplateSpecBlock = detailDescriptionSections.templateSpecBlock;
+  const activePreviewTitle = selectedImage
+    ? detailTitle || selectedImage.final || selectedImage.name
+    : activeGridProduct?.title || detailTitle || template?.nickname || "";
+  const activePreviewDescription = stripHtml(
+    selectedImage
+      ? detailBuyerDescription || selectedImage.finalDescription || ""
+      : activeGridProduct?.description || detailBuyerDescription || importedListingDescription || templateDescription || ""
+  ).replace(/\s+/g, " ").trim();
   const canEditImportedListing = !selectedImage && templateReadyForAi && !!template?.reference;
   const canEditSelectedImageCopy =
     !!selectedImage
@@ -4306,12 +4318,11 @@ export default function MerchQuantumApp() {
 
   return (
     <div className="relative min-h-screen max-w-full overflow-x-hidden bg-[#0d1117] px-4 pb-4 pt-3 text-white transition-colors md:px-6 md:pb-6 md:pt-4">
-      {!connected ? (
+      {isBootOverlayVisible ? (
         <CreativeWellspringBootOverlay
           visible={isBootOverlayVisible}
           primed={isBootOverlayPrimed}
           sweepActive={isBootOverlaySweepActive}
-          ambientVisible
           onDismiss={dismissBootOverlay}
         />
       ) : null}
@@ -4636,135 +4647,150 @@ export default function MerchQuantumApp() {
                             className={`${isCreateMode && isWorkspaceConfigured ? "cursor-pointer" : ""}`}
                             onClick={isCreateMode && isWorkspaceConfigured ? openArtworkPicker : undefined}
                           >
-                            <div
-                              className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-[#020616] lg:h-[19rem]"
-                              onDragOver={(e) => {
-                                if (isCreateMode) {
+                            <div className="flex flex-col gap-4">
+                              <div
+                                className="relative flex h-64 items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-[#020616]"
+                                onDragOver={(e) => {
+                                  if (isCreateMode) {
+                                    e.preventDefault();
+                                  }
+                                }}
+                                onDrop={(e) => {
                                   e.preventDefault();
-                                }
-                              }}
-                              onDrop={(e) => {
-                                e.preventDefault();
-                                if (!isCreateMode || !connected || !isWorkspaceConfigured) {
-                                  nudgeWorkflow(true);
-                                  return;
-                                }
-                                void addFiles(e.dataTransfer.files);
-                              }}
-                            >
-                              {activeMasterPreview ? (
-                                <div
-                                  className="absolute inset-0 overflow-hidden rounded-[inherit]"
-                                  style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }}
-                                >
-                                  <div className="absolute" style={{ inset: `${ARTWORK_SAFE_ZONE_PCT * 100}%` }}>
-                                    <img src={activeMasterPreview.imageUrl} alt={activeMasterPreview.alt} className="h-full w-full object-contain" />
-                                  </div>
-                                  {isCreateMode && !hasAnyLoadedImages ? (
-                                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,22,0.12),rgba(2,6,22,0.52))]" />
-                                  ) : null}
-                                </div>
-                              ) : (
-                                <div className="flex h-full w-full p-2.5">
-                                  <div className="relative flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-5 pb-14 pt-5 text-center transition-colors hover:bg-[#0b1024]">
-                                    <div className="flex max-w-[18rem] flex-col items-center gap-1">
-                                      {isCreateMode ? (
-                                        <>
-                                          <p className="font-bold text-white">Drag images here or click to add images</p>
-                                          <p className="text-sm text-slate-300">Max 50 images.</p>
-                                          <p className="text-xs text-slate-400">System will queue additional listings.</p>
-                                          <p className="text-xs text-slate-500">(API Rate Limit Safety Enforced)</p>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <p className="font-bold text-white">Preview unavailable</p>
-                                        </>
-                                      )}
-                                    </div>
-                                    {showPreviewStats ? (
-                                      <div className={`absolute bottom-4 left-4 z-10 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
-                                        <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                          <span>{readyCount}</span>
-                                          <StatusThumbIcon tone="ready" direction="up" />
-                                        </div>
-                                        <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                          <span>{errorCount}</span>
-                                          <StatusThumbIcon tone="error" direction="down" />
-                                        </div>
-                                        <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                          <span>{completedGenerationCount} Done</span>
-                                        </div>
-                                        <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                          <span>Queue {queuedStatCount}</span>
-                                        </div>
-                                        <button
-                                          type="button"
-                                          disabled={!hasAnyLoadedImages}
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            if (!hasAnyLoadedImages) return;
-                                            clearPreviewWorkspace();
-                                          }}
-                                          className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none transition sm:text-xs ${previewOverlayUsesLightText ? "hover:text-white" : "hover:text-slate-950"} disabled:cursor-default disabled:opacity-100`}
-                                        >
-                                          Clear
-                                        </button>
-                                      </div>
+                                  if (!isCreateMode || !connected || !isWorkspaceConfigured) {
+                                    nudgeWorkflow(true);
+                                    return;
+                                  }
+                                  void addFiles(e.dataTransfer.files);
+                                }}
+                              >
+                                {activeMasterPreview ? (
+                                  <div
+                                    className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-[inherit] p-4"
+                                    style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }}
+                                  >
+                                    <img src={activeMasterPreview.imageUrl} alt={activeMasterPreview.alt} className="h-64 w-full object-contain" />
+                                    {isCreateMode && !hasAnyLoadedImages ? (
+                                      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,22,0.12),rgba(2,6,22,0.52))]" />
                                     ) : null}
                                   </div>
-                                </div>
-                              )}
-
-                              {activeMasterPreview && isCreateMode && !hasAnyLoadedImages ? (
-                                <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
-                                  <div className="rounded-xl border border-dashed border-slate-700/90 bg-[#020616]/76 px-5 py-4 text-center backdrop-blur-sm">
-                                    <div className="flex max-w-[18rem] flex-col items-center gap-1">
-                                      <p className="font-bold text-white">Drag images here or click to add images</p>
-                                      <p className="text-sm text-slate-300">Max 50 images.</p>
-                                      <p className="text-xs text-slate-400">System will queue additional listings.</p>
-                                      <p className="text-xs text-slate-500">(API Rate Limit Safety Enforced)</p>
+                                ) : (
+                                  <div className="flex h-full w-full p-2.5">
+                                    <div className="relative flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-5 pb-14 pt-5 text-center transition-colors hover:bg-[#0b1024]">
+                                      <div className="flex max-w-[18rem] flex-col items-center gap-1">
+                                        {isCreateMode ? (
+                                          <>
+                                            <p className="font-bold text-white">Drag images here or click to add images</p>
+                                            <p className="text-sm text-slate-300">Max 50 images.</p>
+                                            <p className="text-xs text-slate-400">System will queue additional listings.</p>
+                                            <p className="text-xs text-slate-500">(API Rate Limit Safety Enforced)</p>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <p className="font-bold text-white">Preview unavailable</p>
+                                          </>
+                                        )}
+                                      </div>
+                                      {showPreviewStats ? (
+                                        <div className={`absolute bottom-4 left-4 z-10 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
+                                          <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                            <span>{readyCount}</span>
+                                            <StatusThumbIcon tone="ready" direction="up" />
+                                          </div>
+                                          <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                            <span>{errorCount}</span>
+                                            <StatusThumbIcon tone="error" direction="down" />
+                                          </div>
+                                          <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                            <span>{completedGenerationCount} Done</span>
+                                          </div>
+                                          <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                            <span>Queue {queuedStatCount}</span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            disabled={!hasAnyLoadedImages}
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              if (!hasAnyLoadedImages) return;
+                                              clearPreviewWorkspace();
+                                            }}
+                                            className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none transition sm:text-xs ${previewOverlayUsesLightText ? "hover:text-white" : "hover:text-slate-950"} disabled:cursor-default disabled:opacity-100`}
+                                          >
+                                            Clear
+                                          </button>
+                                        </div>
+                                      ) : null}
                                     </div>
                                   </div>
-                                </div>
-                              ) : null}
+                                )}
 
-                              {selectedImage?.preview && showPreviewStats ? (
-                                <div className={`absolute bottom-6 left-6 z-10 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
-                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                    <span>{readyCount}</span>
-                                    <StatusThumbIcon tone="ready" direction="up" />
+                                {activeMasterPreview && isCreateMode && !hasAnyLoadedImages ? (
+                                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
+                                    <div className="rounded-xl border border-dashed border-slate-700/90 bg-[#020616]/76 px-5 py-4 text-center backdrop-blur-sm">
+                                      <div className="flex max-w-[18rem] flex-col items-center gap-1">
+                                        <p className="font-bold text-white">Drag images here or click to add images</p>
+                                        <p className="text-sm text-slate-300">Max 50 images.</p>
+                                        <p className="text-xs text-slate-400">System will queue additional listings.</p>
+                                        <p className="text-xs text-slate-500">(API Rate Limit Safety Enforced)</p>
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                    <span>{errorCount}</span>
-                                    <StatusThumbIcon tone="error" direction="down" />
-                                  </div>
-                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                    <span>{completedGenerationCount} Done</span>
-                                  </div>
-                                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                    <span>Queue {queuedStatCount}</span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    disabled={!hasAnyLoadedImages}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      if (!hasAnyLoadedImages) return;
-                                      clearPreviewWorkspace();
-                                    }}
-                                    className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none transition sm:text-xs ${previewOverlayUsesLightText ? "hover:text-white" : "hover:text-slate-950"} disabled:cursor-default disabled:opacity-100`}
-                                  >
-                                    Clear
-                                  </button>
-                                </div>
-                              ) : null}
+                                ) : null}
 
-                              {showPreviewStats ? (
-                                <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[2px] rounded-full bg-slate-800/90">
-                                  <div
-                                    className={`h-full transition-all duration-500 ${processingCount > 0 ? "bg-[#7F22FE]" : "bg-[#00A6F4]"}`}
-                                    style={{ width: `${generationProgressPct}%` }}
-                                  />
+                                {selectedImage?.preview && showPreviewStats ? (
+                                  <div className={`absolute bottom-6 left-6 z-10 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
+                                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                      <span>{readyCount}</span>
+                                      <StatusThumbIcon tone="ready" direction="up" />
+                                    </div>
+                                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                      <span>{errorCount}</span>
+                                      <StatusThumbIcon tone="error" direction="down" />
+                                    </div>
+                                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                      <span>{completedGenerationCount} Done</span>
+                                    </div>
+                                    <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                      <span>Queue {queuedStatCount}</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      disabled={!hasAnyLoadedImages}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        if (!hasAnyLoadedImages) return;
+                                        clearPreviewWorkspace();
+                                      }}
+                                      className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none transition sm:text-xs ${previewOverlayUsesLightText ? "hover:text-white" : "hover:text-slate-950"} disabled:cursor-default disabled:opacity-100`}
+                                    >
+                                      Clear
+                                    </button>
+                                  </div>
+                                ) : null}
+
+                                {showPreviewStats ? (
+                                  <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[2px] rounded-full bg-slate-800/90">
+                                    <div
+                                      className={`h-full transition-all duration-500 ${processingCount > 0 ? "bg-[#7F22FE]" : "bg-[#00A6F4]"}`}
+                                      style={{ width: `${generationProgressPct}%` }}
+                                    />
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              {activeMasterPreview && (activePreviewTitle || activePreviewDescription) ? (
+                                <div className="flex flex-col gap-4 rounded-xl border border-slate-800 bg-[#020616] px-4 py-3">
+                                  {activePreviewTitle ? (
+                                    <div className="min-w-0">
+                                      <p className="truncate text-sm font-semibold text-white">{activePreviewTitle}</p>
+                                    </div>
+                                  ) : null}
+                                  {activePreviewDescription ? (
+                                    <div className="min-w-0">
+                                      <p className="text-sm leading-6 text-slate-300 line-clamp-4">{activePreviewDescription}</p>
+                                    </div>
+                                  ) : null}
                                 </div>
                               ) : null}
                             </div>
