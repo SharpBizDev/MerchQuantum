@@ -1975,6 +1975,8 @@ export default function MerchQuantumApp() {
   const [search, setSearch] = useState("");
   const [isBulkEditExpandedView, setIsBulkEditExpandedView] = useState(false);
   const [bulkEditGridPage, setBulkEditGridPage] = useState(0);
+  const [isCreateTemplateExpandedView, setIsCreateTemplateExpandedView] = useState(false);
+  const [createTemplateGridPage, setCreateTemplateGridPage] = useState(0);
   const [isCreateThumbExpandedView, setIsCreateThumbExpandedView] = useState(false);
   const [createThumbGridPage, setCreateThumbGridPage] = useState(0);
   const [templateDescription, setTemplateDescription] = useState("");
@@ -2189,6 +2191,21 @@ export default function MerchQuantumApp() {
   const bulkEditSelectionCountLabel = pendingTemplateSelectionIds.length > 0
     ? `${pendingTemplateSelectionIds.length} listing${pendingTemplateSelectionIds.length === 1 ? "" : "s"} staged`
     : "No listings staged yet";
+  const createTemplateSelectionLabel = selectedTemplateProducts.length > 0
+    ? selectedTemplateProducts[0]?.title || "1 template selected"
+    : "No template selected";
+  const createTemplateCompactVisibleCount = 5;
+  const createTemplateExpandedPageSize = 25;
+  const createTemplatePageSize = isCreateTemplateExpandedView ? createTemplateExpandedPageSize : createTemplateCompactVisibleCount;
+  const createTemplateTotalPages = Math.max(1, Math.ceil(visibleProducts.length / createTemplatePageSize));
+  const safeCreateTemplatePage = Math.min(createTemplateGridPage, createTemplateTotalPages - 1);
+  const createTemplateVisibleProducts = visibleProducts.slice(
+    safeCreateTemplatePage * createTemplatePageSize,
+    safeCreateTemplatePage * createTemplatePageSize + createTemplatePageSize
+  );
+  const createTemplateVisibleRangeLabel = visibleProducts.length > 0
+    ? `${safeCreateTemplatePage * createTemplatePageSize + 1}-${Math.min(visibleProducts.length, safeCreateTemplatePage * createTemplatePageSize + createTemplateVisibleProducts.length)} of ${visibleProducts.length}`
+    : "0 of 0";
   const bulkEditCompactVisibleCount = 5;
   const bulkEditExpandedPageSize = 25;
   const bulkEditPageSize = isBulkEditExpandedView ? bulkEditExpandedPageSize : bulkEditCompactVisibleCount;
@@ -2213,6 +2230,8 @@ export default function MerchQuantumApp() {
   const createThumbVisibleRangeLabel = sortedImages.length > 0
     ? `${safeCreateThumbPage * createThumbPageSize + 1}-${Math.min(sortedImages.length, safeCreateThumbPage * createThumbPageSize + visibleCreateThumbnails.length)} of ${sortedImages.length}`
     : "0 of 0";
+  const selectorShellClassName = `rounded-xl border border-slate-800 bg-[#020616] p-4 ${attentionTarget === "template" ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`;
+  const selectorGridClassName = "mt-2 rounded-xl border border-slate-800 bg-[#010512] p-2.5";
   const workspaceModePickerLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "Edit mode";
   const previewOverlayUsesLightText = selectedImage?.preview
     ? shouldUseLightPreviewText(selectedImage.previewBackground || DISPLAY_NEUTRAL_BACKGROUND)
@@ -3092,6 +3111,18 @@ export default function MerchQuantumApp() {
 
   useEffect(() => {
     if (!isCreateMode) {
+      setIsCreateTemplateExpandedView(false);
+      setCreateTemplateGridPage(0);
+      return;
+    }
+
+    if (createTemplateGridPage > createTemplateTotalPages - 1) {
+      setCreateTemplateGridPage(Math.max(0, createTemplateTotalPages - 1));
+    }
+  }, [createTemplateGridPage, createTemplateTotalPages, isCreateMode]);
+
+  useEffect(() => {
+    if (!isCreateMode) {
       setIsCreateThumbExpandedView(false);
       setCreateThumbGridPage(0);
       return;
@@ -3105,6 +3136,15 @@ export default function MerchQuantumApp() {
   useEffect(() => {
     setBulkEditGridPage(0);
   }, [search, shopId, workspaceMode]);
+
+  useEffect(() => {
+    setCreateTemplateGridPage(0);
+  }, [search, shopId, workspaceMode]);
+
+  useEffect(() => {
+    if (!connected || !shopId || !workspaceMode || loadingProducts || apiProducts.length > 0 || !!apiStatus) return;
+    void loadProductsForShop(shopId);
+  }, [apiProducts.length, apiStatus, connected, loadingProducts, shopId, workspaceMode]);
 
   useEffect(() => {
     if (!shopId || !productId) {
@@ -4344,9 +4384,7 @@ function dismissBootOverlay() {
               </div>
 
               {isBulkEditMode ? (
-                <div
-                  className={`rounded-xl border border-slate-800 bg-[#020616] p-4 ${attentionTarget === "template" ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
-                >
+                <div className={selectorShellClassName}>
                   <div className="flex items-center justify-end">
                     {loadingProducts || isImportingListings ? <QuantOrbLoader /> : null}
                   </div>
@@ -4384,7 +4422,7 @@ function dismissBootOverlay() {
                       </button>
                     </div>
                   </div>
-                  <div className="mt-2 rounded-xl border border-slate-800 bg-[#010512] p-2.5">
+                  <div className={selectorGridClassName}>
                     {bulkEditVisibleProducts.length > 0 ? (
                       <div className="grid grid-cols-5 gap-2">
                         {bulkEditVisibleProducts.map((product, index) => {
@@ -4523,136 +4561,138 @@ function dismissBootOverlay() {
                   </div>
                 </div>
               ) : (
-                <div
-                  ref={templatePickerRef}
-                  className={`relative ${attentionTarget === "template" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isTemplatePickerOpen) {
-                        void commitTemplateSelections(pendingTemplateSelectionIds);
-                        return;
-                      }
-                      openTemplatePicker();
-                    }}
-                    className="flex h-11 w-full items-center justify-between gap-3 overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-3 text-left text-sm text-white transition hover:border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30"
-                  >
-                    <div className="flex min-w-0 flex-1 items-center overflow-hidden">
-                      <span className={`min-w-0 flex-1 truncate ${selectedImportIds.length === 0 ? "font-medium text-slate-400" : "font-normal text-white"}`}>
-                        {loadingProducts && isTemplatePickerOpen && productSource.length === 0 ? "Loading products..." : templatePickerLabel}
-                      </span>
+                <div className={selectorShellClassName}>
+                  <div className="flex items-center justify-end">
+                    {loadingProducts || loadingTemplateDetails ? <QuantOrbLoader /> : null}
+                  </div>
+                  <div className="mt-2">
+                    <Input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search My Products"
+                    />
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <span className="text-[11px] font-medium tracking-tight text-white">Choose Product Template</span>
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <button
+                        type="button"
+                        className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+                        disabled={selectedImportIds.length === 0}
+                        onClick={() => { void commitTemplateSelections([]); }}
+                      >
+                        Clear
+                      </button>
                     </div>
-                    <svg
-                      className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${isTemplatePickerOpen ? "rotate-180" : ""}`}
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      aria-hidden="true"
-                    >
-                      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                    </svg>
-                  </button>
+                  </div>
+                  <div className={selectorGridClassName}>
+                    {createTemplateVisibleProducts.length > 0 ? (
+                      <div className="grid grid-cols-5 gap-2">
+                        {createTemplateVisibleProducts.map((product, index) => {
+                          const isSelectedTemplate = selectedImportIds.includes(product.id);
 
-                  {isTemplatePickerOpen ? (
-                    <div className="pointer-events-auto absolute left-0 right-0 top-[calc(100%+0.55rem)] z-[100] rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)]">
-                      {loadingProducts ? (
-                        <div className="flex items-center justify-end">
-                          <QuantOrbLoader />
-                        </div>
+                          return (
+                            <button
+                              key={`create-template-${product.id}`}
+                              type="button"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                void commitTemplateSelections(isSelectedTemplate ? [] : [product.id]);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  void commitTemplateSelections(isSelectedTemplate ? [] : [product.id]);
+                                }
+                              }}
+                              className={`group relative aspect-square w-full min-w-0 overflow-hidden rounded-lg border bg-[#020616] text-left transition ${
+                                isSelectedTemplate
+                                  ? "border-[#7F22FE] ring-2 ring-[#7F22FE]/80 shadow-[0_0_10px_rgba(147,51,234,0.5)] opacity-100"
+                                  : "border-slate-800 opacity-60 hover:border-slate-700 hover:opacity-100"
+                              }`}
+                              aria-label={product.title}
+                            >
+                              <div className="absolute inset-0" style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }} />
+                              {product.previewUrl ? (
+                                <img
+                                  src={product.previewUrl}
+                                  alt={product.title}
+                                  className="relative z-10 h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="relative z-10 flex h-full w-full items-center justify-center px-2 text-center text-[10px] font-medium text-slate-400">
+                                  <span className="line-clamp-4">{product.title}</span>
+                                </div>
+                              )}
+                              <div className={`pointer-events-none absolute inset-0 transition ${
+                                isSelectedTemplate ? "bg-[#7F22FE]/18" : "bg-black/10"
+                              }`} />
+                              <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/85 p-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                                <span className="line-clamp-4 text-center text-[10px] text-white">
+                                  {product.title}
+                                </span>
+                              </div>
+                              {isSelectedTemplate ? (
+                                <span className="absolute left-2 top-2 h-2.5 w-2.5 rounded-full bg-[#C084FC] shadow-[0_0_10px_rgba(192,132,252,0.95)]" />
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="flex min-h-[88px] items-center justify-center rounded-xl px-3 py-4 text-sm text-slate-400">
+                        {loadingProducts
+                          ? "Loading provider listings..."
+                          : search.trim()
+                            ? "No products matched this search."
+                            : "Provider product thumbnails will appear here."}
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <span className="text-xs text-slate-400">{createTemplateSelectionLabel}</span>
+                    <div className="flex flex-wrap items-center justify-end gap-2 text-[11px]">
+                      {visibleProducts.length > 0 ? (
+                        <span className="text-slate-500">{createTemplateVisibleRangeLabel}</span>
                       ) : null}
-                      <div className="mt-2">
-                        <Input
-                          value={search}
-                          onChange={(e) => setSearch(e.target.value)}
-                          placeholder="Search My Products"
-                          autoFocus
-                        />
-                      </div>
-                      <div className="mt-3 max-h-[18rem] overflow-auto pr-1">
-                        {visibleProducts.length > 0 ? (
-                          <div className="grid gap-2">
-                            {visibleProducts.map((product) => {
-                              const alreadyImported = importedProductIds.has(product.id);
-                              const isPendingSelection = pendingTemplateSelectionIds.includes(product.id);
-                              const isCreationSelection =
-                                pendingTemplateSelectionIds.length === 1 && pendingTemplateSelectionIds[0] === product.id;
-
-                              return (
-                                <label
-                                  key={`template-${product.id}`}
-                                  onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    void commitTemplateSelectionFromMenu(product.id);
-                                  }}
-                                  onKeyDown={(event) => {
-                                    if (event.key === "Enter" || event.key === " ") {
-                                      event.preventDefault();
-                                      event.stopPropagation();
-                                      void commitTemplateSelectionFromMenu(product.id);
-                                    }
-                                  }}
-                                  tabIndex={0}
-                                  className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition ${
-                                    isPendingSelection
-                                      ? "border-[#7F22FE]/70 bg-[#7F22FE]/10"
-                                      : alreadyImported
-                                        ? "border-[#00BC7D]/45 bg-[#00BC7D]/[0.04]"
-                                        : "border-slate-800 bg-[#010512] hover:border-slate-700"
-                                  } pointer-events-auto`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={isPendingSelection}
-                                    readOnly
-                                    tabIndex={-1}
-                                    className="mt-1 h-4 w-4 rounded border-slate-600 bg-[#020616] text-[#7F22FE] focus:ring-[#7F22FE]/40"
-                                  />
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="truncate text-sm font-medium text-white">{product.title}</span>
-                                      {alreadyImported && !isPendingSelection ? (
-                                        <span className="rounded-full border border-[#00BC7D]/40 bg-[#00BC7D]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[#7EF0C7]">
-                                          Loaded
-                                        </span>
-                                      ) : null}
-                                      {isCreationSelection ? (
-                                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
-                                          Create
-                                        </span>
-                                      ) : isPendingSelection ? (
-                                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-200">
-                                          Edit
-                                        </span>
-                                      ) : null}
-                                    </div>
-                                    <div className="mt-1 text-xs text-slate-400">
-                                      {product.description?.trim()
-                                        ? clampDescriptionForListing(
-                                          extractBuyerFacingDescriptionFromListing(
-                                            product.description,
-                                            sanitizeTemplateDescriptionForPrebuffer(product.description, product.title)
-                                          )
-                                        ).slice(0, 160) || product.type
-                                        : product.type}
-                                    </div>
-                                  </div>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="rounded-xl border border-slate-800 bg-[#010512] px-3 py-4 text-sm text-slate-400">
-                            {loadingProducts
-                              ? "Loading provider listings..."
-                              : search.trim()
-                                ? "No products matched this search."
-                                : "Open this picker to load products from the selected shop."}
-                          </div>
-                        )}
-                      </div>
+                      {createTemplateTotalPages > 1 ? (
+                        <>
+                          <button
+                            type="button"
+                            aria-label="Previous templates"
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+                            disabled={safeCreateTemplatePage <= 0}
+                            onClick={() => setCreateTemplateGridPage((current) => Math.max(0, current - 1))}
+                          >
+                            <ChevronIcon open={false} className="h-3.5 w-3.5 rotate-90" />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Next templates"
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+                            disabled={safeCreateTemplatePage >= createTemplateTotalPages - 1}
+                            onClick={() => setCreateTemplateGridPage((current) => Math.min(createTemplateTotalPages - 1, current + 1))}
+                          >
+                            <ChevronIcon open={false} className="h-3.5 w-3.5 -rotate-90" />
+                          </button>
+                        </>
+                      ) : null}
+                      {visibleProducts.length > createTemplateCompactVisibleCount ? (
+                        <button
+                          type="button"
+                          className="font-medium text-slate-400 transition hover:text-white"
+                          onClick={() => {
+                            setIsCreateTemplateExpandedView((current) => !current);
+                            setCreateTemplateGridPage(0);
+                          }}
+                        >
+                          {isCreateTemplateExpandedView ? "Compact" : "View All"}
+                        </button>
+                      ) : null}
                     </div>
-                  ) : null}
+                  </div>
                 </div>
               )}
             </div>
@@ -4703,8 +4743,8 @@ function dismissBootOverlay() {
                                   </div>
                                 </div>
                               ) : (
-                                <div className="flex h-full w-full p-4">
-                                  <div className="relative flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-6 pb-14 pt-6 text-center transition-colors hover:bg-[#0b1024]">
+                                <div className="flex h-full w-full p-2.5">
+                                  <div className="relative flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-5 pb-14 pt-5 text-center transition-colors hover:bg-[#0b1024]">
                                     <div className="flex max-w-[18rem] flex-col items-center gap-1">
                                       {isCreateMode ? (
                                         <>
