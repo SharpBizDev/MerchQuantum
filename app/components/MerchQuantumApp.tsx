@@ -1498,23 +1498,33 @@ function getProductPreviewSnippet(product: Product) {
     extractBuyerFacingDescriptionFromListing(product.description || "", templateDescription)
   );
 
-  return trimToSentence(
+  const sanitizedPreview = stripHtml(
     buyerSnippet
       || templateDescription
       || product.type
-      || "Preview details available after selection.",
+      || ""
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return trimToSentence(
+    sanitizedPreview || "Preview details available after selection.",
     120
   );
 }
 
 function getImagePreviewSnippet(image: Img) {
-  return trimToSentence(
-    clampDescriptionForListing(
-      image.finalDescription
+  const sanitizedPreview = stripHtml(
+    image.finalDescription
       || image.originalListingDescription
       || image.statusReason
-      || "Preview details available after selection."
-    ),
+      || ""
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return trimToSentence(
+    clampDescriptionForListing(sanitizedPreview || "Preview details available after selection."),
     120
   );
 }
@@ -2125,6 +2135,20 @@ export default function MerchQuantumApp() {
   const selectedImage = useMemo(() => {
     return images.find((img) => img.id === selectedId) || sortedImages[0] || null;
   }, [images, selectedId, sortedImages]);
+
+  useEffect(() => {
+    if (images.length === 0) {
+      if (selectedId) {
+        setSelectedId("");
+      }
+      return;
+    }
+
+    if (!selectedId || !images.some((img) => img.id === selectedId)) {
+      setSelectedId(images[0]?.id || "");
+    }
+  }, [images, selectedId]);
+
   const selectedProduct = useMemo(
     () => productSource.find((product) => product.id === productId && product.shopId === shopId) || productSource.find((product) => product.id === productId) || null,
     [productId, productSource, shopId]
@@ -5212,21 +5236,21 @@ function dismissBootOverlay() {
       </div>
       {thumbnailHoverPreview && typeof document !== "undefined"
         ? createPortal(
-            <div className="pointer-events-none fixed inset-0 z-[160] flex items-center justify-center p-4 sm:p-6">
+            <div className="pointer-events-none fixed inset-0 z-[160] flex items-center justify-center p-3 sm:p-4">
               <div className="absolute inset-0 bg-transparent" />
-              <div className="relative w-full max-w-[min(86vw,24rem)] overflow-hidden rounded-[28px] border border-white/10 bg-[#020616]/96 shadow-[0_28px_90px_-42px_rgba(0,0,0,0.92)] backdrop-blur-xl">
+              <div className="pointer-events-none relative w-full max-w-xs max-h-64 overflow-hidden rounded-[24px] border border-white/10 bg-[#020616]/96 shadow-[0_24px_72px_-40px_rgba(0,0,0,0.92)] backdrop-blur-xl">
                 <div className="absolute inset-0 opacity-90" style={{ backgroundColor: thumbnailHoverPreview.background || DISPLAY_NEUTRAL_BACKGROUND }} />
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(192,132,252,0.22),transparent_55%),linear-gradient(180deg,rgba(2,6,22,0.08),rgba(2,6,22,0.8))]" />
-                <div className="relative flex flex-col gap-4 p-4">
-                  <div className="overflow-hidden rounded-[22px] border border-white/10 bg-black/10">
+                <div className="relative flex flex-col gap-3 p-3">
+                  <div className="overflow-hidden rounded-[18px] border border-white/10 bg-black/10">
                     {thumbnailHoverPreview.imageUrl ? (
                       <img
                         src={thumbnailHoverPreview.imageUrl}
                         alt={thumbnailHoverPreview.title}
-                        className="h-auto max-h-[46vh] w-full object-contain"
+                        className="h-auto max-h-40 w-full object-contain"
                       />
                     ) : (
-                      <div className="flex aspect-square w-full items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))] text-xs text-slate-300">
+                      <div className="flex aspect-square w-full max-h-40 items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))] text-xs text-slate-300">
                         Preview unavailable
                       </div>
                     )}
@@ -5235,7 +5259,7 @@ function dismissBootOverlay() {
                     <p className="line-clamp-2 text-sm font-semibold leading-5 text-white">
                       {thumbnailHoverPreview.title}
                     </p>
-                    <p className="line-clamp-3 text-xs leading-5 text-slate-300">
+                    <p className="line-clamp-2 text-[11px] leading-4 text-slate-300">
                       {thumbnailHoverPreview.snippet}
                     </p>
                   </div>
