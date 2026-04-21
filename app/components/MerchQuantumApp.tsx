@@ -2216,7 +2216,6 @@ export default function MerchQuantumApp() {
           : !workspaceMode
             ? "mode"
             : null;
-  const isRoutingGridCollapsed = !!workspaceMode && !isRoutingGridExpanded;
   const guidanceStep = !connected
     ? "connect"
     : !shopId
@@ -4064,9 +4063,10 @@ function dismissBootOverlay() {
       ) : null}
 
       <div className={`mx-auto max-w-6xl space-y-3 transition-all duration-300 ${isBootOverlayVisible ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"}`}>
+        {!workspaceMode || isRoutingGridExpanded ? (
         <div className="relative">
           <Box
-            className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${routingGuidanceTarget ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""} ${isRoutingGridCollapsed ? "pb-3" : ""}`}
+            className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${routingGuidanceTarget ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""}`}
           >
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" />
           <div className={`pointer-events-none absolute -right-10 top-0 h-36 w-36 blur-3xl transition-all duration-700 sm:-right-16 sm:h-40 sm:w-40 md:-right-20 md:h-48 md:w-48 ${connected ? "bg-[#00BC7D]/12" : "bg-[#7F22FE]/12"} ${routingGuidanceTarget ? "animate-pulse" : ""}`} />
@@ -4074,21 +4074,9 @@ function dismissBootOverlay() {
           <div
             className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-[#00BC7D]/90 to-transparent" : "bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent"} ${pulseConnected || routingGuidanceTarget ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
           />
-          <div className="mb-3 flex min-w-0 items-center pr-10">
+          <div className="mb-3 flex min-w-0 items-center">
             <MerchQuantumInlineHeading className="max-w-full" />
           </div>
-          {workspaceMode ? (
-            <button
-              type="button"
-              aria-label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
-              title="Collapse / Expand"
-              onClick={() => setIsRoutingGridExpanded((current) => !current)}
-              className="absolute right-4 top-4 inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-[#0c1120] text-slate-400 transition hover:border-[#7F22FE]/35 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
-            >
-              <ChevronIcon open={isRoutingGridExpanded} className="h-3.5 w-3.5" />
-            </button>
-          ) : null}
-          <div className={`overflow-hidden transition-all duration-300 ${isRoutingGridCollapsed ? "pointer-events-none max-h-0 -translate-y-2 opacity-0" : "pointer-events-auto max-h-[28rem] translate-y-0 opacity-100"}`}>
           <div className="grid w-full grid-cols-2 gap-2">
             <div className={`min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
               <Select
@@ -4258,9 +4246,9 @@ function dismissBootOverlay() {
           </div>
 
           {apiStatus ? <p className="mt-3 text-sm text-[#FE9A00]">{apiStatus}</p> : null}
-          </div>
         </Box>
         </div>
+        ) : null}
 
         {connected && shopId && workspaceMode ? (
           <Box className="border-slate-800 bg-[#020616] shadow-[0_24px_70px_-38px_rgba(2,6,22,0.95)]">
@@ -4283,6 +4271,15 @@ function dismissBootOverlay() {
             <div className="space-y-1.5">
               <div className="flex min-w-0 items-start justify-between gap-3">
                 <MerchQuantumInlineHeading className="max-w-full" />
+                <button
+                  type="button"
+                  aria-label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
+                  title="Collapse / Expand"
+                  onClick={() => setIsRoutingGridExpanded((current) => !current)}
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#0c1120] text-slate-400 transition hover:border-[#7F22FE]/35 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
+                >
+                  <ChevronIcon open={isRoutingGridExpanded} className="h-3.5 w-3.5" />
+                </button>
               </div>
 
               {isBulkEditMode ? (
