@@ -1770,24 +1770,26 @@ function CreativeWellspringBootOverlay({
       onClick={onDismiss}
       className={`fixed inset-0 z-[140] overflow-hidden bg-[#03050d] transition-opacity duration-300 ${visible ? "opacity-100" : "pointer-events-none opacity-0"}`}
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(127,34,254,0.2),rgba(3,5,13,0.96)_40%,rgba(0,0,0,1)_78%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.16),rgba(3,5,13,0.95)_42%,rgba(0,0,0,1)_82%)]" />
 
-      <div className={`pointer-events-none absolute -left-[8vw] top-[4svh] h-[42svh] w-[42svh] rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(196,181,253,0.92),rgba(127,34,254,0.78)_24%,rgba(53,32,164,0.36)_56%,transparent_78%)] blur-[72px] transition-all duration-500 ${sweepActive ? "opacity-0 scale-110" : "opacity-100"}`} style={{ animation: "creativeWellspringDriftA 16s ease-in-out infinite alternate" }} />
-      <div className={`pointer-events-none absolute right-[12vw] top-[12svh] h-[34svh] w-[34svh] rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(244,114,182,0.46),rgba(129,140,248,0.3)_34%,rgba(37,99,235,0.18)_60%,transparent_78%)] blur-[88px] transition-all duration-500 ${sweepActive ? "opacity-0 scale-105" : "opacity-100"}`} style={{ animation: "creativeWellspringDriftB 18s ease-in-out infinite alternate" }} />
-      <div className={`pointer-events-none absolute left-[28vw] top-[30svh] h-[30svh] w-[30svh] rounded-full bg-[radial-gradient(circle_at_40%_40%,rgba(96,165,250,0.26),rgba(29,78,216,0.2)_40%,rgba(236,72,153,0.12)_68%,transparent_82%)] blur-[80px] transition-all duration-500 ${sweepActive ? "opacity-0 scale-110" : "opacity-100"}`} style={{ animation: "creativeWellspringDriftC 14s ease-in-out infinite alternate" }} />
-      <div
-        className="pointer-events-none absolute left-0 top-0 h-96 w-96 rounded-full bg-[#7F22FE]/30 blur-[100px]"
-        style={{
-          transform: sweepActive
-            ? "translate3d(44vw,-26svh,0) scale(1.08)"
-            : primed
-              ? "translate3d(10vw,2svh,0) scale(1)"
-              : "translate3d(-100%,100%,0) scale(0.92)",
-          opacity: sweepActive ? 0 : primed ? 0.78 : 0,
-          transition: "transform 1180ms cubic-bezier(0.22,1,0.36,1), opacity 920ms ease-out",
-          willChange: "transform, opacity",
-        }}
-      />
+      <div className={`pointer-events-none absolute left-1/2 top-[14svh] h-[42svh] w-[42svh] -translate-x-[62%] rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(196,181,253,0.92),rgba(127,34,254,0.78)_24%,rgba(53,32,164,0.36)_56%,transparent_78%)] blur-[72px] transition-all duration-500 ${sweepActive ? "opacity-0 scale-110" : "opacity-100"}`} style={{ animation: "creativeWellspringDriftA 16s ease-in-out infinite alternate" }} />
+      <div className={`pointer-events-none absolute left-1/2 top-[16svh] h-[34svh] w-[34svh] translate-x-[8%] rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(244,114,182,0.46),rgba(129,140,248,0.3)_34%,rgba(37,99,235,0.18)_60%,transparent_78%)] blur-[88px] transition-all duration-500 ${sweepActive ? "opacity-0 scale-105" : "opacity-100"}`} style={{ animation: "creativeWellspringDriftB 18s ease-in-out infinite alternate" }} />
+      <div className={`pointer-events-none absolute left-1/2 top-[34svh] h-[30svh] w-[30svh] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_40%_40%,rgba(96,165,250,0.26),rgba(29,78,216,0.2)_40%,rgba(236,72,153,0.12)_68%,transparent_82%)] blur-[80px] transition-all duration-500 ${sweepActive ? "opacity-0 scale-110" : "opacity-100"}`} style={{ animation: "creativeWellspringDriftC 14s ease-in-out infinite alternate" }} />
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div
+          className="h-96 w-96 rounded-full bg-[#7F22FE]/30 blur-[100px]"
+          style={{
+            transform: sweepActive
+              ? "translate3d(38vw,-30svh,0) scale(1.08)"
+              : primed
+                ? "translate3d(0,0,0) scale(1)"
+                : "translate3d(-42vw,32svh,0) scale(0.92)",
+            opacity: sweepActive ? 0 : primed ? 0.78 : 0,
+            transition: "transform 1180ms cubic-bezier(0.22,1,0.36,1), opacity 920ms ease-out",
+            willChange: "transform, opacity",
+          }}
+        />
+      </div>
 
       <div className={`pointer-events-none absolute inset-0 transition-opacity duration-500 ${sweepActive ? "opacity-0" : "opacity-100"}`} style={{ mixBlendMode: "screen" }}>
         <svg aria-hidden="true" className="absolute inset-0 h-full w-full opacity-[0.08]" viewBox="0 0 1440 900" preserveAspectRatio="none">
@@ -1808,14 +1810,14 @@ function CreativeWellspringBootOverlay({
 
       <div className={`pointer-events-none absolute inset-x-[-10%] top-[-36svh] h-[70svh] bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,rgba(244,244,255,0.12)_28%,rgba(192,132,252,0.24)_54%,rgba(10,14,30,0)_100%)] blur-2xl transition-all duration-[520ms] ease-out ${sweepActive ? "translate-y-[140svh] opacity-100" : "translate-y-0 opacity-0"}`} />
 
-      <div className="relative flex min-h-screen w-full items-start justify-start px-[8vw] pt-[8svh]">
-        <div className="relative z-10 flex max-w-xl flex-col items-start gap-2 text-left">
-          <div className={`flex flex-wrap items-baseline gap-x-2 text-4xl tracking-tight transition-all duration-[600ms] ease-out sm:text-5xl ${primed ? "translate-y-0 scale-100 blur-0 opacity-100" : "translate-y-1 scale-[1.05] blur-[10px] opacity-0"}`}>
+      <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden">
+        <div className="relative z-10 flex max-w-xl flex-col items-center gap-2 px-[8vw] text-center">
+          <div className={`flex flex-wrap items-baseline justify-center gap-x-2 text-center text-4xl tracking-tight transition-all duration-[600ms] ease-out sm:text-5xl ${primed ? "translate-y-0 scale-100 blur-0 opacity-100" : "translate-y-1 scale-[1.05] blur-[10px] opacity-0"}`}>
             <span className="font-bold text-[#7F22FE]">Merch</span>
             <span className="font-medium text-white">Quantum</span>
           </div>
           <p
-            className={`text-[11px] font-light uppercase tracking-[0.38em] text-slate-300/90 transition-all duration-[400ms] ease-out sm:text-xs ${primed ? "translate-y-0 opacity-100" : "translate-y-[10px] opacity-0"}`}
+            className={`text-center text-[11px] font-light uppercase tracking-[0.38em] text-slate-300/90 transition-all duration-[400ms] ease-out sm:text-xs ${primed ? "translate-y-0 opacity-100" : "translate-y-[10px] opacity-0"}`}
             style={{ transitionDelay: primed ? "120ms" : "0ms" }}
           >
             {BOOT_TAGLINE}
