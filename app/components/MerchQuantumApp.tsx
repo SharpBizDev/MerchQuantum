@@ -568,7 +568,7 @@ function choosePreviewBackground(artworkLuminance: number | null) {
   const contrastOnDark = getContrastRatio(artworkLuminance, getRelativeLuminance(0, 0, 0));
   const contrastOnLight = getContrastRatio(artworkLuminance, getRelativeLuminance(255, 255, 255));
 
-  return contrastOnDark >= contrastOnLight ? DISPLAY_DARK_BACKGROUND : DISPLAY_LIGHT_BACKGROUND;
+  return contrastOnDark >= contrastOnLight ? DISPLAY_DARK_BACKGROUND : DISPLAY_NEUTRAL_BACKGROUND;
 }
 
 function normalizeArtworkBounds(bounds: ArtworkBounds | undefined, width: number, height: number): ArtworkBounds {
@@ -1797,7 +1797,7 @@ function CreativeWellspringBootOverlay({
   return (
     <div
       onClick={onDismiss}
-      className={`fixed inset-0 overflow-hidden bg-[#03050d] transition-opacity duration-500 ${visible ? "z-[140] opacity-100 pointer-events-auto" : "z-0 opacity-[0.18] pointer-events-none"}`}
+      className={`fixed inset-0 overflow-hidden bg-[#03050d] transition-opacity duration-500 ${visible ? "z-[140] opacity-100 pointer-events-auto" : "z-0 opacity-[0.05] pointer-events-none"}`}
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.16),rgba(3,5,13,0.95)_42%,rgba(0,0,0,1)_82%)]" />
 
@@ -2276,9 +2276,7 @@ export default function MerchQuantumApp() {
     [allImages, queuedImages]
   );
   const queuedStatCount = queuedImages.length;
-  const bulkEditSelectionCountLabel = pendingTemplateSelectionIds.length > 0
-    ? `${pendingTemplateSelectionIds.length} listing${pendingTemplateSelectionIds.length === 1 ? "" : "s"} staged`
-    : "No listings staged yet";
+  const hasBulkEditStagedSelections = pendingTemplateSelectionIds.length > 0;
   const selectionPageSize = selectorPageSize;
   const createTemplatePageSize = selectionPageSize;
   const createTemplateTotalPages = Math.max(1, Math.ceil(visibleProducts.length / createTemplatePageSize));
@@ -4180,6 +4178,7 @@ export default function MerchQuantumApp() {
     onPreviousPage,
     onNextPage,
     loading,
+    footerActions,
   }: {
     heading: string;
     items: Product[];
@@ -4198,6 +4197,7 @@ export default function MerchQuantumApp() {
     onPreviousPage: () => void;
     onNextPage: () => void;
     loading: boolean;
+    footerActions?: React.ReactNode;
   }) => (
     <>
       <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-3">
@@ -4221,17 +4221,6 @@ export default function MerchQuantumApp() {
           >
             Clear Selection
           </button>
-          <div className="w-[4.5rem] shrink-0">
-            <Select
-              value={String(selectorPageSize)}
-              onChange={(event) => setSelectorPageSize(event.target.value === "1" ? 1 : 25)}
-              className="h-8 rounded-lg border-slate-800 bg-[#050918] px-2 pr-7 text-[11px] text-slate-300 focus:border-[#7F22FE]"
-              aria-label="Items per page"
-            >
-              <option value="25">25</option>
-              <option value="1">1</option>
-            </Select>
-          </div>
         </div>
       </div>
 
@@ -4304,32 +4293,50 @@ export default function MerchQuantumApp() {
         )}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-end gap-3 text-[11px]">
-        {visibleProducts.length > 0 ? (
-          <span className="text-xs text-slate-500">{rangeLabel}</span>
+      <div className="mt-4 flex w-full flex-wrap items-center justify-between gap-3 text-sm">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px]">
+          {visibleProducts.length > 0 ? (
+            <span className="text-xs text-slate-500">{rangeLabel}</span>
+          ) : null}
+          <div className="w-[4.5rem] shrink-0">
+            <Select
+              value={String(selectorPageSize)}
+              onChange={(event) => setSelectorPageSize(event.target.value === "1" ? 1 : 25)}
+              className="h-8 rounded-lg border-slate-800 bg-[#050918] px-2 pr-7 text-[11px] text-slate-300 focus:border-[#7F22FE]"
+              aria-label="Items per page"
+            >
+              <option value="25">25</option>
+              <option value="1">1</option>
+            </Select>
+          </div>
+          <button
+            type="button"
+            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={page <= 0}
+            onClick={onPreviousPage}
+          >
+            {`Prev ${pageSize}`}
+          </button>
+          <button
+            type="button"
+            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={totalPages <= 1 || page >= totalPages - 1}
+            onClick={onNextPage}
+          >
+            {`Next ${pageSize}`}
+          </button>
+        </div>
+        {footerActions ? (
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-[11px]">
+            {footerActions}
+          </div>
         ) : null}
-        <button
-          type="button"
-          className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-          disabled={page <= 0}
-          onClick={onPreviousPage}
-        >
-          {`Prev ${pageSize}`}
-        </button>
-        <button
-          type="button"
-          className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-          disabled={totalPages <= 1 || page >= totalPages - 1}
-          onClick={onNextPage}
-        >
-          {`Next ${pageSize}`}
-        </button>
       </div>
     </>
   );
 
   return (
-    <div className="relative min-h-screen max-w-full overflow-x-hidden bg-[#000000] px-6 pb-6 pt-3 text-white transition-colors md:px-8 md:pb-8 md:pt-4">
+    <div className="relative min-h-screen max-w-full overflow-x-hidden bg-[#000000] px-4 pb-4 pt-3 text-white transition-colors md:px-6 md:pb-6 md:pt-4">
       <CreativeWellspringBootOverlay
         visible={isBootOverlayVisible}
         primed={isBootOverlayPrimed}
@@ -4583,31 +4590,33 @@ export default function MerchQuantumApp() {
                     },
                     onPreviousPage: () => setBulkEditGridPage((current) => Math.max(0, current - 1)),
                     onNextPage: () => setBulkEditGridPage((current) => Math.min(bulkEditTotalPages - 1, current + 1)),
-                  })}
-                    <div className="mt-3 flex items-center justify-between gap-3">
-                      <span className="text-xs text-slate-400">{bulkEditSelectionCountLabel}</span>
-                      <div className="flex flex-wrap items-center justify-end gap-2 text-[11px]">
+                    footerActions: (
+                      <>
+                        {!hasBulkEditStagedSelections ? (
+                          <span className="text-xs text-slate-400">No listings staged yet</span>
+                        ) : null}
                         <button
                           type="button"
                           className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-                        onClick={() => {
-                          setPendingTemplateSelectionIds([]);
-                          setLastSelectedIndex(null);
-                        }}
-                        disabled={pendingTemplateSelectionIds.length === 0}
-                      >
-                        Clear staged
-                      </button>
-                      <button
-                        type="button"
-                        className="font-semibold text-[#C084FC] transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-                        disabled={pendingTemplateSelectionIds.length === 0 || isImportingListings}
-                        onClick={() => { void commitTemplateSelections(pendingTemplateSelectionIds); }}
-                      >
-                        {isImportingListings ? "Loading..." : "Load Selected"}
-                      </button>
-                    </div>
-                  </div>
+                          onClick={() => {
+                            setPendingTemplateSelectionIds([]);
+                            setLastSelectedIndex(null);
+                          }}
+                          disabled={!hasBulkEditStagedSelections}
+                        >
+                          Clear staged
+                        </button>
+                        <button
+                          type="button"
+                          className="font-semibold text-[#C084FC] transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+                          disabled={!hasBulkEditStagedSelections || isImportingListings}
+                          onClick={() => { void commitTemplateSelections(pendingTemplateSelectionIds); }}
+                        >
+                          {isImportingListings ? "Loading..." : "Load Selected"}
+                        </button>
+                      </>
+                    ),
+                  })}
                 </div>
               ) : (
                 <div className={selectorShellClassName}>
@@ -4669,7 +4678,7 @@ export default function MerchQuantumApp() {
                               {selectedImage?.preview ? (
                                 <div
                                   className="absolute inset-0 overflow-hidden rounded-[inherit]"
-                                  style={{ backgroundColor: selectedImage.previewBackground || DISPLAY_NEUTRAL_BACKGROUND }}
+                                  style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }}
                                 >
                                   <div className="absolute" style={{ inset: `${ARTWORK_SAFE_ZONE_PCT * 100}%` }}>
                                     <img src={selectedImage.preview} alt={selectedImage.final} className="h-full w-full object-contain" />
