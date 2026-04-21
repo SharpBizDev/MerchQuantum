@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { PROVIDER_OPTIONS, type ProviderChoiceId } from "../../lib/providers/client-options";
 
 const APP_TAGLINE = "Bulk product creation, simplified";
@@ -126,6 +127,13 @@ type InlineSaveFeedback = {
 
 type MetadataSectionKey = "title" | "description" | "tags";
 type WorkspaceMode = "" | "create" | "edit";
+type ThumbnailHoverPreview = {
+  key: string;
+  title: string;
+  snippet: string;
+  imageUrl?: string;
+  background?: string;
+};
 
 type Template = {
   reference: string;
@@ -1484,6 +1492,33 @@ function clampDescriptionForListing(value: string) {
   return normalized.slice(0, LISTING_LIMITS.descriptionMax).trimEnd();
 }
 
+function getProductPreviewSnippet(product: Product) {
+  const templateDescription = sanitizeTemplateDescriptionForPrebuffer(product.description || "", product.title);
+  const buyerSnippet = clampDescriptionForListing(
+    extractBuyerFacingDescriptionFromListing(product.description || "", templateDescription)
+  );
+
+  return trimToSentence(
+    buyerSnippet
+      || templateDescription
+      || product.type
+      || "Preview details available after selection.",
+    120
+  );
+}
+
+function getImagePreviewSnippet(image: Img) {
+  return trimToSentence(
+    clampDescriptionForListing(
+      image.finalDescription
+      || image.originalListingDescription
+      || image.statusReason
+      || "Preview details available after selection."
+    ),
+    120
+  );
+}
+
 function autosizeTextarea(element: HTMLTextAreaElement | null) {
   if (!element) return;
   element.style.height = "0px";
@@ -1920,6 +1955,29 @@ function ChevronIcon({ open, className = "" }: { open: boolean; className?: stri
   );
 }
 
+function BareChevronButton({
+  open,
+  onClick,
+  label,
+  className = "",
+}: {
+  open: boolean;
+  onClick: () => void;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className={`inline-flex shrink-0 items-center justify-center text-slate-400 transition-colors duration-200 hover:text-[#C084FC] focus-visible:outline-none ${className}`}
+    >
+      <ChevronIcon open={open} className="h-5 w-5" />
+    </button>
+  );
+}
+
 function getStatusSortValue(status: ItemStatus) {
   switch (status) {
     case "ready":
@@ -2010,10 +2068,11 @@ export default function MerchQuantumApp() {
   const [isBootOverlayPrimed, setIsBootOverlayPrimed] = useState(false);
   const [isBootOverlaySweepActive, setIsBootOverlaySweepActive] = useState(false);
   const [metadataSectionState, setMetadataSectionState] = useState<Record<MetadataSectionKey, boolean>>({
-    title: true,
-    description: true,
-    tags: true,
+    title: false,
+    description: false,
+    tags: false,
   });
+  const [thumbnailHoverPreview, setThumbnailHoverPreview] = useState<ThumbnailHoverPreview | null>(null);
 
   const resolvedProviderId = provider === "spreadconnect" ? "spod" : provider;
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
@@ -3112,9 +3171,9 @@ export default function MerchQuantumApp() {
     if (!canShowDetailPanel) return;
 
     setMetadataSectionState({
-      title: true,
-      description: true,
-      tags: true,
+      title: false,
+      description: false,
+      tags: false,
     });
   }, [
     canShowDetailPanel,
@@ -4065,6 +4124,18 @@ function dismissBootOverlay() {
     if (selectedId === targetId) setSelectedId(nextActive[0]?.id || "");
   }
 
+  function openThumbnailHoverPreview(preview: ThumbnailHoverPreview) {
+    setThumbnailHoverPreview(preview);
+  }
+
+  function closeThumbnailHoverPreview(key?: string) {
+    setThumbnailHoverPreview((current) => {
+      if (!current) return null;
+      if (key && current.key !== key) return current;
+      return null;
+    });
+  }
+
   const renderProductSelectionGrid = ({
     heading,
     items,
@@ -4138,6 +4209,26 @@ function dismissBootOverlay() {
                 <button
                   key={`${heading}-${product.id}`}
                   type="button"
+                  onPointerEnter={() =>
+                    openThumbnailHoverPreview({
+                      key: product.id,
+                      title: product.title,
+                      snippet: getProductPreviewSnippet(product),
+                      imageUrl: product.previewUrl,
+                      background: DISPLAY_NEUTRAL_BACKGROUND,
+                    })
+                  }
+                  onPointerLeave={() => closeThumbnailHoverPreview(product.id)}
+                  onFocus={() =>
+                    openThumbnailHoverPreview({
+                      key: product.id,
+                      title: product.title,
+                      snippet: getProductPreviewSnippet(product),
+                      imageUrl: product.previewUrl,
+                      background: DISPLAY_NEUTRAL_BACKGROUND,
+                    })
+                  }
+                  onBlur={() => closeThumbnailHoverPreview(product.id)}
                   onClick={(event) => onItemActivate(product, globalIndex, event)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
@@ -4145,7 +4236,7 @@ function dismissBootOverlay() {
                       onItemActivate(product, globalIndex, event);
                     }
                   }}
-                  className={`group relative aspect-square w-full min-w-0 cursor-pointer overflow-hidden rounded-xl border bg-[#020616] transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/40 hover:z-10 hover:scale-110 hover:shadow-2xl active:scale-[1.04] ${cardTone}`}
+                  className={`group relative aspect-square w-full min-w-0 cursor-pointer overflow-hidden rounded-xl border bg-[#020616] transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/40 hover:z-10 hover:shadow-2xl active:scale-[1.02] ${cardTone}`}
                   aria-label={product.title}
                 >
                   <div className="absolute inset-0" style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }} />
@@ -4430,15 +4521,12 @@ function dismissBootOverlay() {
             <div className="space-y-1.5">
               <div className="flex min-w-0 items-start justify-between gap-3">
                 <MerchQuantumInlineHeading className="max-w-full" />
-                <button
-                  type="button"
-                  aria-label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
-                  title="Collapse / Expand"
+                <BareChevronButton
+                  open={isRoutingGridExpanded}
                   onClick={() => setIsRoutingGridExpanded((current) => !current)}
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#0c1120] text-slate-400 transition hover:border-[#7F22FE]/35 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
-                >
-                  <ChevronIcon open={isRoutingGridExpanded} className="h-3.5 w-3.5" />
-                </button>
+                  label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
+                  className="mt-0.5"
+                />
               </div>
 
               {isBulkEditMode ? (
@@ -4674,7 +4762,6 @@ function dismissBootOverlay() {
                                       : resolvedStatus === "error"
                                         ? "border-[#FF2056]/55"
                                         : "border-slate-700";
-                                  const previewAlignRight = index >= visibleCreateThumbnails.length - 2;
                                   const statusIndicator = resolvedStatus === "ready"
                                     ? { tone: "ready" as const, direction: "up" as const }
                                     : resolvedStatus === "error"
@@ -4689,7 +4776,29 @@ function dismissBootOverlay() {
                                     >
                                       <div className="relative">
                                         {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
-                                        <div className={`group relative flex aspect-square w-full items-center justify-center overflow-visible rounded-lg border bg-[#020616] transition-all duration-500 ${previewFrameTone}`}>
+                                        <div
+                                          className={`group relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border bg-[#020616] transition-all duration-500 ${previewFrameTone}`}
+                                          onPointerEnter={() =>
+                                            openThumbnailHoverPreview({
+                                              key: img.id,
+                                              title: img.final || img.name,
+                                              snippet: getImagePreviewSnippet(img),
+                                              imageUrl: img.preview,
+                                              background: img.previewBackground,
+                                            })
+                                          }
+                                          onPointerLeave={() => closeThumbnailHoverPreview(img.id)}
+                                          onFocus={() =>
+                                            openThumbnailHoverPreview({
+                                              key: img.id,
+                                              title: img.final || img.name,
+                                              snippet: getImagePreviewSnippet(img),
+                                              imageUrl: img.preview,
+                                              background: img.previewBackground,
+                                            })
+                                          }
+                                          onBlur={() => closeThumbnailHoverPreview(img.id)}
+                                        >
                                           {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
                                           {statusIndicator ? (
                                             <div
@@ -4720,11 +4829,6 @@ function dismissBootOverlay() {
                                               </div>
                                             ) : null}
                                           </div>
-                                          {img.preview ? (
-                                            <div className={`pointer-events-none absolute z-30 hidden w-40 rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-xl group-hover:block top-full mt-2 ${previewAlignRight ? "right-0" : "left-0"}`}>
-                                              <img src={img.preview} alt={img.final} className="max-h-48 w-full object-contain" />
-                                            </div>
-                                          ) : null}
                                         </div>
                                       </div>
                                     </div>
@@ -4792,18 +4896,24 @@ function dismissBootOverlay() {
                         <div className="flex min-w-0 h-full flex-col space-y-3">
                           <div className="space-y-3">
                             <div className="space-y-1.5">
-                              <button
-                                type="button"
-                                onClick={() => toggleMetadataSection("title")}
-                                className="flex min-h-[20px] w-full items-center justify-between gap-3 text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
-                                aria-expanded={metadataSectionState.title}
-                              >
-                                <span className="inline-flex items-center text-sm font-semibold">
-                                  <span className="text-[#7F22FE]">Quantum</span>
-                                  <span className="ml-1 text-white">AI Title</span>
-                                </span>
-                                <ChevronIcon open={metadataSectionState.title} className="h-4 w-4 text-slate-500" />
-                              </button>
+                              <div className="flex items-center justify-between gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleMetadataSection("title")}
+                                  className="flex min-h-[20px] min-w-0 flex-1 items-center text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
+                                  aria-expanded={metadataSectionState.title}
+                                >
+                                  <span className="inline-flex items-center text-sm font-semibold">
+                                    <span className="text-[#7F22FE]">Quantum</span>
+                                    <span className="ml-1 text-white">AI Title</span>
+                                  </span>
+                                </button>
+                                <BareChevronButton
+                                  open={metadataSectionState.title}
+                                  onClick={() => toggleMetadataSection("title")}
+                                  label={metadataSectionState.title ? "Collapse Quantum AI Title" : "Expand Quantum AI Title"}
+                                />
+                              </div>
                               {metadataSectionState.title ? (
                                 <div className="space-y-2">
                                   <div className="rounded-xl">
@@ -4932,14 +5042,11 @@ function dismissBootOverlay() {
                                   >
                                     {descriptionActionLabel}
                                   </Button>
-                                  <button
-                                    type="button"
+                                  <BareChevronButton
+                                    open={metadataSectionState.description}
                                     onClick={() => toggleMetadataSection("description")}
-                                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 text-slate-400 transition hover:border-[#7F22FE]/35 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
-                                    aria-label={metadataSectionState.description ? "Collapse Quantum AI Description" : "Expand Quantum AI Description"}
-                                  >
-                                    <ChevronIcon open={metadataSectionState.description} className="h-4 w-4 text-slate-500" />
-                                  </button>
+                                    label={metadataSectionState.description ? "Collapse Quantum AI Description" : "Expand Quantum AI Description"}
+                                  />
                                 </div>
                               </div>
                               {metadataSectionState.description ? (
@@ -5052,18 +5159,24 @@ function dismissBootOverlay() {
                           </div>
                           <div className="pt-0">
                             <div className="space-y-2">
-                              <button
-                                type="button"
-                                onClick={() => toggleMetadataSection("tags")}
-                                className="flex min-h-[20px] w-full items-center justify-between gap-3 text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
-                                aria-expanded={metadataSectionState.tags}
-                              >
-                                <span className="inline-flex items-center text-sm font-semibold">
-                                  <span className="text-[#7F22FE]">Quantum</span>
-                                  <span className="ml-1 text-white">AI Tags</span>
-                                </span>
-                                <ChevronIcon open={metadataSectionState.tags} className="h-4 w-4 text-slate-500" />
-                              </button>
+                              <div className="flex items-center justify-between gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleMetadataSection("tags")}
+                                  className="flex min-h-[20px] min-w-0 flex-1 items-center text-left text-sm font-medium leading-5 tracking-tight text-slate-200"
+                                  aria-expanded={metadataSectionState.tags}
+                                >
+                                  <span className="inline-flex items-center text-sm font-semibold">
+                                    <span className="text-[#7F22FE]">Quantum</span>
+                                    <span className="ml-1 text-white">AI Tags</span>
+                                  </span>
+                                </button>
+                                <BareChevronButton
+                                  open={metadataSectionState.tags}
+                                  onClick={() => toggleMetadataSection("tags")}
+                                  label={metadataSectionState.tags ? "Collapse Quantum AI Tags" : "Expand Quantum AI Tags"}
+                                />
+                              </div>
                               {metadataSectionState.tags ? (
                                 <div className="flex flex-wrap items-center justify-start gap-1.5">
                                   {isDetailTagsLoading ? (
@@ -5128,6 +5241,41 @@ function dismissBootOverlay() {
           </Box>
         ) : null}
       </div>
+      {thumbnailHoverPreview && typeof document !== "undefined"
+        ? createPortal(
+            <div className="pointer-events-none fixed inset-0 z-[160] flex items-center justify-center p-4 sm:p-6">
+              <div className="absolute inset-0 bg-transparent" />
+              <div className="relative w-full max-w-[min(86vw,24rem)] overflow-hidden rounded-[28px] border border-white/10 bg-[#020616]/96 shadow-[0_28px_90px_-42px_rgba(0,0,0,0.92)] backdrop-blur-xl">
+                <div className="absolute inset-0 opacity-90" style={{ backgroundColor: thumbnailHoverPreview.background || DISPLAY_NEUTRAL_BACKGROUND }} />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(192,132,252,0.22),transparent_55%),linear-gradient(180deg,rgba(2,6,22,0.08),rgba(2,6,22,0.8))]" />
+                <div className="relative flex flex-col gap-4 p-4">
+                  <div className="overflow-hidden rounded-[22px] border border-white/10 bg-black/10">
+                    {thumbnailHoverPreview.imageUrl ? (
+                      <img
+                        src={thumbnailHoverPreview.imageUrl}
+                        alt={thumbnailHoverPreview.title}
+                        className="h-auto max-h-[46vh] w-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex aspect-square w-full items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))] text-xs text-slate-300">
+                        Preview unavailable
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <p className="line-clamp-2 text-sm font-semibold leading-5 text-white">
+                      {thumbnailHoverPreview.title}
+                    </p>
+                    <p className="line-clamp-3 text-xs leading-5 text-slate-300">
+                      {thumbnailHoverPreview.snippet}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
