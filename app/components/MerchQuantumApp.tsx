@@ -1971,7 +1971,7 @@ function BareChevronButton({
       type="button"
       onClick={onClick}
       aria-label={label}
-      className={`inline-flex shrink-0 items-center justify-center text-slate-400 transition-colors duration-200 hover:text-[#C084FC] focus-visible:outline-none ${className}`}
+      className={`inline-flex shrink-0 items-center justify-center text-gray-400 transition-colors duration-200 hover:text-[#C084FC] focus-visible:outline-none ${className}`}
     >
       <ChevronIcon open={open} className="h-5 w-5" />
     </button>
@@ -2105,10 +2105,6 @@ export default function MerchQuantumApp() {
   const visibleProducts = useMemo(() => {
     return productSource.filter((p) => p.shopId === shopId);
   }, [shopId, productSource]);
-  const selectedTemplateProducts = useMemo(
-    () => productSource.filter((product) => selectedImportIds.includes(product.id)),
-    [productSource, selectedImportIds]
-  );
   const importedQueueCount = useMemo(
     () => allImages.filter((img) => img.sourceType === "imported").length + queuedImportedImages.length,
     [allImages, queuedImportedImages]
@@ -2142,8 +2138,12 @@ export default function MerchQuantumApp() {
   const canSubmitProviderConnection = Boolean(provider && isLiveProvider && token.trim() && !loadingApi && !connected);
   const uploadDisabled = !isCreateMode || !isWorkspaceConfigured || draftReadyCount === 0 || isRunningBatch || processingCount > 0;
   const canShowDetailWorkspace = hasWorkspaceRoute;
-  const canShowDetailPanel = isCreateMode ? canShowDetailWorkspace : canShowDetailWorkspace && (hasAnyLoadedImages || !!selectedImage);
-  const isCreateWorkspaceLocked = isCreateMode && !templateReadyForAi;
+  const canShowWorkspacePreview = isCreateMode
+    ? canShowDetailWorkspace && templateReadyForAi
+    : canShowDetailWorkspace && (hasAnyLoadedImages || !!selectedImage);
+  const canShowDetailPanel = canShowWorkspacePreview && hasAnyLoadedImages && !!selectedImage;
+  const canShowLoadedQueueGrid = canShowWorkspacePreview && sortedImages.length > 0;
+  const showPreviewStats = hasAnyLoadedImages;
   const selectedImageFieldStates = selectedImage?.aiFieldStates ?? createAiFieldStates("idle");
   const detailTemplateDescription = selectedImage?.templateDescriptionOverride ?? templateDescription;
   const selectedImageTemplateKey = selectedImage
@@ -2234,9 +2234,6 @@ export default function MerchQuantumApp() {
   const bulkEditSelectionCountLabel = pendingTemplateSelectionIds.length > 0
     ? `${pendingTemplateSelectionIds.length} listing${pendingTemplateSelectionIds.length === 1 ? "" : "s"} staged`
     : "No listings staged yet";
-  const createTemplateSelectionLabel = selectedTemplateProducts.length > 0
-    ? selectedTemplateProducts[0]?.title || "1 template selected"
-    : "No template selected";
   const selectionPageSize = 25;
   const createTemplatePageSize = selectionPageSize;
   const createTemplateTotalPages = Math.max(1, Math.ceil(visibleProducts.length / createTemplatePageSize));
@@ -4252,7 +4249,7 @@ function dismissBootOverlay() {
                   <div className={`pointer-events-none absolute inset-0 transition ${
                     isSelected ? "bg-[#7F22FE]/14" : "bg-black/10"
                   }`} />
-                  <div className="pointer-events-none absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/40 to-transparent p-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100">
+                  <div className="pointer-events-none absolute inset-0 flex items-end bg-black/80 p-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100">
                     <span className="line-clamp-3 text-[10px] font-medium leading-tight text-white">
                       {product.title}
                     </span>
@@ -4605,9 +4602,6 @@ function dismissBootOverlay() {
                     onPreviousPage: () => setCreateTemplateGridPage((current) => Math.max(0, current - 1)),
                     onNextPage: () => setCreateTemplateGridPage((current) => Math.min(createTemplateTotalPages - 1, current + 1)),
                   })}
-                  <div className="mt-3 flex items-center gap-3">
-                    <span className="text-xs text-slate-400">{createTemplateSelectionLabel}</span>
-                  </div>
                 </div>
               )}
             </div>
@@ -4615,18 +4609,12 @@ function dismissBootOverlay() {
               <p className="mt-3 text-sm text-slate-300">{importStatus}</p>
             ) : null}
 
-            {shopId && canShowDetailPanel ? (
+            {shopId && canShowWorkspacePreview ? (
               <>
                 <div className="mt-3">
                   <div className="space-y-3" onPointerDownCapture={() => nudgeWorkflow(true)}>
-                      <div
-                        className={`relative rounded-[24px] transition-all ${
-                          isCreateWorkspaceLocked && attentionTarget === "template"
-                            ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse"
-                            : ""
-                        }`}
-                      >
-                      <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-[296px_minmax(0,1fr)]">
+                      <div className="relative rounded-[24px] transition-all">
+                      <div className="grid grid-cols-1 items-stretch gap-3">
                         <div className="flex min-w-0 h-full flex-col gap-3">
                           <div
                             className={`${isCreateMode ? "cursor-pointer" : ""}`}
@@ -4670,46 +4658,45 @@ function dismissBootOverlay() {
                                         </>
                                       ) : (
                                         <>
-                                          <p className="font-bold text-white">Awaiting rescued artwork</p>
-                                          <p className="text-sm text-slate-300">Choose provider listings above to load previews.</p>
-                                          <p className="text-xs text-slate-400">System will queue additional listings.</p>
-                                          <p className="text-xs text-slate-500">(API Rate Limit Safety Enforced)</p>
+                                          <p className="font-bold text-white">Preview unavailable</p>
                                         </>
                                       )}
                                     </div>
-                                    <div className={`absolute bottom-4 left-4 z-10 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
-                                      <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                        <span>{readyCount}</span>
-                                        <StatusThumbIcon tone="ready" direction="up" />
+                                    {showPreviewStats ? (
+                                      <div className={`absolute bottom-4 left-4 z-10 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
+                                        <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                          <span>{readyCount}</span>
+                                          <StatusThumbIcon tone="ready" direction="up" />
+                                        </div>
+                                        <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                          <span>{errorCount}</span>
+                                          <StatusThumbIcon tone="error" direction="down" />
+                                        </div>
+                                        <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                          <span>{completedGenerationCount} Done</span>
+                                        </div>
+                                        <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                          <span>Queue {queuedStatCount}</span>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          disabled={!hasAnyLoadedImages}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            if (!hasAnyLoadedImages) return;
+                                            clearPreviewWorkspace();
+                                          }}
+                                          className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none transition sm:text-xs ${previewOverlayUsesLightText ? "hover:text-white" : "hover:text-slate-950"} disabled:cursor-default disabled:opacity-100`}
+                                        >
+                                          Clear
+                                        </button>
                                       </div>
-                                      <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                        <span>{errorCount}</span>
-                                        <StatusThumbIcon tone="error" direction="down" />
-                                      </div>
-                                      <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                        <span>{completedGenerationCount} Done</span>
-                                      </div>
-                                      <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                        <span>Queue {queuedStatCount}</span>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        disabled={!hasAnyLoadedImages}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          if (!hasAnyLoadedImages) return;
-                                          clearPreviewWorkspace();
-                                        }}
-                                        className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium leading-none transition sm:text-xs ${previewOverlayUsesLightText ? "hover:text-white" : "hover:text-slate-950"} disabled:cursor-default disabled:opacity-100`}
-                                      >
-                                        Clear
-                                      </button>
-                                    </div>
+                                    ) : null}
                                   </div>
                                 </div>
                               )}
 
-                              {selectedImage?.preview ? (
+                              {selectedImage?.preview && showPreviewStats ? (
                                 <div className={`absolute bottom-6 left-6 z-10 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
                                   <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                                     <span>{readyCount}</span>
@@ -4740,16 +4727,18 @@ function dismissBootOverlay() {
                                 </div>
                               ) : null}
 
-                              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[2px] rounded-full bg-slate-800/90">
-                                <div
-                                  className={`h-full transition-all duration-500 ${processingCount > 0 ? "bg-[#7F22FE]" : "bg-[#00A6F4]"}`}
-                                  style={{ width: `${generationProgressPct}%` }}
-                                />
-                              </div>
+                              {showPreviewStats ? (
+                                <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[2px] rounded-full bg-slate-800/90">
+                                  <div
+                                    className={`h-full transition-all duration-500 ${processingCount > 0 ? "bg-[#7F22FE]" : "bg-[#00A6F4]"}`}
+                                    style={{ width: `${generationProgressPct}%` }}
+                                  />
+                                </div>
+                              ) : null}
                             </div>
                           </div>
-                          {sortedImages.length > 0 ? (
-                            <div className="rounded-xl border border-slate-800 bg-[#020616] p-2.5">
+                          {canShowLoadedQueueGrid ? (
+                            <div className="space-y-3 px-1">
                               <div className="grid grid-cols-5 gap-2">
                                 {visibleCreateThumbnails.map((img, index) => {
                                   const isSelected = selectedImage?.id === img.id;
@@ -4877,23 +4866,9 @@ function dismissBootOverlay() {
                               </div>
                             </div>
                           ) : null}
-                          {runStatus ? <p className="text-sm text-slate-300">{runStatus}</p> : null}
-                          {batchResults.length > 0 ? (
-                            <div className="max-h-[14rem] overflow-auto rounded-xl border border-slate-800 bg-[#020616] p-3 text-sm">
-                              <div className="space-y-1.5">
-                                {batchResults.map((result) => (
-                                  <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-800 p-2.5">
-                                    <div className="font-medium">{result.title}</div>
-                                    <div className="text-xs text-slate-400">{result.fileName}</div>
-                                    <div className="mt-1 text-sm">{result.message}</div>
-                                    {result.productId ? <div className="mt-1 text-xs text-slate-400">Product ID: {result.productId}</div> : null}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
                         </div>
-                        <div className="flex min-w-0 h-full flex-col space-y-3">
+                        {canShowDetailPanel ? (
+                        <div className="flex min-w-0 flex-col space-y-3">
                           <div className="space-y-3">
                             <div className="space-y-1.5">
                               <div className="flex items-center justify-between gap-3">
@@ -5030,7 +5005,7 @@ function dismissBootOverlay() {
                                     </button>
                                   ) : null}
                                   <Button
-                                    className="min-h-0 h-6 shrink-0 rounded-full border border-[#7F22FE]/35 px-2.5 py-0 text-[11px] font-semibold tracking-tight !bg-[#7F22FE]/12 !text-[#F3E8FF] hover:!bg-[#7F22FE]/20 hover:!text-white"
+                                    className="min-h-0 h-8 shrink-0 rounded-md px-3 py-1 text-sm font-medium tracking-tight !bg-[#7F22FE]/12 !text-[#F3E8FF] hover:!bg-[#7F22FE]/20 hover:!text-white"
                                     disabled={isCreateMode ? uploadDisabled : bulkEditPublishDisabled}
                                     onClick={() => {
                                       if (isCreateMode) {
@@ -5208,28 +5183,20 @@ function dismissBootOverlay() {
                             </div>
                           </div>
                         </div>
+                        ) : null}
                     </div>
-                    {isCreateWorkspaceLocked ? (
-                      <div
-                        className="absolute inset-0 z-30 flex cursor-not-allowed items-start justify-center rounded-[24px] bg-[#020616]/16"
-                        onPointerDown={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          triggerAttentionCue("template");
-                        }}
-                        onDragOver={(event) => {
-                          event.preventDefault();
-                          triggerAttentionCue("template");
-                        }}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          triggerAttentionCue("template");
-                        }}
-                      >
-                        <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#7F22FE]/30 bg-[#050814]/90 px-3 py-1.5 text-xs font-medium text-slate-200 shadow-[0_12px_30px_-24px_rgba(127,34,254,0.8)]">
-                          <QuantOrbLoader />
-                          <span>Select a template above to unlock uploads and editing.</span>
+                    {runStatus ? <p className="mt-3 text-sm text-slate-300">{runStatus}</p> : null}
+                    {batchResults.length > 0 ? (
+                      <div className="mt-3 max-h-[14rem] overflow-auto rounded-xl border border-slate-800 bg-[#020616] p-3 text-sm">
+                        <div className="space-y-1.5">
+                          {batchResults.map((result) => (
+                            <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-800 p-2.5">
+                              <div className="font-medium">{result.title}</div>
+                              <div className="text-xs text-slate-400">{result.fileName}</div>
+                              <div className="mt-1 text-sm">{result.message}</div>
+                              {result.productId ? <div className="mt-1 text-xs text-slate-400">Product ID: {result.productId}</div> : null}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     ) : null}
