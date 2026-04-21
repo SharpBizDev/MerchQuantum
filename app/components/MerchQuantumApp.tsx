@@ -4306,7 +4306,7 @@ export default function MerchQuantumApp() {
         visible={isBootOverlayVisible}
         primed={isBootOverlayPrimed}
         sweepActive={isBootOverlaySweepActive}
-        ambientVisible={!hasWorkspaceRoute}
+        ambientVisible={!workspaceMode}
         onDismiss={dismissBootOverlay}
       />
 
@@ -4955,12 +4955,6 @@ export default function MerchQuantumApp() {
                                             <span className="min-w-0 flex-1 truncate">
                                               {detailTitle || <span className="text-slate-400">Click to add a final title.</span>}
                                             </span>
-                                            {canEditDetailTitle ? (
-                                              <span className="inline-flex items-center gap-1 text-xs text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                                                <PencilIcon className="h-3.5 w-3.5" />
-                                                Edit
-                                              </span>
-                                            ) : null}
                                           </div>
                                         )}
                                         <div className="absolute bottom-1.5 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-500">
@@ -5108,12 +5102,6 @@ export default function MerchQuantumApp() {
                                                     <span className="text-slate-400">Select or add artwork to generate image-based listing copy.</span>
                                                   )}
                                                 </div>
-                                                {canEditDetailDescription ? (
-                                                  <span className="inline-flex items-center gap-1 text-xs text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                                                    <PencilIcon className="h-3.5 w-3.5" />
-                                                    Edit
-                                                  </span>
-                                                ) : null}
                                               </div>
                                             )}
                                             <div className="pointer-events-none absolute bottom-2 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-500">
