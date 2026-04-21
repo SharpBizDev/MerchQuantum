@@ -151,6 +151,7 @@ type ProductGridProps = {
   selectedIds: string[];
   activeId?: string;
   importedProductIds: Set<string>;
+  highlighted?: boolean;
   rangeLabel: string;
   page: number;
   pageSize: number;
@@ -158,6 +159,7 @@ type ProductGridProps = {
   loading: boolean;
   selectorPageSize: 1 | 25;
   onPageSizeChange: (size: 1 | 25) => void;
+  headerAccessory?: React.ReactNode;
   onSelectAll?: () => void;
   onClearSelection: () => void;
   onItemActivate: (
@@ -1851,6 +1853,7 @@ function ProductGrid({
   selectedIds,
   activeId,
   importedProductIds,
+  highlighted = false,
   rangeLabel,
   page,
   pageSize,
@@ -1858,6 +1861,7 @@ function ProductGrid({
   loading,
   selectorPageSize,
   onPageSizeChange,
+  headerAccessory,
   onSelectAll,
   onClearSelection,
   onItemActivate,
@@ -1866,10 +1870,11 @@ function ProductGrid({
   footerActions,
 }: ProductGridProps) {
   return (
-    <>
-      <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-3">
-        <span className="min-w-0 truncate text-[11px] font-medium tracking-tight text-white">{heading}</span>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 text-[11px]">
+    <div className={`mx-auto flex w-full max-w-7xl flex-col gap-4 overflow-hidden rounded-xl border border-gray-800 bg-gray-900/50 p-6 ${highlighted ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)]" : ""}`}>
+      <div className="flex w-full min-w-0 items-center justify-between gap-4">
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-white">{heading}</span>
+        <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-3 text-[11px]">
+          {headerAccessory}
           {onSelectAll ? (
             <button
               type="button"
@@ -1891,9 +1896,9 @@ function ProductGrid({
         </div>
       </div>
 
-      <div className="mt-3 max-w-full overflow-hidden">
+      <div className="w-full overflow-hidden">
         {items.length > 0 ? (
-          <div className="grid max-w-full grid-cols-3 gap-3 overflow-hidden md:grid-cols-5 lg:grid-cols-6">
+          <div className="grid h-full w-full grid-cols-4 gap-4 overflow-hidden sm:grid-cols-5 md:grid-cols-6">
             {items.map((product, index) => {
               const globalIndex = page * pageSize + index;
               const isSelected = selectedIds.includes(product.id);
@@ -1958,22 +1963,14 @@ function ProductGrid({
         )}
       </div>
 
-      <div className="mt-4 flex w-full flex-wrap items-center justify-between gap-3 text-sm">
-        <div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px]">
+      <div className="flex w-full flex-wrap items-center justify-between gap-3 text-sm">
+        <div className="min-w-0 text-xs text-slate-500">
           {items.length > 0 ? (
-            <span className="text-xs text-slate-500">{rangeLabel}</span>
+            <span>{rangeLabel}</span>
           ) : null}
-          <div className="w-[4.5rem] shrink-0">
-            <select
-              value={String(selectorPageSize)}
-              onChange={(event) => onPageSizeChange(event.target.value === "1" ? 1 : 25)}
-              className="h-8 w-full rounded-lg border border-slate-800 bg-[#050918] px-2 pr-7 text-[11px] text-slate-300 focus:border-[#7F22FE] focus:outline-none"
-              aria-label="Items per page"
-            >
-              <option value="25">25</option>
-              <option value="1">1</option>
-            </select>
-          </div>
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-3 text-[11px]">
+          {footerActions}
           <button
             type="button"
             className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
@@ -1990,12 +1987,20 @@ function ProductGrid({
           >
             {`Next ${pageSize}`}
           </button>
-        </div>
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-3 text-[11px]">
-          {footerActions}
+          <div className="w-[4.5rem] shrink-0">
+            <select
+              value={String(selectorPageSize)}
+              onChange={(event) => onPageSizeChange(event.target.value === "1" ? 1 : 25)}
+              className="h-8 w-full rounded-lg border border-slate-800 bg-[#050918] px-2 pr-7 text-[11px] text-slate-300 focus:border-[#7F22FE] focus:outline-none"
+              aria-label="Items per page"
+            >
+              <option value="25">25</option>
+              <option value="1">1</option>
+            </select>
+          </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -2446,7 +2451,6 @@ export default function MerchQuantumApp() {
   const createThumbVisibleRangeLabel = sortedImages.length > 0
     ? `${safeCreateThumbPage * createThumbPageSize + 1}-${Math.min(sortedImages.length, safeCreateThumbPage * createThumbPageSize + visibleCreateThumbnails.length)} of ${sortedImages.length}`
     : "0 of 0";
-  const selectorShellClassName = `rounded-xl border border-slate-800 bg-[#020616] p-4 ${attentionTarget === "template" ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`;
   const workspaceModePickerLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "Edit mode";
   const previewOverlayUsesLightText = selectedImage?.preview
     ? shouldUseLightPreviewText(selectedImage.previewBackground || DISPLAY_NEUTRAL_BACKGROUND)
@@ -4301,14 +4305,16 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <div className="relative min-h-screen max-w-full overflow-x-hidden bg-[#000000] px-4 pb-4 pt-3 text-white transition-colors md:px-6 md:pb-6 md:pt-4">
-      <CreativeWellspringBootOverlay
-        visible={isBootOverlayVisible}
-        primed={isBootOverlayPrimed}
-        sweepActive={isBootOverlaySweepActive}
-        ambientVisible={!workspaceMode}
-        onDismiss={dismissBootOverlay}
-      />
+    <div className="relative min-h-screen max-w-full overflow-x-hidden bg-[#0d1117] px-4 pb-4 pt-3 text-white transition-colors md:px-6 md:pb-6 md:pt-4">
+      {!connected ? (
+        <CreativeWellspringBootOverlay
+          visible={isBootOverlayVisible}
+          primed={isBootOverlayPrimed}
+          sweepActive={isBootOverlaySweepActive}
+          ambientVisible
+          onDismiss={dismissBootOverlay}
+        />
+      ) : null}
 
       <div className={`relative z-10 mx-auto max-w-6xl space-y-3 transition-all duration-300 ${isBootOverlayVisible ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"}`}>
         {!workspaceMode || isRoutingGridExpanded ? (
@@ -4528,97 +4534,91 @@ export default function MerchQuantumApp() {
               </div>
 
               {isBulkEditMode ? (
-                <div className={selectorShellClassName}>
-                  <div className="flex items-center justify-end">
-                    {loadingProducts || isImportingListings ? <QuantOrbLoader /> : null}
-                  </div>
-                  <ProductGrid
-                    heading="Choose Listings to Edit"
-                    items={bulkEditVisibleProducts}
-                    selectedIds={pendingTemplateSelectionIds}
-                    activeId={activeGridProductId}
-                    importedProductIds={importedProductIds}
-                    rangeLabel={bulkEditVisibleRangeLabel}
-                    page={safeBulkEditPage}
-                    pageSize={bulkEditPageSize}
-                    totalPages={bulkEditTotalPages}
-                    loading={loadingProducts}
-                    selectorPageSize={selectorPageSize}
-                    onPageSizeChange={setSelectorPageSize}
-                    onSelectAll={() => {
-                      setPendingTemplateSelectionIds(normalizeSelectionIds(visibleProducts.map((product) => product.id)));
-                      setActiveGridProductId(visibleProducts[0]?.id || "");
-                      setLastSelectedIndex(null);
-                    }}
-                    onClearSelection={() => {
-                      setPendingTemplateSelectionIds([]);
-                      setActiveGridProductId("");
-                      setLastSelectedIndex(null);
-                    }}
-                    onItemActivate={(product, index, event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      handleBulkEditThumbnailSelection(product.id, index, { shiftKey: "shiftKey" in event ? event.shiftKey : false });
-                    }}
-                    onPreviousPage={() => setBulkEditGridPage((current) => Math.max(0, current - 1))}
-                    onNextPage={() => setBulkEditGridPage((current) => Math.min(bulkEditTotalPages - 1, current + 1))}
-                    footerActions={
-                      <>
-                        <button
-                          type="button"
-                          className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-                          onClick={() => {
-                            setPendingTemplateSelectionIds([]);
-                            setActiveGridProductId("");
-                            setLastSelectedIndex(null);
-                          }}
-                          disabled={!hasBulkEditStagedSelections}
-                        >
-                          Clear staged
-                        </button>
-                        <button
-                          type="button"
-                          className="font-semibold text-[#C084FC] transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-                          disabled={!hasBulkEditStagedSelections || isImportingListings}
-                          onClick={() => { void commitTemplateSelections(pendingTemplateSelectionIds); }}
-                        >
-                          {isImportingListings ? "Loading..." : "Load Selected"}
-                        </button>
-                      </>
-                    }
-                  />
-                </div>
+                <ProductGrid
+                  heading="Choose Listings to Edit"
+                  items={bulkEditVisibleProducts}
+                  selectedIds={pendingTemplateSelectionIds}
+                  activeId={activeGridProductId}
+                  importedProductIds={importedProductIds}
+                  highlighted={attentionTarget === "template"}
+                  rangeLabel={bulkEditVisibleRangeLabel}
+                  page={safeBulkEditPage}
+                  pageSize={bulkEditPageSize}
+                  totalPages={bulkEditTotalPages}
+                  loading={loadingProducts}
+                  selectorPageSize={selectorPageSize}
+                  onPageSizeChange={setSelectorPageSize}
+                  headerAccessory={loadingProducts || isImportingListings ? <QuantOrbLoader /> : null}
+                  onSelectAll={() => {
+                    setPendingTemplateSelectionIds(normalizeSelectionIds(visibleProducts.map((product) => product.id)));
+                    setActiveGridProductId(visibleProducts[0]?.id || "");
+                    setLastSelectedIndex(null);
+                  }}
+                  onClearSelection={() => {
+                    setPendingTemplateSelectionIds([]);
+                    setActiveGridProductId("");
+                    setLastSelectedIndex(null);
+                  }}
+                  onItemActivate={(product, index, event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    handleBulkEditThumbnailSelection(product.id, index, { shiftKey: "shiftKey" in event ? event.shiftKey : false });
+                  }}
+                  onPreviousPage={() => setBulkEditGridPage((current) => Math.max(0, current - 1))}
+                  onNextPage={() => setBulkEditGridPage((current) => Math.min(bulkEditTotalPages - 1, current + 1))}
+                  footerActions={
+                    <>
+                      <button
+                        type="button"
+                        className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+                        onClick={() => {
+                          setPendingTemplateSelectionIds([]);
+                          setActiveGridProductId("");
+                          setLastSelectedIndex(null);
+                        }}
+                        disabled={!hasBulkEditStagedSelections}
+                      >
+                        Clear staged
+                      </button>
+                      <button
+                        type="button"
+                        className="font-semibold text-[#C084FC] transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+                        disabled={!hasBulkEditStagedSelections || isImportingListings}
+                        onClick={() => { void commitTemplateSelections(pendingTemplateSelectionIds); }}
+                      >
+                        {isImportingListings ? "Loading..." : "Load Selected"}
+                      </button>
+                    </>
+                  }
+                />
               ) : (
-                <div className={selectorShellClassName}>
-                  <div className="flex items-center justify-end">
-                    {loadingProducts || loadingTemplateDetails ? <QuantOrbLoader /> : null}
-                  </div>
-                  <ProductGrid
-                    heading="Choose Product Template"
-                    items={createTemplateVisibleProducts}
-                    selectedIds={selectedImportIds}
-                    activeId={activeGridProductId}
-                    importedProductIds={importedProductIds}
-                    rangeLabel={createTemplateVisibleRangeLabel}
-                    page={safeCreateTemplatePage}
-                    pageSize={createTemplatePageSize}
-                    totalPages={createTemplateTotalPages}
-                    loading={loadingProducts}
-                    selectorPageSize={selectorPageSize}
-                    onPageSizeChange={setSelectorPageSize}
-                    onClearSelection={() => {
-                      setActiveGridProductId("");
-                      void commitTemplateSelections([]);
-                    }}
-                    onItemActivate={(product, index, event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      void handleCreateTemplateSelection(product.id, index);
-                    }}
-                    onPreviousPage={() => setCreateTemplateGridPage((current) => Math.max(0, current - 1))}
-                    onNextPage={() => setCreateTemplateGridPage((current) => Math.min(createTemplateTotalPages - 1, current + 1))}
-                  />
-                </div>
+                <ProductGrid
+                  heading="Choose Product Template"
+                  items={createTemplateVisibleProducts}
+                  selectedIds={selectedImportIds}
+                  activeId={activeGridProductId}
+                  importedProductIds={importedProductIds}
+                  highlighted={attentionTarget === "template"}
+                  rangeLabel={createTemplateVisibleRangeLabel}
+                  page={safeCreateTemplatePage}
+                  pageSize={createTemplatePageSize}
+                  totalPages={createTemplateTotalPages}
+                  loading={loadingProducts}
+                  selectorPageSize={selectorPageSize}
+                  onPageSizeChange={setSelectorPageSize}
+                  headerAccessory={loadingProducts || loadingTemplateDetails ? <QuantOrbLoader /> : null}
+                  onClearSelection={() => {
+                    setActiveGridProductId("");
+                    void commitTemplateSelections([]);
+                  }}
+                  onItemActivate={(product, index, event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void handleCreateTemplateSelection(product.id, index);
+                  }}
+                  onPreviousPage={() => setCreateTemplateGridPage((current) => Math.max(0, current - 1))}
+                  onNextPage={() => setCreateTemplateGridPage((current) => Math.min(createTemplateTotalPages - 1, current + 1))}
+                />
               )}
             </div>
             {importStatus ? (
