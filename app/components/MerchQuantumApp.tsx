@@ -1973,6 +1973,8 @@ export default function MerchQuantumApp() {
   const [shopId, setShopId] = useState("");
   const [productId, setProductId] = useState("");
   const [search, setSearch] = useState("");
+  const [isBulkEditExpandedView, setIsBulkEditExpandedView] = useState(false);
+  const [bulkEditGridPage, setBulkEditGridPage] = useState(0);
   const [templateDescription, setTemplateDescription] = useState("");
   const [importedListingTitle, setImportedListingTitle] = useState("");
   const [importedListingDescription, setImportedListingDescription] = useState("");
@@ -2185,6 +2187,16 @@ export default function MerchQuantumApp() {
   const bulkEditSelectionCountLabel = pendingTemplateSelectionIds.length > 0
     ? `${pendingTemplateSelectionIds.length} listing${pendingTemplateSelectionIds.length === 1 ? "" : "s"} staged`
     : "No listings staged yet";
+  const bulkEditCompactVisibleCount = 5;
+  const bulkEditExpandedPageSize = 25;
+  const bulkEditTotalPages = Math.max(1, Math.ceil(visibleProducts.length / bulkEditExpandedPageSize));
+  const safeBulkEditPage = Math.min(bulkEditGridPage, bulkEditTotalPages - 1);
+  const bulkEditVisibleProducts = isBulkEditExpandedView
+    ? visibleProducts.slice(
+      safeBulkEditPage * bulkEditExpandedPageSize,
+      safeBulkEditPage * bulkEditExpandedPageSize + bulkEditExpandedPageSize
+    )
+    : visibleProducts.slice(0, bulkEditCompactVisibleCount);
   const workspaceModePickerLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "Edit mode";
   const previewOverlayUsesLightText = selectedImage?.preview
     ? shouldUseLightPreviewText(selectedImage.previewBackground || DISPLAY_NEUTRAL_BACKGROUND)
@@ -3036,6 +3048,8 @@ export default function MerchQuantumApp() {
       setIsRoutingGridExpanded(true);
       setSelectedImportIds([]);
       setPendingTemplateSelectionIds([]);
+      setIsBulkEditExpandedView(false);
+      setBulkEditGridPage(0);
       setIsTemplatePickerOpen(false);
       setImportStatus("");
       setEditingField(null);
@@ -3047,6 +3061,22 @@ export default function MerchQuantumApp() {
       setProductId("");
     }
   }, [shopId, visibleProducts, productId]);
+
+  useEffect(() => {
+    if (!isBulkEditMode) {
+      setIsBulkEditExpandedView(false);
+      setBulkEditGridPage(0);
+      return;
+    }
+
+    if (bulkEditGridPage > bulkEditTotalPages - 1) {
+      setBulkEditGridPage(Math.max(0, bulkEditTotalPages - 1));
+    }
+  }, [bulkEditGridPage, bulkEditTotalPages, isBulkEditMode]);
+
+  useEffect(() => {
+    setBulkEditGridPage(0);
+  }, [search, shopId, workspaceMode]);
 
   useEffect(() => {
     if (!shopId || !productId) {
@@ -3197,7 +3227,7 @@ function dismissBootOverlay() {
     clearPreviewWorkspace();
 
     if (nextMode === "edit") {
-      setImportStatus("Choose active provider listings to load into Bulk Edit Mode.");
+      setImportStatus("");
     }
   }
 
@@ -3530,7 +3560,7 @@ function dismissBootOverlay() {
     setImportedListingDescription("");
 
     if (nextSelections.length === 0) {
-      setImportStatus(isBulkEditMode ? "Choose active provider listings to load into Bulk Edit Mode." : "");
+      setImportStatus("");
       return;
     }
 
@@ -4287,44 +4317,47 @@ function dismissBootOverlay() {
                 <div
                   className={`rounded-xl border border-slate-800 bg-[#020616] p-4 ${attentionTarget === "template" ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-medium text-white">Choose Listings to Edit</span>
+                  <div className="flex items-center justify-end">
                     {loadingProducts || isImportingListings ? <QuantOrbLoader /> : null}
                   </div>
-                  <div className="mt-3">
+                  <div className="mt-2">
                     <Input
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Search My Products"
                     />
                   </div>
-                  <div className="mt-3 flex items-center justify-end gap-3">
-                    <button
-                      type="button"
-                      className="text-xs font-medium text-slate-400 transition hover:text-white"
-                      disabled={visibleProducts.length === 0}
-                      onClick={() => {
-                        setPendingTemplateSelectionIds(normalizeSelectionIds(visibleProducts.map((product) => product.id)));
-                        setTemplateSelectionAnchorIndex(null);
-                      }}
-                    >
-                      Select All
-                    </button>
-                    <button
-                      type="button"
-                      className="text-xs font-medium text-slate-400 transition hover:text-white"
-                      disabled={pendingTemplateSelectionIds.length === 0}
-                      onClick={() => {
-                        setPendingTemplateSelectionIds([]);
-                        setTemplateSelectionAnchorIndex(null);
-                      }}
-                    >
-                      Clear All
-                    </button>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <span className="text-[11px] font-medium tracking-tight text-white">Choose Listings to Edit</span>
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <button
+                        type="button"
+                        className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+                        disabled={visibleProducts.length === 0}
+                        onClick={() => {
+                          setPendingTemplateSelectionIds(normalizeSelectionIds(visibleProducts.map((product) => product.id)));
+                          setTemplateSelectionAnchorIndex(null);
+                        }}
+                      >
+                        Select All
+                      </button>
+                      <button
+                        type="button"
+                        className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+                        disabled={pendingTemplateSelectionIds.length === 0}
+                        onClick={() => {
+                          setPendingTemplateSelectionIds([]);
+                          setTemplateSelectionAnchorIndex(null);
+                        }}
+                      >
+                        Clear All
+                      </button>
+                    </div>
                   </div>
-                  <div className="mt-3 flex flex-row gap-3 overflow-x-auto pb-2 snap-x [scrollbar-color:rgba(127,34,254,0.45)_transparent] [scrollbar-width:thin]">
-                    {visibleProducts.length > 0 ? (
-                      visibleProducts.map((product, index) => {
+                  <div className="mt-2 rounded-xl border border-slate-800 bg-[#010512] p-2.5">
+                    {bulkEditVisibleProducts.length > 0 ? (
+                      <div className="grid grid-cols-5 gap-2">
+                        {bulkEditVisibleProducts.map((product, index) => {
                         const alreadyImported = importedProductIds.has(product.id);
                         const isPendingSelection = pendingTemplateSelectionIds.includes(product.id);
 
@@ -4343,7 +4376,7 @@ function dismissBootOverlay() {
                                 stageBulkEditTemplateSelection(product.id, index);
                               }
                             }}
-                            className={`group relative aspect-square w-24 shrink-0 snap-start overflow-hidden rounded-lg border bg-[#020616] text-left transition ${
+                            className={`group relative aspect-square w-full min-w-0 overflow-hidden rounded-lg border bg-[#020616] text-left transition ${
                               isPendingSelection
                                 ? "border-[#7F22FE] ring-2 ring-[#7F22FE]/80 shadow-[0_0_10px_rgba(147,51,234,0.5)] opacity-100"
                                 : alreadyImported
@@ -4385,9 +4418,10 @@ function dismissBootOverlay() {
                             ) : null}
                           </button>
                         );
-                      })
+                        })}
+                      </div>
                     ) : (
-                      <div className="flex min-h-[88px] min-w-full items-center justify-center rounded-xl border border-slate-800 bg-[#010512] px-3 py-4 text-sm text-slate-400">
+                      <div className="flex min-h-[88px] items-center justify-center rounded-xl px-3 py-4 text-sm text-slate-400">
                         {loadingProducts
                           ? "Loading provider listings..."
                           : search.trim()
@@ -4398,24 +4432,59 @@ function dismissBootOverlay() {
                   </div>
                   <div className="mt-3 flex items-center justify-between gap-3">
                     <span className="text-xs text-slate-400">{bulkEditSelectionCountLabel}</span>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        tone="ghost"
-                        className="min-h-[34px] px-3 text-xs"
+                    <div className="flex items-center gap-2 text-[11px]">
+                      {visibleProducts.length > bulkEditCompactVisibleCount ? (
+                        <button
+                          type="button"
+                          className="font-medium text-slate-400 transition hover:text-white"
+                          onClick={() => {
+                            setIsBulkEditExpandedView((current) => !current);
+                            setBulkEditGridPage(0);
+                          }}
+                        >
+                          {isBulkEditExpandedView ? "Compact" : "View All"}
+                        </button>
+                      ) : null}
+                      {isBulkEditExpandedView && bulkEditTotalPages > 1 ? (
+                        <>
+                          <span className="text-slate-500">{safeBulkEditPage + 1}/{bulkEditTotalPages}</span>
+                          <button
+                            type="button"
+                            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+                            disabled={safeBulkEditPage <= 0}
+                            onClick={() => setBulkEditGridPage((current) => Math.max(0, current - 1))}
+                          >
+                            Prev
+                          </button>
+                          <button
+                            type="button"
+                            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+                            disabled={safeBulkEditPage >= bulkEditTotalPages - 1}
+                            onClick={() => setBulkEditGridPage((current) => Math.min(bulkEditTotalPages - 1, current + 1))}
+                          >
+                            Next
+                          </button>
+                        </>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
                         onClick={() => {
                           setPendingTemplateSelectionIds([]);
                           setTemplateSelectionAnchorIndex(null);
                         }}
+                        disabled={pendingTemplateSelectionIds.length === 0}
                       >
                         Clear staged
-                      </Button>
-                      <Button
-                        className="min-h-[34px] px-3 text-xs"
+                      </button>
+                      <button
+                        type="button"
+                        className="font-semibold text-[#C084FC] transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
                         disabled={pendingTemplateSelectionIds.length === 0 || isImportingListings}
                         onClick={() => { void commitTemplateSelections(pendingTemplateSelectionIds); }}
                       >
                         {isImportingListings ? "Loading..." : "Load Selected"}
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 </div>
