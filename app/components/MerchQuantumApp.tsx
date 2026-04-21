@@ -4,9 +4,13 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PROVIDER_OPTIONS, type ProviderChoiceId } from "../../lib/providers/client-options";
 
 const APP_TAGLINE = "Bulk product creation, simplified";
+const BOOT_TAGLINE = "EFFORTLESS PRODUCT CREATION.";
 const ACTIVE_BATCH_FILES = 50;
 const CONNECTED_TOTAL_BATCH_FILES = 50;
 const FIXED_TAG_COUNT = 13;
+const BOOT_SWEEP_START_MS = 1200;
+const BOOT_OVERLAY_FADE_MS = 1520;
+const BOOT_OVERLAY_UNMOUNT_MS = 220;
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
 export const QUANTUM_DESCRIPTION_AWAITING_TEXT = "Awaiting Quantum AI description...";
 
@@ -1715,6 +1719,92 @@ function MerchQuantumInlineHeading({ className = "" }: { className?: string }) {
   );
 }
 
+function CreativeWellspringBootOverlay({
+  visible,
+  primed,
+  sweepActive,
+  onDismiss,
+}: {
+  visible: boolean;
+  primed: boolean;
+  sweepActive: boolean;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      onClick={onDismiss}
+      className={`fixed inset-0 z-[140] overflow-hidden bg-[#03050d] transition-opacity duration-300 ${visible ? "opacity-100" : "pointer-events-none opacity-0"}`}
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(127,34,254,0.2),rgba(3,5,13,0.96)_40%,rgba(0,0,0,1)_78%)]" />
+
+      <div className={`pointer-events-none absolute -left-[8vw] top-[4svh] h-[42svh] w-[42svh] rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(196,181,253,0.92),rgba(127,34,254,0.78)_24%,rgba(53,32,164,0.36)_56%,transparent_78%)] blur-[72px] transition-all duration-500 ${sweepActive ? "opacity-0 scale-110" : "opacity-100"}`} style={{ animation: "creativeWellspringDriftA 16s ease-in-out infinite alternate" }} />
+      <div className={`pointer-events-none absolute right-[12vw] top-[12svh] h-[34svh] w-[34svh] rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(244,114,182,0.46),rgba(129,140,248,0.3)_34%,rgba(37,99,235,0.18)_60%,transparent_78%)] blur-[88px] transition-all duration-500 ${sweepActive ? "opacity-0 scale-105" : "opacity-100"}`} style={{ animation: "creativeWellspringDriftB 18s ease-in-out infinite alternate" }} />
+      <div className={`pointer-events-none absolute left-[28vw] top-[30svh] h-[30svh] w-[30svh] rounded-full bg-[radial-gradient(circle_at_40%_40%,rgba(96,165,250,0.26),rgba(29,78,216,0.2)_40%,rgba(236,72,153,0.12)_68%,transparent_82%)] blur-[80px] transition-all duration-500 ${sweepActive ? "opacity-0 scale-110" : "opacity-100"}`} style={{ animation: "creativeWellspringDriftC 14s ease-in-out infinite alternate" }} />
+
+      <div className={`pointer-events-none absolute inset-0 transition-opacity duration-500 ${sweepActive ? "opacity-0" : "opacity-100"}`} style={{ mixBlendMode: "screen" }}>
+        <svg aria-hidden="true" className="absolute inset-0 h-full w-full opacity-[0.08]" viewBox="0 0 1440 900" preserveAspectRatio="none">
+          <defs>
+            <pattern id="creative-wellspring-grid" width="96" height="96" patternUnits="userSpaceOnUse">
+              <path d="M96 0H0V96" fill="none" stroke="rgba(226,232,240,0.22)" strokeWidth="1" />
+            </pattern>
+            <pattern id="creative-wellspring-files" width="240" height="220" patternUnits="userSpaceOnUse">
+              <path d="M48 40h78l22 22v98H48z" fill="none" stroke="rgba(192,132,252,0.24)" strokeWidth="1.15" />
+              <path d="M126 40v22h22" fill="none" stroke="rgba(192,132,252,0.24)" strokeWidth="1.15" />
+              <path d="M72 112h48M72 136h60M72 160h36" fill="none" stroke="rgba(148,163,184,0.2)" strokeWidth="1" strokeLinecap="round" />
+            </pattern>
+          </defs>
+          <rect width="1440" height="900" fill="url(#creative-wellspring-grid)" />
+          <rect width="1440" height="900" fill="url(#creative-wellspring-files)" />
+        </svg>
+      </div>
+
+      <div className={`pointer-events-none absolute inset-x-[-10%] top-[-36svh] h-[70svh] bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,rgba(244,244,255,0.12)_28%,rgba(192,132,252,0.24)_54%,rgba(10,14,30,0)_100%)] blur-2xl transition-all duration-[520ms] ease-out ${sweepActive ? "translate-y-[140svh] opacity-100" : "translate-y-0 opacity-0"}`} />
+
+      <div className="relative flex min-h-screen w-full items-start justify-start px-[8vw] pt-[8svh]">
+        <div className="relative z-10 flex max-w-xl flex-col items-start gap-2 text-left">
+          <div className={`flex flex-wrap items-baseline gap-x-2 text-4xl tracking-tight transition-all duration-[600ms] ease-out sm:text-5xl ${primed ? "translate-y-0 scale-100 blur-0 opacity-100" : "translate-y-1 scale-[1.05] blur-[10px] opacity-0"}`}>
+            <span className="font-bold text-[#7F22FE]">Merch</span>
+            <span className="font-medium text-white">Quantum</span>
+          </div>
+          <p
+            className={`text-[11px] font-light uppercase tracking-[0.38em] text-slate-300/90 transition-all duration-[400ms] ease-out sm:text-xs ${primed ? "translate-y-0 opacity-100" : "translate-y-[10px] opacity-0"}`}
+            style={{ transitionDelay: primed ? "120ms" : "0ms" }}
+          >
+            {BOOT_TAGLINE}
+          </p>
+        </div>
+      </div>
+
+      <style jsx>{`
+        @keyframes creativeWellspringDriftA {
+          0% {
+            transform: translate3d(0, 0, 0) scale(1);
+          }
+          100% {
+            transform: translate3d(4vw, 3svh, 0) scale(1.08);
+          }
+        }
+        @keyframes creativeWellspringDriftB {
+          0% {
+            transform: translate3d(0, 0, 0) scale(1);
+          }
+          100% {
+            transform: translate3d(-5vw, 2svh, 0) scale(1.05);
+          }
+        }
+        @keyframes creativeWellspringDriftC {
+          0% {
+            transform: translate3d(0, 0, 0) scale(1);
+          }
+          100% {
+            transform: translate3d(2vw, -3svh, 0) scale(1.07);
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 function getStatusTone(status: ItemStatus) {
   switch (status) {
     case "ready":
@@ -1904,6 +1994,7 @@ export default function MerchQuantumApp() {
   const [isBootOverlayMounted, setIsBootOverlayMounted] = useState(true);
   const [isBootOverlayVisible, setIsBootOverlayVisible] = useState(true);
   const [isBootOverlayPrimed, setIsBootOverlayPrimed] = useState(false);
+  const [isBootOverlaySweepActive, setIsBootOverlaySweepActive] = useState(false);
   const [metadataSectionState, setMetadataSectionState] = useState<Record<MetadataSectionKey, boolean>>({
     title: true,
     description: true,
@@ -2822,17 +2913,23 @@ export default function MerchQuantumApp() {
     if (!isBootOverlayMounted) return;
 
     setIsBootOverlayPrimed(false);
+    setIsBootOverlaySweepActive(false);
 
     const primeTimer = window.setTimeout(() => {
       setIsBootOverlayPrimed(true);
     }, 24);
 
+    const sweepTimer = window.setTimeout(() => {
+      setIsBootOverlaySweepActive(true);
+    }, BOOT_SWEEP_START_MS);
+
     const timer = window.setTimeout(() => {
       setIsBootOverlayVisible(false);
-    }, 1500);
+    }, BOOT_OVERLAY_FADE_MS);
 
     return () => {
       window.clearTimeout(primeTimer);
+      window.clearTimeout(sweepTimer);
       window.clearTimeout(timer);
     };
   }, [isBootOverlayMounted]);
@@ -2843,7 +2940,8 @@ export default function MerchQuantumApp() {
     const timer = window.setTimeout(() => {
       setIsBootOverlayMounted(false);
       setIsBootOverlayPrimed(false);
-    }, 280);
+      setIsBootOverlaySweepActive(false);
+    }, BOOT_OVERLAY_UNMOUNT_MS);
 
     return () => {
       window.clearTimeout(timer);
@@ -3047,6 +3145,7 @@ export default function MerchQuantumApp() {
   }
 
 function dismissBootOverlay() {
+  setIsBootOverlaySweepActive(true);
   setIsBootOverlayVisible(false);
   setIsBootOverlayPrimed(false);
 }
@@ -3952,27 +4051,15 @@ function dismissBootOverlay() {
   return (
     <div className="relative min-h-screen max-w-full overflow-x-hidden bg-[#000000] px-6 pb-6 pt-3 text-white transition-colors md:px-8 md:pb-8 md:pt-4">
       {isBootOverlayMounted ? (
-        <div
-          onClick={dismissBootOverlay}
-          className={`fixed inset-0 z-[140] flex items-center justify-center bg-[radial-gradient(circle_at_top,rgba(127,34,254,0.16),rgba(0,0,0,0.94)_55%)] px-6 backdrop-blur-xl transition-opacity duration-300 ${isBootOverlayVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
-        >
-          <div className="relative flex min-h-[20rem] w-full max-w-3xl items-center justify-center overflow-hidden rounded-[36px] border border-white/10 bg-[#03050d]/80 px-8 py-12 shadow-[0_40px_120px_-48px_rgba(127,34,254,0.7)]">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.26),rgba(127,34,254,0.12)_24%,transparent_60%)]" />
-            <div className="pointer-events-none absolute h-[21rem] w-[21rem] rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(255,255,255,0.92),rgba(174,121,255,0.7)_18%,rgba(127,34,254,0.34)_42%,rgba(127,34,254,0.08)_68%,transparent_80%)] blur-xl animate-pulse" />
-            <div className="pointer-events-none absolute h-[27rem] w-[27rem] rounded-full border border-[#7F22FE]/20" />
-            <div className="pointer-events-none absolute h-[31rem] w-[31rem] rounded-full border border-white/5" />
-            <div className="relative z-10 flex max-w-xl flex-col items-center gap-3 text-center">
-              <div className={`flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1 text-4xl font-semibold tracking-tight transition-all duration-[600ms] ease-out sm:text-5xl ${isBootOverlayPrimed ? "translate-y-0 scale-100 blur-0 opacity-100" : "translate-y-2 scale-[0.985] blur-[10px] opacity-0"}`}>
-                <span className="text-[#7F22FE]">Merch</span>
-                <span className="text-white">Quantum</span>
-              </div>
-              <p className={`text-sm text-slate-300 transition-all duration-[400ms] ease-out sm:text-base ${isBootOverlayPrimed ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"}`}>{APP_TAGLINE}</p>
-            </div>
-          </div>
-        </div>
+        <CreativeWellspringBootOverlay
+          visible={isBootOverlayVisible}
+          primed={isBootOverlayPrimed}
+          sweepActive={isBootOverlaySweepActive}
+          onDismiss={dismissBootOverlay}
+        />
       ) : null}
 
-      <div className="mx-auto max-w-6xl space-y-3">
+      <div className={`mx-auto max-w-6xl space-y-3 transition-all duration-300 ${isBootOverlayVisible ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"}`}>
         <div className="relative">
           <Box
             className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${routingGuidanceTarget ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""} ${isRoutingGridCollapsed ? "pb-3" : ""}`}
