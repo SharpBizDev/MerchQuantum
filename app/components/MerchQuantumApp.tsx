@@ -2088,6 +2088,7 @@ export default function MerchQuantumApp() {
   const uploadDisabled = !isCreateMode || !isWorkspaceConfigured || draftReadyCount === 0 || isRunningBatch || processingCount > 0;
   const canShowDetailWorkspace = hasWorkspaceRoute;
   const canShowDetailPanel = isCreateMode ? canShowDetailWorkspace : canShowDetailWorkspace && (hasAnyLoadedImages || !!selectedImage);
+  const isCreateWorkspaceLocked = isCreateMode && !templateReadyForAi;
   const selectedImageFieldStates = selectedImage?.aiFieldStates ?? createAiFieldStates("idle");
   const detailTemplateDescription = selectedImage?.templateDescriptionOverride ?? templateDescription;
   const selectedImageTemplateKey = selectedImage
@@ -4560,6 +4561,13 @@ function dismissBootOverlay() {
               <>
                 <div className="mt-3">
                   <div className="space-y-3" onPointerDownCapture={() => nudgeWorkflow(true)}>
+                      <div
+                        className={`relative rounded-[24px] transition-all ${
+                          isCreateWorkspaceLocked && attentionTarget === "template"
+                            ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse"
+                            : ""
+                        }`}
+                      >
                       <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-[296px_minmax(0,1fr)]">
                         <div className="flex min-w-0 h-full flex-col gap-3">
                           <div
@@ -4902,7 +4910,7 @@ function dismissBootOverlay() {
                                     </button>
                                   ) : null}
                                   <Button
-                                    className="min-h-0 h-fit shrink-0 rounded-md px-3 py-1 text-xs !bg-[#7F22FE] !text-white hover:!bg-[#6d1ee0]"
+                                    className="min-h-0 h-6 shrink-0 rounded-full border border-[#7F22FE]/35 px-2.5 py-0 text-[11px] font-semibold tracking-tight !bg-[#7F22FE]/12 !text-[#F3E8FF] hover:!bg-[#7F22FE]/20 hover:!text-white"
                                     disabled={isCreateMode ? uploadDisabled : bulkEditPublishDisabled}
                                     onClick={() => {
                                       if (isCreateMode) {
@@ -5077,6 +5085,31 @@ function dismissBootOverlay() {
                             </div>
                           </div>
                         </div>
+                    </div>
+                    {isCreateWorkspaceLocked ? (
+                      <div
+                        className="absolute inset-0 z-30 flex cursor-not-allowed items-start justify-center rounded-[24px] bg-[#020616]/16"
+                        onPointerDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          triggerAttentionCue("template");
+                        }}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          triggerAttentionCue("template");
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          triggerAttentionCue("template");
+                        }}
+                      >
+                        <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#7F22FE]/30 bg-[#050814]/90 px-3 py-1.5 text-xs font-medium text-slate-200 shadow-[0_12px_30px_-24px_rgba(127,34,254,0.8)]">
+                          <QuantOrbLoader />
+                          <span>Select a template above to unlock uploads and editing.</span>
+                        </div>
+                      </div>
+                    ) : null}
                     </div>
                 </div>
               </div>
