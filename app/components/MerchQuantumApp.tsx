@@ -2168,6 +2168,9 @@ export default function MerchQuantumApp() {
     : selectedTemplateProducts.length === 1
       ? selectedTemplateProducts[0]?.title || templatePickerBaseLabel
       : `${selectedTemplateProducts.length} Listings Selected`;
+  const bulkEditSelectionCountLabel = pendingTemplateSelectionIds.length > 0
+    ? `${pendingTemplateSelectionIds.length} listing${pendingTemplateSelectionIds.length === 1 ? "" : "s"} staged`
+    : "No listings staged yet";
   const workspaceModePickerLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "Edit mode";
   const previewOverlayUsesLightText = selectedImage?.preview
     ? shouldUseLightPreviewText(selectedImage.previewBackground || DISPLAY_NEUTRAL_BACKGROUND)
@@ -4281,134 +4284,177 @@ function dismissBootOverlay() {
                 <MerchQuantumInlineHeading className="max-w-full" />
               </div>
 
-              <div
-                ref={templatePickerRef}
-                className={`relative ${attentionTarget === "template" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isTemplatePickerOpen) {
-                      if (isBulkEditMode) {
-                        void commitTemplateSelections(pendingTemplateSelectionIds);
-                      } else {
-                        void commitTemplateSelections(pendingTemplateSelectionIds);
-                      }
-                      return;
-                    }
-                    openTemplatePicker();
-                  }}
-                  className="flex h-11 w-full items-center justify-between gap-3 overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-3 text-left text-sm text-white transition hover:border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30"
+              {isBulkEditMode ? (
+                <div
+                  className={`rounded-xl border border-slate-800 bg-[#020616] p-4 ${attentionTarget === "template" ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
                 >
-                  <div className="flex min-w-0 flex-1 items-center overflow-hidden">
-                    <span className={`min-w-0 flex-1 truncate ${selectedImportIds.length === 0 ? "font-medium text-slate-400" : "font-normal text-white"}`}>
-                      {loadingProducts && isTemplatePickerOpen && productSource.length === 0 ? "Loading products..." : templatePickerLabel}
-                    </span>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-medium text-white">Choose Listings to Edit</span>
+                    {loadingProducts || isImportingListings ? <QuantOrbLoader /> : null}
                   </div>
-                  <svg
-                    className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${isTemplatePickerOpen ? "rotate-180" : ""}`}
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                  </svg>
-                </button>
+                  <div className="mt-3">
+                    <Input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search My Products"
+                    />
+                  </div>
+                  <div className="mt-3 flex flex-row gap-3 overflow-x-auto pb-2 snap-x [scrollbar-color:rgba(127,34,254,0.45)_transparent] [scrollbar-width:thin]">
+                    {visibleProducts.length > 0 ? (
+                      visibleProducts.map((product, index) => {
+                        const alreadyImported = importedProductIds.has(product.id);
+                        const isPendingSelection = pendingTemplateSelectionIds.includes(product.id);
 
-                {isTemplatePickerOpen ? (
-                  <div className="pointer-events-auto absolute left-0 right-0 top-[calc(100%+0.55rem)] z-[100] rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)]">
-                    {loadingProducts ? (
-                      <div className="flex items-center justify-end">
-                        <QuantOrbLoader />
-                      </div>
-                    ) : null}
-                    <div className="mt-2">
-                      <Input
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search My Products"
-                        autoFocus
-                      />
-                    </div>
-                    <div className="mt-3 max-h-[18rem] overflow-auto pr-1">
-                      {visibleProducts.length > 0 ? (
-                        isBulkEditMode ? (
-                          <div className="overflow-x-auto pb-1 [scrollbar-color:rgba(127,34,254,0.45)_transparent] [scrollbar-width:thin]">
-                            <div className="flex min-w-max gap-2 pr-1">
-                              {visibleProducts.map((product, index) => {
-                                const alreadyImported = importedProductIds.has(product.id);
-                                const isPendingSelection = pendingTemplateSelectionIds.includes(product.id);
-
-                                return (
-                                  <button
-                                    key={`template-${product.id}`}
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.preventDefault();
-                                      event.stopPropagation();
-                                      stageBulkEditTemplateSelection(product.id, index, {
-                                        shiftKey: event.shiftKey,
-                                        ctrlKey: event.ctrlKey,
-                                        metaKey: event.metaKey,
-                                      });
-                                    }}
-                                    onKeyDown={(event) => {
-                                      if (event.key === "Enter" || event.key === " ") {
-                                        event.preventDefault();
-                                        stageBulkEditTemplateSelection(product.id, index);
-                                      }
-                                    }}
-                                    className={`group w-[116px] shrink-0 rounded-xl border bg-[#010512] p-2 text-left transition ${
-                                      isPendingSelection
-                                        ? "border-[#7F22FE]/75 shadow-[0_14px_36px_-28px_rgba(127,34,254,0.82)]"
-                                        : alreadyImported
-                                          ? "border-[#00BC7D]/45 bg-[#00BC7D]/[0.04]"
-                                          : "border-slate-800 hover:border-slate-700"
-                                    }`}
-                                  >
-                                    <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-slate-800 bg-[#020616]">
-                                      <div className="absolute inset-0" style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }} />
-                                      {product.previewUrl ? (
-                                        <div className="absolute inset-0 overflow-hidden rounded-[inherit]">
-                                          <div className="absolute" style={{ inset: `${ARTWORK_SAFE_ZONE_PCT * 100}%` }}>
-                                            <img src={product.previewUrl} alt={product.title} className="h-full w-full object-contain" />
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <div className="relative z-10 flex h-full w-full items-center justify-center px-3 text-center text-xs font-medium text-slate-400">
-                                          <span className="line-clamp-3">{product.title}</span>
-                                        </div>
-                                      )}
-                                      {alreadyImported && !isPendingSelection ? (
-                                        <span className="absolute left-2 top-2 rounded-full border border-[#00BC7D]/35 bg-[#00BC7D]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#7EF0C7]">
-                                          Loaded
-                                        </span>
-                                      ) : null}
-                                      {isPendingSelection ? (
-                                        <span className="absolute right-2 top-2 rounded-full border border-[#7F22FE]/35 bg-[#7F22FE]/18 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#D8B4FE]">
-                                          Edit
-                                        </span>
-                                      ) : null}
-                                    </div>
-                                    <div className="mt-2 space-y-1">
-                                      <div className="truncate text-sm font-medium text-white">{product.title}</div>
-                                      <div className="line-clamp-2 text-[11px] text-slate-400">
-                                        {product.description?.trim()
-                                          ? clampDescriptionForListing(
-                                            extractBuyerFacingDescriptionFromListing(
-                                              product.description,
-                                              sanitizeTemplateDescriptionForPrebuffer(product.description, product.title)
-                                            )
-                                          ).slice(0, 96) || product.type
-                                          : product.type}
-                                      </div>
-                                    </div>
-                                  </button>
-                                );
-                              })}
+                        return (
+                          <button
+                            key={`bulk-edit-template-${product.id}`}
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              stageBulkEditTemplateSelection(product.id, index, {
+                                shiftKey: event.shiftKey,
+                                ctrlKey: event.ctrlKey,
+                                metaKey: event.metaKey,
+                              });
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                stageBulkEditTemplateSelection(product.id, index);
+                              }
+                            }}
+                            className={`group w-[88px] shrink-0 snap-start text-left transition ${
+                              isPendingSelection
+                                ? "opacity-100"
+                                : "opacity-60 hover:opacity-100"
+                            }`}
+                          >
+                            <div className={`relative flex aspect-square w-[88px] items-center justify-center overflow-hidden rounded-lg border bg-[#020616] transition ${
+                              isPendingSelection
+                                ? "border-[#7F22FE] ring-2 ring-[#7F22FE]/80 shadow-[0_0_10px_rgba(147,51,234,0.5)]"
+                                : alreadyImported
+                                  ? "border-[#00BC7D]/45"
+                                  : "border-slate-800 group-hover:border-slate-700"
+                            }`}>
+                              <div className="absolute inset-0" style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }} />
+                              {product.previewUrl ? (
+                                <img
+                                  src={product.previewUrl}
+                                  alt={product.title}
+                                  className="relative z-10 h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="relative z-10 flex h-full w-full items-center justify-center px-2 text-center text-[10px] font-medium text-slate-400">
+                                  <span className="line-clamp-3">{product.title}</span>
+                                </div>
+                              )}
+                              <div className={`pointer-events-none absolute inset-0 transition ${
+                                isPendingSelection
+                                  ? "bg-[#7F22FE]/18"
+                                  : "bg-black/10"
+                              }`} />
+                              {alreadyImported ? (
+                                <span className={`absolute left-1.5 top-1.5 rounded-full px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] ${
+                                  isPendingSelection
+                                    ? "border border-[#7F22FE]/35 bg-[#7F22FE]/20 text-[#E9D5FF]"
+                                    : "border border-[#00BC7D]/35 bg-[#00BC7D]/10 text-[#7EF0C7]"
+                                }`}>
+                                  {isPendingSelection ? "Staged" : "Loaded"}
+                                </span>
+                              ) : isPendingSelection ? (
+                                <span className="absolute left-1.5 top-1.5 rounded-full border border-[#7F22FE]/35 bg-[#7F22FE]/20 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-[#E9D5FF]">
+                                  Staged
+                                </span>
+                              ) : null}
                             </div>
-                          </div>
-                        ) : (
+                            <div className="mt-1 max-w-full truncate text-[10px] text-slate-400">
+                              {product.title}
+                            </div>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="flex min-h-[88px] min-w-full items-center justify-center rounded-xl border border-slate-800 bg-[#010512] px-3 py-4 text-sm text-slate-400">
+                        {loadingProducts
+                          ? "Loading provider listings..."
+                          : search.trim()
+                            ? "No products matched this search."
+                            : "Provider product thumbnails will appear here."}
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <span className="text-xs text-slate-400">{bulkEditSelectionCountLabel}</span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        tone="ghost"
+                        className="min-h-[34px] px-3 text-xs"
+                        onClick={() => {
+                          setPendingTemplateSelectionIds([]);
+                          setTemplateSelectionAnchorIndex(null);
+                        }}
+                      >
+                        Clear staged
+                      </Button>
+                      <Button
+                        className="min-h-[34px] px-3 text-xs"
+                        disabled={pendingTemplateSelectionIds.length === 0 || isImportingListings}
+                        onClick={() => { void commitTemplateSelections(pendingTemplateSelectionIds); }}
+                      >
+                        {isImportingListings ? "Loading..." : "Load Selected"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  ref={templatePickerRef}
+                  className={`relative ${attentionTarget === "template" ? "rounded-2xl ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)] animate-pulse" : ""}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isTemplatePickerOpen) {
+                        void commitTemplateSelections(pendingTemplateSelectionIds);
+                        return;
+                      }
+                      openTemplatePicker();
+                    }}
+                    className="flex h-11 w-full items-center justify-between gap-3 overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-3 text-left text-sm text-white transition hover:border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30"
+                  >
+                    <div className="flex min-w-0 flex-1 items-center overflow-hidden">
+                      <span className={`min-w-0 flex-1 truncate ${selectedImportIds.length === 0 ? "font-medium text-slate-400" : "font-normal text-white"}`}>
+                        {loadingProducts && isTemplatePickerOpen && productSource.length === 0 ? "Loading products..." : templatePickerLabel}
+                      </span>
+                    </div>
+                    <svg
+                      className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${isTemplatePickerOpen ? "rotate-180" : ""}`}
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+
+                  {isTemplatePickerOpen ? (
+                    <div className="pointer-events-auto absolute left-0 right-0 top-[calc(100%+0.55rem)] z-[100] rounded-2xl border border-slate-800 bg-[#020616] p-3 shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)]">
+                      {loadingProducts ? (
+                        <div className="flex items-center justify-end">
+                          <QuantOrbLoader />
+                        </div>
+                      ) : null}
+                      <div className="mt-2">
+                        <Input
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                          placeholder="Search My Products"
+                          autoFocus
+                        />
+                      </div>
+                      <div className="mt-3 max-h-[18rem] overflow-auto pr-1">
+                        {visibleProducts.length > 0 ? (
                           <div className="grid gap-2">
                             {visibleProducts.map((product) => {
                               const alreadyImported = importedProductIds.has(product.id);
@@ -4480,51 +4526,26 @@ function dismissBootOverlay() {
                               );
                             })}
                           </div>
-                        )
-                      ) : (
-                        <div className="rounded-xl border border-slate-800 bg-[#010512] px-3 py-4 text-sm text-slate-400">
-                          {loadingProducts
-                            ? "Loading provider listings..."
-                            : search.trim()
-                              ? "No products matched this search."
-                              : "Open this picker to load products from the selected shop."}
-                        </div>
-                      )}
-                    </div>
-                    {isBulkEditMode ? (
-                      <div className="mt-3 flex items-center justify-between gap-2">
-                        <span className="text-xs text-slate-400">
-                          {pendingTemplateSelectionIds.length > 0
-                            ? `${pendingTemplateSelectionIds.length} listing${pendingTemplateSelectionIds.length === 1 ? "" : "s"} staged`
-                            : "No listings staged yet"}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <Button tone="ghost" className="min-h-[36px] px-3" onClick={cancelTemplatePicker}>
-                            Cancel
-                          </Button>
-                          <Button
-                            className="min-h-[36px] px-3"
-                            disabled={pendingTemplateSelectionIds.length === 0 || isImportingListings}
-                            onClick={() => { void commitTemplateSelections(pendingTemplateSelectionIds); }}
-                          >
-                            {isImportingListings ? "Loading..." : "Load Selected"}
-                          </Button>
-                        </div>
+                        ) : (
+                          <div className="rounded-xl border border-slate-800 bg-[#010512] px-3 py-4 text-sm text-slate-400">
+                            {loadingProducts
+                              ? "Loading provider listings..."
+                              : search.trim()
+                                ? "No products matched this search."
+                                : "Open this picker to load products from the selected shop."}
+                          </div>
+                        )}
                       </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
             </div>
             {importStatus ? (
               <p className="mt-3 text-sm text-slate-300">{importStatus}</p>
             ) : null}
 
-            {isBulkEditMode && !hasAnyLoadedImages ? (
-              <div className="mt-3 rounded-2xl border border-slate-800 bg-[#020616] px-5 py-6 text-sm text-slate-400">
-                Choose active provider listings above to load rescued artwork and SEO fields into Bulk Edit Mode.
-              </div>
-            ) : shopId && canShowDetailPanel ? (
+            {shopId && canShowDetailPanel ? (
               <>
                 <div className="mt-3">
                   <div className="space-y-3" onPointerDownCapture={() => nudgeWorkflow(true)}>
