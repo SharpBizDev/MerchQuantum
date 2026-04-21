@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { PROVIDER_OPTIONS, type ProviderChoiceId } from "../../lib/providers/client-options";
 
 const APP_TAGLINE = "Bulk product creation, simplified";
@@ -126,14 +125,6 @@ type InlineSaveFeedback = {
 
 type MetadataSectionKey = "title" | "description" | "tags";
 type WorkspaceMode = "" | "create" | "edit";
-type ThumbnailHoverPreview = {
-  key: string;
-  title: string;
-  snippet: string;
-  imageUrl?: string;
-  background?: string;
-};
-
 type Template = {
   reference: string;
   nickname: string;
@@ -152,6 +143,31 @@ type Product = {
   shopId: string;
   description?: string;
   previewUrl?: string;
+};
+
+type ProductGridProps = {
+  heading: string;
+  items: Product[];
+  selectedIds: string[];
+  activeId?: string;
+  importedProductIds: Set<string>;
+  rangeLabel: string;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  loading: boolean;
+  selectorPageSize: 1 | 25;
+  onPageSizeChange: (size: 1 | 25) => void;
+  onSelectAll?: () => void;
+  onClearSelection: () => void;
+  onItemActivate: (
+    product: Product,
+    index: number,
+    event: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>
+  ) => void;
+  onPreviousPage: () => void;
+  onNextPage: () => void;
+  footerActions?: React.ReactNode;
 };
 
 type ApiShop = { id: number | string; title: string; sales_channel?: string };
@@ -1491,63 +1507,6 @@ function clampDescriptionForListing(value: string) {
   return normalized.slice(0, LISTING_LIMITS.descriptionMax).trimEnd();
 }
 
-function getProductPreviewSnippet(product: Product) {
-  const templateDescription = sanitizeTemplateDescriptionForPrebuffer(product.description || "", product.title);
-  const buyerSnippet = clampDescriptionForListing(
-    extractBuyerFacingDescriptionFromListing(product.description || "", templateDescription)
-  );
-
-  const sanitizedPreview = stripHtml(
-    buyerSnippet
-      || templateDescription
-      || product.type
-      || ""
-  )
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return trimToSentence(
-    sanitizedPreview || "Preview details available after selection.",
-    120
-  );
-}
-
-function getImagePreviewSnippet(image: Img) {
-  const sanitizedPreview = stripHtml(
-    image.finalDescription
-      || image.originalListingDescription
-      || image.statusReason
-      || ""
-  )
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return trimToSentence(
-    clampDescriptionForListing(sanitizedPreview || "Preview details available after selection."),
-    120
-  );
-}
-
-function buildProductHoverPreview(product: Product): ThumbnailHoverPreview {
-  return {
-    key: product.id,
-    title: product.title,
-    snippet: getProductPreviewSnippet(product),
-    imageUrl: product.previewUrl,
-    background: DISPLAY_NEUTRAL_BACKGROUND,
-  };
-}
-
-function buildImageHoverPreview(image: Img): ThumbnailHoverPreview {
-  return {
-    key: image.id,
-    title: image.final || image.name,
-    snippet: getImagePreviewSnippet(image),
-    imageUrl: image.preview,
-    background: image.previewBackground,
-  };
-}
-
 function autosizeTextarea(element: HTMLTextAreaElement | null) {
   if (!element) return;
   element.style.height = "0px";
@@ -1787,17 +1746,19 @@ function CreativeWellspringBootOverlay({
   visible,
   primed,
   sweepActive,
+  ambientVisible,
   onDismiss,
 }: {
   visible: boolean;
   primed: boolean;
   sweepActive: boolean;
+  ambientVisible: boolean;
   onDismiss: () => void;
 }) {
   return (
     <div
       onClick={onDismiss}
-      className={`fixed inset-0 overflow-hidden bg-[#03050d] transition-opacity duration-500 ${visible ? "z-[140] opacity-100 pointer-events-auto" : "z-0 opacity-[0.05] pointer-events-none"}`}
+      className={`fixed inset-0 overflow-hidden bg-[#03050d] transition-opacity duration-500 ${visible ? "z-[140] opacity-100 pointer-events-auto" : ambientVisible ? "z-0 opacity-[0.05] pointer-events-none" : "z-0 opacity-0 pointer-events-none"}`}
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.16),rgba(3,5,13,0.95)_42%,rgba(0,0,0,1)_82%)]" />
 
@@ -1881,6 +1842,160 @@ function CreativeWellspringBootOverlay({
         }
       `}</style>
     </div>
+  );
+}
+
+function ProductGrid({
+  heading,
+  items,
+  selectedIds,
+  activeId,
+  importedProductIds,
+  rangeLabel,
+  page,
+  pageSize,
+  totalPages,
+  loading,
+  selectorPageSize,
+  onPageSizeChange,
+  onSelectAll,
+  onClearSelection,
+  onItemActivate,
+  onPreviousPage,
+  onNextPage,
+  footerActions,
+}: ProductGridProps) {
+  return (
+    <>
+      <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-[11px] font-medium tracking-tight text-white">{heading}</span>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 text-[11px]">
+          {onSelectAll ? (
+            <button
+              type="button"
+              className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+              disabled={items.length === 0}
+              onClick={onSelectAll}
+            >
+              Select All
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={selectedIds.length === 0}
+            onClick={onClearSelection}
+          >
+            Clear Selection
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 max-w-full overflow-hidden">
+        {items.length > 0 ? (
+          <div className="grid max-w-full grid-cols-3 gap-3 overflow-hidden md:grid-cols-5 lg:grid-cols-6">
+            {items.map((product, index) => {
+              const globalIndex = page * pageSize + index;
+              const isSelected = selectedIds.includes(product.id);
+              const isActive = activeId === product.id;
+              const alreadyImported = importedProductIds.has(product.id);
+              const cardTone = isSelected
+                ? "border-[#7F22FE] ring-2 ring-[#7F22FE]/85 shadow-[0_0_10px_rgba(147,51,234,0.5)] opacity-100"
+                : isActive
+                  ? "border-[#7F22FE]/70 ring-2 ring-[#7F22FE]/55 opacity-100"
+                  : alreadyImported
+                    ? "border-[#00BC7D]/45 opacity-75 hover:opacity-100"
+                    : "border-slate-800/80 opacity-85 hover:opacity-100";
+
+              return (
+                <button
+                  key={`${heading}-${product.id}`}
+                  type="button"
+                  onClick={(event) => onItemActivate(product, globalIndex, event)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onItemActivate(product, globalIndex, event);
+                    }
+                  }}
+                  className={`group relative aspect-square w-full min-w-0 max-w-full cursor-pointer overflow-hidden rounded-xl border bg-[#020616] transition duration-200 ease-out hover:z-10 hover:scale-[1.05] hover:ring-2 hover:ring-[#7F22FE]/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/80 ${cardTone}`}
+                  aria-label={product.title}
+                >
+                  <div className="absolute inset-0" style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }} />
+                  {product.previewUrl ? (
+                    <img
+                      src={product.previewUrl}
+                      alt={product.title}
+                      className="relative z-[1] h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="relative z-[1] flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))]" />
+                  )}
+                  <div className={`pointer-events-none absolute inset-0 transition ${
+                    isSelected ? "bg-[#7F22FE]/14" : isActive ? "bg-[#7F22FE]/8" : "bg-black/10"
+                  }`} />
+                  {(isSelected || alreadyImported) ? (
+                    <span
+                      className={`absolute left-2 top-2 h-2.5 w-2.5 rounded-full ${
+                        isSelected
+                          ? "bg-[#C084FC] shadow-[0_0_10px_rgba(192,132,252,0.95)]"
+                          : "bg-[#00BC7D] shadow-[0_0_8px_rgba(0,188,125,0.9)]"
+                      }`}
+                    />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="min-h-[120px] rounded-xl" aria-hidden={loading ? undefined : true}>
+            {loading ? (
+              <div className="flex h-full min-h-[120px] items-center justify-center px-3 py-6 text-sm text-slate-400">
+                Loading provider listings...
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 flex w-full flex-wrap items-center justify-between gap-3 text-sm">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px]">
+          {items.length > 0 ? (
+            <span className="text-xs text-slate-500">{rangeLabel}</span>
+          ) : null}
+          <div className="w-[4.5rem] shrink-0">
+            <select
+              value={String(selectorPageSize)}
+              onChange={(event) => onPageSizeChange(event.target.value === "1" ? 1 : 25)}
+              className="h-8 w-full rounded-lg border border-slate-800 bg-[#050918] px-2 pr-7 text-[11px] text-slate-300 focus:border-[#7F22FE] focus:outline-none"
+              aria-label="Items per page"
+            >
+              <option value="25">25</option>
+              <option value="1">1</option>
+            </select>
+          </div>
+          <button
+            type="button"
+            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={page <= 0}
+            onClick={onPreviousPage}
+          >
+            {`Prev ${pageSize}`}
+          </button>
+          <button
+            type="button"
+            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={page >= totalPages - 1}
+            onClick={onNextPage}
+          >
+            {`Next ${pageSize}`}
+          </button>
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-3 text-[11px]">
+          {footerActions}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -2103,7 +2218,7 @@ export default function MerchQuantumApp() {
     description: false,
     tags: false,
   });
-  const [thumbnailHoverPreview, setThumbnailHoverPreview] = useState<ThumbnailHoverPreview | null>(null);
+  const [activeGridProductId, setActiveGridProductId] = useState("");
 
   const resolvedProviderId = provider === "spreadconnect" ? "spod" : provider;
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
@@ -2172,6 +2287,10 @@ export default function MerchQuantumApp() {
     () => productSource.find((product) => product.id === productId && product.shopId === shopId) || productSource.find((product) => product.id === productId) || null,
     [productId, productSource, shopId]
   );
+  const activeGridProduct = useMemo(
+    () => visibleProducts.find((product) => product.id === activeGridProductId) || null,
+    [activeGridProductId, visibleProducts]
+  );
   const readyCount = images.filter((img) => getResolvedItemStatus(img) === "ready").length;
   const errorCount = images.filter((img) => getResolvedItemStatus(img) === "error").length;
   const processingCount = images.filter((img) => getResolvedItemStatus(img) === "pending").length;
@@ -2184,11 +2303,28 @@ export default function MerchQuantumApp() {
   const uploadDisabled = !isCreateMode || !isWorkspaceConfigured || draftReadyCount === 0 || isRunningBatch || processingCount > 0;
   const canShowDetailWorkspace = hasWorkspaceRoute;
   const canShowWorkspacePreview = isCreateMode
-    ? canShowDetailWorkspace && templateReadyForAi
-    : canShowDetailWorkspace && (hasAnyLoadedImages || !!selectedImage);
+    ? canShowDetailWorkspace && (!!activeGridProduct || hasAnyLoadedImages)
+    : canShowDetailWorkspace && (hasAnyLoadedImages || !!selectedImage || !!activeGridProduct);
   const canShowDetailPanel = canShowWorkspacePreview && hasAnyLoadedImages && !!selectedImage;
   const canShowLoadedQueueGrid = canShowWorkspacePreview && sortedImages.length > 0;
   const showPreviewStats = hasAnyLoadedImages;
+  const activeMasterPreview = useMemo(() => {
+    if (selectedImage?.preview) {
+      return {
+        imageUrl: selectedImage.preview,
+        alt: selectedImage.final || selectedImage.name,
+      };
+    }
+
+    if (activeGridProduct?.previewUrl) {
+      return {
+        imageUrl: activeGridProduct.previewUrl,
+        alt: activeGridProduct.title,
+      };
+    }
+
+    return null;
+  }, [activeGridProduct, selectedImage]);
   const selectedImageFieldStates = selectedImage?.aiFieldStates ?? createAiFieldStates("idle");
   const detailTemplateDescription = selectedImage?.templateDescriptionOverride ?? templateDescription;
   const selectedImageTemplateKey = selectedImage
@@ -3118,6 +3254,7 @@ export default function MerchQuantumApp() {
     if (!shopId) {
       setApiProducts([]);
       setProductId("");
+      setActiveGridProductId("");
       setTemplate(null);
       setTemplateDescription("");
       setImportedListingTitle("");
@@ -3138,7 +3275,11 @@ export default function MerchQuantumApp() {
     if (productId && !visibleProducts.some((product) => product.id === productId)) {
       setProductId("");
     }
-  }, [shopId, visibleProducts, productId]);
+
+    if (activeGridProductId && !visibleProducts.some((product) => product.id === activeGridProductId)) {
+      setActiveGridProductId("");
+    }
+  }, [shopId, visibleProducts, productId, activeGridProductId]);
 
   useEffect(() => {
     if (bulkEditGridPage > bulkEditTotalPages - 1) {
@@ -3311,6 +3452,7 @@ export default function MerchQuantumApp() {
     setWorkspaceMode(nextMode);
     setIsRoutingGridExpanded(!nextMode);
     setProductId("");
+    setActiveGridProductId("");
     setTemplate(null);
     setTemplateDescription("");
     setImportedListingTitle("");
@@ -3333,6 +3475,7 @@ export default function MerchQuantumApp() {
     setWorkspaceMode("");
     setIsRoutingGridExpanded(true);
     setProductId("");
+    setActiveGridProductId("");
     setTemplate(null);
     setTemplateDescription("");
     setImportedListingTitle("");
@@ -3593,6 +3736,7 @@ export default function MerchQuantumApp() {
     index: number,
     options?: { shiftKey?: boolean }
   ) {
+    setActiveGridProductId(sourceId);
     const nextSelections = options?.shiftKey && lastSelectedIndex !== null
       ? normalizeSelectionIds([...pendingTemplateSelectionIds, ...getSelectionRangeIds(lastSelectedIndex, index)])
       : pendingTemplateSelectionIds.includes(sourceId)
@@ -3604,6 +3748,7 @@ export default function MerchQuantumApp() {
   }
 
   async function handleCreateTemplateSelection(sourceId: string, index: number) {
+    setActiveGridProductId(sourceId);
     setLastSelectedIndex(index);
     await commitTemplateSelections(selectedImportIds.includes(sourceId) ? [] : [sourceId]);
   }
@@ -3615,6 +3760,9 @@ export default function MerchQuantumApp() {
 
     setSelectedImportIds(nextSelections);
     setPendingTemplateSelectionIds(nextSelections);
+    if (isCreateMode) {
+      setActiveGridProductId(nextSelections[0] || "");
+    }
     if (nextSelections.length === 0) {
       setLastSelectedIndex(null);
     }
@@ -4152,195 +4300,13 @@ export default function MerchQuantumApp() {
     if (selectedId === targetId) setSelectedId(nextActive[0]?.id || "");
   }
 
-  function openThumbnailHoverPreview(preview: ThumbnailHoverPreview) {
-    setThumbnailHoverPreview(preview);
-  }
-
-  function closeThumbnailHoverPreview(key?: string) {
-    setThumbnailHoverPreview((current) => {
-      if (!current) return null;
-      if (key && current.key !== key) return current;
-      return null;
-    });
-  }
-
-  const renderProductSelectionGrid = ({
-    heading,
-    items,
-    selectedIds,
-    rangeLabel,
-    page,
-    pageSize,
-    totalPages,
-    onSelectAll,
-    onClearSelection,
-    onItemActivate,
-    onPreviousPage,
-    onNextPage,
-    loading,
-    footerActions,
-  }: {
-    heading: string;
-    items: Product[];
-    selectedIds: string[];
-    rangeLabel: string;
-    page: number;
-    pageSize: number;
-    totalPages: number;
-    onSelectAll?: () => void;
-    onClearSelection: () => void;
-    onItemActivate: (
-      product: Product,
-      index: number,
-      event: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>
-    ) => void;
-    onPreviousPage: () => void;
-    onNextPage: () => void;
-    loading: boolean;
-    footerActions?: React.ReactNode;
-  }) => (
-    <>
-      <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-3">
-        <span className="min-w-0 truncate text-[11px] font-medium tracking-tight text-white">{heading}</span>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 text-[11px]">
-          {onSelectAll ? (
-            <button
-              type="button"
-              className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-              disabled={visibleProducts.length === 0}
-              onClick={onSelectAll}
-            >
-              Select All
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-            disabled={selectedIds.length === 0}
-            onClick={onClearSelection}
-          >
-            Clear Selection
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-3 max-w-full overflow-hidden">
-        {items.length > 0 ? (
-          <div className="grid max-w-full grid-cols-5 gap-2.5 overflow-hidden sm:gap-3">
-            {items.map((product, index) => {
-              const globalIndex = page * pageSize + index;
-              const isSelected = selectedIds.includes(product.id);
-              const alreadyImported = importedProductIds.has(product.id);
-              const cardTone = isSelected
-                ? "border-[#7F22FE] ring-2 ring-[#7F22FE]/80 shadow-[0_0_10px_rgba(147,51,234,0.5)] opacity-100"
-                : alreadyImported
-                  ? "border-[#00BC7D]/45 opacity-60 hover:opacity-100"
-                  : "border-slate-800/80 opacity-60 hover:opacity-100";
-              const hoverPreview = buildProductHoverPreview(product);
-
-              return (
-                <button
-                  key={`${heading}-${product.id}`}
-                  type="button"
-                  onPointerEnter={() => openThumbnailHoverPreview(hoverPreview)}
-                  onPointerLeave={() => closeThumbnailHoverPreview(product.id)}
-                  onFocus={() => openThumbnailHoverPreview(hoverPreview)}
-                  onBlur={() => closeThumbnailHoverPreview(product.id)}
-                  onClick={(event) => {
-                    openThumbnailHoverPreview(hoverPreview);
-                    onItemActivate(product, globalIndex, event);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      openThumbnailHoverPreview(hoverPreview);
-                      onItemActivate(product, globalIndex, event);
-                    }
-                  }}
-                  className={`group relative aspect-square w-full min-w-0 max-w-full cursor-pointer overflow-hidden rounded-xl border bg-[#020616] transition-opacity duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/40 active:scale-[1.02] ${cardTone}`}
-                  aria-label={product.title}
-                >
-                  <div className="absolute inset-0" style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }} />
-                  {product.previewUrl ? (
-                    <img
-                      src={product.previewUrl}
-                      alt={product.title}
-                      className="relative z-[1] h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="relative z-[1] flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))]" />
-                  )}
-                  <div className={`pointer-events-none absolute inset-0 transition ${
-                    isSelected ? "bg-[#7F22FE]/14" : "bg-black/10"
-                  }`} />
-                  {(isSelected || alreadyImported) ? (
-                    <span
-                      className={`absolute left-2 top-2 h-2.5 w-2.5 rounded-full ${
-                        isSelected
-                          ? "bg-[#C084FC] shadow-[0_0_10px_rgba(192,132,252,0.95)]"
-                          : "bg-[#00BC7D] shadow-[0_0_8px_rgba(0,188,125,0.9)]"
-                      }`}
-                    />
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="flex min-h-[120px] items-center justify-center rounded-xl px-3 py-6 text-sm text-slate-400">
-            {loading ? "Loading provider listings..." : "Provider product thumbnails will appear here."}
-          </div>
-        )}
-      </div>
-
-      <div className="mt-4 flex w-full flex-wrap items-center justify-between gap-3 text-sm">
-        <div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px]">
-          {visibleProducts.length > 0 ? (
-            <span className="text-xs text-slate-500">{rangeLabel}</span>
-          ) : null}
-          <div className="w-[4.5rem] shrink-0">
-            <Select
-              value={String(selectorPageSize)}
-              onChange={(event) => setSelectorPageSize(event.target.value === "1" ? 1 : 25)}
-              className="h-8 rounded-lg border-slate-800 bg-[#050918] px-2 pr-7 text-[11px] text-slate-300 focus:border-[#7F22FE]"
-              aria-label="Items per page"
-            >
-              <option value="25">25</option>
-              <option value="1">1</option>
-            </Select>
-          </div>
-          <button
-            type="button"
-            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-            disabled={page <= 0}
-            onClick={onPreviousPage}
-          >
-            {`Prev ${pageSize}`}
-          </button>
-          <button
-            type="button"
-            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-            disabled={totalPages <= 1 || page >= totalPages - 1}
-            onClick={onNextPage}
-          >
-            {`Next ${pageSize}`}
-          </button>
-        </div>
-        {footerActions ? (
-          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-[11px]">
-            {footerActions}
-          </div>
-        ) : null}
-      </div>
-    </>
-  );
-
   return (
     <div className="relative min-h-screen max-w-full overflow-x-hidden bg-[#000000] px-4 pb-4 pt-3 text-white transition-colors md:px-6 md:pb-6 md:pt-4">
       <CreativeWellspringBootOverlay
         visible={isBootOverlayVisible}
         primed={isBootOverlayPrimed}
         sweepActive={isBootOverlaySweepActive}
+        ambientVisible={!hasWorkspaceRoute}
         onDismiss={dismissBootOverlay}
       />
 
@@ -4566,40 +4532,44 @@ export default function MerchQuantumApp() {
                   <div className="flex items-center justify-end">
                     {loadingProducts || isImportingListings ? <QuantOrbLoader /> : null}
                   </div>
-                  {renderProductSelectionGrid({
-                    heading: "Choose Listings to Edit",
-                    items: bulkEditVisibleProducts,
-                    selectedIds: pendingTemplateSelectionIds,
-                    rangeLabel: bulkEditVisibleRangeLabel,
-                    page: safeBulkEditPage,
-                    pageSize: bulkEditPageSize,
-                    totalPages: bulkEditTotalPages,
-                    loading: loadingProducts,
-                    onSelectAll: () => {
+                  <ProductGrid
+                    heading="Choose Listings to Edit"
+                    items={bulkEditVisibleProducts}
+                    selectedIds={pendingTemplateSelectionIds}
+                    activeId={activeGridProductId}
+                    importedProductIds={importedProductIds}
+                    rangeLabel={bulkEditVisibleRangeLabel}
+                    page={safeBulkEditPage}
+                    pageSize={bulkEditPageSize}
+                    totalPages={bulkEditTotalPages}
+                    loading={loadingProducts}
+                    selectorPageSize={selectorPageSize}
+                    onPageSizeChange={setSelectorPageSize}
+                    onSelectAll={() => {
                       setPendingTemplateSelectionIds(normalizeSelectionIds(visibleProducts.map((product) => product.id)));
+                      setActiveGridProductId(visibleProducts[0]?.id || "");
                       setLastSelectedIndex(null);
-                    },
-                    onClearSelection: () => {
+                    }}
+                    onClearSelection={() => {
                       setPendingTemplateSelectionIds([]);
+                      setActiveGridProductId("");
                       setLastSelectedIndex(null);
-                    },
-                    onItemActivate: (product, index, event) => {
+                    }}
+                    onItemActivate={(product, index, event) => {
                       event.preventDefault();
                       event.stopPropagation();
                       handleBulkEditThumbnailSelection(product.id, index, { shiftKey: "shiftKey" in event ? event.shiftKey : false });
-                    },
-                    onPreviousPage: () => setBulkEditGridPage((current) => Math.max(0, current - 1)),
-                    onNextPage: () => setBulkEditGridPage((current) => Math.min(bulkEditTotalPages - 1, current + 1)),
-                    footerActions: (
+                    }}
+                    onPreviousPage={() => setBulkEditGridPage((current) => Math.max(0, current - 1))}
+                    onNextPage={() => setBulkEditGridPage((current) => Math.min(bulkEditTotalPages - 1, current + 1))}
+                    footerActions={
                       <>
-                        {!hasBulkEditStagedSelections ? (
-                          <span className="text-xs text-slate-400">No listings staged yet</span>
-                        ) : null}
                         <button
                           type="button"
                           className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
                           onClick={() => {
                             setPendingTemplateSelectionIds([]);
+                            setActiveGridProductId("");
                             setLastSelectedIndex(null);
                           }}
                           disabled={!hasBulkEditStagedSelections}
@@ -4615,32 +4585,39 @@ export default function MerchQuantumApp() {
                           {isImportingListings ? "Loading..." : "Load Selected"}
                         </button>
                       </>
-                    ),
-                  })}
+                    }
+                  />
                 </div>
               ) : (
                 <div className={selectorShellClassName}>
                   <div className="flex items-center justify-end">
                     {loadingProducts || loadingTemplateDetails ? <QuantOrbLoader /> : null}
                   </div>
-                  {renderProductSelectionGrid({
-                    heading: "Choose Product Template",
-                    items: createTemplateVisibleProducts,
-                    selectedIds: selectedImportIds,
-                    rangeLabel: createTemplateVisibleRangeLabel,
-                    page: safeCreateTemplatePage,
-                    pageSize: createTemplatePageSize,
-                    totalPages: createTemplateTotalPages,
-                    loading: loadingProducts,
-                    onClearSelection: () => { void commitTemplateSelections([]); },
-                    onItemActivate: (product, index, event) => {
+                  <ProductGrid
+                    heading="Choose Product Template"
+                    items={createTemplateVisibleProducts}
+                    selectedIds={selectedImportIds}
+                    activeId={activeGridProductId}
+                    importedProductIds={importedProductIds}
+                    rangeLabel={createTemplateVisibleRangeLabel}
+                    page={safeCreateTemplatePage}
+                    pageSize={createTemplatePageSize}
+                    totalPages={createTemplateTotalPages}
+                    loading={loadingProducts}
+                    selectorPageSize={selectorPageSize}
+                    onPageSizeChange={setSelectorPageSize}
+                    onClearSelection={() => {
+                      setActiveGridProductId("");
+                      void commitTemplateSelections([]);
+                    }}
+                    onItemActivate={(product, index, event) => {
                       event.preventDefault();
                       event.stopPropagation();
                       void handleCreateTemplateSelection(product.id, index);
-                    },
-                    onPreviousPage: () => setCreateTemplateGridPage((current) => Math.max(0, current - 1)),
-                    onNextPage: () => setCreateTemplateGridPage((current) => Math.min(createTemplateTotalPages - 1, current + 1)),
-                  })}
+                    }}
+                    onPreviousPage={() => setCreateTemplateGridPage((current) => Math.max(0, current - 1))}
+                    onNextPage={() => setCreateTemplateGridPage((current) => Math.min(createTemplateTotalPages - 1, current + 1))}
+                  />
                 </div>
               )}
             </div>
@@ -4656,8 +4633,8 @@ export default function MerchQuantumApp() {
                       <div className="grid grid-cols-1 items-stretch gap-3">
                         <div className="flex min-w-0 h-full flex-col gap-3">
                           <div
-                            className={`${isCreateMode ? "cursor-pointer" : ""}`}
-                            onClick={isCreateMode ? openArtworkPicker : undefined}
+                            className={`${isCreateMode && isWorkspaceConfigured ? "cursor-pointer" : ""}`}
+                            onClick={isCreateMode && isWorkspaceConfigured ? openArtworkPicker : undefined}
                           >
                             <div
                               className="relative flex h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-[#020616] lg:h-[19rem]"
@@ -4675,14 +4652,17 @@ export default function MerchQuantumApp() {
                                 void addFiles(e.dataTransfer.files);
                               }}
                             >
-                              {selectedImage?.preview ? (
+                              {activeMasterPreview ? (
                                 <div
                                   className="absolute inset-0 overflow-hidden rounded-[inherit]"
                                   style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }}
                                 >
                                   <div className="absolute" style={{ inset: `${ARTWORK_SAFE_ZONE_PCT * 100}%` }}>
-                                    <img src={selectedImage.preview} alt={selectedImage.final} className="h-full w-full object-contain" />
+                                    <img src={activeMasterPreview.imageUrl} alt={activeMasterPreview.alt} className="h-full w-full object-contain" />
                                   </div>
+                                  {isCreateMode && !hasAnyLoadedImages ? (
+                                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,22,0.12),rgba(2,6,22,0.52))]" />
+                                  ) : null}
                                 </div>
                               ) : (
                                 <div className="flex h-full w-full p-2.5">
@@ -4734,6 +4714,19 @@ export default function MerchQuantumApp() {
                                   </div>
                                 </div>
                               )}
+
+                              {activeMasterPreview && isCreateMode && !hasAnyLoadedImages ? (
+                                <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
+                                  <div className="rounded-xl border border-dashed border-slate-700/90 bg-[#020616]/76 px-5 py-4 text-center backdrop-blur-sm">
+                                    <div className="flex max-w-[18rem] flex-col items-center gap-1">
+                                      <p className="font-bold text-white">Drag images here or click to add images</p>
+                                      <p className="text-sm text-slate-300">Max 50 images.</p>
+                                      <p className="text-xs text-slate-400">System will queue additional listings.</p>
+                                      <p className="text-xs text-slate-500">(API Rate Limit Safety Enforced)</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : null}
 
                               {selectedImage?.preview && showPreviewStats ? (
                                 <div className={`absolute bottom-6 left-6 z-10 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11px] font-medium sm:text-xs ${previewOverlayTextClass}`}>
@@ -4801,18 +4794,13 @@ export default function MerchQuantumApp() {
                                       key={img.id}
                                       onClick={() => {
                                         setSelectedId(img.id);
-                                        openThumbnailHoverPreview(buildImageHoverPreview(img));
                                       }}
                                       className={`w-full rounded-lg transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
                                     >
                                       <div className="relative">
                                         {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
                                         <div
-                                          className={`group relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border bg-[#020616] transition-all duration-500 ${previewFrameTone}`}
-                                          onPointerEnter={() => openThumbnailHoverPreview(buildImageHoverPreview(img))}
-                                          onPointerLeave={() => closeThumbnailHoverPreview(img.id)}
-                                          onFocus={() => openThumbnailHoverPreview(buildImageHoverPreview(img))}
-                                          onBlur={() => closeThumbnailHoverPreview(img.id)}
+                                          className={`group relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border bg-[#020616] transition-all duration-200 ease-out hover:z-10 hover:scale-[1.05] hover:ring-2 hover:ring-[#7F22FE]/80 ${previewFrameTone}`}
                                         >
                                           {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
                                           {statusIndicator ? (
@@ -5234,40 +5222,6 @@ export default function MerchQuantumApp() {
           </Box>
         ) : null}
       </div>
-      {thumbnailHoverPreview && typeof document !== "undefined"
-        ? createPortal(
-            <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[120] flex items-end justify-center p-3 sm:justify-end sm:p-4">
-              <div className="pointer-events-none relative w-full max-w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-[20px] border border-white/10 bg-[#020616]/94 shadow-[0_24px_72px_-40px_rgba(0,0,0,0.92)] backdrop-blur-xl">
-                <div className="absolute inset-0 opacity-90" style={{ backgroundColor: thumbnailHoverPreview.background || DISPLAY_NEUTRAL_BACKGROUND }} />
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(192,132,252,0.22),transparent_55%),linear-gradient(180deg,rgba(2,6,22,0.08),rgba(2,6,22,0.8))]" />
-                <div className="relative flex flex-col gap-2.5 p-3">
-                  <div className="overflow-hidden rounded-[16px] border border-white/10 bg-black/10">
-                    {thumbnailHoverPreview.imageUrl ? (
-                      <img
-                        src={thumbnailHoverPreview.imageUrl}
-                        alt={thumbnailHoverPreview.title}
-                        className="h-auto max-h-36 w-full object-contain"
-                      />
-                    ) : (
-                      <div className="flex aspect-square w-full max-h-36 items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))] text-xs text-slate-300">
-                        Preview unavailable
-                      </div>
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    <p className="line-clamp-2 text-sm font-semibold leading-5 text-white">
-                      {thumbnailHoverPreview.title}
-                    </p>
-                    <p className="line-clamp-2 text-[11px] leading-4 text-slate-300">
-                      {thumbnailHoverPreview.snippet}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
     </div>
   );
 }
