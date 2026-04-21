@@ -1740,6 +1740,19 @@ function CreativeWellspringBootOverlay({
       <div className={`pointer-events-none absolute -left-[8vw] top-[4svh] h-[42svh] w-[42svh] rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(196,181,253,0.92),rgba(127,34,254,0.78)_24%,rgba(53,32,164,0.36)_56%,transparent_78%)] blur-[72px] transition-all duration-500 ${sweepActive ? "opacity-0 scale-110" : "opacity-100"}`} style={{ animation: "creativeWellspringDriftA 16s ease-in-out infinite alternate" }} />
       <div className={`pointer-events-none absolute right-[12vw] top-[12svh] h-[34svh] w-[34svh] rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(244,114,182,0.46),rgba(129,140,248,0.3)_34%,rgba(37,99,235,0.18)_60%,transparent_78%)] blur-[88px] transition-all duration-500 ${sweepActive ? "opacity-0 scale-105" : "opacity-100"}`} style={{ animation: "creativeWellspringDriftB 18s ease-in-out infinite alternate" }} />
       <div className={`pointer-events-none absolute left-[28vw] top-[30svh] h-[30svh] w-[30svh] rounded-full bg-[radial-gradient(circle_at_40%_40%,rgba(96,165,250,0.26),rgba(29,78,216,0.2)_40%,rgba(236,72,153,0.12)_68%,transparent_82%)] blur-[80px] transition-all duration-500 ${sweepActive ? "opacity-0 scale-110" : "opacity-100"}`} style={{ animation: "creativeWellspringDriftC 14s ease-in-out infinite alternate" }} />
+      <div
+        className="pointer-events-none absolute left-0 top-0 h-96 w-96 rounded-full bg-[#7F22FE]/30 blur-[100px]"
+        style={{
+          transform: sweepActive
+            ? "translate3d(44vw,-26svh,0) scale(1.08)"
+            : primed
+              ? "translate3d(10vw,2svh,0) scale(1)"
+              : "translate3d(-100%,100%,0) scale(0.92)",
+          opacity: sweepActive ? 0 : primed ? 0.78 : 0,
+          transition: "transform 1180ms cubic-bezier(0.22,1,0.36,1), opacity 920ms ease-out",
+          willChange: "transform, opacity",
+        }}
+      />
 
       <div className={`pointer-events-none absolute inset-0 transition-opacity duration-500 ${sweepActive ? "opacity-0" : "opacity-100"}`} style={{ mixBlendMode: "screen" }}>
         <svg aria-hidden="true" className="absolute inset-0 h-full w-full opacity-[0.08]" viewBox="0 0 1440 900" preserveAspectRatio="none">
@@ -3454,21 +3467,9 @@ function dismissBootOverlay() {
   }
 
   function stageBulkEditTemplateSelection(sourceId: string, index: number, options?: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) {
-    const useRange = Boolean(options?.shiftKey) && templateSelectionAnchorIndex !== null;
-    let nextSelections: string[];
-
-    if (useRange) {
-      const start = Math.min(templateSelectionAnchorIndex || 0, index);
-      const end = Math.max(templateSelectionAnchorIndex || 0, index);
-      const rangeIds = visibleProducts.slice(start, end + 1).map((product) => product.id);
-      nextSelections = normalizeSelectionIds([...pendingTemplateSelectionIds, ...rangeIds]);
-    } else if (options?.ctrlKey || options?.metaKey) {
-      nextSelections = pendingTemplateSelectionIds.includes(sourceId)
-        ? pendingTemplateSelectionIds.filter((entry) => entry !== sourceId)
-        : normalizeSelectionIds([...pendingTemplateSelectionIds, sourceId]);
-    } else {
-      nextSelections = [sourceId];
-    }
+    const nextSelections = pendingTemplateSelectionIds.includes(sourceId)
+      ? pendingTemplateSelectionIds.filter((entry) => entry !== sourceId)
+      : normalizeSelectionIds([...pendingTemplateSelectionIds, sourceId]);
 
     setPendingTemplateSelectionIds(nextSelections);
     setTemplateSelectionAnchorIndex(index);
@@ -4299,6 +4300,30 @@ function dismissBootOverlay() {
                       placeholder="Search My Products"
                     />
                   </div>
+                  <div className="mt-3 flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-slate-400 transition hover:text-white"
+                      disabled={visibleProducts.length === 0}
+                      onClick={() => {
+                        setPendingTemplateSelectionIds(normalizeSelectionIds(visibleProducts.map((product) => product.id)));
+                        setTemplateSelectionAnchorIndex(null);
+                      }}
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-slate-400 transition hover:text-white"
+                      disabled={pendingTemplateSelectionIds.length === 0}
+                      onClick={() => {
+                        setPendingTemplateSelectionIds([]);
+                        setTemplateSelectionAnchorIndex(null);
+                      }}
+                    >
+                      Clear All
+                    </button>
+                  </div>
                   <div className="mt-3 flex flex-row gap-3 overflow-x-auto pb-2 snap-x [scrollbar-color:rgba(127,34,254,0.45)_transparent] [scrollbar-width:thin]">
                     {visibleProducts.length > 0 ? (
                       visibleProducts.map((product, index) => {
@@ -4312,11 +4337,7 @@ function dismissBootOverlay() {
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              stageBulkEditTemplateSelection(product.id, index, {
-                                shiftKey: event.shiftKey,
-                                ctrlKey: event.ctrlKey,
-                                metaKey: event.metaKey,
-                              });
+                              stageBulkEditTemplateSelection(product.id, index);
                             }}
                             onKeyDown={(event) => {
                               if (event.key === "Enter" || event.key === " ") {
@@ -4324,53 +4345,46 @@ function dismissBootOverlay() {
                                 stageBulkEditTemplateSelection(product.id, index);
                               }
                             }}
-                            className={`group w-[88px] shrink-0 snap-start text-left transition ${
+                            className={`group relative aspect-square w-24 shrink-0 snap-start overflow-hidden rounded-lg border bg-[#020616] text-left transition ${
                               isPendingSelection
-                                ? "opacity-100"
-                                : "opacity-60 hover:opacity-100"
-                            }`}
-                          >
-                            <div className={`relative flex aspect-square w-[88px] items-center justify-center overflow-hidden rounded-lg border bg-[#020616] transition ${
-                              isPendingSelection
-                                ? "border-[#7F22FE] ring-2 ring-[#7F22FE]/80 shadow-[0_0_10px_rgba(147,51,234,0.5)]"
+                                ? "border-[#7F22FE] ring-2 ring-[#7F22FE]/80 shadow-[0_0_10px_rgba(147,51,234,0.5)] opacity-100"
                                 : alreadyImported
-                                  ? "border-[#00BC7D]/45"
-                                  : "border-slate-800 group-hover:border-slate-700"
-                            }`}>
-                              <div className="absolute inset-0" style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }} />
-                              {product.previewUrl ? (
-                                <img
-                                  src={product.previewUrl}
-                                  alt={product.title}
-                                  className="relative z-10 h-full w-full object-cover"
-                                />
-                              ) : (
-                                <div className="relative z-10 flex h-full w-full items-center justify-center px-2 text-center text-[10px] font-medium text-slate-400">
-                                  <span className="line-clamp-3">{product.title}</span>
-                                </div>
-                              )}
-                              <div className={`pointer-events-none absolute inset-0 transition ${
-                                isPendingSelection
-                                  ? "bg-[#7F22FE]/18"
-                                  : "bg-black/10"
-                              }`} />
-                              {alreadyImported ? (
-                                <span className={`absolute left-1.5 top-1.5 rounded-full px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] ${
+                                  ? "border-[#00BC7D]/45 opacity-60 hover:opacity-100"
+                                  : "border-slate-800 opacity-60 hover:border-slate-700 hover:opacity-100"
+                            }`}
+                            aria-label={product.title}
+                          >
+                            <div className="absolute inset-0" style={{ backgroundColor: DISPLAY_NEUTRAL_BACKGROUND }} />
+                            {product.previewUrl ? (
+                              <img
+                                src={product.previewUrl}
+                                alt={product.title}
+                                className="relative z-10 h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="relative z-10 flex h-full w-full items-center justify-center px-2 text-center text-[10px] font-medium text-slate-400">
+                                <span className="line-clamp-4">{product.title}</span>
+                              </div>
+                            )}
+                            <div className={`pointer-events-none absolute inset-0 transition ${
+                              isPendingSelection
+                                ? "bg-[#7F22FE]/18"
+                                : "bg-black/10"
+                            }`} />
+                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/85 p-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                              <span className="line-clamp-4 text-center text-[10px] text-white">
+                                {product.title}
+                              </span>
+                            </div>
+                            {alreadyImported || isPendingSelection ? (
+                              <span
+                                className={`absolute left-2 top-2 h-2.5 w-2.5 rounded-full ${
                                   isPendingSelection
-                                    ? "border border-[#7F22FE]/35 bg-[#7F22FE]/20 text-[#E9D5FF]"
-                                    : "border border-[#00BC7D]/35 bg-[#00BC7D]/10 text-[#7EF0C7]"
-                                }`}>
-                                  {isPendingSelection ? "Staged" : "Loaded"}
-                                </span>
-                              ) : isPendingSelection ? (
-                                <span className="absolute left-1.5 top-1.5 rounded-full border border-[#7F22FE]/35 bg-[#7F22FE]/20 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-[#E9D5FF]">
-                                  Staged
-                                </span>
-                              ) : null}
-                            </div>
-                            <div className="mt-1 max-w-full truncate text-[10px] text-slate-400">
-                              {product.title}
-                            </div>
+                                    ? "bg-[#C084FC] shadow-[0_0_10px_rgba(192,132,252,0.95)]"
+                                    : "bg-[#00BC7D] shadow-[0_0_8px_rgba(0,188,125,0.9)]"
+                                }`}
+                              />
+                            ) : null}
                           </button>
                         );
                       })
