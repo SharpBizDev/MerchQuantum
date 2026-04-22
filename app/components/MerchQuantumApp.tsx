@@ -1869,7 +1869,6 @@ function ProductGrid({
       <div className="flex w-full min-w-0 items-center justify-between gap-4">
         <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-white">{heading}</span>
         <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-3 text-[11px]">
-          {headerAccessory}
           {onSelectAll ? (
             <button
               type="button"
@@ -1893,7 +1892,7 @@ function ProductGrid({
 
       <div className="w-full overflow-hidden">
         {items.length > 0 ? (
-          <div className="grid h-full w-full grid-cols-4 gap-3 overflow-hidden md:grid-cols-6 lg:grid-cols-8">
+          <div className="grid h-full w-full grid-cols-3 gap-2 overflow-hidden sm:grid-cols-5">
             {items.map((product, index) => {
               const globalIndex = page * pageSize + index;
               const isSelected = selectedIds.includes(product.id);
@@ -1954,8 +1953,13 @@ function ProductGrid({
         ) : (
           <div className="min-h-[120px] rounded-xl" aria-hidden={loading ? undefined : true}>
             {loading ? (
-              <div className="flex h-full min-h-[120px] items-center justify-center px-3 py-6 text-sm text-slate-400">
-                Loading provider listings...
+              <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 px-3 py-6 text-sm text-slate-400">
+                {headerAccessory ? (
+                  <span className="inline-flex items-center justify-center">
+                    {headerAccessory}
+                  </span>
+                ) : null}
+                <span>Loading provider listings...</span>
               </div>
             ) : null}
           </div>
@@ -2518,6 +2522,16 @@ export default function MerchQuantumApp() {
   function nudgeWorkflow(includeImportStep: boolean) {
     const target = getMissingWorkflowTarget(includeImportStep);
     if (target) triggerAttentionCue(target);
+  }
+
+  function clearTokenDraft() {
+    setToken("");
+    setApiStatus("");
+    setIsTokenInputFocused(true);
+    window.requestAnimationFrame(() => {
+      const input = document.getElementById("provider-api-key-input") as HTMLInputElement | null;
+      input?.focus();
+    });
   }
 
   function nudgeProviderSelectionFromTokenArea() {
@@ -4273,7 +4287,7 @@ export default function MerchQuantumApp() {
         />
       ) : null}
 
-      <div className={`relative z-10 mx-auto w-full max-w-6xl space-y-3 transition-all duration-300 ${isBootOverlayVisible ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"}`}>
+      <div className={`relative z-10 mx-auto w-full max-w-3xl space-y-3 transition-all duration-300 ${isBootOverlayVisible ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"}`}>
         {!workspaceMode || isRoutingGridExpanded ? (
         <div className="relative">
           <Box
@@ -4334,6 +4348,7 @@ export default function MerchQuantumApp() {
             >
               <div className="relative flex min-w-0 items-center">
                 <Input
+                  id="provider-api-key-input"
                   type={connected || showCompactDisconnectedToken ? "text" : "password"}
                   value={tokenFieldValue}
                   disabled={!provider}
@@ -4359,12 +4374,12 @@ export default function MerchQuantumApp() {
                     }
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && canSubmitProviderConnectionWithToken(e.currentTarget.value)) {
+                    if (e.key === "Enter" && canSubmitProviderConnectionWithToken()) {
                       e.preventDefault();
-                      void connectProvider(e.currentTarget.value);
+                      void connectProvider();
                     }
                   }}
-                  className="min-w-0 truncate pr-20 disabled:cursor-not-allowed sm:pr-24"
+                  className="min-w-0 truncate pr-28 disabled:cursor-not-allowed sm:pr-32"
                 />
                 <div
                   className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center"
@@ -4382,6 +4397,16 @@ export default function MerchQuantumApp() {
                     }
                   }}
                 >
+                  {!connected && hasTokenValue ? (
+                    <button
+                      type="button"
+                      aria-label="Clear API key"
+                      onClick={clearTokenDraft}
+                      className="mr-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-700/80 bg-[#050918] text-slate-400 transition hover:border-slate-500 hover:text-white"
+                    >
+                      <span className="text-sm leading-none">x</span>
+                    </button>
+                  ) : null}
                   {loadingApi ? (
                     <span className="inline-flex h-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-slate-300">
                       <QuantOrbLoader />
