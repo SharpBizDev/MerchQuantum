@@ -1787,39 +1787,44 @@ function ProductGrid({
       </div>
 
       {items.length > 0 ? (
-        <div className="w-full p-1">
-          <div className="grid h-full w-full grid-cols-5 gap-1 overflow-hidden snap-y snap-mandatory">
-            {items.map((product, index) => {
-              const globalIndex = page * pageSize + index;
-              const isSelected = selectedIds.includes(product.id);
-              const isActive = activeId === product.id;
-              const alreadyImported = importedProductIds.has(product.id);
-              const cardTone = isSelected
-                ? "border-[#7F22FE] shadow-[inset_0_0_0_2px_rgba(127,34,254,0.85),0_0_10px_rgba(147,51,234,0.32)] opacity-100"
-                : isActive
-                  ? "border-[#7F22FE]/70 shadow-[inset_0_0_0_2px_rgba(127,34,254,0.55)] opacity-100"
-                  : alreadyImported
-                    ? "border-[#00BC7D]/45 opacity-75 hover:opacity-100"
-                    : "border-slate-800/80 opacity-85 hover:opacity-100";
+        <div className="grid h-full w-full grid-cols-5 gap-1 overflow-hidden snap-y snap-mandatory">
+          {items.map((product, index) => {
+            const globalIndex = page * pageSize + index;
+            const isSelected = selectedIds.includes(product.id);
+            const isActive = activeId === product.id;
+            const alreadyImported = importedProductIds.has(product.id);
+            const cardTone = isSelected
+              ? "border-[#7F22FE] shadow-[inset_0_0_0_2px_rgba(127,34,254,0.85),0_0_10px_rgba(147,51,234,0.32)] opacity-100"
+              : isActive
+                ? "border-[#7F22FE]/70 shadow-[inset_0_0_0_2px_rgba(127,34,254,0.55)] opacity-100"
+                : alreadyImported
+                  ? "border-[#00BC7D]/45 opacity-75 hover:opacity-100"
+                  : "border-slate-800/80 opacity-85 hover:opacity-100";
+            const frameGlow = isSelected
+              ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]"
+              : isActive
+                ? "shadow-[0_8px_20px_-18px_rgba(124,58,237,0.38)]"
+                : "";
 
-              return (
-                <button
-                  key={product.id}
-                  type="button"
-                  onClick={(event) => onItemActivate(product, globalIndex, event)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onItemActivate(product, globalIndex, event);
-                    }
-                  }}
-                  className="group w-full min-w-0 max-w-full cursor-pointer snap-start focus-visible:outline-none"
-                  aria-label={product.title}
-                >
+            return (
+              <button
+                key={product.id}
+                type="button"
+                onClick={(event) => onItemActivate(product, globalIndex, event)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onItemActivate(product, globalIndex, event);
+                  }
+                }}
+                className={`w-full snap-start rounded-lg transition-all duration-500 focus-visible:outline-none ${frameGlow}`}
+                aria-label={product.title}
+              >
+                <div className="relative">
                   <SmartThumbnail
                     src={product.previewUrl}
                     alt={product.title}
-                    className={`rounded-md border transition duration-200 ease-out group-hover:z-10 group-hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] group-focus-visible:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
+                    className={`group rounded-lg border transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
                     fallbackClassName="flex items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))]"
                   >
                     <div className={`pointer-events-none absolute inset-0 transition ${
@@ -1835,10 +1840,10 @@ function ProductGrid({
                       />
                     ) : null}
                   </SmartThumbnail>
-                </button>
-              );
-            })}
-          </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       ) : (
         <div className="w-full p-1">
