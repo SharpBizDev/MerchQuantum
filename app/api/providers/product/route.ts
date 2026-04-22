@@ -1,9 +1,8 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
-import { ProviderError } from "../../../../lib/providers/errors";
 import { runWithProviderGovernor } from "../../../../lib/providers/governor";
-import { getProviderAdapter, getProviderEntry, isProviderId } from "../../../../lib/providers/registry";
+import { getProviderAdapter, isProviderId } from "../../../../lib/providers/registry";
 import { readActiveProviderId, readProviderCredentials } from "../../../../lib/providers/session";
 import { buildSanitizedErrorPayload, getUserFacingErrorMessage, logErrorToConsole } from "../../../../lib/user-facing-errors";
 

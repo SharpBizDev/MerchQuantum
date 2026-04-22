@@ -1,7 +1,6 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
-import { ProviderError } from "../../../lib/providers/errors";
 import { runWithProviderGovernor } from "../../../lib/providers/governor";
 import { getProviderAdapter, getProviderEntry, isProviderId } from "../../../lib/providers/registry";
 import { readActiveProviderId, readProviderCredentials } from "../../../lib/providers/session";
@@ -18,7 +17,7 @@ export async function POST(req: NextRequest) {
     const tags = Array.isArray(body?.tags)
       ? body.tags
           .filter((tag: unknown): tag is string => typeof tag === "string")
-          .map((tag) => tag.trim())
+          .map((tag: string) => tag.trim())
           .filter(Boolean)
       : [];
 

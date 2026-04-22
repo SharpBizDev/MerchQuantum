@@ -53,8 +53,8 @@ export async function POST(req: NextRequest) {
     const requestedProvider = String(body?.provider || "").trim().toLowerCase();
     const sourceIds = Array.isArray(body?.sourceIds)
       ? body.sourceIds
-        .filter((value): value is string => typeof value === "string")
-        .map((value) => value.trim())
+        .filter((value: unknown): value is string => typeof value === "string")
+        .map((value: string) => value.trim())
         .filter(Boolean)
       : [];
 

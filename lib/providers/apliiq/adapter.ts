@@ -7,7 +7,6 @@ import type {
   NormalizedArtworkUpload,
   NormalizedPlacementGuide,
   NormalizedStore,
-  NormalizedTemplateDetail,
   NormalizedTemplateSummary,
   ProviderCapabilities,
 } from "../types";

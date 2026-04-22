@@ -71,21 +71,6 @@ async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, ti
   }
 }
 
-async function readErrorMessage(response: Response, fallback: string) {
-  const contentType = response.headers.get("content-type") || "";
-
-  if (contentType.includes("application/json")) {
-    const payload = await response.json().catch(() => null);
-    const errorValue = payload?.error || payload?.message;
-    if (typeof errorValue === "string" && errorValue.trim()) {
-      return errorValue.trim();
-    }
-  }
-
-  const text = await response.text().catch(() => "");
-  return text.trim() || fallback;
-}
-
 function chooseFrontPosition(template: TemplateProduct) {
   for (const area of template.print_areas || []) {
     for (const placeholder of area.placeholders || []) {

@@ -3,7 +3,6 @@ import crypto from "node:crypto";
 import type { ProviderAdapter, ProviderAdapterContext, ProviderArtworkContext } from "../contracts";
 import { ProviderError, providerErrorFromResponse, toProviderError } from "../errors";
 import type {
-  DraftProductInput,
   DraftProductResult,
   HostedArtworkReference,
   NormalizedArtworkUpload,

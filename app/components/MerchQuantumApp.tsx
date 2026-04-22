@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { PROVIDER_OPTIONS, type ProviderChoiceId } from "../../lib/providers/client-options";
 import { getUserFacingErrorMessage, logErrorToConsole, type UserFacingErrorKind } from "../../lib/user-facing-errors";
 
-const APP_TAGLINE = "Bulk product creation, simplified";
 const BOOT_TAGLINE = "EFFORTLESS PRODUCT CREATION.";
 const ACTIVE_BATCH_FILES = 50;
 const CONNECTED_TOTAL_BATCH_FILES = 50;
@@ -230,13 +229,10 @@ const DEFAULT_PLACEMENT_GUIDE: PlacementGuide = {
 };
 
 const AI_MODEL_LABEL = "Quantum AI";
-const AI_TITLE_MIN_CHARS = LISTING_LIMITS.titleMin;
 const AI_TITLE_MAX_CHARS = LISTING_LIMITS.titleMax;
-const AI_LEAD_MIN_CHARS = LISTING_LIMITS.descriptionMin;
 const AI_LEAD_MAX_CHARS = 380;
 const IMPORT_QUEUE_LIMIT = 50;
 const DISPLAY_PREVIEW_SAMPLE_DIMENSION = 256;
-const DISPLAY_PREVIEW_MAX_DIMENSION = 960;
 const DISPLAY_ALPHA_THRESHOLD = 12;
 const DISPLAY_TRANSPARENCY_RATIO_THRESHOLD = 0.04;
 const DISPLAY_DARK_BACKGROUND = "#000000";
@@ -450,13 +446,6 @@ function normalizeRef(value: string) {
   }
 }
 
-function maskToken(value: string) {
-  const s = value.trim();
-  if (!s) return "";
-  const visible = s.slice(-10);
-  return `••••••••••${visible}`;
-}
-
 function maskTokenCompact(value: string) {
   const s = value.trim();
   if (!s) return "";
@@ -526,58 +515,6 @@ function trimToSentence(value: string, maxChars: number) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
-}
-
-function round4(value: number) {
-  return Number(value.toFixed(4));
-}
-
-function toLinearRgbChannel(channel: number) {
-  const normalized = clamp(channel / 255, 0, 1);
-  return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
-}
-
-function getRelativeLuminance(red: number, green: number, blue: number) {
-  return (
-    0.2126 * toLinearRgbChannel(red) +
-    0.7152 * toLinearRgbChannel(green) +
-    0.0722 * toLinearRgbChannel(blue)
-  );
-}
-
-function getContrastRatio(firstLuminance: number, secondLuminance: number) {
-  const lighter = Math.max(firstLuminance, secondLuminance);
-  const darker = Math.min(firstLuminance, secondLuminance);
-  return (lighter + 0.05) / (darker + 0.05);
-}
-
-function parseHexColor(value: string | null | undefined) {
-  const normalized = String(value || "").trim().replace(/^#/, "");
-  if (!normalized) return null;
-
-  const expanded =
-    normalized.length === 3
-      ? normalized
-          .split("")
-          .map((char) => `${char}${char}`)
-          .join("")
-      : normalized.length >= 6
-        ? normalized.slice(0, 6)
-        : "";
-
-  if (!/^[0-9a-f]{6}$/i.test(expanded)) return null;
-
-  return {
-    red: Number.parseInt(expanded.slice(0, 2), 16),
-    green: Number.parseInt(expanded.slice(2, 4), 16),
-    blue: Number.parseInt(expanded.slice(4, 6), 16),
-  };
-}
-
-function shouldUseLightPreviewText(background: string | null | undefined) {
-  const rgb = parseHexColor(background);
-  if (!rgb) return true;
-  return getRelativeLuminance(rgb.red, rgb.green, rgb.blue) < 0.44;
 }
 
 function choosePreviewBackground(averageBrightness: number | null) {
@@ -899,18 +836,6 @@ function resolveProductFamily(title: string, templateDescription: string): Produ
   return "product";
 }
 
-function detectThemePhrase(title: string) {
-  const lower = title.toLowerCase();
-  if (/(christian|jesus|faith|saved|forgiven|church|bible|gospel|cross)\b/.test(lower)) return "faith-forward";
-  if (/(retro|vintage|distressed)\b/.test(lower)) return "retro-inspired";
-  if (/(funny|humor|sarcastic|joke)\b/.test(lower)) return "conversation-starting";
-  if (/(dog|cat|pet|puppy)\b/.test(lower)) return "pet-lover";
-  if (/(floral|rose|flower|botanical)\b/.test(lower)) return "bold graphic";
-  if (/(usa|american|patriotic|flag)\b/.test(lower)) return "patriotic";
-  if (/(halloween|fall|thanksgiving|christmas|holiday)\b/.test(lower)) return "seasonal gift-ready";
-  return "clean graphic";
-}
-
 type TemplateSection = {
   heading: string;
   paragraphs: string[];
@@ -1118,125 +1043,6 @@ function dedupeParagraphs(paragraphs: string[]) {
   return unique;
 }
 
-function getFamilyLabel(family: ProductFamily) {
-  switch (family) {
-    case "t-shirt":
-      return "graphic tee";
-    case "hoodie":
-      return "hoodie";
-    case "sweatshirt":
-      return "sweatshirt";
-    case "tank top":
-      return "tank top";
-    case "hat":
-      return "hat";
-    case "drinkware":
-      return "drinkware piece";
-    case "candle":
-      return "candle";
-    case "bath-body":
-      return "bath and body item";
-    case "home-kitchen":
-      return "home and kitchen piece";
-    case "wall-art":
-      return "wall art piece";
-    case "sticker":
-      return "sticker";
-    case "bag":
-      return "bag";
-    case "accessory":
-      return "accessory";
-    case "footwear":
-      return "footwear item";
-    default:
-      return "product";
-  }
-}
-
-function buildLeadParagraphs(title: string, templateDescription: string) {
-  const family = resolveProductFamily(title, templateDescription);
-  const theme = detectThemePhrase(title);
-  const productName = safeTitle(title, "This product");
-
-  switch (family) {
-    case "t-shirt":
-      return [
-        `${productName} brings a ${theme} look to an easygoing everyday tee made for casual wear, simple layering, and standout gift appeal.`,
-        `It is a strong fit for daily rotation, niche apparel drops, and laid-back outfits that benefit from comfortable wear and a design with real personality.`,
-      ];
-    case "hoodie":
-      return [
-        `${productName} brings a ${theme} look to a comfortable hoodie made for cooler weather, easy layering, and everyday wear.`,
-        `It works well for casual wardrobes, giftable apparel drops, and design-led collections that need warmth, comfort, and a strong visual point of view.`,
-      ];
-    case "sweatshirt":
-      return [
-        `${productName} brings a ${theme} look to a classic sweatshirt built for comfort, relaxed styling, and easy everyday use.`,
-        `It fits naturally into seasonal drops, weekend wardrobes, and gift-ready apparel collections that need familiar comfort with a stronger design presence.`,
-      ];
-    case "tank top":
-      return [
-        `${productName} brings a ${theme} look to a lightweight tank made for warm-weather wear, casual comfort, and easy daily styling.`,
-        `It suits gym-to-weekend outfits, summer assortments, and giftable apparel collections that need a cleaner balance of comfort, versatility, and visual appeal.`,
-      ];
-    case "hat":
-      return [
-        `${productName} adds a ${theme} finish to casual outfits, daily errands, and easy giftable accessory collections.`,
-        `It is built for grab-and-go wear, everyday rotation, and simple styling that gives the design room to stand out without overcomplicating the look.`,
-      ];
-    case "drinkware":
-      return [
-        `${productName} brings a ${theme} touch to daily routines, desk setups, coffee breaks, and easy gift giving.`,
-        `It works well for personal use, practical gifting, and lifestyle collections that need something functional, cleanly presented, and easy to enjoy every day.`,
-      ];
-    case "candle":
-      return [
-        `${productName} brings a ${theme} feel to cozy spaces, thoughtful gifting, and décor-driven everyday use.`,
-        `It fits naturally into seasonal collections, self-care moments, and home-focused assortments that benefit from a polished mood and gift-ready presentation.`,
-      ];
-    case "bath-body":
-      return [
-        `${productName} brings a ${theme} touch to routine self-care, simple gifting, and practical daily use.`,
-        `It works well for boutique-style assortments, wellness gifting, and personal care collections that need a cleaner product story and approachable presentation.`,
-      ];
-    case "home-kitchen":
-      return [
-        `${productName} adds a ${theme} element to everyday spaces, practical routines, and home-focused gifting moments.`,
-        `It fits naturally into décor-minded collections, everyday household use, and giftable assortments that benefit from a useful item with stronger personality.`,
-      ];
-    case "wall-art":
-      return [
-        `${productName} brings a ${theme} statement to walls, shelves, and styled spaces that need visual interest.`,
-        `It works well for home refreshes, giftable décor collections, and design-led assortments that benefit from a stronger focal point and easy presentation.`,
-      ];
-    case "sticker":
-      return [
-        `${productName} brings a ${theme} look to laptops, water bottles, journals, and other everyday surfaces.`,
-        `It is a strong fit for impulse-friendly gifting, low-commitment add-ons, and accessory collections that benefit from flexible use and quick visual appeal.`,
-      ];
-    case "bag":
-      return [
-        `${productName} adds a ${theme} touch to daily carry, errands, travel, and practical gift giving.`,
-        `It works for everyday utility, easy outfitting, and giftable accessory collections that need simple function with a more distinctive visual edge.`,
-      ];
-    case "footwear":
-      return [
-        `${productName} brings a ${theme} look to casual footwear designed for everyday wear and easy outfit pairing.`,
-        `It fits best in comfort-focused collections, giftable lifestyle assortments, and design-led drops that benefit from familiar use with stronger personality.`,
-      ];
-    case "accessory":
-      return [
-        `${productName} adds a ${theme} touch to daily essentials, practical gifting, and easy add-on purchases.`,
-        `It works well for lifestyle collections, impulse-friendly accessories, and design-led assortments that need utility without losing visual identity.`,
-      ];
-    default:
-      return [
-        `${productName} brings a ${theme} look to an everyday product designed for practical use, giftability, and clean presentation.`,
-        `It fits naturally into niche collections, casual gifting moments, and design-led assortments that benefit from simple utility and a stronger point of view.`,
-      ];
-  }
-}
-
 function titleCaseTag(value: string) {
   return value
     .split(" ")
@@ -1365,17 +1171,6 @@ function formatProductDescriptionWithSections(leadParagraphs: string[], template
 
 function buildLeadOnlyDescription(leadParagraphs: string[]) {
   return leadToHtml(dedupeParagraphs(normalizeAiLeadParagraphs(leadParagraphs)));
-}
-
-function buildDescription(title: string, templateDescription: string, leadOverride?: string[]) {
-  return formatProductDescriptionWithSections(
-    leadOverride || buildLeadParagraphs(title, templateDescription),
-    templateDescription
-  );
-}
-
-function buildTags(title: string, description: string, count: number) {
-  return deriveTags(title, description).slice(0, count);
 }
 
 export function canManualOverrideListingCopy(title: string, description: string) {
@@ -1552,75 +1347,6 @@ async function parseResponsePayload(response: Response) {
   return { error: text || `Request failed with status ${response.status}.` };
 }
 
-async function requestAiListingDraft({
-  image,
-  templateDescription,
-  provider,
-}: {
-  image: Img;
-  templateDescription: string;
-  provider: ProviderId;
-}): Promise<AiListingDraft | null> {
-  try {
-    const imageDataUrl = await fileToDataUrl(image.file);
-    const productFamily = resolveProductFamily(image.final, templateDescription);
-    const sterileTemplateContext = buildTemplateContext(templateDescription, productFamily);
-
-    const response = await fetch("/api/ai/listing", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        imageDataUrl,
-        fileName: image.name,
-        provider,
-        productFamily,
-        templateContext: sterileTemplateContext,
-      }),
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const payload = await response.json();
-    if (payload?.qcApproved === false) {
-      return null;
-    }
-    const title = safeTitle(payload?.title || "", image.final);
-    const leadParagraphs = normalizeAiLeadParagraphs(Array.isArray(payload?.leadParagraphs) ? payload.leadParagraphs : []);
-    const reasonFlags = Array.isArray(payload?.reasonFlags)
-      ? payload.reasonFlags.filter((value: unknown): value is string => typeof value === "string")
-      : [];
-
-    return {
-      title,
-      leadParagraphs,
-      model: typeof payload?.model === "string" ? payload.model : AI_MODEL_LABEL,
-      confidence: typeof payload?.confidence === "number" ? payload.confidence : 0,
-      templateReference: typeof payload?.templateReference === "string" ? payload.templateReference : "",
-      reasonFlags,
-      source: payload?.source === "gemini" || payload?.source === "fallback" ? payload.source : "fallback",
-      grade: payload?.grade === "green" || payload?.grade === "red" ? payload.grade : payload?.publishReady === true ? "green" : "red",
-      qcApproved: payload?.qcApproved !== false,
-      publishReady: payload?.publishReady === true,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function compareByStatus(a: Img, b: Img) {
-  const order: Record<ItemStatus, number> = {
-    ready: 0,
-    error: 1,
-    pending: 2,
-  };
-
-  return order[a.status] - order[b.status];
-}
-
 function fillActiveBatch(active: Img[], queued: Img[], limit: number) {
   const room = Math.max(0, limit - active.length);
   if (room === 0 || queued.length === 0) {
@@ -1656,21 +1382,6 @@ function getFileSignature(file: Pick<File, "name" | "size">) {
   return `${String(file.name || "").trim().toLowerCase()}::${Number(file.size || 0)}`;
 }
 
-type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  tone?: "default" | "ghost";
-};
-
-function Button({ className = "", tone = "default", type = "button", ...props }: ButtonProps) {
-  const base =
-    "inline-flex min-h-[40px] items-center justify-center rounded-xl px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60";
-  const tones =
-    tone === "ghost"
-      ? "border border-slate-700 bg-[#020616] text-white/85 hover:bg-[#0b1024]"
-      : "bg-[#7F22FE] text-white hover:bg-[#6d1ee0]";
-
-  return <button type={type} className={`${base} ${tones} ${className}`} {...props} />;
-}
-
 type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
 
 function Input({ className = "", ...props }: InputProps) {
@@ -1697,20 +1408,6 @@ function Select({ className = "", children, ...props }: SelectProps) {
         <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
       </svg>
     </div>
-  );
-}
-
-type FieldProps = {
-  label: React.ReactNode;
-  children: React.ReactNode;
-};
-
-function Field({ label, children }: FieldProps) {
-  return (
-    <label className="block space-y-1.5">
-      <span className="flex min-h-[20px] items-center text-sm font-medium leading-5 tracking-tight text-slate-200">{label}</span>
-      {children}
-    </label>
   );
 }
 
@@ -2105,17 +1802,6 @@ function ProductGrid({
   );
 }
 
-function getStatusTone(status: ItemStatus) {
-  switch (status) {
-    case "ready":
-      return "bg-[#00BC7D] ring-[#00BC7D]/35";
-    case "error":
-      return "bg-[#FF2056] ring-[#FF2056]/35";
-    default:
-      return "bg-slate-500 ring-slate-500/35";
-  }
-}
-
 function QuantOrbLoader({ className = "" }: { className?: string }) {
   return (
     <span className={`relative inline-flex h-4 w-4 shrink-0 items-center justify-center ${className}`}>
@@ -2150,24 +1836,6 @@ function StatusThumbIcon({ tone, direction }: { tone: "ready" | "error"; directi
       ) : (
         <path d="M9.75 9 7.6 12.65c-.22.38-.62.6-1.06.6h-.16c-.6 0-1.09-.49-1.09-1.1v-2.1H3.37c-.77 0-1.35-.7-1.23-1.46l.63-3.86c.1-.58.6-1.01 1.19-1.01h5.79m0 5.28h2.07c.49 0 .88-.39.88-.88V4.44c0-.49-.39-.88-.88-.88H9.75V9Z" />
       )}
-    </svg>
-  );
-}
-
-function PencilIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.2"
-    >
-      <path d="M3.2 10.95 10.55 3.6a1.45 1.45 0 0 1 2.05 0l.8.8a1.45 1.45 0 0 1 0 2.05l-7.35 7.35-2.6.55.55-2.6Z" />
-      <path d="m9.95 4.2 1.85 1.85" />
     </svg>
   );
 }
@@ -2322,7 +1990,6 @@ export default function MerchQuantumApp() {
   const [completedImportedImages, setCompletedImportedImages] = useState<Img[]>([]);
   const [queuedImages, setQueuedImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
-  const [message, setMessage] = useState("");
   const [runStatus, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
@@ -2537,8 +2204,6 @@ export default function MerchQuantumApp() {
     ? selectedImage.tags
     : [];
   const approvedImportedItems = allImages.filter((img) => img.sourceType === "imported" && getResolvedItemStatus(img) === "ready");
-  const flaggedImportedItems = allImages.filter((img) => img.sourceType === "imported" && getResolvedItemStatus(img) === "error");
-  const syncedApprovedImportedItems = approvedImportedItems.filter((img) => img.syncState === "synced");
   const importedProductIds = useMemo(
     () => new Set([...allImages, ...queuedImages].map((img) => img.providerProductId).filter((value): value is string => !!value)),
     [allImages, queuedImages]
@@ -2580,14 +2245,6 @@ export default function MerchQuantumApp() {
     ? `${safeCreateThumbPage * createThumbPageSize + 1}-${Math.min(sortedImages.length, safeCreateThumbPage * createThumbPageSize + visibleCreateThumbnails.length)} of ${sortedImages.length}`
     : "0 of 0";
   const workspaceModePickerLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "Edit mode";
-  const previewOverlayUsesLightText = selectedImage?.preview
-    ? shouldUseLightPreviewText(selectedImage.previewBackground || DISPLAY_NEUTRAL_BACKGROUND)
-    : true;
-  const previewOverlayTextClass = selectedImage?.preview
-    ? previewOverlayUsesLightText
-      ? "text-white/90"
-      : "text-slate-950/85"
-    : "text-slate-300";
   const bulkEditPublishDisabled =
     !isBulkEditMode
     || approvedImportedItems.length === 0
@@ -2619,19 +2276,6 @@ export default function MerchQuantumApp() {
           : !workspaceMode
             ? "mode"
             : null;
-  const guidanceStep = !connected
-    ? "connect"
-    : !shopId
-      ? "shop"
-      : !workspaceMode
-        ? "mode"
-        : isCreateMode && !template && images.length === 0
-        ? "template"
-        : isCreateMode && images.length === 0
-          ? "import"
-          : isBulkEditMode && !hasAnyLoadedImages
-            ? "template"
-        : "settled";
   function getProviderRoute(path: "connect" | "disconnect" | "products" | "product" | "batch-create") {
     return `/api/providers/${path}`;
   }
@@ -3562,7 +3206,6 @@ export default function MerchQuantumApp() {
     setSelectedId("");
     setIsCreateThumbExpandedView(false);
     setCreateThumbGridPage(0);
-    setMessage("");
     setBatchResults([]);
     setRunStatus("");
     setImportStatus("");
@@ -3624,7 +3267,6 @@ export default function MerchQuantumApp() {
   async function addFiles(list: FileList | null) {
     if (!list) return;
     if (!connected) return;
-    setMessage("");
     const incoming = Array.from(list);
     const imageFiles = incoming.filter(isImage);
     const ignoredByType = incoming.length - imageFiles.length;
@@ -3679,7 +3321,6 @@ export default function MerchQuantumApp() {
     if (ignoredByLimit) {
       parts.push(`Ignored ${ignoredByLimit} image${ignoredByLimit === 1 ? "" : "s"} above the ${CONNECTED_TOTAL_BATCH_FILES}-image total cap.`);
     }
-    setMessage(parts.join(" "));
   }
 
   async function loadProductsForShop(nextShopId: string) {
@@ -4194,10 +3835,6 @@ export default function MerchQuantumApp() {
     return { syncedItems, failedCount };
   }
 
-  async function syncApprovedImportedListings() {
-    await syncImportedItems(approvedImportedItems);
-  }
-
   async function publishImportedItems(items: Img[]) {
     if (!resolvedProviderId || !shopId || items.length === 0) {
       setImportStatus("Sync approved listings before sending them to the provider publish step.");
@@ -4301,10 +3938,6 @@ export default function MerchQuantumApp() {
     } finally {
       setIsPublishingImportedListings(false);
     }
-  }
-
-  async function publishApprovedImportedListings() {
-    await publishImportedItems(syncedApprovedImportedItems);
   }
 
   async function runBulkEditPublishAction() {
@@ -4802,7 +4435,7 @@ export default function MerchQuantumApp() {
                           {canShowLoadedQueueGrid ? (
                             <div className="space-y-1 p-1">
                               <div className="grid grid-cols-5 gap-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
-                                {visibleCreateThumbnails.map((img, index) => {
+                                {visibleCreateThumbnails.map((img) => {
                                   const isSelected = selectedImage?.id === img.id;
                                   const resolvedStatus = getResolvedItemStatus(img);
                                   const isProcessing = resolvedStatus === "pending";

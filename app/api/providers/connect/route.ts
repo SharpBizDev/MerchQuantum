@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getProviderAdapter, isProviderId } from "../../../../lib/providers/registry";
 import { createProviderCredentials, setProviderSession } from "../../../../lib/providers/session";
-import { ProviderError } from "../../../../lib/providers/errors";
 import { buildSanitizedErrorPayload, getUserFacingErrorMessage, logErrorToConsole } from "../../../../lib/user-facing-errors";
 
 export async function POST(req: NextRequest) {

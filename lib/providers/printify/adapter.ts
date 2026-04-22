@@ -2,7 +2,6 @@ import type {
   ProviderAdapter,
   ProviderAdapterContext,
   ProviderImportDetailContext,
-  ProviderListingMetadataUpdateContext,
 } from "../contracts";
 import { ProviderError, providerErrorFromResponse, toProviderError } from "../errors";
 import type {
@@ -14,7 +13,6 @@ import type {
   NormalizedPlacementGuide,
   NormalizedRecoveredArtwork,
   NormalizedStore,
-  NormalizedTemplateDetail,
   NormalizedTemplateSummary,
   NormalizedUpdatedListing,
   ProviderCapabilities,
@@ -55,27 +53,33 @@ type PrintifyProduct = {
     is_enabled?: boolean;
     is_default?: boolean;
   }>;
-  print_areas?: Array<{
-    variant_ids?: number[];
-    placeholders?: Array<{
-      position?: string;
-      images?: Array<{
-        id?: string;
-        src?: string;
-        name?: string;
-        type?: string;
-        width?: number;
-        height?: number;
-        x?: number;
-        y?: number;
-        scale?: number;
-        angle?: number;
-        pattern?: Record<string, unknown>;
-      }>;
-    }>;
-    background?: string;
-  }>;
+  print_areas?: PrintifyPrintArea[];
   print_details?: Record<string, unknown>;
+};
+
+type PrintifyPlaceholderImage = {
+  id?: string;
+  src?: string;
+  name?: string;
+  type?: string;
+  width?: number;
+  height?: number;
+  x?: number;
+  y?: number;
+  scale?: number;
+  angle?: number;
+  pattern?: Record<string, unknown>;
+};
+
+type PrintifyPlaceholder = {
+  position?: string;
+  images?: PrintifyPlaceholderImage[];
+};
+
+type PrintifyPrintArea = {
+  variant_ids?: number[];
+  placeholders?: PrintifyPlaceholder[];
+  background?: string;
 };
 
 type CatalogVariant = {
@@ -290,7 +294,7 @@ function chooseFrontPlacement(product: PrintifyProduct) {
     areaIndex: number;
     placeholderIndex: number;
     position: string;
-    imageDefaults?: NonNullable<PrintifyProduct["print_areas"]>[number]["placeholders"][number]["images"][number];
+    imageDefaults?: PrintifyPlaceholderImage;
   } | null = null;
 
   for (let areaIndex = 0; areaIndex < (product.print_areas || []).length; areaIndex += 1) {
@@ -314,9 +318,7 @@ function chooseFrontPlacement(product: PrintifyProduct) {
 }
 
 function chooseImportedArtwork(product: PrintifyProduct) {
-  let fallback:
-    | NonNullable<NonNullable<PrintifyProduct["print_areas"]>[number]["placeholders"]>[number]["images"][number]
-    | null = null;
+  let fallback: PrintifyPlaceholderImage | null = null;
 
   for (const area of product.print_areas || []) {
     for (const placeholder of area.placeholders || []) {
@@ -388,7 +390,7 @@ function normalizeArtworkBounds(dimensions: ImageDimensions | null, bounds?: Art
 function getContentAwarePlacement(
   imageDataUrl: string,
   guide: NormalizedPlacementGuide,
-  templateDefaults?: NonNullable<PrintifyProduct["print_areas"]>[number]["placeholders"][number]["images"][number],
+  templateDefaults?: PrintifyPlaceholderImage,
   artworkBounds?: ArtworkBounds
 ) {
   const dimensions = getImageDimensionsFromDataUrl(imageDataUrl);

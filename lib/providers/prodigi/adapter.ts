@@ -13,8 +13,6 @@ import type {
   NormalizedOrderSummary,
   NormalizedPlacementGuide,
   NormalizedStore,
-  NormalizedTemplateDetail,
-  NormalizedTemplateSummary,
   ProviderCapabilities,
 } from "../types";
 
@@ -189,7 +187,7 @@ export function createProdigiAdapter(options: ProdigiAdapterOptions = {}): Provi
     displayName: "Prodigi",
     capabilities: PRODIGI_CAPABILITIES,
     async connect(context) {
-      await this.listOrders({ credentials: context.credentials });
+      await this.listOrders!({ credentials: context.credentials });
 
       return {
         providerId: this.id,

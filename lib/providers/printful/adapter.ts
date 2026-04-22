@@ -2,7 +2,6 @@ import type {
   ProviderAdapter,
   ProviderAdapterContext,
   ProviderImportDetailContext,
-  ProviderListingMetadataUpdateContext,
 } from "../contracts";
 import { ProviderError, providerErrorFromResponse, toProviderError } from "../errors";
 import type {
@@ -12,7 +11,6 @@ import type {
   NormalizedPlacementGuide,
   NormalizedRecoveredArtwork,
   NormalizedStore,
-  NormalizedTemplateDetail,
   NormalizedTemplateSummary,
   NormalizedUpdatedListing,
   ProviderCapabilities,
@@ -378,10 +376,10 @@ export function createPrintfulAdapter(options: PrintfulAdapterOptions = {}): Pro
           assetId: String(resolved.id || file.id),
           fileName: resolved.filename || file.filename || `printful-${file.id}.png`,
           url: resolved.url || file.url || resolved.preview_url || file.preview_url || resolved.thumbnail_url || file.thumbnail_url || "",
-          previewUrl: resolved.preview_url || file.preview_url || resolved.thumbnail_url || file.thumbnail_url || resolved.url || file.url || "",
+          previewUrl: resolved.preview_url || file.preview_url || resolved.thumbnail_url || file.thumbnail_url || resolved.url || file.url || undefined,
           width: resolved.width || file.width,
           height: resolved.height || file.height,
-          contentType: resolved.mime_type,
+          contentType: resolved.mime_type || undefined,
         };
       } catch (error) {
         if (error instanceof ProviderError && error.code === "invalid_credentials") {

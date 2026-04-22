@@ -197,7 +197,6 @@ const FINAL_TAG_COUNT = 15;
 const MAX_VISION_ANALYSIS_BYTES = 15 * 1024 * 1024;
 const MAX_VISION_ANALYSIS_PIXELS = 33_000_000;
 const MAX_VISION_ANALYSIS_DIMENSION = 7000;
-const SPARSE_TRANSPARENT_COVERAGE_THRESHOLD = 0.68;
 const MEANINGFUL_TRANSPARENCY_RATIO_THRESHOLD = 0.04;
 const MIN_TRIM_GAIN_PX = 48;
 const TRANSPARENT_ANALYSIS_COVERAGE_THRESHOLD = 0.96;
@@ -234,8 +233,6 @@ const FAINT_TRANSPARENT_INK_RATIO_THRESHOLD = 0.01;
 const POSTER_LIKE_CANVAS_COVERAGE_THRESHOLD = 0.82;
 const POSTER_LIKE_MIN_EDGE = 900;
 const PIXEL_ART_GUIDANCE_MAX_EDGE = 420;
-const PIXEL_ART_GUIDANCE_MAX_PIXELS = 220_000;
-
 const WEAK_FILENAME_TOKENS = new Set([
   "img",
   "image",
@@ -796,11 +793,6 @@ function buildStrictSanitizedRetryInstruction(sanitizedPhrases: string[]) {
   return `Previous response was discarded for being too generic and returned sanitized placeholder wording such as ${phraseList}. Switch to Literal Mode and perform High-Fidelity Text Logging like a Digital Asset Management system indexing raw warehouse inventory. Read the strongest high-contrast helper render or threshold-mask OCR helper first, then confirm against the untouched original upload. If visible text says Jesus, God, scripture references, political wording, or other specific design text, reproduce it exactly in extracted_text, generated_title, the buyer-facing paragraphs, and seo_tags. Do not replace literal design wording with generic placeholders. Treat generic placeholder replacement as a system failure because it makes the listing unusable for search engines.`;
 }
 
-function capitalizeFirst(value: string) {
-  if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
 const INCOMPLETE_ENDING_WORDS = new Set([
   "and",
   "or",
@@ -1064,12 +1056,6 @@ function normalizeDescriptionParagraphs(rawDescription: unknown, title: string) 
   );
 
   return paragraphs.slice(0, 3);
-}
-
-function normalizeDescriptionText(rawDescription: unknown, title: string, fallbackParagraphs: string[]) {
-  const paragraphs = normalizeDescriptionParagraphs(rawDescription, title);
-  const resolved = paragraphs.length ? paragraphs : unique(fallbackParagraphs).slice(0, 3);
-  return resolved.join("\n\n").slice(0, MAX_DESCRIPTION_CHARS).trim();
 }
 
 function assembleMarketingDescription(paragraphs: string[]) {
@@ -1945,24 +1931,6 @@ function getPrimaryDesignAnchor(semantic: SemanticRecord) {
   return semantic.styleOccasion || semantic.productNoun;
 }
 
-function getPrimaryDesignPhrase(semantic: SemanticRecord) {
-  const anchor = cleanSpaces(getPrimaryDesignAnchor(semantic));
-  if (!anchor) return "the design";
-
-  if (
-    anchor.split(/\s+/).length <= 6 &&
-    !/\b(?:graphic|design|art|artwork|scene|illustration|style|line art|landscape)\b/i.test(anchor)
-  ) {
-    return `the "${normalizeTitle(anchor, anchor)}" message`;
-  }
-
-  if (/\b(?:graphic|design|art|artwork|scene|illustration|style|line art|landscape)\b/i.test(anchor)) {
-    return `the ${anchor.toLowerCase()}`;
-  }
-
-  return `the ${anchor.toLowerCase()} artwork`;
-}
-
 function getSemanticLeadSignalTokens(semantic: SemanticRecord, templateSignal?: TemplateSignal | null) {
   return unique([
     ...toKeywordTokens(getPrimaryDesignAnchor(semantic)),
@@ -2602,10 +2570,6 @@ function hasRecoverableCautionGrounding(
   }
 
   return hasRecoverableImageSignal && imageTruth.meaningClarity >= 0.3;
-}
-
-function getReadyConfidenceThreshold(imageTruth: ImageTruthRecord) {
-  return hasStrongReadyGrounding(imageTruth) ? 0.74 : 0.78;
 }
 
 function estimateBase64ByteLength(inlineData: string) {

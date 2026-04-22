@@ -2185,7 +2185,8 @@ async function main() {
         {
           model: "gemini-test",
           fetchFn: async (_url, init) => {
-            assert.equal(String(init?.headers?.["x-goog-api-key"] || ""), "google-env-key");
+            const headers = new Headers(init?.headers);
+            assert.equal(String(headers.get("x-goog-api-key") || ""), "google-env-key");
             return createGeminiResponse(createGeminiPayload());
           },
         }
