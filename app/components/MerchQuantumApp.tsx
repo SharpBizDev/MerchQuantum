@@ -1958,8 +1958,8 @@ function ProductGrid({
   }, [items, previewSurfaceBackgrounds]);
 
   return (
-    <div className={`mx-auto flex w-full max-w-6xl flex-col gap-2 overflow-hidden rounded-xl border border-gray-800 bg-gray-900/50 p-3 ${highlighted ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)]" : ""}`}>
-      <div className="flex w-full min-w-0 items-center justify-between gap-3">
+    <div className={`mx-auto flex w-full max-w-6xl flex-col gap-1.5 overflow-hidden rounded-xl border border-gray-800 bg-gray-900/50 p-2 ${highlighted ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)]" : ""}`}>
+      <div className="flex w-full min-w-0 items-center justify-between gap-2">
         <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-white">{heading}</span>
         <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 text-[11px]">
           {headerAccessory}
@@ -1977,7 +1977,8 @@ function ProductGrid({
       </div>
 
       {items.length > 0 ? (
-        <div className="grid h-full w-full grid-cols-5 gap-1 overflow-hidden snap-y snap-mandatory">
+        <div className="w-full p-1">
+          <div className="grid h-full w-full grid-cols-5 gap-1 overflow-hidden snap-y snap-mandatory">
             {items.map((product, index) => {
               const globalIndex = page * pageSize + index;
               const isSelected = selectedIds.includes(product.id);
@@ -2039,23 +2040,26 @@ function ProductGrid({
                 </button>
               );
             })}
+          </div>
         </div>
       ) : (
-        <div className="grid min-h-[148px] w-full overflow-hidden rounded-xl" aria-hidden={loading ? undefined : true}>
-          {loading ? (
-            <div className="col-start-1 row-start-1 relative z-10 flex h-full min-h-[148px] flex-col items-center justify-center gap-2 px-3 py-6 text-sm text-slate-400">
-              {loadingAccessory ? (
-                <span className="inline-flex items-center justify-center">
-                  {loadingAccessory}
-                </span>
-              ) : null}
-              <span>Loading provider listings...</span>
-            </div>
-          ) : null}
+        <div className="w-full p-1">
+          <div className="grid min-h-[148px] w-full overflow-hidden rounded-xl" aria-hidden={loading ? undefined : true}>
+            {loading ? (
+              <div className="col-start-1 row-start-1 relative z-10 flex h-full min-h-[148px] flex-col items-center justify-center gap-2 px-3 py-6 text-sm text-slate-400">
+                {loadingAccessory ? (
+                  <span className="inline-flex items-center justify-center">
+                    {loadingAccessory}
+                  </span>
+                ) : null}
+                <span>Loading provider listings...</span>
+              </div>
+            ) : null}
+          </div>
         </div>
       )}
 
-      <div className="flex w-full items-center justify-between gap-2 pt-0.5 text-[11px]">
+      <div className="flex w-full items-center justify-between gap-2 pt-1 text-[11px]">
         <div className="min-w-0 flex-1 truncate text-slate-400">
           {footerLabel || rangeLabel}
         </div>
@@ -4796,8 +4800,8 @@ export default function MerchQuantumApp() {
                             </div>
                           ) : null}
                           {canShowLoadedQueueGrid ? (
-                            <div className="space-y-3 px-1">
-                              <div className="grid grid-cols-5 gap-1.5 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
+                            <div className="space-y-1 p-1">
+                              <div className="grid grid-cols-5 gap-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
                                 {visibleCreateThumbnails.map((img, index) => {
                                   const isSelected = selectedImage?.id === img.id;
                                   const resolvedStatus = getResolvedItemStatus(img);
@@ -4826,7 +4830,8 @@ export default function MerchQuantumApp() {
                                       <div className="relative">
                                         {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
                                         <div
-                                          className={`group relative box-border flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border bg-[#020616] transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${previewFrameTone}`}
+                                          className={`group relative box-border flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border bg-center bg-cover bg-no-repeat transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${previewFrameTone}`}
+                                          style={{ backgroundColor: img.previewBackground || DISPLAY_NEUTRAL_BACKGROUND }}
                                         >
                                           {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
                                           {statusIndicator ? (
@@ -4848,10 +4853,6 @@ export default function MerchQuantumApp() {
                                           >
                                             x
                                           </button>
-                                          <div
-                                            className="absolute inset-0 overflow-hidden rounded-[8px] bg-center bg-cover bg-no-repeat"
-                                            style={{ backgroundColor: img.previewBackground || DISPLAY_NEUTRAL_BACKGROUND }}
-                                          />
                                           {img.preview ? (
                                             <div className="relative h-full w-full p-[8%]">
                                               <div className="relative h-full w-full">
@@ -4865,7 +4866,7 @@ export default function MerchQuantumApp() {
                                   );
                                 })}
                               </div>
-                              <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
+                              <div className="flex items-center justify-between gap-2 pt-1 text-[11px]">
                                   <span className="min-w-0 flex-1 truncate text-slate-400">{createThumbVisibleRangeLabel}</span>
                                   <div className="flex items-center justify-end gap-2">
                                   {createThumbTotalPages > 1 ? (
