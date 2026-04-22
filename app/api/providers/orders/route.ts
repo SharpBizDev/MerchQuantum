@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ProviderError } from "../../../../lib/providers/errors";
 import { getProviderAdapter, getProviderEntry, isProviderId } from "../../../../lib/providers/registry";
 import { readActiveProviderId, readProviderCredentials } from "../../../../lib/providers/session";
+import { buildSanitizedErrorPayload, getUserFacingErrorMessage, logErrorToConsole } from "../../../../lib/user-facing-errors";
 
 function resolveProviderId(cookieStore: Awaited<ReturnType<typeof cookies>>, requestedProvider: string | null) {
   const normalized = requestedProvider?.trim().toLowerCase();
@@ -16,12 +17,12 @@ export async function GET(req: NextRequest) {
     const providerId = resolveProviderId(cookieStore, req.nextUrl.searchParams.get("provider"));
 
     if (!providerId) {
-      return NextResponse.json({ error: "No active provider found. Connect again." }, { status: 401 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: 401 });
     }
 
     const credentials = readProviderCredentials(cookieStore, providerId);
     if (!credentials) {
-      return NextResponse.json({ error: `No ${getProviderEntry(providerId)?.displayName || providerId} token found. Connect again.` }, { status: 401 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: 401 });
     }
 
     const adapter = getProviderAdapter(providerId);
@@ -44,22 +45,9 @@ export async function GET(req: NextRequest) {
       orders,
     });
   } catch (error) {
-    if (error instanceof ProviderError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    const status = error instanceof DOMException && error.name === "AbortError" ? 504 : 500;
-    return NextResponse.json(
-      {
-        error:
-          status === 504
-            ? "The provider took too long to return order information. Please try again."
-            : error instanceof Error
-              ? error.message
-              : "Unable to list orders.",
-      },
-      { status }
-    );
+    logErrorToConsole("[api/providers/orders] list orders failed", error);
+    const payload = buildSanitizedErrorPayload("order", error);
+    return NextResponse.json({ error: payload.message }, { status: payload.status });
   }
 }
 
@@ -70,12 +58,12 @@ export async function POST(req: NextRequest) {
     const providerId = resolveProviderId(cookieStore, String(body?.provider || ""));
 
     if (!providerId) {
-      return NextResponse.json({ error: "No active provider found. Connect again." }, { status: 401 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: 401 });
     }
 
     const credentials = readProviderCredentials(cookieStore, providerId);
     if (!credentials) {
-      return NextResponse.json({ error: `No ${getProviderEntry(providerId)?.displayName || providerId} token found. Connect again.` }, { status: 401 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: 401 });
     }
 
     const orderInput = body?.orderInput;
@@ -103,21 +91,8 @@ export async function POST(req: NextRequest) {
       result,
     });
   } catch (error) {
-    if (error instanceof ProviderError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    const status = error instanceof DOMException && error.name === "AbortError" ? 504 : 500;
-    return NextResponse.json(
-      {
-        error:
-          status === 504
-            ? "The provider took too long to submit the order. Please try again."
-            : error instanceof Error
-              ? error.message
-              : "Unable to submit order.",
-      },
-      { status }
-    );
+    logErrorToConsole("[api/providers/orders] submit order failed", error);
+    const payload = buildSanitizedErrorPayload("order", error);
+    return NextResponse.json({ error: payload.message }, { status: payload.status });
   }
 }

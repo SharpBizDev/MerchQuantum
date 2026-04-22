@@ -6,6 +6,7 @@ import { ProviderError } from "../../../../lib/providers/errors";
 import { runWithProviderGovernor } from "../../../../lib/providers/governor";
 import { getProviderAdapter, getProviderEntry, isProviderId } from "../../../../lib/providers/registry";
 import { readActiveProviderId, readProviderCredentials } from "../../../../lib/providers/session";
+import { buildSanitizedErrorPayload, getUserFacingErrorMessage, logErrorToConsole } from "../../../../lib/user-facing-errors";
 
 type ArtworkBounds = {
   canvasWidth?: number;
@@ -104,12 +105,12 @@ export async function POST(req: NextRequest) {
         : readActiveProviderId(cookieStore);
 
     if (!providerId) {
-      return NextResponse.json({ error: "No active provider found. Connect again." }, { status: 401 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: 401 });
     }
 
     const credentials = readProviderCredentials(cookieStore, providerId);
     if (!credentials) {
-      return NextResponse.json({ error: `No ${getProviderEntry(providerId)?.displayName || providerId} token found. Connect again.` }, { status: 401 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: 401 });
     }
 
     const adapter = getProviderAdapter(providerId);
@@ -170,20 +171,11 @@ export async function POST(req: NextRequest) {
           message: created.message,
         });
       } catch (error) {
-        const normalizedError =
-          error instanceof ProviderError
-            ? error
-            : new ProviderError({
-                providerId,
-                code: "upstream_error",
-                status: 500,
-                message: error instanceof Error ? error.message : "Batch item failed.",
-              });
-
+        logErrorToConsole("[api/providers/batch-create] batch item failed", error);
         results.push({
           fileName: item.fileName,
           title: item.title,
-          message: normalizedError.message,
+          message: getUserFacingErrorMessage("draftCreate"),
         });
       }
     }
@@ -197,21 +189,8 @@ export async function POST(req: NextRequest) {
       placementGuide: templateDetail.placementGuide,
     });
   } catch (error) {
-    if (error instanceof ProviderError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    const status = error instanceof DOMException && error.name === "AbortError" ? 504 : 500;
-    return NextResponse.json(
-      {
-        error:
-          status === 504
-            ? "The provider took too long to respond during draft creation. Please try again."
-            : error instanceof Error
-              ? error.message
-              : "Unable to run batch create.",
-      },
-      { status }
-    );
+    logErrorToConsole("[api/providers/batch-create] batch create failed", error);
+    const payload = buildSanitizedErrorPayload("draftCreate", error);
+    return NextResponse.json({ error: payload.message }, { status: payload.status });
   }
 }

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getProviderAdapter, isProviderId } from "../../../../lib/providers/registry";
 import { createProviderCredentials, setProviderSession } from "../../../../lib/providers/session";
 import { ProviderError } from "../../../../lib/providers/errors";
+import { buildSanitizedErrorPayload, getUserFacingErrorMessage, logErrorToConsole } from "../../../../lib/user-facing-errors";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,11 +13,11 @@ export async function POST(req: NextRequest) {
     const token = String(body?.token || "").trim();
 
     if (!isProviderId(providerId)) {
-      return NextResponse.json({ error: "Missing or unsupported provider." }, { status: 400 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: 400 });
     }
 
     if (!token) {
-      return NextResponse.json({ error: `Missing ${providerId} token.` }, { status: 400 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: 400 });
     }
 
     const adapter = getProviderAdapter(providerId);
@@ -36,21 +37,8 @@ export async function POST(req: NextRequest) {
       })),
     });
   } catch (error) {
-    if (error instanceof ProviderError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    const status = error instanceof DOMException && error.name === "AbortError" ? 504 : 500;
-    return NextResponse.json(
-      {
-        error:
-          status === 504
-            ? "The provider took too long to respond. Please try again."
-            : error instanceof Error
-              ? error.message
-              : "Unable to connect to provider.",
-      },
-      { status }
-    );
+    logErrorToConsole("[api/providers/connect] connect failed", error);
+    const payload = buildSanitizedErrorPayload("connection", error);
+    return NextResponse.json({ error: payload.message }, { status: payload.status });
   }
 }

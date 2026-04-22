@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { buildSanitizedErrorPayload, getUserFacingErrorMessage, logErrorToConsole } from "../../../../lib/user-facing-errors";
 
 const PRINTIFY_API_BASE = "https://api.printify.com/v1";
 const USER_AGENT = "MerchQuantum";
@@ -148,7 +149,7 @@ export async function GET(req: NextRequest) {
     const token = cookieStore.get("printify_token")?.value?.trim();
 
     if (!token) {
-      return NextResponse.json({ error: "No Printify token found. Connect again." }, { status: 401 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: 401 });
     }
 
     const response = await fetchWithTimeout(
@@ -165,11 +166,8 @@ export async function GET(req: NextRequest) {
     );
 
     if (!response.ok) {
-      const text = await readErrorMessage(
-        response,
-        `Product request failed with status ${response.status}.`
-      );
-      return NextResponse.json({ error: text }, { status: response.status });
+      logErrorToConsole("[api/printify/product] upstream template load failed", { status: response.status });
+      return NextResponse.json({ error: getUserFacingErrorMessage("providerLoad") }, { status: response.status });
     }
 
     const product = (await response.json()) as TemplateProduct;
@@ -197,16 +195,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ product, placementGuide });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load product.";
-    const status = error instanceof DOMException && error.name === "AbortError" ? 504 : 500;
-    return NextResponse.json(
-      {
-        error:
-          status === 504
-            ? "Printify took too long to return the template product. Please try again."
-            : message,
-      },
-      { status }
-    );
+    logErrorToConsole("[api/printify/product] template load failed", error);
+    const payload = buildSanitizedErrorPayload("providerLoad", error);
+    return NextResponse.json({ error: payload.message }, { status: payload.status });
   }
 }

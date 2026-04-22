@@ -6,6 +6,7 @@ import {
   ListingInputGuardError,
   type ListingRequest,
 } from "../../../../lib/ai/listing-engine";
+import { buildSanitizedErrorPayload, getUserFacingErrorMessage, logErrorToConsole } from "../../../../lib/user-facing-errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (!body?.imageDataUrl) {
-      return NextResponse.json({ error: "Image data is required." }, { status: 400 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("imageProcessing") }, { status: 400 });
     }
 
     const result = await generateListingResponse(body, {
@@ -90,22 +91,16 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     if (error instanceof ListingInputGuardError) {
-      console.error(
-        "[api/ai/listing] input guard error",
-        JSON.stringify({
-          requestId,
-          status: error.status,
-          message: error.message,
-        })
-      );
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      logErrorToConsole("[api/ai/listing] input guard error", error);
+      const payload = buildSanitizedErrorPayload("imageProcessing", error);
+      return NextResponse.json({ error: payload.message }, { status: payload.status });
     }
 
-    console.error("[api/ai/listing] unhandled error", {
+    logErrorToConsole("[api/ai/listing] unhandled error", {
       requestId,
       error,
     });
-    const message = error instanceof Error ? error.message : "Unable to generate listing copy.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const payload = buildSanitizedErrorPayload("listingGeneration", error);
+    return NextResponse.json({ error: payload.message }, { status: payload.status });
   }
 }

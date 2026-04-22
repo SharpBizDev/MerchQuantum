@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { readHostedArtwork } from "../../../../../lib/providers/artwork";
+import { getUserFacingErrorMessage, logErrorToConsole } from "../../../../../lib/user-facing-errors";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -60,11 +61,11 @@ function inferImageContentType(fileName: string) {
   return IMAGE_MIME_BY_EXTENSION[extension] || "";
 }
 
-function buildErrorResponse(status: number, code: string, message: string, details?: Record<string, unknown>) {
-  console.error(code, details || {});
+function buildErrorResponse(status: number, context: string, details?: Record<string, unknown>) {
+  logErrorToConsole(context, details || {});
   return NextResponse.json(
     {
-      error: `${code}: ${message}`,
+      error: getUserFacingErrorMessage("imageProcessing"),
     },
     { status }
   );
@@ -114,7 +115,7 @@ export async function GET(req: NextRequest, context: ArtworkRouteContext) {
 
     const sourceUrl = resolveProxySourceUrl(req);
     if (!sourceUrl) {
-      return buildErrorResponse(404, "[IMAGE_FETCH_ERROR]", "Hosted artwork was not found and no valid rescue source URL was supplied.", {
+      return buildErrorResponse(404, "[api/providers/artwork] invalid rescue source", {
         assetId,
       });
     }
@@ -127,7 +128,7 @@ export async function GET(req: NextRequest, context: ArtworkRouteContext) {
         signal: AbortSignal.timeout(60_000),
       });
     } catch (error) {
-      return buildErrorResponse(502, "[IMAGE_FETCH_ERROR]", "Unable to download rescued artwork from the provider.", {
+      return buildErrorResponse(502, "[api/providers/artwork] rescue download failed", {
         assetId,
         sourceHost: sourceUrl.hostname,
         sourcePath: sourceUrl.pathname,
@@ -136,7 +137,7 @@ export async function GET(req: NextRequest, context: ArtworkRouteContext) {
     }
 
     if (!upstream.ok || !upstream.body) {
-      return buildErrorResponse(upstream.ok ? 502 : upstream.status, "[IMAGE_FETCH_ERROR]", `Provider artwork download failed with status ${upstream.status}.`, {
+      return buildErrorResponse(upstream.ok ? 502 : upstream.status, "[api/providers/artwork] upstream download returned non-ok response", {
         assetId,
         sourceHost: sourceUrl.hostname,
         sourcePath: sourceUrl.pathname,
@@ -151,7 +152,7 @@ export async function GET(req: NextRequest, context: ArtworkRouteContext) {
     const contentType = upstreamContentType || requestedContentType || inferredContentType;
 
     if (!contentType.startsWith("image/")) {
-      return buildErrorResponse(502, "[IMAGE_FETCH_ERROR]", "Provider returned non-image content for rescued artwork.", {
+      return buildErrorResponse(502, "[api/providers/artwork] non-image content returned", {
         assetId,
         sourceHost: sourceUrl.hostname,
         sourcePath: sourceUrl.pathname,
@@ -185,7 +186,7 @@ export async function GET(req: NextRequest, context: ArtworkRouteContext) {
       },
     });
   } catch (error) {
-    return buildErrorResponse(500, "[IMAGE_FETCH_ERROR]", "Unexpected rescued artwork proxy failure.", {
+    return buildErrorResponse(500, "[api/providers/artwork] unexpected proxy failure", {
       assetId,
       message: error instanceof Error ? error.message : String(error),
     });

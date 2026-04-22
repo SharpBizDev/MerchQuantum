@@ -5,6 +5,7 @@ import { ProviderError } from "../../../../lib/providers/errors";
 import { runWithProviderGovernor } from "../../../../lib/providers/governor";
 import { getProviderAdapter, getProviderEntry, isProviderId } from "../../../../lib/providers/registry";
 import { readActiveProviderId, readProviderCredentials } from "../../../../lib/providers/session";
+import { buildSanitizedErrorPayload, getUserFacingErrorMessage, logErrorToConsole } from "../../../../lib/user-facing-errors";
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,12 +24,12 @@ export async function GET(req: NextRequest) {
         : readActiveProviderId(cookieStore);
 
     if (!providerId) {
-      return NextResponse.json({ error: "No active provider found. Connect again." }, { status: 401 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: 401 });
     }
 
     const credentials = readProviderCredentials(cookieStore, providerId);
     if (!credentials) {
-      return NextResponse.json({ error: `No ${getProviderEntry(providerId)?.displayName || providerId} token found. Connect again.` }, { status: 401 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: 401 });
     }
 
     const adapter = getProviderAdapter(providerId);
@@ -50,21 +51,8 @@ export async function GET(req: NextRequest) {
       placementGuide: detail.placementGuide,
     });
   } catch (error) {
-    if (error instanceof ProviderError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    const status = error instanceof DOMException && error.name === "AbortError" ? 504 : 500;
-    return NextResponse.json(
-      {
-        error:
-          status === 504
-            ? "The provider took too long to return the template product. Please try again."
-            : error instanceof Error
-              ? error.message
-              : "Unable to load product.",
-      },
-      { status }
-    );
+    logErrorToConsole("[api/providers/product] product detail failed", error);
+    const payload = buildSanitizedErrorPayload("providerLoad", error);
+    return NextResponse.json({ error: payload.message }, { status: payload.status });
   }
 }

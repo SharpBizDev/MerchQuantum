@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { buildSanitizedErrorPayload, getUserFacingErrorMessage, logErrorToConsole } from "../../../../lib/user-facing-errors";
 
 const PRINTIFY_API_BASE = "https://api.printify.com/v1";
 const USER_AGENT = "MerchQuantum";
@@ -502,7 +503,7 @@ export async function POST(req: NextRequest) {
     const token = cookieStore.get("printify_token")?.value?.trim();
 
     if (!token) {
-      return NextResponse.json({ error: "No Printify token found. Connect again." }, { status: 401 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: 401 });
     }
 
     const templateResponse = await fetchWithTimeout(
@@ -619,10 +620,11 @@ export async function POST(req: NextRequest) {
           message: `Created draft product with guided ${placementGuide.position || "front"} placement.`,
         });
       } catch (error) {
+        logErrorToConsole("[api/printify/batch-create] batch item failed", error);
         results.push({
           fileName: item.fileName,
           title: item.title,
-          message: error instanceof Error ? error.message : "Batch item failed.",
+          message: getUserFacingErrorMessage("draftCreate"),
         });
       }
     }
@@ -635,17 +637,8 @@ export async function POST(req: NextRequest) {
       placementGuide,
     });
   } catch (error) {
-    const status = error instanceof DOMException && error.name === "AbortError" ? 504 : 500;
-    return NextResponse.json(
-      {
-        error:
-          status === 504
-            ? "Printify took too long to respond during draft creation. Please try again."
-            : error instanceof Error
-              ? error.message
-              : "Unable to run batch create.",
-      },
-      { status }
-    );
+    logErrorToConsole("[api/printify/batch-create] batch create failed", error);
+    const payload = buildSanitizedErrorPayload("draftCreate", error);
+    return NextResponse.json({ error: payload.message }, { status: payload.status });
   }
 }

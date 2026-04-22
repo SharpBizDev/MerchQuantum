@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PROVIDER_OPTIONS, type ProviderChoiceId } from "../../lib/providers/client-options";
+import { getUserFacingErrorMessage, logErrorToConsole, type UserFacingErrorKind } from "../../lib/user-facing-errors";
 
 const APP_TAGLINE = "Bulk product creation, simplified";
 const BOOT_TAGLINE = "EFFORTLESS PRODUCT CREATION.";
@@ -1535,19 +1536,9 @@ async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, ti
   }
 }
 
-function formatApiError(message: string) {
-  const raw = message.trim();
-  if (!raw) return "Live provider connection is not available in this environment.";
-  if (raw.includes("UnsupportedHttpVerb")) {
-    return "Live provider connection is not available in this environment. The backend API route is not installed yet.";
-  }
-  if (raw.startsWith("<?xml")) {
-    return "Live provider connection is not available in this environment. The request reached a static host instead of the backend API route.";
-  }
-  if (raw.toLowerCase().includes("abort") || raw.toLowerCase().includes("timed out")) {
-    return "The request timed out before the provider responded. Please try again.";
-  }
-  return raw.length > 220 ? `${raw.slice(0, 220)}...` : raw;
+function formatApiError(kind: UserFacingErrorKind, error: unknown, context: string) {
+  logErrorToConsole(context, error);
+  return getUserFacingErrorMessage(kind);
 }
 
 async function parseResponsePayload(response: Response) {
@@ -3051,7 +3042,7 @@ export default function MerchQuantumApp() {
       setAiAssistStatus(options.successMessage || "");
     } catch (error) {
       if (requestUsesGlobalTemplate && activeTemplateKeyRef.current !== requestTemplateKey) return;
-      const message = formatApiError(error instanceof Error ? error.message : "Quantum AI could not process this item.");
+      const message = formatApiError("listingGeneration", error, "[MerchQuantum] AI listing failed");
       setImages((current) =>
         current.map((img) => {
           if (img.id !== nextImage.id) return img;
@@ -3280,7 +3271,7 @@ export default function MerchQuantumApp() {
       setInlineFeedbackState(field, "saved", "Saved to provider.");
     } catch (error) {
       setEditingField(null);
-      setInlineFeedbackState(field, "error", formatApiError(error instanceof Error ? error.message : "Unable to save listing metadata."));
+      setInlineFeedbackState(field, "error", formatApiError("metadataSave", error, "[MerchQuantum] metadata save failed"));
     }
   }
 
@@ -3721,8 +3712,7 @@ export default function MerchQuantumApp() {
       setApiStatus(mapped.length === 0 ? "No products were found for this shop." : "");
     } catch (error) {
       setApiProducts([]);
-      const msg = error instanceof Error ? error.message : "Unable to load products.";
-      setApiStatus(formatApiError(msg));
+      setApiStatus(formatApiError("providerLoad", error, "[MerchQuantum] product load failed"));
     } finally {
       setLoadingProducts(false);
     }
@@ -3770,9 +3760,9 @@ export default function MerchQuantumApp() {
         return;
       }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : `Unable to connect to ${selectedProvider?.label || "provider"}.`;
+      logErrorToConsole("[MerchQuantum] provider connect failed", error);
       resetProviderState(false);
-      setApiStatus(formatApiError(msg));
+      setApiStatus(getUserFacingErrorMessage("connection"));
     } finally {
       setLoadingApi(false);
     }
@@ -3855,7 +3845,7 @@ export default function MerchQuantumApp() {
       setImportedListingTitle(title);
       setImportedListingDescription(importedBuyerDescription);
       setManualPrebufferOverride(false);
-      const baseStatus = formatApiError(error instanceof Error ? error.message : "Unable to load template product.");
+      const baseStatus = formatApiError("providerLoad", error, "[MerchQuantum] template load failed");
       setApiStatus(base ? baseStatus : `${baseStatus} Static provider product specs were not available in this template response.`);
     } finally {
       setLoadingTemplateDetails(false);
@@ -4089,7 +4079,7 @@ export default function MerchQuantumApp() {
 
       setImportStatus(summary.join(" ") || "No provider listings were imported.");
     } catch (error) {
-      setImportStatus(formatApiError(error instanceof Error ? error.message : "Unable to import provider listings."));
+      setImportStatus(formatApiError("listingImport", error, "[MerchQuantum] listing import failed"));
     } finally {
       setIsImportingListings(false);
     }
@@ -4178,7 +4168,7 @@ export default function MerchQuantumApp() {
         );
       } catch (error) {
         failedCount += 1;
-        const message = formatApiError(error instanceof Error ? error.message : "Unable to sync provider metadata.");
+        const message = formatApiError("metadataSave", error, "[MerchQuantum] metadata sync failed");
         setImages((current) =>
           current.map((img) =>
             img.id === item.id
@@ -4288,7 +4278,11 @@ export default function MerchQuantumApp() {
             return {
               ...img,
               syncState: "error",
-              syncMessage: formatApiError(errorMessages.get(img.providerProductId) || "Unable to publish this listing."),
+              syncMessage: formatApiError(
+                "listingPublish",
+                errorMessages.get(img.providerProductId) || null,
+                "[MerchQuantum] publish listing failed"
+              ),
             };
           }
 
@@ -4303,7 +4297,7 @@ export default function MerchQuantumApp() {
           : `Published ${publishedIds.size} approved listing${publishedIds.size === 1 ? "" : "s"} to ${selectedProvider?.label || "the provider"}.`
       );
     } catch (error) {
-      setImportStatus(formatApiError(error instanceof Error ? error.message : "Unable to publish approved listings."));
+      setImportStatus(formatApiError("listingPublish", error, "[MerchQuantum] publish listings failed"));
     } finally {
       setIsPublishingImportedListings(false);
     }
@@ -4399,8 +4393,7 @@ export default function MerchQuantumApp() {
           nextResults.push(result);
           setBatchResults([...nextResults]);
         } catch (error) {
-          const rawMessage = error instanceof Error ? error.message : "Draft create failed.";
-          const errorMessage = formatApiError(rawMessage);
+          const errorMessage = formatApiError("draftCreate", error, "[MerchQuantum] draft create failed");
           nextResults.push({ fileName: img.name, title: titleForUpload, message: errorMessage });
           setBatchResults([...nextResults]);
         }

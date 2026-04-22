@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { buildSanitizedErrorPayload, getUserFacingErrorMessage, logErrorToConsole } from "../../../../lib/user-facing-errors";
 
 const PRINTIFY_API_BASE = "https://api.printify.com/v1";
 const USER_AGENT = "MerchQuantum";
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
     const token = String(body?.token || "").trim();
 
     if (!token) {
-      return NextResponse.json({ error: "Missing Printify token." }, { status: 400 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: 400 });
     }
 
     const response = await fetchWithTimeout(`${PRINTIFY_API_BASE}/shops.json`, {
@@ -60,11 +61,8 @@ export async function POST(req: NextRequest) {
     });
 
     if (!response.ok) {
-      const text = await readErrorMessage(
-        response,
-        `Printify connect failed with status ${response.status}.`
-      );
-      return NextResponse.json({ error: text }, { status: response.status });
+      logErrorToConsole("[api/printify/connect] upstream connect failed", { status: response.status });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: response.status });
     }
 
     const shops = (await response.json()) as PrintifyShop[];
@@ -80,16 +78,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ shops });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to connect to Printify.";
-    const status = error instanceof DOMException && error.name === "AbortError" ? 504 : 500;
-    return NextResponse.json(
-      {
-        error:
-          status === 504
-            ? "Printify took too long to respond. Please try again."
-            : message,
-      },
-      { status }
-    );
+    logErrorToConsole("[api/printify/connect] connect failed", error);
+    const payload = buildSanitizedErrorPayload("connection", error);
+    return NextResponse.json({ error: payload.message }, { status: payload.status });
   }
 }

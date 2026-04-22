@@ -5,6 +5,7 @@ import { ProviderError } from "../../../../lib/providers/errors";
 import { runWithProviderGovernor } from "../../../../lib/providers/governor";
 import { getProviderAdapter, getProviderEntry, isProviderId } from "../../../../lib/providers/registry";
 import { readActiveProviderId, readProviderCredentials } from "../../../../lib/providers/session";
+import { buildSanitizedErrorPayload, getUserFacingErrorMessage, logErrorToConsole } from "../../../../lib/user-facing-errors";
 
 type IncomingPublishItem = {
   productId?: string;
@@ -55,13 +56,13 @@ export async function POST(req: NextRequest) {
         : readActiveProviderId(cookieStore);
 
     if (!providerId) {
-      return NextResponse.json({ error: "No active provider found. Connect again." }, { status: 401 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: 401 });
     }
 
     const credentials = readProviderCredentials(cookieStore, providerId);
     if (!credentials) {
       return NextResponse.json(
-        { error: `No ${getProviderEntry(providerId)?.displayName || providerId} token found. Connect again.` },
+        { error: getUserFacingErrorMessage("connection") },
         { status: 401 }
       );
     }
@@ -101,19 +102,10 @@ export async function POST(req: NextRequest) {
           message: "Publish request accepted.",
         });
       } catch (error) {
-        const normalized =
-          error instanceof ProviderError
-            ? error
-            : new ProviderError({
-                providerId,
-                code: "upstream_error",
-                status: 500,
-                message: error instanceof Error ? error.message : "Unable to publish the selected product.",
-              });
-
+        logErrorToConsole("[api/providers/publish-listings] publish item failed", error);
         results.push({
           productId: item.productId || "",
-          message: normalized.message,
+          message: getUserFacingErrorMessage("listingPublish"),
         });
       }
     }
@@ -123,21 +115,8 @@ export async function POST(req: NextRequest) {
       results,
     });
   } catch (error) {
-    if (error instanceof ProviderError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    const status = error instanceof DOMException && error.name === "AbortError" ? 504 : 500;
-    return NextResponse.json(
-      {
-        error:
-          status === 504
-            ? "The provider took too long to accept the publish request. Please try again."
-            : error instanceof Error
-              ? error.message
-              : "Unable to publish approved listings.",
-      },
-      { status }
-    );
+    logErrorToConsole("[api/providers/publish-listings] publish failed", error);
+    const payload = buildSanitizedErrorPayload("listingPublish", error);
+    return NextResponse.json({ error: payload.message }, { status: payload.status });
   }
 }

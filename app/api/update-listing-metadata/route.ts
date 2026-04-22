@@ -5,6 +5,7 @@ import { ProviderError } from "../../../lib/providers/errors";
 import { runWithProviderGovernor } from "../../../lib/providers/governor";
 import { getProviderAdapter, getProviderEntry, isProviderId } from "../../../lib/providers/registry";
 import { readActiveProviderId, readProviderCredentials } from "../../../lib/providers/session";
+import { buildSanitizedErrorPayload, getUserFacingErrorMessage, logErrorToConsole } from "../../../lib/user-facing-errors";
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,13 +37,13 @@ export async function POST(req: NextRequest) {
         : readActiveProviderId(cookieStore);
 
     if (!providerId) {
-      return NextResponse.json({ error: "No active provider found. Connect again." }, { status: 401 });
+      return NextResponse.json({ error: getUserFacingErrorMessage("connection") }, { status: 401 });
     }
 
     const credentials = readProviderCredentials(cookieStore, providerId);
     if (!credentials) {
       return NextResponse.json(
-        { error: `No ${getProviderEntry(providerId)?.displayName || providerId} token found. Connect again.` },
+        { error: getUserFacingErrorMessage("connection") },
         { status: 401 }
       );
     }
@@ -76,15 +77,8 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
-    if (error instanceof ProviderError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Unable to update listing metadata.",
-      },
-      { status: 500 }
-    );
+    logErrorToConsole("[api/update-listing-metadata] metadata update failed", error);
+    const payload = buildSanitizedErrorPayload("metadataSave", error);
+    return NextResponse.json({ error: payload.message }, { status: payload.status });
   }
 }
