@@ -631,51 +631,58 @@ function loadImageElement(src: string) {
   });
 }
 
+function measureVisiblePixelBrightness(img: HTMLImageElement) {
+  const sourceWidth = img.naturalWidth || img.width || 1;
+  const sourceHeight = img.naturalHeight || img.height || 1;
+  const longestEdge = Math.max(sourceWidth, sourceHeight, 1);
+  const sampleScale = Math.min(1, DISPLAY_PREVIEW_SAMPLE_DIMENSION / longestEdge);
+  const sampleWidth = Math.max(1, Math.round(sourceWidth * sampleScale));
+  const sampleHeight = Math.max(1, Math.round(sourceHeight * sampleScale));
+  const sampleCanvas = document.createElement("canvas");
+  sampleCanvas.width = sampleWidth;
+  sampleCanvas.height = sampleHeight;
+  const sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
+
+  if (!sampleCtx) {
+    return null;
+  }
+
+  sampleCtx.clearRect(0, 0, sampleWidth, sampleHeight);
+  sampleCtx.drawImage(img, 0, 0, sampleWidth, sampleHeight);
+
+  const imageData = sampleCtx.getImageData(0, 0, sampleWidth, sampleHeight).data;
+  const totalPixels = sampleWidth * sampleHeight;
+  let visiblePixelCount = 0;
+  let transparentPixelCount = 0;
+  let weightedBrightness = 0;
+  let totalAlpha = 0;
+
+  for (let index = 0; index < imageData.length; index += 4) {
+    const alpha = imageData[index + 3];
+    if (alpha < 250) transparentPixelCount += 1;
+    if (alpha <= DISPLAY_ALPHA_THRESHOLD) continue;
+
+    const weight = alpha / 255;
+    const luminance = (imageData[index] * 0.2126) + (imageData[index + 1] * 0.7152) + (imageData[index + 2] * 0.0722);
+    visiblePixelCount += 1;
+    weightedBrightness += luminance * weight;
+    totalAlpha += weight;
+  }
+
+  const transparencyRatio = totalPixels > 0 ? transparentPixelCount / totalPixels : 0;
+  if (!visiblePixelCount || transparencyRatio < DISPLAY_TRANSPARENCY_RATIO_THRESHOLD || totalAlpha <= 0) {
+    return null;
+  }
+
+  return weightedBrightness / totalAlpha;
+}
+
 async function resolvePreviewSurfaceBackground(src: string | null | undefined): Promise<string> {
   if (!src) return DISPLAY_NEUTRAL_BACKGROUND;
 
   try {
     const img = await loadImageElement(src);
-    const sourceWidth = img.naturalWidth || img.width || 1;
-    const sourceHeight = img.naturalHeight || img.height || 1;
-    const longestEdge = Math.max(sourceWidth, sourceHeight, 1);
-    const sampleScale = Math.min(1, DISPLAY_PREVIEW_SAMPLE_DIMENSION / longestEdge);
-    const sampleWidth = Math.max(1, Math.round(sourceWidth * sampleScale));
-    const sampleHeight = Math.max(1, Math.round(sourceHeight * sampleScale));
-    const sampleCanvas = document.createElement("canvas");
-    sampleCanvas.width = sampleWidth;
-    sampleCanvas.height = sampleHeight;
-    const sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
-
-    if (!sampleCtx) return DISPLAY_NEUTRAL_BACKGROUND;
-
-    sampleCtx.clearRect(0, 0, sampleWidth, sampleHeight);
-    sampleCtx.drawImage(img, 0, 0, sampleWidth, sampleHeight);
-
-    const imageData = sampleCtx.getImageData(0, 0, sampleWidth, sampleHeight).data;
-    const totalPixels = sampleWidth * sampleHeight;
-    let visiblePixelCount = 0;
-    let transparentPixelCount = 0;
-    let weightedBrightness = 0;
-    let totalAlpha = 0;
-
-    for (let index = 0; index < imageData.length; index += 4) {
-      const alpha = imageData[index + 3];
-      if (alpha < 250) transparentPixelCount += 1;
-      if (alpha <= DISPLAY_ALPHA_THRESHOLD) continue;
-
-      const weight = alpha / 255;
-      visiblePixelCount += 1;
-      weightedBrightness += ((imageData[index] + imageData[index + 1] + imageData[index + 2]) / 3) * weight;
-      totalAlpha += weight;
-    }
-
-    const transparencyRatio = totalPixels > 0 ? transparentPixelCount / totalPixels : 0;
-    if (!visiblePixelCount || transparencyRatio < DISPLAY_TRANSPARENCY_RATIO_THRESHOLD) {
-      return DISPLAY_NEUTRAL_BACKGROUND;
-    }
-
-    return choosePreviewBackground(totalAlpha > 0 ? weightedBrightness / totalAlpha : null);
+    return choosePreviewBackground(measureVisiblePixelBrightness(img));
   } catch {
     return DISPLAY_NEUTRAL_BACKGROUND;
   }
@@ -750,51 +757,7 @@ async function createContrastSafePreview(file: File): Promise<{ src: string; bac
 
   try {
     const img = await loadImageElement(objectUrl);
-    const sourceWidth = img.naturalWidth || img.width || 1;
-    const sourceHeight = img.naturalHeight || img.height || 1;
-    const longestEdge = Math.max(sourceWidth, sourceHeight, 1);
-
-    const sampleScale = Math.min(1, DISPLAY_PREVIEW_SAMPLE_DIMENSION / longestEdge);
-    const sampleWidth = Math.max(1, Math.round(sourceWidth * sampleScale));
-    const sampleHeight = Math.max(1, Math.round(sourceHeight * sampleScale));
-    const sampleCanvas = document.createElement("canvas");
-    sampleCanvas.width = sampleWidth;
-    sampleCanvas.height = sampleHeight;
-    const sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
-
-    if (!sampleCtx) {
-      keepObjectUrl = true;
-      return { src: objectUrl, background: DISPLAY_NEUTRAL_BACKGROUND };
-    }
-
-    sampleCtx.clearRect(0, 0, sampleWidth, sampleHeight);
-    sampleCtx.drawImage(img, 0, 0, sampleWidth, sampleHeight);
-
-    const imageData = sampleCtx.getImageData(0, 0, sampleWidth, sampleHeight).data;
-    const totalPixels = sampleWidth * sampleHeight;
-    let visiblePixelCount = 0;
-    let transparentPixelCount = 0;
-    let weightedBrightness = 0;
-    let totalAlpha = 0;
-
-    for (let index = 0; index < imageData.length; index += 4) {
-      const alpha = imageData[index + 3];
-      if (alpha < 250) transparentPixelCount += 1;
-      if (alpha <= DISPLAY_ALPHA_THRESHOLD) continue;
-
-      const weight = alpha / 255;
-      visiblePixelCount += 1;
-      weightedBrightness += ((imageData[index] + imageData[index + 1] + imageData[index + 2]) / 3) * weight;
-      totalAlpha += weight;
-    }
-
-    const transparencyRatio = totalPixels > 0 ? transparentPixelCount / totalPixels : 0;
-    if (!visiblePixelCount || transparencyRatio < DISPLAY_TRANSPARENCY_RATIO_THRESHOLD) {
-      keepObjectUrl = true;
-      return { src: objectUrl, background: DISPLAY_NEUTRAL_BACKGROUND };
-    }
-
-    const previewBackground = choosePreviewBackground(totalAlpha > 0 ? weightedBrightness / totalAlpha : null);
+    const previewBackground = choosePreviewBackground(measureVisiblePixelBrightness(img));
     keepObjectUrl = true;
     return { src: objectUrl, background: previewBackground };
   } catch {
@@ -1964,7 +1927,7 @@ function ProductGrid({
   }, [items, previewSurfaceBackgrounds]);
 
   return (
-    <div className={`mx-auto flex w-full max-w-6xl flex-col gap-4 overflow-hidden rounded-xl border border-gray-800 bg-gray-900/50 p-4 ${highlighted ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)]" : ""}`}>
+    <div className={`mx-auto flex w-full max-w-6xl flex-col gap-3 overflow-hidden rounded-xl border border-gray-800 bg-gray-900/50 p-4 ${highlighted ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)]" : ""}`}>
       <div className="flex w-full min-w-0 items-center justify-between gap-4">
         <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-white">{heading}</span>
         <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-3 text-[11px]">
@@ -1982,9 +1945,8 @@ function ProductGrid({
         </div>
       </div>
 
-      <div className="w-full overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
-        {items.length > 0 ? (
-          <div className="grid h-full w-full grid-cols-5 gap-1.5 overflow-hidden">
+      {items.length > 0 ? (
+        <div className="grid h-full w-full grid-cols-5 gap-1.5 overflow-hidden snap-y snap-mandatory">
             {items.map((product, index) => {
               const globalIndex = page * pageSize + index;
               const isSelected = selectedIds.includes(product.id);
@@ -2014,12 +1976,9 @@ function ProductGrid({
                   aria-label={product.title}
                 >
                   <div
-                    className={`relative box-border aspect-square w-full overflow-hidden rounded-md border bg-gray-800/50 transition duration-200 ease-out group-hover:z-10 group-hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] group-focus-visible:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
+                    className={`relative box-border aspect-square w-full overflow-hidden rounded-md border bg-center bg-cover bg-no-repeat transition duration-200 ease-out group-hover:z-10 group-hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] group-focus-visible:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
+                    style={{ backgroundColor: previewSurfaceBackground }}
                   >
-                    <div
-                      className="absolute inset-0 overflow-hidden rounded-[6px] bg-center bg-cover bg-no-repeat"
-                      style={{ backgroundColor: previewSurfaceBackground }}
-                    />
                     {product.previewUrl ? (
                       <div className="relative h-full w-full p-[8%]">
                         <div className="relative h-full w-full">
@@ -2049,25 +2008,24 @@ function ProductGrid({
                 </button>
               );
             })}
-          </div>
-        ) : (
-          <div className="relative min-h-[120px] overflow-hidden rounded-xl" aria-hidden={loading ? undefined : true}>
-            <CreativeWellspringEmptyStateMark />
-            {loading ? (
-              <div className="relative z-10 flex h-full min-h-[120px] flex-col items-center justify-center gap-2 px-3 py-6 text-sm text-slate-400">
-                {loadingAccessory ? (
-                  <span className="inline-flex items-center justify-center">
-                    {loadingAccessory}
-                  </span>
-                ) : null}
-                <span>Loading provider listings...</span>
-              </div>
-            ) : null}
-          </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="relative min-h-[120px] overflow-hidden rounded-xl" aria-hidden={loading ? undefined : true}>
+          <CreativeWellspringEmptyStateMark />
+          {loading ? (
+            <div className="relative z-10 flex h-full min-h-[120px] flex-col items-center justify-center gap-2 px-3 py-6 text-sm text-slate-400">
+              {loadingAccessory ? (
+                <span className="inline-flex items-center justify-center">
+                  {loadingAccessory}
+                </span>
+              ) : null}
+              <span>Loading provider listings...</span>
+            </div>
+          ) : null}
+        </div>
+      )}
 
-      <div className="flex w-full items-center justify-between gap-3 pt-1 text-[11px]">
+      <div className="flex w-full items-center justify-between gap-3 pt-0.5 text-[11px]">
         <div className="min-w-0 flex-1 truncate text-slate-400">
           {footerLabel || rangeLabel}
         </div>
@@ -4623,85 +4581,83 @@ export default function MerchQuantumApp() {
               }}
             />
 
-            <div className="space-y-1.5">
-              {isBulkEditMode ? (
-                <ProductGrid
-                  heading={workspaceGridHeading}
-                  items={bulkEditVisibleProducts}
-                  selectedIds={pendingTemplateSelectionIds}
-                  activeId={activeGridProductId}
-                  importedProductIds={importedProductIds}
-                  highlighted={attentionTarget === "template"}
-                  rangeLabel={bulkEditVisibleRangeLabel}
-                  page={safeBulkEditPage}
-                  pageSize={bulkEditPageSize}
-                  totalPages={bulkEditTotalPages}
-                  loading={loadingProducts}
-                  loadingAccessory={loadingProducts || isImportingListings ? <QuantOrbLoader /> : null}
-                  footerLabel={importStatus || bulkEditVisibleRangeLabel}
-                  headerAccessory={
-                    <BareChevronButton
-                      open={isRoutingGridExpanded}
-                      onClick={() => setIsRoutingGridExpanded((current) => !current)}
-                      label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
-                    />
-                  }
-                  onSelectAll={() => {
-                    setPendingTemplateSelectionIds(normalizeSelectionIds(visibleProducts.map((product) => product.id)));
-                    setActiveGridProductId(visibleProducts[0]?.id || "");
-                    setLastSelectedIndex(null);
-                  }}
-                  onItemActivate={(product, index, event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    handleBulkEditThumbnailSelection(product.id, index, { shiftKey: "shiftKey" in event ? event.shiftKey : false });
-                  }}
-                  onPreviousPage={() => setBulkEditGridPage((current) => Math.max(0, current - 1))}
-                  onNextPage={() => setBulkEditGridPage((current) => Math.min(bulkEditTotalPages - 1, current + 1))}
-                  footerActions={
-                    <>
-                      <button
-                        type="button"
-                        className="font-semibold text-[#C084FC] transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-                        disabled={!hasBulkEditStagedSelections || isImportingListings}
-                        onClick={() => { void commitTemplateSelections(pendingTemplateSelectionIds); }}
-                      >
-                        {isImportingListings ? "Loading..." : "Load Selected"}
-                      </button>
-                    </>
-                  }
-                />
-              ) : (
-                <ProductGrid
-                  heading={workspaceGridHeading}
-                  items={createTemplateVisibleProducts}
-                  selectedIds={selectedImportIds}
-                  activeId={activeGridProductId}
-                  importedProductIds={importedProductIds}
-                  highlighted={attentionTarget === "template"}
-                  rangeLabel={createTemplateVisibleRangeLabel}
-                  page={safeCreateTemplatePage}
-                  pageSize={createTemplatePageSize}
-                  totalPages={createTemplateTotalPages}
-                  loading={loadingProducts}
-                  loadingAccessory={loadingProducts || loadingTemplateDetails ? <QuantOrbLoader /> : null}
-                  headerAccessory={
-                    <BareChevronButton
-                      open={isRoutingGridExpanded}
-                      onClick={() => setIsRoutingGridExpanded((current) => !current)}
-                      label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
-                    />
-                  }
-                  onItemActivate={(product, index, event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    void handleCreateTemplateSelection(product.id, index);
-                  }}
-                  onPreviousPage={() => setCreateTemplateGridPage((current) => Math.max(0, current - 1))}
-                  onNextPage={() => setCreateTemplateGridPage((current) => Math.min(createTemplateTotalPages - 1, current + 1))}
-                />
-              )}
-            </div>
+            {isBulkEditMode ? (
+              <ProductGrid
+                heading={workspaceGridHeading}
+                items={bulkEditVisibleProducts}
+                selectedIds={pendingTemplateSelectionIds}
+                activeId={activeGridProductId}
+                importedProductIds={importedProductIds}
+                highlighted={attentionTarget === "template"}
+                rangeLabel={bulkEditVisibleRangeLabel}
+                page={safeBulkEditPage}
+                pageSize={bulkEditPageSize}
+                totalPages={bulkEditTotalPages}
+                loading={loadingProducts}
+                loadingAccessory={loadingProducts || isImportingListings ? <QuantOrbLoader /> : null}
+                footerLabel={importStatus || bulkEditVisibleRangeLabel}
+                headerAccessory={
+                  <BareChevronButton
+                    open={isRoutingGridExpanded}
+                    onClick={() => setIsRoutingGridExpanded((current) => !current)}
+                    label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
+                  />
+                }
+                onSelectAll={() => {
+                  setPendingTemplateSelectionIds(normalizeSelectionIds(visibleProducts.map((product) => product.id)));
+                  setActiveGridProductId(visibleProducts[0]?.id || "");
+                  setLastSelectedIndex(null);
+                }}
+                onItemActivate={(product, index, event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  handleBulkEditThumbnailSelection(product.id, index, { shiftKey: "shiftKey" in event ? event.shiftKey : false });
+                }}
+                onPreviousPage={() => setBulkEditGridPage((current) => Math.max(0, current - 1))}
+                onNextPage={() => setBulkEditGridPage((current) => Math.min(bulkEditTotalPages - 1, current + 1))}
+                footerActions={
+                  <>
+                    <button
+                      type="button"
+                      className="font-semibold text-[#C084FC] transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+                      disabled={!hasBulkEditStagedSelections || isImportingListings}
+                      onClick={() => { void commitTemplateSelections(pendingTemplateSelectionIds); }}
+                    >
+                      {isImportingListings ? "Loading..." : "Load Selected"}
+                    </button>
+                  </>
+                }
+              />
+            ) : (
+              <ProductGrid
+                heading={workspaceGridHeading}
+                items={createTemplateVisibleProducts}
+                selectedIds={selectedImportIds}
+                activeId={activeGridProductId}
+                importedProductIds={importedProductIds}
+                highlighted={attentionTarget === "template"}
+                rangeLabel={createTemplateVisibleRangeLabel}
+                page={safeCreateTemplatePage}
+                pageSize={createTemplatePageSize}
+                totalPages={createTemplateTotalPages}
+                loading={loadingProducts}
+                loadingAccessory={loadingProducts || loadingTemplateDetails ? <QuantOrbLoader /> : null}
+                headerAccessory={
+                  <BareChevronButton
+                    open={isRoutingGridExpanded}
+                    onClick={() => setIsRoutingGridExpanded((current) => !current)}
+                    label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
+                  />
+                }
+                onItemActivate={(product, index, event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void handleCreateTemplateSelection(product.id, index);
+                }}
+                onPreviousPage={() => setCreateTemplateGridPage((current) => Math.max(0, current - 1))}
+                onNextPage={() => setCreateTemplateGridPage((current) => Math.min(createTemplateTotalPages - 1, current + 1))}
+              />
+            )}
             {shopId && canShowWorkspacePreview ? (
               <>
                 <div className="mt-3">
@@ -4839,7 +4795,7 @@ export default function MerchQuantumApp() {
                                   );
                                 })}
                               </div>
-                              <div className="mt-3 flex items-center justify-between gap-2 text-[11px]">
+                              <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
                                   <span className="min-w-0 flex-1 truncate text-slate-400">{createThumbVisibleRangeLabel}</span>
                                   <div className="flex items-center justify-end gap-2">
                                   {createThumbTotalPages > 1 ? (
