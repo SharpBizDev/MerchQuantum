@@ -145,7 +145,7 @@ type Product = {
 };
 
 type ProductGridProps = {
-  heading: string;
+  heading: React.ReactNode;
   items: Product[];
   selectedIds: string[];
   activeId?: string;
@@ -1990,7 +1990,7 @@ function ProductGrid({
 
               return (
                 <button
-                  key={`${heading}-${product.id}`}
+                  key={product.id}
                   type="button"
                   onClick={(event) => onItemActivate(product, globalIndex, event)}
                   onKeyDown={(event) => {
@@ -2442,8 +2442,18 @@ export default function MerchQuantumApp() {
   const detailBuyerDescription = detailDescriptionSections.buyerFacingDescription;
   const detailTemplateSpecBlock = detailDescriptionSections.templateSpecBlock;
   const workspaceGridHeading = isBulkEditMode
-    ? "Merch Quantum: Choose listings to edit"
-    : "Merch Quantum: Choose product template";
+    ? (
+      <>
+        <span className="text-[#7F22FE]">Merch</span>{" "}
+        Quantum: Choose listings to edit
+      </>
+    )
+    : (
+      <>
+        <span className="text-[#7F22FE]">Merch</span>{" "}
+        Quantum: Choose product template
+      </>
+    );
   const canEditImportedListing = !selectedImage && templateReadyForAi && !!template?.reference;
   const canEditSelectedImageCopy =
     !!selectedImage
