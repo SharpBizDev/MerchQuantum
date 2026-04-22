@@ -159,7 +159,7 @@ type ProductGridProps = {
   headerAccessory?: React.ReactNode;
   loadingAccessory?: React.ReactNode;
   onSelectAll?: () => void;
-  onClearSelection: () => void;
+  footerLabel?: React.ReactNode;
   onItemActivate: (
     product: Product,
     index: number,
@@ -578,13 +578,9 @@ function shouldUseLightPreviewText(background: string | null | undefined) {
   return getRelativeLuminance(rgb.red, rgb.green, rgb.blue) < 0.44;
 }
 
-function choosePreviewBackground(artworkLuminance: number | null) {
-  if (artworkLuminance === null) return DISPLAY_DARK_BACKGROUND;
-
-  const contrastOnDark = getContrastRatio(artworkLuminance, getRelativeLuminance(0, 0, 0));
-  const contrastOnLight = getContrastRatio(artworkLuminance, getRelativeLuminance(255, 255, 255));
-
-  return contrastOnDark >= contrastOnLight ? DISPLAY_DARK_BACKGROUND : DISPLAY_LIGHT_BACKGROUND;
+function choosePreviewBackground(averageBrightness: number | null) {
+  if (averageBrightness === null) return DISPLAY_DARK_BACKGROUND;
+  return averageBrightness > 128 ? DISPLAY_DARK_BACKGROUND : DISPLAY_LIGHT_BACKGROUND;
 }
 
 function normalizeArtworkBounds(bounds: ArtworkBounds | undefined, width: number, height: number): ArtworkBounds {
@@ -654,7 +650,7 @@ async function resolvePreviewSurfaceBackground(src: string | null | undefined): 
     const totalPixels = sampleWidth * sampleHeight;
     let visiblePixelCount = 0;
     let transparentPixelCount = 0;
-    let weightedLuminance = 0;
+    let weightedBrightness = 0;
     let totalAlpha = 0;
 
     for (let index = 0; index < imageData.length; index += 4) {
@@ -664,7 +660,7 @@ async function resolvePreviewSurfaceBackground(src: string | null | undefined): 
 
       const weight = alpha / 255;
       visiblePixelCount += 1;
-      weightedLuminance += getRelativeLuminance(imageData[index], imageData[index + 1], imageData[index + 2]) * weight;
+      weightedBrightness += ((imageData[index] + imageData[index + 1] + imageData[index + 2]) / 3) * weight;
       totalAlpha += weight;
     }
 
@@ -673,7 +669,7 @@ async function resolvePreviewSurfaceBackground(src: string | null | undefined): 
       return DISPLAY_NEUTRAL_BACKGROUND;
     }
 
-    return choosePreviewBackground(totalAlpha > 0 ? weightedLuminance / totalAlpha : null);
+    return choosePreviewBackground(totalAlpha > 0 ? weightedBrightness / totalAlpha : null);
   } catch {
     return DISPLAY_NEUTRAL_BACKGROUND;
   }
@@ -772,7 +768,7 @@ async function createContrastSafePreview(file: File): Promise<{ src: string; bac
     const totalPixels = sampleWidth * sampleHeight;
     let visiblePixelCount = 0;
     let transparentPixelCount = 0;
-    let weightedLuminance = 0;
+    let weightedBrightness = 0;
     let totalAlpha = 0;
 
     for (let index = 0; index < imageData.length; index += 4) {
@@ -782,7 +778,7 @@ async function createContrastSafePreview(file: File): Promise<{ src: string; bac
 
       const weight = alpha / 255;
       visiblePixelCount += 1;
-      weightedLuminance += getRelativeLuminance(imageData[index], imageData[index + 1], imageData[index + 2]) * weight;
+      weightedBrightness += ((imageData[index] + imageData[index + 1] + imageData[index + 2]) / 3) * weight;
       totalAlpha += weight;
     }
 
@@ -805,7 +801,7 @@ async function createContrastSafePreview(file: File): Promise<{ src: string; bac
       return { src: objectUrl, background: DISPLAY_NEUTRAL_BACKGROUND };
     }
 
-    const previewBackground = choosePreviewBackground(totalAlpha > 0 ? weightedLuminance / totalAlpha : null);
+    const previewBackground = choosePreviewBackground(totalAlpha > 0 ? weightedBrightness / totalAlpha : null);
     renderCtx.fillStyle = previewBackground;
     renderCtx.fillRect(0, 0, renderWidth, renderHeight);
     renderCtx.drawImage(img, 0, 0, renderWidth, renderHeight);
@@ -1905,6 +1901,7 @@ function ProductGrid({
   activeId,
   importedProductIds,
   highlighted = false,
+  rangeLabel,
   page,
   pageSize,
   totalPages,
@@ -1912,7 +1909,7 @@ function ProductGrid({
   headerAccessory,
   loadingAccessory,
   onSelectAll,
-  onClearSelection,
+  footerLabel,
   onItemActivate,
   onPreviousPage,
   onNextPage,
@@ -1971,18 +1968,10 @@ function ProductGrid({
               Select All
             </button>
           ) : null}
-          <button
-            type="button"
-            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-            disabled={selectedIds.length === 0}
-            onClick={onClearSelection}
-          >
-            Clear
-          </button>
         </div>
       </div>
 
-      <div className="w-full overflow-hidden">
+      <div className="w-full overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
         {items.length > 0 ? (
           <div className="grid h-full w-full grid-cols-5 gap-1.5 overflow-hidden">
             {items.map((product, index) => {
@@ -2010,7 +1999,7 @@ function ProductGrid({
                       onItemActivate(product, globalIndex, event);
                     }
                   }}
-                  className="group w-full min-w-0 max-w-full cursor-pointer focus-visible:outline-none"
+                  className="group w-full min-w-0 max-w-full cursor-pointer snap-start focus-visible:outline-none"
                   aria-label={product.title}
                 >
                   <div
@@ -2062,26 +2051,31 @@ function ProductGrid({
         )}
       </div>
 
-      <div className="flex w-full items-center justify-end gap-2 pt-1 text-[11px]">
-        {footerActions}
-        <button
-          type="button"
-          aria-label={`Previous ${pageSize} items`}
-          className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
-          disabled={page <= 0}
-          onClick={onPreviousPage}
-        >
-          <ChevronIcon open={false} className="h-3.5 w-3.5 rotate-90" />
-        </button>
-        <button
-          type="button"
-          aria-label={`Next ${pageSize} items`}
-          className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
-          disabled={page >= totalPages - 1}
-          onClick={onNextPage}
-        >
-          <ChevronIcon open={false} className="h-3.5 w-3.5 -rotate-90" />
-        </button>
+      <div className="flex w-full items-center justify-between gap-3 pt-1 text-[11px]">
+        <div className="min-w-0 flex-1 truncate text-slate-400">
+          {footerLabel || rangeLabel}
+        </div>
+        <div className="flex items-center justify-end gap-2">
+          {footerActions}
+          <button
+            type="button"
+            aria-label={`Previous ${pageSize} items`}
+            className="inline-flex items-center justify-center text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={page <= 0}
+            onClick={onPreviousPage}
+          >
+            <ChevronIcon open={false} className="h-4 w-4 rotate-90" />
+          </button>
+          <button
+            type="button"
+            aria-label={`Next ${pageSize} items`}
+            className="inline-flex items-center justify-center text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={page >= totalPages - 1}
+            onClick={onNextPage}
+          >
+            <ChevronIcon open={false} className="h-4 w-4 -rotate-90" />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -3921,7 +3915,7 @@ export default function MerchQuantumApp() {
     }
 
     setIsImportingListings(true);
-    setImportStatus(`Rescuing ${idsToImport.length} provider listing${idsToImport.length === 1 ? "" : "s"}...`);
+    setImportStatus(`Importing ${idsToImport.length} provider listing${idsToImport.length === 1 ? "" : "s"}...`);
 
     try {
       const response = await fetchWithTimeout(
@@ -4596,6 +4590,7 @@ export default function MerchQuantumApp() {
                   totalPages={bulkEditTotalPages}
                   loading={loadingProducts}
                   loadingAccessory={loadingProducts || isImportingListings ? <QuantOrbLoader /> : null}
+                  footerLabel={importStatus || bulkEditVisibleRangeLabel}
                   headerAccessory={
                     <BareChevronButton
                       open={isRoutingGridExpanded}
@@ -4606,11 +4601,6 @@ export default function MerchQuantumApp() {
                   onSelectAll={() => {
                     setPendingTemplateSelectionIds(normalizeSelectionIds(visibleProducts.map((product) => product.id)));
                     setActiveGridProductId(visibleProducts[0]?.id || "");
-                    setLastSelectedIndex(null);
-                  }}
-                  onClearSelection={() => {
-                    setPendingTemplateSelectionIds([]);
-                    setActiveGridProductId("");
                     setLastSelectedIndex(null);
                   }}
                   onItemActivate={(product, index, event) => {
@@ -4654,10 +4644,6 @@ export default function MerchQuantumApp() {
                       label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
                     />
                   }
-                  onClearSelection={() => {
-                    setActiveGridProductId("");
-                    void commitTemplateSelections([]);
-                  }}
                   onItemActivate={(product, index, event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -4668,10 +4654,6 @@ export default function MerchQuantumApp() {
                 />
               )}
             </div>
-            {importStatus ? (
-              <p className="mt-3 text-sm text-slate-300">{importStatus}</p>
-            ) : null}
-
             {shopId && canShowWorkspacePreview ? (
               <>
                 <div className="mt-3">
@@ -4683,7 +4665,7 @@ export default function MerchQuantumApp() {
                             <div
                               role={isWorkspaceConfigured ? "button" : undefined}
                               tabIndex={isWorkspaceConfigured ? 0 : -1}
-                              className={`w-full rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-4 py-4 text-center transition-colors ${isWorkspaceConfigured ? "cursor-pointer hover:bg-[#0b1024]" : "cursor-default"}`}
+                              className={`w-full rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-4 py-3 text-center transition-colors ${isWorkspaceConfigured ? "cursor-pointer hover:bg-[#0b1024]" : "cursor-default"}`}
                               onClick={isWorkspaceConfigured ? openArtworkPicker : undefined}
                               onKeyDown={(e) => {
                                 if (!isWorkspaceConfigured) return;
@@ -4706,14 +4688,13 @@ export default function MerchQuantumApp() {
                                 void addFiles(e.dataTransfer.files);
                               }}
                             >
-                              <div className="flex min-h-[172px] flex-col justify-center">
-                                <div className="flex flex-col items-center gap-1">
-                                  <p className="font-bold text-white">Drag images here or click to add images</p>
-                                  <p className="text-sm text-slate-300">Max 50 images.</p>
-                                  <p className="text-xs text-slate-400">System will queue additional listings.</p>
-                                  <p className="text-xs text-slate-500">(API Rate Limit Safety Enforced)</p>
+                              <div className="flex min-h-[88px] flex-col justify-between gap-3">
+                                <div className="flex items-center justify-center">
+                                  <p className="text-[11px] font-medium leading-5 text-slate-300 sm:text-xs">
+                                    Click or Drag to Add Images (Max 50) | AI Queues Additional (API Enforced)
+                                  </p>
                                 </div>
-                                <div className="mt-4 flex w-full items-center justify-between text-[11px] font-medium text-slate-400">
+                                <div className="flex w-full items-center justify-between text-[11px] font-medium text-slate-400">
                                   <span>{`Loaded: ${loadedStatCount} | Queue: ${queuedStatCount}`}</span>
                                   <button
                                     type="button"
@@ -4742,7 +4723,7 @@ export default function MerchQuantumApp() {
                           ) : null}
                           {canShowLoadedQueueGrid ? (
                             <div className="space-y-3 px-1">
-                              <div className="grid grid-cols-5 gap-1.5">
+                              <div className="grid grid-cols-5 gap-1.5 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
                                 {visibleCreateThumbnails.map((img, index) => {
                                   const isSelected = selectedImage?.id === img.id;
                                   const resolvedStatus = getResolvedItemStatus(img);
@@ -4766,7 +4747,7 @@ export default function MerchQuantumApp() {
                                       onClick={() => {
                                         setSelectedId(img.id);
                                       }}
-                                      className={`w-full rounded-lg transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
+                                      className={`w-full snap-start rounded-lg transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
                                     >
                                       <div className="relative">
                                         {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
@@ -4809,26 +4790,28 @@ export default function MerchQuantumApp() {
                                   );
                                 })}
                               </div>
-                              <div className="mt-3 flex items-center justify-end gap-2 text-[11px]">
+                              <div className="mt-3 flex items-center justify-between gap-2 text-[11px]">
+                                  <span className="min-w-0 flex-1 truncate text-slate-400">{createThumbVisibleRangeLabel}</span>
+                                  <div className="flex items-center justify-end gap-2">
                                   {createThumbTotalPages > 1 ? (
                                     <>
                                       <button
                                         type="button"
                                         aria-label="Previous image set"
-                                        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+                                        className="inline-flex items-center justify-center text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
                                         disabled={safeCreateThumbPage <= 0}
                                         onClick={() => setCreateThumbGridPage((current) => Math.max(0, current - 1))}
                                       >
-                                        <ChevronIcon open={false} className="h-3.5 w-3.5 rotate-90" />
+                                        <ChevronIcon open={false} className="h-4 w-4 rotate-90" />
                                       </button>
                                       <button
                                         type="button"
                                         aria-label="Next image set"
-                                        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+                                        className="inline-flex items-center justify-center text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
                                         disabled={safeCreateThumbPage >= createThumbTotalPages - 1}
                                         onClick={() => setCreateThumbGridPage((current) => Math.min(createThumbTotalPages - 1, current + 1))}
                                       >
-                                        <ChevronIcon open={false} className="h-3.5 w-3.5 -rotate-90" />
+                                        <ChevronIcon open={false} className="h-4 w-4 -rotate-90" />
                                       </button>
                                     </>
                                   ) : null}
@@ -4844,6 +4827,7 @@ export default function MerchQuantumApp() {
                                       {isCreateThumbExpandedView ? "Compact" : "View All"}
                                     </button>
                                   ) : null}
+                                  </div>
                               </div>
                             </div>
                           ) : null}
@@ -4881,9 +4865,9 @@ export default function MerchQuantumApp() {
                                             setInlineSaveFeedback(null);
                                           }
                                         }}
-                                        className="h-12 px-3 pr-20"
+                                        className="h-12 px-3 pr-20 text-sm leading-6"
                                       />
-                                      <div className="pointer-events-none absolute bottom-1.5 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-500">
+                                      <div className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-500">
                                         <span>{editableTitleDraft.trim().length}/{LISTING_LIMITS.titleMax}</span>
                                       </div>
                                     </div>
@@ -4899,7 +4883,7 @@ export default function MerchQuantumApp() {
                                         }
                                       }}
                                       disabled={!canEditDetailTitle}
-                                      className={`group relative flex min-h-[52px] w-full items-center rounded-xl border bg-[#020616] px-3 py-0 pr-24 text-left text-sm font-normal leading-5 text-white transition ${canEditDetailTitle ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
+                                      className={`group relative flex min-h-[48px] w-full items-center rounded-xl border bg-[#020616] px-3 py-2 pr-24 text-left text-sm font-normal leading-6 text-white transition ${canEditDetailTitle ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
                                     >
                                       {shouldAwaitQuantumTitle ? (
                                         <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
@@ -4913,7 +4897,7 @@ export default function MerchQuantumApp() {
                                           </span>
                                         </div>
                                       )}
-                                      <div className="absolute bottom-1.5 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-500">
+                                      <div className="absolute inset-y-0 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-500">
                                         <span>{(detailTitle || "").trim().length}/{LISTING_LIMITS.titleMax}</span>
                                         {canRerollSelectedImage ? (
                                           <button
@@ -4982,15 +4966,6 @@ export default function MerchQuantumApp() {
                                           />
                                           <div className="absolute bottom-2 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-500">
                                             <span className="pointer-events-none">{editableDescriptionDraft.trim().length}/{LISTING_LIMITS.descriptionMax}</span>
-                                            <button
-                                              type="button"
-                                              onMouseDown={(event) => event.preventDefault()}
-                                              onClick={triggerDescriptionAction}
-                                              disabled={descriptionActionDisabled}
-                                              className="pointer-events-auto text-[10px] font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-                                            >
-                                              {descriptionActionLabel}
-                                            </button>
                                             {canRerollSelectedImage ? (
                                               <button
                                                 type="button"
@@ -5045,18 +5020,6 @@ export default function MerchQuantumApp() {
                                           )}
                                           <div className="absolute bottom-2 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-500">
                                             <span className="pointer-events-none">{(detailBuyerDescription || "").trim().length}/{LISTING_LIMITS.descriptionMax}</span>
-                                            <button
-                                              type="button"
-                                              onClick={(event) => {
-                                                event.preventDefault();
-                                                event.stopPropagation();
-                                                triggerDescriptionAction();
-                                              }}
-                                              disabled={descriptionActionDisabled}
-                                              className="pointer-events-auto text-[10px] font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-                                            >
-                                              {descriptionActionLabel}
-                                            </button>
                                             {canRerollSelectedImage ? (
                                               <button
                                                 type="button"
@@ -5108,6 +5071,14 @@ export default function MerchQuantumApp() {
                                     <span className="ml-1 text-white">AI Tags</span>
                                   </span>
                                 </div>
+                                <button
+                                  type="button"
+                                  onClick={triggerDescriptionAction}
+                                  disabled={descriptionActionDisabled}
+                                  className="shrink-0 text-[10px] font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+                                >
+                                  {descriptionActionLabel}
+                                </button>
                               </div>
                               <div className="flex flex-wrap items-center justify-start gap-1.5">
                                 {isDetailTagsLoading ? (
