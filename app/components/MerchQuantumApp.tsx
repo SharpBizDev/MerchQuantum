@@ -1817,30 +1817,28 @@ function ProductGrid({
                     onItemActivate(product, globalIndex, event);
                   }
                 }}
-                className={`w-full snap-start rounded-lg transition-all duration-500 focus-visible:outline-none ${frameGlow}`}
+                className={`w-full snap-start transition-all duration-500 focus-visible:outline-none ${frameGlow}`}
                 aria-label={product.title}
               >
-                <div className="relative">
-                  <SmartThumbnail
-                    src={product.previewUrl}
-                    alt={product.title}
-                    className={`group rounded-lg border transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
-                    fallbackClassName="flex items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))]"
-                  >
-                    <div className={`pointer-events-none absolute inset-0 transition ${
-                      isSelected ? "bg-[#7F22FE]/14" : isActive ? "bg-[#7F22FE]/8" : "bg-black/10"
-                    }`} />
-                    {(isSelected || alreadyImported) ? (
-                      <span
-                        className={`absolute left-2 top-2 h-2.5 w-2.5 rounded-full ${
-                          isSelected
-                            ? "bg-[#C084FC] shadow-[0_0_10px_rgba(192,132,252,0.95)]"
-                            : "bg-[#00BC7D] shadow-[0_0_8px_rgba(0,188,125,0.9)]"
-                        }`}
-                      />
-                    ) : null}
-                  </SmartThumbnail>
-                </div>
+                <SmartThumbnail
+                  src={product.previewUrl}
+                  alt={product.title}
+                  className={`group rounded-lg border transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
+                  fallbackClassName="flex items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))]"
+                >
+                  <div className={`pointer-events-none absolute inset-0 transition ${
+                    isSelected ? "bg-[#7F22FE]/14" : isActive ? "bg-[#7F22FE]/8" : "bg-black/10"
+                  }`} />
+                  {(isSelected || alreadyImported) ? (
+                    <span
+                      className={`absolute left-2 top-2 h-2.5 w-2.5 rounded-full ${
+                        isSelected
+                          ? "bg-[#C084FC] shadow-[0_0_10px_rgba(192,132,252,0.95)]"
+                          : "bg-[#00BC7D] shadow-[0_0_8px_rgba(0,188,125,0.9)]"
+                      }`}
+                    />
+                  ) : null}
+                </SmartThumbnail>
               </button>
             );
           })}
@@ -4442,7 +4440,7 @@ export default function MerchQuantumApp() {
                             <div
                               role={isWorkspaceConfigured ? "button" : undefined}
                               tabIndex={isWorkspaceConfigured ? 0 : -1}
-                              className={`w-full rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-3 py-2 text-center transition-colors ${isWorkspaceConfigured ? "cursor-pointer hover:bg-[#0b1024]" : "cursor-default"}`}
+                              className={`w-full rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-3 py-1.5 text-center transition-colors ${isWorkspaceConfigured ? "cursor-pointer hover:bg-[#0b1024]" : "cursor-default"}`}
                               onClick={isWorkspaceConfigured ? openArtworkPicker : undefined}
                               onKeyDown={(e) => {
                                 if (!isWorkspaceConfigured) return;
@@ -4465,7 +4463,7 @@ export default function MerchQuantumApp() {
                                 void addFiles(e.dataTransfer.files);
                               }}
                             >
-                              <div className="flex min-h-[72px] flex-col justify-between gap-1.5">
+                              <div className="flex min-h-[64px] flex-col justify-between gap-1">
                                 <div className="flex items-center justify-center">
                                   <div className="flex flex-col items-center gap-0.5 text-center">
                                     <p className="text-[11px] font-medium leading-5 text-white sm:text-xs">
@@ -4476,7 +4474,7 @@ export default function MerchQuantumApp() {
                                     </p>
                                   </div>
                                 </div>
-                                <div className="flex w-full items-center justify-between text-[11px] font-medium text-slate-100">
+                                <div className="flex w-full items-center justify-between text-[10px] font-medium text-slate-100 sm:text-[11px]">
                                   <span>{`Loaded: ${loadedStatCount} | Queue: ${queuedStatCount}`}</span>
                                   <button
                                     type="button"
@@ -4487,7 +4485,7 @@ export default function MerchQuantumApp() {
                                       if (!hasAnyLoadedImages) return;
                                       clearPreviewWorkspace();
                                     }}
-                                    className="text-[11px] font-medium text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
+                                    className="text-[10px] font-medium text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200 sm:text-[11px]"
                                   >
                                     Clear
                                   </button>
@@ -4639,7 +4637,7 @@ export default function MerchQuantumApp() {
                                             setInlineSaveFeedback(null);
                                           }
                                         }}
-                                        className="h-12 px-3 pr-20 text-sm leading-6"
+                                        className="h-10 px-3 py-1.5 pr-20 text-sm font-normal leading-6"
                                       />
                                       <div className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-100">
                                         <span>{editableTitleDraft.trim().length}/{LISTING_LIMITS.titleMax}</span>
@@ -4657,7 +4655,7 @@ export default function MerchQuantumApp() {
                                         }
                                       }}
                                       disabled={!canEditDetailTitle}
-                                      className={`group relative flex min-h-[48px] w-full items-center rounded-xl border bg-[#020616] px-3 py-2 pr-24 text-left text-sm font-normal leading-6 text-white transition ${canEditDetailTitle ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
+                                      className={`group relative flex min-h-[40px] w-full items-center rounded-xl border bg-[#020616] px-3 py-1.5 pr-24 text-left text-sm font-normal leading-6 text-white transition ${canEditDetailTitle ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
                                     >
                                       {shouldAwaitQuantumTitle ? (
                                         <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
