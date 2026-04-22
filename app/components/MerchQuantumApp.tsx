@@ -2140,6 +2140,24 @@ function ReRollIcon({ className = "" }: { className?: string }) {
   );
 }
 
+function ConnectArrowIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.4"
+    >
+      <path d="M3.25 8h8.5" />
+      <path d="m8.9 4.15 3.85 3.85-3.85 3.85" />
+    </svg>
+  );
+}
+
 function ChevronIcon({ open, className = "" }: { open: boolean; className?: string }) {
   return (
     <svg
@@ -4513,9 +4531,11 @@ export default function MerchQuantumApp() {
                       type="button"
                       onClick={() => { void connectProvider(); }}
                       disabled={!canSubmitProviderConnection}
-                      className="inline-flex h-8 items-center rounded-lg border border-white/10 bg-white/5 px-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/80 disabled:text-slate-500"
+                      aria-label="Connect provider"
+                      title="Connect"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 p-2 text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/80 disabled:text-slate-500"
                     >
-                      Connect
+                      <ConnectArrowIcon className="h-3.5 w-3.5" />
                     </button>
                   )}
                 </div>
