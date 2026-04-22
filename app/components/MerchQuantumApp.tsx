@@ -1927,10 +1927,10 @@ function ProductGrid({
   }, [items, previewSurfaceBackgrounds]);
 
   return (
-    <div className={`mx-auto flex w-full max-w-6xl flex-col gap-3 overflow-hidden rounded-xl border border-gray-800 bg-gray-900/50 p-4 ${highlighted ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)]" : ""}`}>
-      <div className="flex w-full min-w-0 items-center justify-between gap-4">
+    <div className={`mx-auto flex w-full max-w-6xl flex-col gap-2 overflow-hidden rounded-xl border border-gray-800 bg-gray-900/50 p-3 ${highlighted ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)]" : ""}`}>
+      <div className="flex w-full min-w-0 items-center justify-between gap-3">
         <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-white">{heading}</span>
-        <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-3 text-[11px]">
+        <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 text-[11px]">
           {headerAccessory}
           {onSelectAll ? (
             <button
@@ -1946,7 +1946,7 @@ function ProductGrid({
       </div>
 
       {items.length > 0 ? (
-        <div className="grid h-full w-full grid-cols-5 gap-1.5 overflow-hidden snap-y snap-mandatory">
+        <div className="grid h-full w-full grid-cols-5 gap-1 overflow-hidden snap-y snap-mandatory">
             {items.map((product, index) => {
               const globalIndex = page * pageSize + index;
               const isSelected = selectedIds.includes(product.id);
@@ -2027,7 +2027,7 @@ function ProductGrid({
         </div>
       )}
 
-      <div className="flex w-full items-center justify-between gap-3 pt-0.5 text-[11px]">
+      <div className="flex w-full items-center justify-between gap-2 pt-0.5 text-[11px]">
         <div className="min-w-0 flex-1 truncate text-slate-400">
           {footerLabel || rangeLabel}
         </div>
