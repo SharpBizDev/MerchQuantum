@@ -4507,7 +4507,7 @@ export default function MerchQuantumApp() {
                       type="button"
                       onClick={() => { void connectProvider(); }}
                       disabled={!canSubmitProviderConnection}
-                      className="inline-flex h-8 items-center rounded-lg border border-white/10 bg-white/5 px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/80 disabled:text-slate-500"
+                      className="inline-flex h-8 items-center rounded-lg border border-white/10 bg-white/5 px-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/80 disabled:text-slate-500"
                     >
                       Connect
                     </button>
