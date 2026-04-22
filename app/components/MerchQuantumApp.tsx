@@ -150,7 +150,6 @@ type ProductGridProps = {
   selectedIds: string[];
   activeId?: string;
   importedProductIds: Set<string>;
-  previewTone: "dark" | "light";
   highlighted?: boolean;
   rangeLabel: string;
   page: number;
@@ -585,7 +584,7 @@ function choosePreviewBackground(artworkLuminance: number | null) {
   const contrastOnDark = getContrastRatio(artworkLuminance, getRelativeLuminance(0, 0, 0));
   const contrastOnLight = getContrastRatio(artworkLuminance, getRelativeLuminance(255, 255, 255));
 
-  return contrastOnDark >= contrastOnLight ? DISPLAY_DARK_BACKGROUND : DISPLAY_NEUTRAL_BACKGROUND;
+  return contrastOnDark >= contrastOnLight ? DISPLAY_DARK_BACKGROUND : DISPLAY_LIGHT_BACKGROUND;
 }
 
 function normalizeArtworkBounds(bounds: ArtworkBounds | undefined, width: number, height: number): ArtworkBounds {
@@ -621,10 +620,63 @@ function normalizeArtworkBounds(bounds: ArtworkBounds | undefined, width: number
 function loadImageElement(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
+    if (!src.startsWith("blob:") && !src.startsWith("data:")) {
+      img.crossOrigin = "anonymous";
+    }
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error("Unable to read image preview."));
     img.src = src;
   });
+}
+
+async function resolvePreviewSurfaceBackground(src: string | null | undefined): Promise<string> {
+  if (!src) return DISPLAY_NEUTRAL_BACKGROUND;
+
+  try {
+    const img = await loadImageElement(src);
+    const sourceWidth = img.naturalWidth || img.width || 1;
+    const sourceHeight = img.naturalHeight || img.height || 1;
+    const longestEdge = Math.max(sourceWidth, sourceHeight, 1);
+    const sampleScale = Math.min(1, DISPLAY_PREVIEW_SAMPLE_DIMENSION / longestEdge);
+    const sampleWidth = Math.max(1, Math.round(sourceWidth * sampleScale));
+    const sampleHeight = Math.max(1, Math.round(sourceHeight * sampleScale));
+    const sampleCanvas = document.createElement("canvas");
+    sampleCanvas.width = sampleWidth;
+    sampleCanvas.height = sampleHeight;
+    const sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
+
+    if (!sampleCtx) return DISPLAY_NEUTRAL_BACKGROUND;
+
+    sampleCtx.clearRect(0, 0, sampleWidth, sampleHeight);
+    sampleCtx.drawImage(img, 0, 0, sampleWidth, sampleHeight);
+
+    const imageData = sampleCtx.getImageData(0, 0, sampleWidth, sampleHeight).data;
+    const totalPixels = sampleWidth * sampleHeight;
+    let visiblePixelCount = 0;
+    let transparentPixelCount = 0;
+    let weightedLuminance = 0;
+    let totalAlpha = 0;
+
+    for (let index = 0; index < imageData.length; index += 4) {
+      const alpha = imageData[index + 3];
+      if (alpha < 250) transparentPixelCount += 1;
+      if (alpha <= DISPLAY_ALPHA_THRESHOLD) continue;
+
+      const weight = alpha / 255;
+      visiblePixelCount += 1;
+      weightedLuminance += getRelativeLuminance(imageData[index], imageData[index + 1], imageData[index + 2]) * weight;
+      totalAlpha += weight;
+    }
+
+    const transparencyRatio = totalPixels > 0 ? transparentPixelCount / totalPixels : 0;
+    if (!visiblePixelCount || transparencyRatio < DISPLAY_TRANSPARENCY_RATIO_THRESHOLD) {
+      return DISPLAY_NEUTRAL_BACKGROUND;
+    }
+
+    return choosePreviewBackground(totalAlpha > 0 ? weightedLuminance / totalAlpha : null);
+  } catch {
+    return DISPLAY_NEUTRAL_BACKGROUND;
+  }
 }
 
 async function analyzeArtworkBounds(file: File): Promise<ArtworkBounds> {
@@ -1852,7 +1904,6 @@ function ProductGrid({
   selectedIds,
   activeId,
   importedProductIds,
-  previewTone,
   highlighted = false,
   page,
   pageSize,
@@ -1867,9 +1918,42 @@ function ProductGrid({
   onNextPage,
   footerActions,
 }: ProductGridProps) {
-  const thumbnailSurfaceStyle = {
-    backgroundColor: previewTone === "light" ? "#ffffff" : DISPLAY_NEUTRAL_BACKGROUND,
-  };
+  const [previewSurfaceBackgrounds, setPreviewSurfaceBackgrounds] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const unresolvedItems = items.filter((item) => item.previewUrl && !previewSurfaceBackgrounds[item.id]);
+    if (unresolvedItems.length === 0) return;
+
+    let isCancelled = false;
+
+    void (async () => {
+      const resolvedEntries = await Promise.all(
+        unresolvedItems.map(async (item) => ({
+          id: item.id,
+          background: await resolvePreviewSurfaceBackground(item.previewUrl),
+        }))
+      );
+
+      if (isCancelled) return;
+
+      setPreviewSurfaceBackgrounds((current) => {
+        let didChange = false;
+        const next = { ...current };
+
+        resolvedEntries.forEach(({ id, background }) => {
+          if (next[id]) return;
+          next[id] = background;
+          didChange = true;
+        });
+
+        return didChange ? next : current;
+      });
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [items, previewSurfaceBackgrounds]);
 
   return (
     <div className={`mx-auto flex w-full max-w-6xl flex-col gap-4 overflow-hidden rounded-xl border border-gray-800 bg-gray-900/50 p-4 ${highlighted ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)]" : ""}`}>
@@ -1906,6 +1990,7 @@ function ProductGrid({
               const isSelected = selectedIds.includes(product.id);
               const isActive = activeId === product.id;
               const alreadyImported = importedProductIds.has(product.id);
+              const previewSurfaceBackground = previewSurfaceBackgrounds[product.id] || DISPLAY_NEUTRAL_BACKGROUND;
               const cardTone = isSelected
                 ? "border-[#7F22FE] shadow-[inset_0_0_0_2px_rgba(127,34,254,0.85),0_0_10px_rgba(147,51,234,0.32)] opacity-100"
                 : isActive
@@ -1929,13 +2014,17 @@ function ProductGrid({
                   aria-label={product.title}
                 >
                   <div
-                    className={`relative box-border aspect-square w-full overflow-hidden rounded-md bg-gray-800/50 border transition duration-200 ease-out group-hover:z-10 group-hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] group-focus-visible:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
+                    className={`relative box-border aspect-square w-full overflow-hidden rounded-md border bg-gray-800/50 transition duration-200 ease-out group-hover:z-10 group-hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] group-focus-visible:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
                   >
-                    <div className="absolute inset-0 p-2">
-                      <div className="relative h-full w-full overflow-hidden rounded-[inherit]" style={thumbnailSurfaceStyle} />
-                    </div>
+                    <div
+                      className="absolute inset-0"
+                      style={{ backgroundColor: previewSurfaceBackground }}
+                    />
                     {product.previewUrl ? (
-                      <div className="absolute inset-0 p-2">
+                      <div
+                        className="absolute"
+                        style={{ inset: `${ARTWORK_SAFE_ZONE_PCT * 100}%` }}
+                      >
                         <img
                           src={product.previewUrl}
                           alt={product.title}
@@ -1978,26 +2067,26 @@ function ProductGrid({
         )}
       </div>
 
-      <div className="flex w-full flex-wrap items-center justify-end gap-3 text-sm">
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-3 text-[11px]">
-          {footerActions}
-          <button
-            type="button"
-            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-            disabled={page <= 0}
-            onClick={onPreviousPage}
-          >
-            {`Prev ${pageSize}`}
-          </button>
-          <button
-            type="button"
-            className="font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-            disabled={page >= totalPages - 1}
-            onClick={onNextPage}
-          >
-            {`Next ${pageSize}`}
-          </button>
-        </div>
+      <div className="flex w-full items-center justify-end gap-2 pt-1 text-[11px]">
+        {footerActions}
+        <button
+          type="button"
+          aria-label={`Previous ${pageSize} items`}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+          disabled={page <= 0}
+          onClick={onPreviousPage}
+        >
+          <ChevronIcon open={false} className="h-3.5 w-3.5 rotate-90" />
+        </button>
+        <button
+          type="button"
+          aria-label={`Next ${pageSize} items`}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-[#020616] text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+          disabled={page >= totalPages - 1}
+          onClick={onNextPage}
+        >
+          <ChevronIcon open={false} className="h-3.5 w-3.5 -rotate-90" />
+        </button>
       </div>
     </div>
   );
@@ -2217,7 +2306,6 @@ export default function MerchQuantumApp() {
   const [isBootOverlayPrimed, setIsBootOverlayPrimed] = useState(false);
   const [isBootOverlaySweepActive, setIsBootOverlaySweepActive] = useState(false);
   const [activeGridProductId, setActiveGridProductId] = useState("");
-  const [thumbnailPreviewTone, setThumbnailPreviewTone] = useState<"dark" | "light">("dark");
 
   const resolvedProviderId = provider === "spreadconnect" ? "spod" : provider;
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
@@ -4498,7 +4586,6 @@ export default function MerchQuantumApp() {
                   selectedIds={pendingTemplateSelectionIds}
                   activeId={activeGridProductId}
                   importedProductIds={importedProductIds}
-                  previewTone={thumbnailPreviewTone}
                   highlighted={attentionTarget === "template"}
                   rangeLabel={bulkEditVisibleRangeLabel}
                   page={safeBulkEditPage}
@@ -4507,20 +4594,11 @@ export default function MerchQuantumApp() {
                   loading={loadingProducts}
                   loadingAccessory={loadingProducts || isImportingListings ? <QuantOrbLoader /> : null}
                   headerAccessory={
-                    <>
-                      <button
-                        type="button"
-                        className="font-medium text-slate-400 transition hover:text-white"
-                        onClick={() => setThumbnailPreviewTone((current) => current === "dark" ? "light" : "dark")}
-                      >
-                        {thumbnailPreviewTone === "dark" ? "Light BG" : "Dark BG"}
-                      </button>
-                      <BareChevronButton
-                        open={isRoutingGridExpanded}
-                        onClick={() => setIsRoutingGridExpanded((current) => !current)}
-                        label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
-                      />
-                    </>
+                    <BareChevronButton
+                      open={isRoutingGridExpanded}
+                      onClick={() => setIsRoutingGridExpanded((current) => !current)}
+                      label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
+                    />
                   }
                   onSelectAll={() => {
                     setPendingTemplateSelectionIds(normalizeSelectionIds(visibleProducts.map((product) => product.id)));
@@ -4559,7 +4637,6 @@ export default function MerchQuantumApp() {
                   selectedIds={selectedImportIds}
                   activeId={activeGridProductId}
                   importedProductIds={importedProductIds}
-                  previewTone={thumbnailPreviewTone}
                   highlighted={attentionTarget === "template"}
                   rangeLabel={createTemplateVisibleRangeLabel}
                   page={safeCreateTemplatePage}
@@ -4568,20 +4645,11 @@ export default function MerchQuantumApp() {
                   loading={loadingProducts}
                   loadingAccessory={loadingProducts || loadingTemplateDetails ? <QuantOrbLoader /> : null}
                   headerAccessory={
-                    <>
-                      <button
-                        type="button"
-                        className="font-medium text-slate-400 transition hover:text-white"
-                        onClick={() => setThumbnailPreviewTone((current) => current === "dark" ? "light" : "dark")}
-                      >
-                        {thumbnailPreviewTone === "dark" ? "Light BG" : "Dark BG"}
-                      </button>
-                      <BareChevronButton
-                        open={isRoutingGridExpanded}
-                        onClick={() => setIsRoutingGridExpanded((current) => !current)}
-                        label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
-                      />
-                    </>
+                    <BareChevronButton
+                      open={isRoutingGridExpanded}
+                      onClick={() => setIsRoutingGridExpanded((current) => !current)}
+                      label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
+                    />
                   }
                   onClearSelection={() => {
                     setActiveGridProductId("");
@@ -4698,7 +4766,7 @@ export default function MerchQuantumApp() {
                                           </button>
                                           <div
                                             className="absolute inset-0 flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit]"
-                                            style={{ backgroundColor: thumbnailPreviewTone === "light" ? "#ffffff" : img.previewBackground }}
+                                            style={{ backgroundColor: img.previewBackground || DISPLAY_NEUTRAL_BACKGROUND }}
                                           >
                                             {img.preview ? (
                                               <div className="absolute" style={{ inset: `${ARTWORK_SAFE_ZONE_PCT * 100}%` }}>
