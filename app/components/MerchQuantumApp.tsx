@@ -88,7 +88,6 @@ type Img = {
   name: string;
   file: File;
   preview: string;
-  previewBackground: string;
   cleaned: string;
   final: string;
   finalDescription: string;
@@ -168,6 +167,16 @@ type ProductGridProps = {
   onPreviousPage: () => void;
   onNextPage: () => void;
   footerActions?: React.ReactNode;
+};
+
+type SmartThumbnailProps = {
+  src?: string | null;
+  alt: string;
+  className?: string;
+  safeZoneClassName?: string;
+  imageClassName?: string;
+  fallbackClassName?: string;
+  children?: React.ReactNode;
 };
 
 type ApiShop = { id: number | string; title: string; sales_channel?: string };
@@ -525,6 +534,41 @@ function ensureContrastPreviewBackground(background: string | null | undefined) 
   return background === DISPLAY_LIGHT_BACKGROUND ? DISPLAY_LIGHT_BACKGROUND : DISPLAY_DARK_BACKGROUND;
 }
 
+function hashString(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash * 31) + value.charCodeAt(index)) | 0;
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function buildSmartThumbnailSource(src: string | null | undefined) {
+  const normalizedSrc = String(src || "").trim();
+  if (
+    !normalizedSrc
+    || normalizedSrc.startsWith("blob:")
+    || normalizedSrc.startsWith("data:")
+    || normalizedSrc.startsWith("/")
+  ) {
+    return normalizedSrc;
+  }
+
+  try {
+    const sourceUrl = new URL(normalizedSrc);
+    if (sourceUrl.protocol !== "https:" || sourceUrl.pathname.startsWith("/api/providers/artwork/")) {
+      return normalizedSrc;
+    }
+
+    const proxyUrl = new URL(`/api/providers/artwork/thumb-${hashString(normalizedSrc)}`, "https://merch-quantum.local");
+    proxyUrl.searchParams.set("source", normalizedSrc);
+    const fileName = sourceUrl.pathname.split("/").pop()?.trim();
+    if (fileName) proxyUrl.searchParams.set("fileName", fileName);
+    return `${proxyUrl.pathname}${proxyUrl.search}`;
+  } catch {
+    return normalizedSrc;
+  }
+}
+
 function getProviderTokenStorageKey(providerId: string | null | undefined) {
   if (!providerId) return null;
   return `${PROVIDER_TOKEN_STORAGE_PREFIX}:${providerId}`;
@@ -696,23 +740,8 @@ async function analyzeArtworkBounds(file: File): Promise<ArtworkBounds> {
   }
 }
 
-async function createContrastSafePreview(file: File): Promise<{ src: string; background: string }> {
-  let keepObjectUrl = false;
-  const objectUrl = URL.createObjectURL(file);
-
-  try {
-    const img = await loadImageElement(objectUrl);
-    const previewBackground = choosePreviewBackgroundFromImageElement(img);
-    keepObjectUrl = true;
-    return { src: objectUrl, background: previewBackground };
-  } catch {
-    keepObjectUrl = true;
-    return { src: objectUrl, background: DISPLAY_DARK_BACKGROUND };
-  } finally {
-    if (!keepObjectUrl) {
-      URL.revokeObjectURL(objectUrl);
-    }
-  }
+function createPreviewObjectUrl(file: File) {
+  return URL.createObjectURL(file);
 }
 
 function decodeHtmlEntities(value: string) {
@@ -1653,6 +1682,70 @@ function CreativeWellspringBrandMark({
   );
 }
 
+function SmartThumbnail({
+  src,
+  alt,
+  className = "",
+  safeZoneClassName = "p-[8%]",
+  imageClassName = "absolute inset-0 h-full w-full object-contain",
+  fallbackClassName = "",
+  children,
+}: SmartThumbnailProps) {
+  const resolvedSrc = useMemo(() => buildSmartThumbnailSource(src), [src]);
+  const [backgroundColor, setBackgroundColor] = useState(DISPLAY_DARK_BACKGROUND);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (!resolvedSrc) {
+      setBackgroundColor(DISPLAY_DARK_BACKGROUND);
+      return;
+    }
+
+    void resolvePreviewSurfaceBackground(resolvedSrc).then((background) => {
+      if (isCancelled) return;
+      setBackgroundColor(ensureContrastPreviewBackground(background));
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [resolvedSrc]);
+
+  const handleImageLoad = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
+    try {
+      setBackgroundColor(
+        ensureContrastPreviewBackground(choosePreviewBackgroundFromImageElement(event.currentTarget))
+      );
+    } catch {
+      setBackgroundColor(DISPLAY_DARK_BACKGROUND);
+    }
+  }, []);
+
+  return (
+    <div
+      className={`relative box-border flex aspect-square w-full items-center justify-center overflow-hidden bg-center bg-cover bg-no-repeat ${className}`}
+      style={{ backgroundColor }}
+    >
+      {resolvedSrc ? (
+        <div className={`relative h-full w-full ${safeZoneClassName}`}>
+          <div className="relative h-full w-full">
+            <img
+              src={resolvedSrc}
+              alt={alt}
+              className={imageClassName}
+              onLoad={handleImageLoad}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className={`absolute inset-0 ${fallbackClassName}`} />
+      )}
+      {children}
+    </div>
+  );
+}
+
 function ProductGrid({
   heading,
   items,
@@ -1674,54 +1767,6 @@ function ProductGrid({
   onNextPage,
   footerActions,
 }: ProductGridProps) {
-  const [previewSurfaceBackgrounds, setPreviewSurfaceBackgrounds] = useState<Record<string, string>>({});
-  const handlePreviewImageLoad = useCallback((itemId: string, imageElement: HTMLImageElement) => {
-    const background = choosePreviewBackgroundFromImageElement(imageElement);
-    setPreviewSurfaceBackgrounds((current) =>
-      current[itemId] === background
-        ? current
-        : {
-            ...current,
-            [itemId]: background,
-          }
-    );
-  }, []);
-
-  useEffect(() => {
-    const unresolvedItems = items.filter((item) => item.previewUrl && !previewSurfaceBackgrounds[item.id]);
-    if (unresolvedItems.length === 0) return;
-
-    let isCancelled = false;
-
-    void (async () => {
-      const resolvedEntries = await Promise.all(
-        unresolvedItems.map(async (item) => ({
-          id: item.id,
-          background: await resolvePreviewSurfaceBackground(item.previewUrl),
-        }))
-      );
-
-      if (isCancelled) return;
-
-      setPreviewSurfaceBackgrounds((current) => {
-        let didChange = false;
-        const next = { ...current };
-
-        resolvedEntries.forEach(({ id, background }) => {
-          if (next[id]) return;
-          next[id] = background;
-          didChange = true;
-        });
-
-        return didChange ? next : current;
-      });
-    })();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [items, previewSurfaceBackgrounds]);
-
   return (
     <div className={`mx-auto flex w-full max-w-6xl flex-col gap-1.5 overflow-hidden rounded-xl border border-gray-800 bg-gray-900/50 p-2 ${highlighted ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)]" : ""}`}>
       <div className="flex w-full min-w-0 items-center justify-between gap-2">
@@ -1749,7 +1794,6 @@ function ProductGrid({
               const isSelected = selectedIds.includes(product.id);
               const isActive = activeId === product.id;
               const alreadyImported = importedProductIds.has(product.id);
-              const previewSurfaceBackground = ensureContrastPreviewBackground(previewSurfaceBackgrounds[product.id]);
               const cardTone = isSelected
                 ? "border-[#7F22FE] shadow-[inset_0_0_0_2px_rgba(127,34,254,0.85),0_0_10px_rgba(147,51,234,0.32)] opacity-100"
                 : isActive
@@ -1772,24 +1816,12 @@ function ProductGrid({
                   className="group w-full min-w-0 max-w-full cursor-pointer snap-start focus-visible:outline-none"
                   aria-label={product.title}
                 >
-                  <div
-                    className={`relative box-border aspect-square w-full overflow-hidden rounded-md border bg-center bg-cover bg-no-repeat transition duration-200 ease-out group-hover:z-10 group-hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] group-focus-visible:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
-                    style={{ backgroundColor: previewSurfaceBackground }}
+                  <SmartThumbnail
+                    src={product.previewUrl}
+                    alt={product.title}
+                    className={`rounded-md border transition duration-200 ease-out group-hover:z-10 group-hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] group-focus-visible:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
+                    fallbackClassName="flex items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))]"
                   >
-                    {product.previewUrl ? (
-                      <div className="relative h-full w-full p-[8%]">
-                        <div className="relative h-full w-full">
-                          <img
-                            src={product.previewUrl}
-                            alt={product.title}
-                            className="absolute inset-0 h-full w-full object-contain"
-                            onLoad={(event) => handlePreviewImageLoad(product.id, event.currentTarget)}
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))]" />
-                    )}
                     <div className={`pointer-events-none absolute inset-0 transition ${
                       isSelected ? "bg-[#7F22FE]/14" : isActive ? "bg-[#7F22FE]/8" : "bg-black/10"
                     }`} />
@@ -1802,7 +1834,7 @@ function ProductGrid({
                         }`}
                       />
                     ) : null}
-                  </div>
+                  </SmartThumbnail>
                 </button>
               );
             })}
@@ -2108,23 +2140,6 @@ export default function MerchQuantumApp() {
   const selectedImage = useMemo(() => {
     return images.find((img) => img.id === selectedId) || sortedImages[0] || null;
   }, [images, selectedId, sortedImages]);
-  const handleQueuePreviewImageLoad = useCallback((imageId: string, imageElement: HTMLImageElement) => {
-    const background = choosePreviewBackgroundFromImageElement(imageElement);
-    setImages((current) => {
-      let didChange = false;
-      const next = current.map((img) => {
-        if (img.id !== imageId || img.previewBackground === background) {
-          return img;
-        }
-        didChange = true;
-        return {
-          ...img,
-          previewBackground: background,
-        };
-      });
-      return didChange ? next : current;
-    });
-  }, []);
 
   useEffect(() => {
     if (images.length === 0) {
@@ -3341,13 +3356,12 @@ export default function MerchQuantumApp() {
 
     const good = await Promise.all(accepted.map(async (file) => {
       const cleaned = cleanTitle(file.name);
-      const preview = await createContrastSafePreview(file);
+      const preview = createPreviewObjectUrl(file);
       return {
         id: makeId(),
         name: file.name,
         file,
-        preview: preview.src,
-        previewBackground: preview.background,
+        preview,
         cleaned,
         final: cleaned,
         finalDescription: "",
@@ -3619,7 +3633,7 @@ export default function MerchQuantumApp() {
     await importSelectedListings(nextSelections, { replaceExisting: true });
   }
 
-  function buildImportedImageSeed(record: ImportedListingRecord, file: File, preview: { src: string; background: string }, artworkBounds: ArtworkBounds): Img {
+  function buildImportedImageSeed(record: ImportedListingRecord, file: File, preview: string, artworkBounds: ArtworkBounds): Img {
     const titleSeed = clampTitleForListing(record.title || record.artwork?.fileName || "Recovered Artwork");
     const cleaned = cleanTitle(titleSeed || record.artwork?.fileName || record.id);
     const staticSpecBlock = sanitizeTemplateDescriptionForPrebuffer(record.templateDescription || record.description || "", record.title);
@@ -3631,8 +3645,7 @@ export default function MerchQuantumApp() {
       id: makeId(),
       name: titleSeed || cleaned,
       file,
-      preview: preview.src,
-      previewBackground: preview.background,
+      preview,
       cleaned,
       final: titleSeed || cleaned,
       finalDescription: "",
@@ -3732,7 +3745,7 @@ export default function MerchQuantumApp() {
         try {
           const fallbackFileName = `${cleanTitle(record.title || record.artwork.fileName || "Recovered Artwork") || "Recovered Artwork"}.png`;
           const file = await urlToFile(record.artwork.url, record.artwork.fileName || fallbackFileName, record.artwork.contentType || "image/png");
-          const preview = await createContrastSafePreview(file);
+          const preview = createPreviewObjectUrl(file);
           const artworkBounds = await analyzeArtworkBounds(file);
           rescued.push(buildImportedImageSeed(record, file, preview, artworkBounds));
         } catch {
@@ -4515,9 +4528,10 @@ export default function MerchQuantumApp() {
                                     >
                                       <div className="relative">
                                         {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
-                                        <div
-                                          className={`group relative box-border flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border bg-center bg-cover bg-no-repeat transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${previewFrameTone}`}
-                                          style={{ backgroundColor: ensureContrastPreviewBackground(img.previewBackground) }}
+                                        <SmartThumbnail
+                                          src={img.preview}
+                                          alt={img.final}
+                                          className={`group rounded-lg border transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${previewFrameTone}`}
                                         >
                                           {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
                                           {statusIndicator ? (
@@ -4539,19 +4553,7 @@ export default function MerchQuantumApp() {
                                           >
                                             x
                                           </button>
-                                          {img.preview ? (
-                                            <div className="relative h-full w-full p-[8%]">
-                                              <div className="relative h-full w-full">
-                                                <img
-                                                  src={img.preview}
-                                                  alt={img.final}
-                                                  className="absolute inset-0 h-full w-full object-contain"
-                                                  onLoad={(event) => handleQueuePreviewImageLoad(img.id, event.currentTarget)}
-                                                />
-                                              </div>
-                                            </div>
-                                          ) : null}
-                                        </div>
+                                        </SmartThumbnail>
                                       </div>
                                     </div>
                                   );
