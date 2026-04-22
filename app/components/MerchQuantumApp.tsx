@@ -1548,35 +1548,46 @@ function CreativeWellspringBrandMark({
 }) {
   return (
     <div
-      className={`pointer-events-none relative z-0 flex w-full items-center justify-center overflow-hidden ${
+      className={`pointer-events-none relative isolate z-0 flex w-full items-center justify-center overflow-hidden ${
         docked ? "min-h-[96px]" : "min-h-[148px]"
       } ${className}`}
       aria-hidden="true"
     >
       <div
-        className={`absolute inset-0 ${
+        className={`absolute left-1/2 top-1/2 rounded-[999px] bg-[radial-gradient(ellipse_at_35%_35%,rgba(244,114,182,0.28),rgba(168,85,247,0.28)_26%,rgba(91,33,182,0.16)_54%,transparent_82%)] ${
           docked
-            ? "bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.24),rgba(88,28,135,0.2)_34%,rgba(3,5,13,0.08)_56%,rgba(0,0,0,0)_78%)]"
-            : "bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.14),rgba(3,5,13,0.22)_40%,rgba(0,0,0,0)_78%)]"
+            ? "h-24 w-[13rem] -translate-x-[78%] -translate-y-[52%] rotate-[-14deg] blur-[46px]"
+            : "h-36 w-[18rem] -translate-x-[84%] -translate-y-[56%] rotate-[-16deg] blur-[64px]"
         }`}
       />
       <div
-        className={`absolute left-1/2 top-1/2 rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(196,181,253,0.78),rgba(127,34,254,0.46)_26%,rgba(53,32,164,0.18)_58%,transparent_80%)] ${
+        className={`absolute left-1/2 top-1/2 rounded-[999px] bg-[radial-gradient(ellipse_at_center,rgba(129,140,248,0.2),rgba(127,34,254,0.3)_28%,rgba(88,28,135,0.2)_52%,transparent_84%)] ${
           docked
-            ? "h-28 w-28 -translate-x-[66%] -translate-y-[56%] blur-[40px]"
-            : "h-40 w-40 -translate-x-[68%] -translate-y-[58%] blur-[52px]"
+            ? "h-20 w-[18rem] -translate-x-1/2 -translate-y-[44%] blur-[34px]"
+            : "h-28 w-[24rem] -translate-x-1/2 -translate-y-[46%] blur-[52px]"
         }`}
       />
       <div
-        className={`absolute left-1/2 top-1/2 rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(244,114,182,0.32),rgba(129,140,248,0.16)_34%,rgba(37,99,235,0.1)_60%,transparent_80%)] ${
+        className={`absolute left-1/2 top-1/2 rounded-[999px] bg-[radial-gradient(ellipse_at_60%_50%,rgba(196,181,253,0.26),rgba(127,34,254,0.24)_32%,rgba(30,41,59,0.08)_66%,transparent_88%)] ${
           docked
-            ? "h-24 w-24 translate-x-[12%] -translate-y-[30%] blur-[48px]"
-            : "h-32 w-32 translate-x-[12%] -translate-y-[34%] blur-[60px]"
+            ? "h-24 w-[14rem] translate-x-[34%] -translate-y-[40%] rotate-[18deg] blur-[50px]"
+            : "h-32 w-[19rem] translate-x-[38%] -translate-y-[42%] rotate-[18deg] blur-[66px]"
         }`}
       />
-      {docked ? (
-        <div className="absolute left-1/2 top-1/2 h-20 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.34),rgba(168,85,247,0.18)_32%,rgba(59,7,100,0.12)_56%,transparent_78%)] blur-[34px]" />
-      ) : null}
+      <div
+        className={`absolute left-1/2 top-1/2 rounded-[999px] bg-[radial-gradient(ellipse_at_center,rgba(76,29,149,0.22),rgba(127,34,254,0.16)_36%,transparent_78%)] ${
+          docked
+            ? "h-16 w-[22rem] -translate-x-1/2 -translate-y-[10%] blur-[30px]"
+            : "h-24 w-[28rem] -translate-x-1/2 -translate-y-[8%] blur-[42px]"
+        }`}
+      />
+      <div
+        className={`absolute left-1/2 top-1/2 rounded-[999px] bg-[radial-gradient(ellipse_at_center,rgba(192,132,252,0.24),rgba(127,34,254,0.12)_44%,transparent_80%)] ${
+          docked
+            ? "h-16 w-[9rem] -translate-x-[8%] -translate-y-[58%] blur-[24px]"
+            : "h-24 w-[12rem] -translate-x-[10%] -translate-y-[60%] blur-[34px]"
+        }`}
+      />
       <div className="relative z-10 flex items-center justify-center">
         <div className="flex flex-col items-center gap-1 px-6 text-center">
           <div
