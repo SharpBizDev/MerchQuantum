@@ -1849,7 +1849,7 @@ function CreativeWellspringBootOverlay({
 
 function CreativeWellspringEmptyStateMark() {
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-25" aria-hidden="true">
+    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden opacity-30" aria-hidden="true">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.14),rgba(3,5,13,0.22)_40%,rgba(0,0,0,0)_78%)]" />
       <div className="absolute left-1/2 top-1/2 h-40 w-40 -translate-x-[68%] -translate-y-[58%] rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(196,181,253,0.78),rgba(127,34,254,0.46)_26%,rgba(53,32,164,0.18)_58%,transparent_80%)] blur-[52px]" />
       <div className="absolute left-1/2 top-1/2 h-32 w-32 translate-x-[12%] -translate-y-[34%] rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(244,114,182,0.32),rgba(129,140,248,0.16)_34%,rgba(37,99,235,0.1)_60%,transparent_80%)] blur-[60px]" />
@@ -2010,7 +2010,7 @@ function ProductGrid({
             })}
         </div>
       ) : (
-        <div className="relative min-h-[120px] overflow-hidden rounded-xl" aria-hidden={loading ? undefined : true}>
+        <div className="relative isolate min-h-[120px] overflow-hidden rounded-xl" aria-hidden={loading ? undefined : true}>
           <CreativeWellspringEmptyStateMark />
           {loading ? (
             <div className="relative z-10 flex h-full min-h-[120px] flex-col items-center justify-center gap-2 px-3 py-6 text-sm text-slate-400">
@@ -4372,7 +4372,7 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <div className="relative min-h-screen max-w-full overflow-x-hidden bg-[#0d1117] px-4 pb-4 pt-3 text-white transition-colors md:px-6 md:pb-6 md:pt-4">
+    <div className="relative z-10 min-h-screen max-w-full overflow-x-hidden bg-[#0d1117] px-4 pb-4 pt-3 text-white transition-colors md:px-6 md:pb-6 md:pt-4">
       {isBootOverlayVisible ? (
         <CreativeWellspringBootOverlay
           visible={isBootOverlayVisible}
