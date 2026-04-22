@@ -788,25 +788,9 @@ async function createContrastSafePreview(file: File): Promise<{ src: string; bac
       return { src: objectUrl, background: DISPLAY_NEUTRAL_BACKGROUND };
     }
 
-    const renderScale = Math.min(1, DISPLAY_PREVIEW_MAX_DIMENSION / longestEdge);
-    const renderWidth = Math.max(1, Math.round(sourceWidth * renderScale));
-    const renderHeight = Math.max(1, Math.round(sourceHeight * renderScale));
-    const renderCanvas = document.createElement("canvas");
-    renderCanvas.width = renderWidth;
-    renderCanvas.height = renderHeight;
-    const renderCtx = renderCanvas.getContext("2d");
-
-    if (!renderCtx) {
-      keepObjectUrl = true;
-      return { src: objectUrl, background: DISPLAY_NEUTRAL_BACKGROUND };
-    }
-
     const previewBackground = choosePreviewBackground(totalAlpha > 0 ? weightedBrightness / totalAlpha : null);
-    renderCtx.fillStyle = previewBackground;
-    renderCtx.fillRect(0, 0, renderWidth, renderHeight);
-    renderCtx.drawImage(img, 0, 0, renderWidth, renderHeight);
-
-    return { src: renderCanvas.toDataURL("image/png"), background: previewBackground };
+    keepObjectUrl = true;
+    return { src: objectUrl, background: previewBackground };
   } catch {
     keepObjectUrl = true;
     return { src: objectUrl, background: DISPLAY_NEUTRAL_BACKGROUND };
@@ -2003,21 +1987,25 @@ function ProductGrid({
                   aria-label={product.title}
                 >
                   <div
-                    className={`relative box-border aspect-square w-full overflow-hidden rounded-md border bg-gray-800/50 p-[8%] transition duration-200 ease-out group-hover:z-10 group-hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] group-focus-visible:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
+                    className={`relative box-border aspect-square w-full overflow-hidden rounded-md border bg-gray-800/50 transition duration-200 ease-out group-hover:z-10 group-hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] group-focus-visible:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
                   >
-                    <div className="relative h-full w-full overflow-hidden rounded-[6px]" style={{ backgroundColor: previewSurfaceBackground }}>
+                    <div
+                      className="absolute inset-0 overflow-hidden rounded-[6px] bg-center bg-cover bg-no-repeat"
+                      style={{ backgroundColor: previewSurfaceBackground }}
+                    />
                     {product.previewUrl ? (
-                      <div className="relative h-full w-full">
-                        <img
-                          src={product.previewUrl}
-                          alt={product.title}
-                          className="absolute inset-0 h-full w-full object-contain"
-                        />
+                      <div className="relative h-full w-full p-[8%]">
+                        <div className="relative h-full w-full">
+                          <img
+                            src={product.previewUrl}
+                            alt={product.title}
+                            className="absolute inset-0 h-full w-full object-contain"
+                          />
+                        </div>
                       </div>
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))]" />
                     )}
-                    </div>
                     <div className={`pointer-events-none absolute inset-0 transition ${
                       isSelected ? "bg-[#7F22FE]/14" : isActive ? "bg-[#7F22FE]/8" : "bg-black/10"
                     }`} />
@@ -4762,7 +4750,7 @@ export default function MerchQuantumApp() {
                                       <div className="relative">
                                         {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
                                         <div
-                                          className={`group relative box-border flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border bg-[#020616] p-[8%] transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${previewFrameTone}`}
+                                          className={`group relative box-border flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border bg-[#020616] transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${previewFrameTone}`}
                                         >
                                           {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
                                           {statusIndicator ? (
@@ -4785,15 +4773,16 @@ export default function MerchQuantumApp() {
                                             x
                                           </button>
                                           <div
-                                            className="relative h-full w-full overflow-hidden rounded-[8px]"
+                                            className="absolute inset-0 overflow-hidden rounded-[8px] bg-center bg-cover bg-no-repeat"
                                             style={{ backgroundColor: img.previewBackground || DISPLAY_NEUTRAL_BACKGROUND }}
-                                          >
-                                            {img.preview ? (
+                                          />
+                                          {img.preview ? (
+                                            <div className="relative h-full w-full p-[8%]">
                                               <div className="relative h-full w-full">
                                                 <img src={img.preview} alt={img.final} className="absolute inset-0 h-full w-full object-contain" />
                                               </div>
-                                            ) : null}
-                                          </div>
+                                            </div>
+                                          ) : null}
                                         </div>
                                       </div>
                                     </div>
