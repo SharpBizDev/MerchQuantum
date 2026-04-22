@@ -2014,26 +2014,21 @@ function ProductGrid({
                   aria-label={product.title}
                 >
                   <div
-                    className={`relative box-border aspect-square w-full overflow-hidden rounded-md border bg-gray-800/50 transition duration-200 ease-out group-hover:z-10 group-hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] group-focus-visible:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
+                    className={`relative box-border aspect-square w-full overflow-hidden rounded-md border bg-gray-800/50 p-[8%] transition duration-200 ease-out group-hover:z-10 group-hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] group-focus-visible:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
                   >
-                    <div
-                      className="absolute inset-0"
-                      style={{ backgroundColor: previewSurfaceBackground }}
-                    />
+                    <div className="relative h-full w-full overflow-hidden rounded-[6px]" style={{ backgroundColor: previewSurfaceBackground }}>
                     {product.previewUrl ? (
-                      <div
-                        className="absolute"
-                        style={{ inset: `${ARTWORK_SAFE_ZONE_PCT * 100}%` }}
-                      >
+                      <div className="relative h-full w-full">
                         <img
                           src={product.previewUrl}
                           alt={product.title}
-                          className="h-full w-full object-contain"
+                          className="absolute inset-0 h-full w-full object-contain"
                         />
                       </div>
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))]" />
                     )}
+                    </div>
                     <div className={`pointer-events-none absolute inset-0 transition ${
                       isSelected ? "bg-[#7F22FE]/14" : isActive ? "bg-[#7F22FE]/8" : "bg-black/10"
                     }`} />
@@ -2535,6 +2530,7 @@ export default function MerchQuantumApp() {
     || isSyncingImportedListings
     || isPublishingImportedListings
     || (!supportsImportedListingSync && !supportsImportedPublish);
+  const descriptionActionDisabled = isCreateMode ? uploadDisabled : bulkEditPublishDisabled;
   const descriptionActionLabel = isCreateMode
     ? (isRunningBatch ? "Uploading..." : "Upload")
     : isSyncingImportedListings
@@ -2542,6 +2538,13 @@ export default function MerchQuantumApp() {
       : isPublishingImportedListings
         ? "Publishing..."
         : "Publish";
+  const triggerDescriptionAction = () => {
+    if (isCreateMode) {
+      void runDraftBatch();
+      return;
+    }
+    void runBulkEditPublishAction();
+  };
   const routingGuidanceTarget =
     !provider
       ? "provider"
@@ -4677,10 +4680,18 @@ export default function MerchQuantumApp() {
                       <div className="grid grid-cols-1 items-stretch gap-3">
                         <div className="flex h-full min-w-0 w-full flex-col gap-3">
                           {isCreateMode ? (
-                            <button
-                              type="button"
+                            <div
+                              role={isWorkspaceConfigured ? "button" : undefined}
+                              tabIndex={isWorkspaceConfigured ? 0 : -1}
                               className={`w-full rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-4 py-4 text-center transition-colors ${isWorkspaceConfigured ? "cursor-pointer hover:bg-[#0b1024]" : "cursor-default"}`}
                               onClick={isWorkspaceConfigured ? openArtworkPicker : undefined}
+                              onKeyDown={(e) => {
+                                if (!isWorkspaceConfigured) return;
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  openArtworkPicker();
+                                }
+                              }}
                               onDragOver={(e) => {
                                 if (isCreateMode) {
                                   e.preventDefault();
@@ -4695,11 +4706,29 @@ export default function MerchQuantumApp() {
                                 void addFiles(e.dataTransfer.files);
                               }}
                             >
-                              <div className="flex flex-col items-center gap-1">
-                                <p className="font-bold text-white">Drag images here or click to add images</p>
-                                <p className="text-sm text-slate-300">Max 50 images.</p>
-                                <p className="text-xs text-slate-400">System will queue additional listings.</p>
-                                <p className="text-xs text-slate-500">(API Rate Limit Safety Enforced)</p>
+                              <div className="flex min-h-[172px] flex-col justify-center">
+                                <div className="flex flex-col items-center gap-1">
+                                  <p className="font-bold text-white">Drag images here or click to add images</p>
+                                  <p className="text-sm text-slate-300">Max 50 images.</p>
+                                  <p className="text-xs text-slate-400">System will queue additional listings.</p>
+                                  <p className="text-xs text-slate-500">(API Rate Limit Safety Enforced)</p>
+                                </div>
+                                <div className="mt-4 flex w-full items-center justify-between text-[11px] font-medium text-slate-400">
+                                  <span>{`Loaded: ${loadedStatCount} | Queue: ${queuedStatCount}`}</span>
+                                  <button
+                                    type="button"
+                                    disabled={!hasAnyLoadedImages}
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      if (!hasAnyLoadedImages) return;
+                                      clearPreviewWorkspace();
+                                    }}
+                                    className="text-[11px] font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+                                  >
+                                    Clear
+                                  </button>
+                                </div>
                               </div>
                               {showPreviewStats ? (
                                 <div className="pointer-events-none mt-4 h-[2px] rounded-full bg-slate-800/90">
@@ -4709,7 +4738,7 @@ export default function MerchQuantumApp() {
                                   />
                                 </div>
                               ) : null}
-                            </button>
+                            </div>
                           ) : null}
                           {canShowLoadedQueueGrid ? (
                             <div className="space-y-3 px-1">
@@ -4742,7 +4771,7 @@ export default function MerchQuantumApp() {
                                       <div className="relative">
                                         {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
                                         <div
-                                          className={`group relative box-border flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border bg-[#020616] p-2 transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${previewFrameTone}`}
+                                          className={`group relative box-border flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border bg-[#020616] p-[8%] transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${previewFrameTone}`}
                                         >
                                           {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
                                           {statusIndicator ? (
@@ -4765,12 +4794,12 @@ export default function MerchQuantumApp() {
                                             x
                                           </button>
                                           <div
-                                            className="absolute inset-0 flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit]"
+                                            className="relative h-full w-full overflow-hidden rounded-[8px]"
                                             style={{ backgroundColor: img.previewBackground || DISPLAY_NEUTRAL_BACKGROUND }}
                                           >
                                             {img.preview ? (
-                                              <div className="absolute" style={{ inset: `${ARTWORK_SAFE_ZONE_PCT * 100}%` }}>
-                                                <img src={img.preview} alt={img.final} className="h-full w-full object-contain" />
+                                              <div className="relative h-full w-full">
+                                                <img src={img.preview} alt={img.final} className="absolute inset-0 h-full w-full object-contain" />
                                               </div>
                                             ) : null}
                                           </div>
@@ -4780,22 +4809,7 @@ export default function MerchQuantumApp() {
                                   );
                                 })}
                               </div>
-                              <div className="mt-3 flex items-center justify-between gap-3">
-                                <div className="flex items-center gap-3">
-                                  <span className="text-xs text-slate-400">{`Loaded: ${loadedStatCount} | Queue: ${queuedStatCount}`}</span>
-                                  <button
-                                    type="button"
-                                    disabled={!hasAnyLoadedImages}
-                                    onClick={() => {
-                                      if (!hasAnyLoadedImages) return;
-                                      clearPreviewWorkspace();
-                                    }}
-                                    className="text-[11px] font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
-                                  >
-                                    Clear
-                                  </button>
-                                </div>
-                                <div className="flex flex-wrap items-center justify-end gap-2 text-[11px]">
+                              <div className="mt-3 flex items-center justify-end gap-2 text-[11px]">
                                   {createThumbTotalPages > 1 ? (
                                     <>
                                       <button
@@ -4830,7 +4844,6 @@ export default function MerchQuantumApp() {
                                       {isCreateThumbExpandedView ? "Compact" : "View All"}
                                     </button>
                                   ) : null}
-                                </div>
                               </div>
                             </div>
                           ) : null}
@@ -4937,21 +4950,6 @@ export default function MerchQuantumApp() {
                                     <span className="ml-1 truncate text-white">AI Description</span>
                                   </span>
                                 </div>
-                                <div className="flex shrink-0 items-center gap-2">
-                                  <Button
-                                    className="min-h-0 h-8 shrink-0 rounded-md px-3 py-1 text-sm font-medium tracking-tight !bg-[#7F22FE]/12 !text-[#F3E8FF] hover:!bg-[#7F22FE]/20 hover:!text-white"
-                                    disabled={isCreateMode ? uploadDisabled : bulkEditPublishDisabled}
-                                    onClick={() => {
-                                      if (isCreateMode) {
-                                        void runDraftBatch();
-                                        return;
-                                      }
-                                      void runBulkEditPublishAction();
-                                    }}
-                                  >
-                                    {descriptionActionLabel}
-                                  </Button>
-                                </div>
                               </div>
                               <div className="space-y-2">
                                 <div className="rounded-xl border border-slate-700 bg-[#020616] px-3 py-3 text-sm font-normal leading-6 text-white">
@@ -4984,6 +4982,15 @@ export default function MerchQuantumApp() {
                                           />
                                           <div className="absolute bottom-2 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-500">
                                             <span className="pointer-events-none">{editableDescriptionDraft.trim().length}/{LISTING_LIMITS.descriptionMax}</span>
+                                            <button
+                                              type="button"
+                                              onMouseDown={(event) => event.preventDefault()}
+                                              onClick={triggerDescriptionAction}
+                                              disabled={descriptionActionDisabled}
+                                              className="pointer-events-auto text-[10px] font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+                                            >
+                                              {descriptionActionLabel}
+                                            </button>
                                             {canRerollSelectedImage ? (
                                               <button
                                                 type="button"
@@ -5038,6 +5045,18 @@ export default function MerchQuantumApp() {
                                           )}
                                           <div className="absolute bottom-2 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-500">
                                             <span className="pointer-events-none">{(detailBuyerDescription || "").trim().length}/{LISTING_LIMITS.descriptionMax}</span>
+                                            <button
+                                              type="button"
+                                              onClick={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                triggerDescriptionAction();
+                                              }}
+                                              disabled={descriptionActionDisabled}
+                                              className="pointer-events-auto text-[10px] font-medium text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-600"
+                                            >
+                                              {descriptionActionLabel}
+                                            </button>
                                             {canRerollSelectedImage ? (
                                               <button
                                                 type="button"
