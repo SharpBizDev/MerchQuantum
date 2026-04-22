@@ -1849,11 +1849,11 @@ function CreativeWellspringBootOverlay({
 
 function CreativeWellspringEmptyStateMark() {
   return (
-    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden opacity-30" aria-hidden="true">
+    <div className="pointer-events-none relative z-0 flex min-h-[148px] w-full items-center justify-center overflow-hidden opacity-30" aria-hidden="true">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.14),rgba(3,5,13,0.22)_40%,rgba(0,0,0,0)_78%)]" />
       <div className="absolute left-1/2 top-1/2 h-40 w-40 -translate-x-[68%] -translate-y-[58%] rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(196,181,253,0.78),rgba(127,34,254,0.46)_26%,rgba(53,32,164,0.18)_58%,transparent_80%)] blur-[52px]" />
       <div className="absolute left-1/2 top-1/2 h-32 w-32 translate-x-[12%] -translate-y-[34%] rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(244,114,182,0.32),rgba(129,140,248,0.16)_34%,rgba(37,99,235,0.1)_60%,transparent_80%)] blur-[60px]" />
-      <div className="absolute inset-0 flex items-center justify-center">
+      <div className="relative z-0 flex items-center justify-center">
         <div className="flex flex-col items-center gap-1 px-6 text-center">
           <div className="flex flex-wrap items-baseline justify-center gap-x-2 text-2xl tracking-tight sm:text-3xl">
             <span className="font-bold text-[#7F22FE]">Merch</span>
@@ -2010,10 +2010,12 @@ function ProductGrid({
             })}
         </div>
       ) : (
-        <div className="relative isolate min-h-[120px] overflow-hidden rounded-xl" aria-hidden={loading ? undefined : true}>
-          <CreativeWellspringEmptyStateMark />
+        <div className="grid min-h-[148px] w-full overflow-hidden rounded-xl" aria-hidden={loading ? undefined : true}>
+          <div className="col-start-1 row-start-1">
+            <CreativeWellspringEmptyStateMark />
+          </div>
           {loading ? (
-            <div className="relative z-10 flex h-full min-h-[120px] flex-col items-center justify-center gap-2 px-3 py-6 text-sm text-slate-400">
+            <div className="col-start-1 row-start-1 relative z-10 flex h-full min-h-[148px] flex-col items-center justify-center gap-2 px-3 py-6 text-sm text-slate-400">
               {loadingAccessory ? (
                 <span className="inline-flex items-center justify-center">
                   {loadingAccessory}
@@ -2596,19 +2598,6 @@ export default function MerchQuantumApp() {
   function nudgeWorkflow(includeImportStep: boolean) {
     const target = getMissingWorkflowTarget(includeImportStep);
     if (target) triggerAttentionCue(target);
-  }
-
-  function clearTokenDraft() {
-    if (providerTokenStorageKey) {
-      window.localStorage.removeItem(providerTokenStorageKey);
-    }
-    setToken("");
-    setApiStatus("");
-    setIsTokenInputFocused(true);
-    window.requestAnimationFrame(() => {
-      const input = document.getElementById("provider-api-key-input") as HTMLInputElement | null;
-      input?.focus();
-    });
   }
 
   useEffect(() => {
@@ -4474,7 +4463,7 @@ export default function MerchQuantumApp() {
                       void connectProvider();
                     }
                   }}
-                  className="min-w-0 truncate pr-28 disabled:cursor-not-allowed sm:pr-32"
+                  className="min-w-0 truncate pr-14 disabled:cursor-not-allowed sm:pr-16"
                 />
                 <div
                   className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center"
@@ -4492,16 +4481,6 @@ export default function MerchQuantumApp() {
                     }
                   }}
                 >
-                  {!connected && hasTokenValue ? (
-                    <button
-                      type="button"
-                      aria-label="Clear API key"
-                      onClick={clearTokenDraft}
-                      className="mr-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-700/80 bg-[#050918] text-slate-400 transition hover:border-slate-500 hover:text-white"
-                    >
-                      <span className="text-sm leading-none">x</span>
-                    </button>
-                  ) : null}
                   {loadingApi ? (
                     <span className="inline-flex h-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-slate-300">
                       <QuantOrbLoader />
