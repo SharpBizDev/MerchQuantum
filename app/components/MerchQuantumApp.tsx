@@ -1884,10 +1884,10 @@ function CreativeWellspringBrandMark({
             }`}
           >
             <span className="font-bold text-[#7F22FE]">Merch</span>
-            <span className="font-medium text-white/80">Quantum</span>
+            <span className="font-medium text-white">Quantum</span>
           </div>
           <p
-            className={`font-light uppercase tracking-[0.3em] text-slate-300/70 ${
+            className={`font-light uppercase tracking-[0.3em] text-slate-300 ${
               docked ? "text-[9px] sm:text-[10px]" : "text-[10px] sm:text-[11px]"
             }`}
           >
@@ -2320,7 +2320,6 @@ export default function MerchQuantumApp() {
   const [isBootOverlayVisible, setIsBootOverlayVisible] = useState(true);
   const [isBootOverlayPrimed, setIsBootOverlayPrimed] = useState(false);
   const [isBootOverlaySweepActive, setIsBootOverlaySweepActive] = useState(false);
-  const [hasDockedIntroMark, setHasDockedIntroMark] = useState(false);
   const [activeGridProductId, setActiveGridProductId] = useState("");
 
   const resolvedProviderId = provider === "spreadconnect" ? "spod" : provider;
@@ -3324,23 +3323,6 @@ export default function MerchQuantumApp() {
   }, []);
 
   useEffect(() => {
-    if (isBootOverlayVisible || hasDockedIntroMark) return;
-
-    const handleScroll = () => {
-      if (window.scrollY > 8) {
-        setHasDockedIntroMark(true);
-      }
-    };
-
-    handleScroll();
-    window.addEventListener("scroll", handleScroll, { passive: true });
-
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-    };
-  }, [hasDockedIntroMark, isBootOverlayVisible]);
-
-  useEffect(() => {
     activeTemplateKeyRef.current = templateKey;
     aiLoopBusyRef.current = null;
     setImages((current) =>
@@ -3536,12 +3518,9 @@ export default function MerchQuantumApp() {
   }
 
   function dismissBootOverlay() {
-  setIsBootOverlaySweepActive(true);
-  setIsBootOverlayVisible(false);
-  if (window.scrollY > 8) {
-    setHasDockedIntroMark(true);
+    setIsBootOverlaySweepActive(true);
+    setIsBootOverlayVisible(false);
   }
-}
 
   function clearPreviewWorkspace() {
     setImages([]);
@@ -4424,16 +4403,6 @@ export default function MerchQuantumApp() {
         />
       ) : null}
 
-      {!isBootOverlayVisible ? (
-        <div
-          className={`pointer-events-none fixed inset-x-0 top-1/2 z-40 flex -translate-y-1/2 justify-center px-4 transition-all duration-500 ease-out md:px-6 ${
-            hasDockedIntroMark ? "translate-y-[-58%] scale-95 opacity-0" : "translate-y-[-50%] scale-100 opacity-100"
-          }`}
-        >
-          <CreativeWellspringBrandMark className="w-full max-w-xl opacity-40" />
-        </div>
-      ) : null}
-
       <div className={`relative z-10 mx-auto w-full max-w-3xl space-y-3 transition-all duration-300 ${isBootOverlayVisible ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"}`}>
         <div className="sticky top-0 z-50 space-y-2 bg-[#0d1117]/95 pb-2 backdrop-blur-md">
           {!workspaceMode || isRoutingGridExpanded ? (
@@ -4626,19 +4595,10 @@ export default function MerchQuantumApp() {
           </div>
           ) : null}
 
-          {!isBootOverlayVisible ? (
-            <div
-              className={`pointer-events-none overflow-hidden transition-all duration-500 ease-out ${
-                hasDockedIntroMark ? "max-h-24 translate-y-0 opacity-100" : "max-h-0 -translate-y-2 opacity-0"
-              }`}
-            >
-              <CreativeWellspringBrandMark docked className="opacity-40" />
-            </div>
-          ) : null}
         </div>
 
         {connected && shopId && workspaceMode ? (
-          <Box className="border-slate-800 bg-[#020616] shadow-[0_24px_70px_-38px_rgba(2,6,22,0.95)]">
+          <Box className="relative z-10 border-slate-800 bg-[#020616] shadow-[0_24px_70px_-38px_rgba(2,6,22,0.95)]">
             <input
               ref={fileRef}
               type="file"
@@ -5208,6 +5168,12 @@ export default function MerchQuantumApp() {
               </>
             ) : null}
           </Box>
+        ) : null}
+
+        {!isBootOverlayVisible ? (
+          <div className="pointer-events-none relative z-0 flex w-full justify-center pt-1 pb-2">
+            <CreativeWellspringBrandMark docked className="w-full max-w-xl opacity-100" />
+          </div>
         ) : null}
       </div>
     </div>
