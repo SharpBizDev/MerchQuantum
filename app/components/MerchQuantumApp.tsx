@@ -1847,19 +1847,50 @@ function CreativeWellspringBootOverlay({
   );
 }
 
-function CreativeWellspringEmptyStateMark() {
+function CreativeWellspringBrandMark({
+  docked = false,
+  className = "",
+}: {
+  docked?: boolean;
+  className?: string;
+}) {
   return (
-    <div className="pointer-events-none relative z-0 flex min-h-[148px] w-full items-center justify-center overflow-hidden opacity-30" aria-hidden="true">
+    <div
+      className={`pointer-events-none relative z-0 flex w-full items-center justify-center overflow-hidden ${
+        docked ? "min-h-[72px]" : "min-h-[148px]"
+      } ${className}`}
+      aria-hidden="true"
+    >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.14),rgba(3,5,13,0.22)_40%,rgba(0,0,0,0)_78%)]" />
-      <div className="absolute left-1/2 top-1/2 h-40 w-40 -translate-x-[68%] -translate-y-[58%] rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(196,181,253,0.78),rgba(127,34,254,0.46)_26%,rgba(53,32,164,0.18)_58%,transparent_80%)] blur-[52px]" />
-      <div className="absolute left-1/2 top-1/2 h-32 w-32 translate-x-[12%] -translate-y-[34%] rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(244,114,182,0.32),rgba(129,140,248,0.16)_34%,rgba(37,99,235,0.1)_60%,transparent_80%)] blur-[60px]" />
+      <div
+        className={`absolute left-1/2 top-1/2 rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(196,181,253,0.78),rgba(127,34,254,0.46)_26%,rgba(53,32,164,0.18)_58%,transparent_80%)] ${
+          docked
+            ? "h-24 w-24 -translate-x-[66%] -translate-y-[56%] blur-[34px]"
+            : "h-40 w-40 -translate-x-[68%] -translate-y-[58%] blur-[52px]"
+        }`}
+      />
+      <div
+        className={`absolute left-1/2 top-1/2 rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(244,114,182,0.32),rgba(129,140,248,0.16)_34%,rgba(37,99,235,0.1)_60%,transparent_80%)] ${
+          docked
+            ? "h-20 w-20 translate-x-[10%] -translate-y-[30%] blur-[42px]"
+            : "h-32 w-32 translate-x-[12%] -translate-y-[34%] blur-[60px]"
+        }`}
+      />
       <div className="relative z-0 flex items-center justify-center">
         <div className="flex flex-col items-center gap-1 px-6 text-center">
-          <div className="flex flex-wrap items-baseline justify-center gap-x-2 text-2xl tracking-tight sm:text-3xl">
+          <div
+            className={`flex flex-wrap items-baseline justify-center gap-x-2 tracking-tight ${
+              docked ? "text-xl sm:text-2xl" : "text-2xl sm:text-3xl"
+            }`}
+          >
             <span className="font-bold text-[#7F22FE]">Merch</span>
             <span className="font-medium text-white/80">Quantum</span>
           </div>
-          <p className="text-[10px] font-light uppercase tracking-[0.3em] text-slate-300/70 sm:text-[11px]">
+          <p
+            className={`font-light uppercase tracking-[0.3em] text-slate-300/70 ${
+              docked ? "text-[9px] sm:text-[10px]" : "text-[10px] sm:text-[11px]"
+            }`}
+          >
             {BOOT_TAGLINE}
           </p>
         </div>
@@ -2011,9 +2042,6 @@ function ProductGrid({
         </div>
       ) : (
         <div className="grid min-h-[148px] w-full overflow-hidden rounded-xl" aria-hidden={loading ? undefined : true}>
-          <div className="col-start-1 row-start-1">
-            <CreativeWellspringEmptyStateMark />
-          </div>
           {loading ? (
             <div className="col-start-1 row-start-1 relative z-10 flex h-full min-h-[148px] flex-col items-center justify-center gap-2 px-3 py-6 text-sm text-slate-400">
               {loadingAccessory ? (
@@ -2288,6 +2316,7 @@ export default function MerchQuantumApp() {
   const [isBootOverlayVisible, setIsBootOverlayVisible] = useState(true);
   const [isBootOverlayPrimed, setIsBootOverlayPrimed] = useState(false);
   const [isBootOverlaySweepActive, setIsBootOverlaySweepActive] = useState(false);
+  const [hasDockedIntroMark, setHasDockedIntroMark] = useState(false);
   const [activeGridProductId, setActiveGridProductId] = useState("");
 
   const resolvedProviderId = provider === "spreadconnect" ? "spod" : provider;
@@ -3291,6 +3320,23 @@ export default function MerchQuantumApp() {
   }, []);
 
   useEffect(() => {
+    if (isBootOverlayVisible || hasDockedIntroMark) return;
+
+    const handleScroll = () => {
+      if (window.scrollY > 8) {
+        setHasDockedIntroMark(true);
+      }
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, [hasDockedIntroMark, isBootOverlayVisible]);
+
+  useEffect(() => {
     activeTemplateKeyRef.current = templateKey;
     aiLoopBusyRef.current = null;
     setImages((current) =>
@@ -3488,6 +3534,9 @@ export default function MerchQuantumApp() {
   function dismissBootOverlay() {
   setIsBootOverlaySweepActive(true);
   setIsBootOverlayVisible(false);
+  if (window.scrollY > 8) {
+    setHasDockedIntroMark(true);
+  }
 }
 
   function clearPreviewWorkspace() {
@@ -4371,22 +4420,33 @@ export default function MerchQuantumApp() {
         />
       ) : null}
 
+      {!isBootOverlayVisible ? (
+        <div
+          className={`pointer-events-none fixed inset-x-0 top-1/2 z-40 flex -translate-y-1/2 justify-center px-4 transition-all duration-500 ease-out md:px-6 ${
+            hasDockedIntroMark ? "translate-y-[-58%] scale-95 opacity-0" : "translate-y-[-50%] scale-100 opacity-100"
+          }`}
+        >
+          <CreativeWellspringBrandMark className="w-full max-w-xl opacity-40" />
+        </div>
+      ) : null}
+
       <div className={`relative z-10 mx-auto w-full max-w-3xl space-y-3 transition-all duration-300 ${isBootOverlayVisible ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"}`}>
-        {!workspaceMode || isRoutingGridExpanded ? (
-        <div className="relative">
-          <Box
-            className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${routingGuidanceTarget ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""}`}
-          >
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" />
-          <div className={`pointer-events-none absolute -right-10 top-0 h-36 w-36 blur-3xl transition-all duration-700 sm:-right-16 sm:h-40 sm:w-40 md:-right-20 md:h-48 md:w-48 ${connected ? "bg-[#00BC7D]/12" : "bg-[#7F22FE]/12"} ${routingGuidanceTarget ? "animate-pulse" : ""}`} />
-          <div className="pointer-events-none absolute -left-6 bottom-0 h-24 w-24 rounded-full bg-white/5 blur-3xl sm:-left-8 sm:h-28 sm:w-28 md:-left-12 md:h-32 md:w-32" />
-          <div
-            className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-[#00BC7D]/90 to-transparent" : "bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent"} ${pulseConnected || routingGuidanceTarget ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
-          />
-          <div className="mb-3 flex min-w-0 items-center">
-            <MerchQuantumInlineHeading className="max-w-full" />
-          </div>
-          <div className="grid w-full grid-cols-2 gap-2">
+        <div className="sticky top-0 z-50 space-y-2 bg-[#0d1117]/95 pb-2 backdrop-blur-md">
+          {!workspaceMode || isRoutingGridExpanded ? (
+          <div className="relative">
+            <Box
+              className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${routingGuidanceTarget ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""}`}
+            >
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" />
+            <div className={`pointer-events-none absolute -right-10 top-0 h-36 w-36 blur-3xl transition-all duration-700 sm:-right-16 sm:h-40 sm:w-40 md:-right-20 md:h-48 md:w-48 ${connected ? "bg-[#00BC7D]/12" : "bg-[#7F22FE]/12"} ${routingGuidanceTarget ? "animate-pulse" : ""}`} />
+            <div className="pointer-events-none absolute -left-6 bottom-0 h-24 w-24 rounded-full bg-white/5 blur-3xl sm:-left-8 sm:h-28 sm:w-28 md:-left-12 md:h-32 md:w-32" />
+            <div
+              className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-[#00BC7D]/90 to-transparent" : "bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent"} ${pulseConnected || routingGuidanceTarget ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
+            />
+            <div className="mb-3 flex min-w-0 items-center">
+              <MerchQuantumInlineHeading className="max-w-full" />
+            </div>
+            <div className="grid w-full grid-cols-2 gap-2">
             <div className={`min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
               <Select
                 value={provider}
@@ -4555,12 +4615,23 @@ export default function MerchQuantumApp() {
                 <option value="edit">Bulk Edit</option>
               </Select>
             </div>
-          </div>
+            </div>
 
-          {apiStatus ? <p className="mt-3 text-sm text-[#FE9A00]">{apiStatus}</p> : null}
-        </Box>
+            {apiStatus ? <p className="mt-3 text-sm text-[#FE9A00]">{apiStatus}</p> : null}
+          </Box>
+          </div>
+          ) : null}
+
+          {!isBootOverlayVisible ? (
+            <div
+              className={`pointer-events-none overflow-hidden transition-all duration-500 ease-out ${
+                hasDockedIntroMark ? "max-h-24 translate-y-0 opacity-100" : "max-h-0 -translate-y-2 opacity-0"
+              }`}
+            >
+              <CreativeWellspringBrandMark docked className="opacity-40" />
+            </div>
+          ) : null}
         </div>
-        ) : null}
 
         {connected && shopId && workspaceMode ? (
           <Box className="border-slate-800 bg-[#020616] shadow-[0_24px_70px_-38px_rgba(2,6,22,0.95)]">
