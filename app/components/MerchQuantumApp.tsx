@@ -242,6 +242,7 @@ const DISPLAY_DARK_BACKGROUND = "#000000";
 const DISPLAY_LIGHT_BACKGROUND = "#FFFFFF";
 const DISPLAY_NEUTRAL_BACKGROUND = "#020616";
 const ARTWORK_SAFE_ZONE_PCT = 0.08;
+const PROVIDER_TOKEN_STORAGE_PREFIX = "merchQuantumApiKey";
 const STOP_WORDS = new Set([
   "the",
   "a",
@@ -581,6 +582,11 @@ function shouldUseLightPreviewText(background: string | null | undefined) {
 function choosePreviewBackground(averageBrightness: number | null) {
   if (averageBrightness === null) return DISPLAY_DARK_BACKGROUND;
   return averageBrightness > 128 ? DISPLAY_DARK_BACKGROUND : DISPLAY_LIGHT_BACKGROUND;
+}
+
+function getProviderTokenStorageKey(providerId: string | null | undefined) {
+  if (!providerId) return null;
+  return `${PROVIDER_TOKEN_STORAGE_PREFIX}:${providerId}`;
 }
 
 function normalizeArtworkBounds(bounds: ArtworkBounds | undefined, width: number, height: number): ArtworkBounds {
@@ -1878,6 +1884,27 @@ function CreativeWellspringBootOverlay({
   );
 }
 
+function CreativeWellspringEmptyStateMark() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-25" aria-hidden="true">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.14),rgba(3,5,13,0.22)_40%,rgba(0,0,0,0)_78%)]" />
+      <div className="absolute left-1/2 top-1/2 h-40 w-40 -translate-x-[68%] -translate-y-[58%] rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(196,181,253,0.78),rgba(127,34,254,0.46)_26%,rgba(53,32,164,0.18)_58%,transparent_80%)] blur-[52px]" />
+      <div className="absolute left-1/2 top-1/2 h-32 w-32 translate-x-[12%] -translate-y-[34%] rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(244,114,182,0.32),rgba(129,140,248,0.16)_34%,rgba(37,99,235,0.1)_60%,transparent_80%)] blur-[60px]" />
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-1 px-6 text-center">
+          <div className="flex flex-wrap items-baseline justify-center gap-x-2 text-2xl tracking-tight sm:text-3xl">
+            <span className="font-bold text-[#7F22FE]">Merch</span>
+            <span className="font-medium text-white/80">Quantum</span>
+          </div>
+          <p className="text-[10px] font-light uppercase tracking-[0.3em] text-slate-300/70 sm:text-[11px]">
+            {BOOT_TAGLINE}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProductGrid({
   heading,
   items,
@@ -2024,9 +2051,10 @@ function ProductGrid({
             })}
           </div>
         ) : (
-          <div className="min-h-[120px] rounded-xl" aria-hidden={loading ? undefined : true}>
+          <div className="relative min-h-[120px] overflow-hidden rounded-xl" aria-hidden={loading ? undefined : true}>
+            <CreativeWellspringEmptyStateMark />
             {loading ? (
-              <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 px-3 py-6 text-sm text-slate-400">
+              <div className="relative z-10 flex h-full min-h-[120px] flex-col items-center justify-center gap-2 px-3 py-6 text-sm text-slate-400">
                 {loadingAccessory ? (
                   <span className="inline-flex items-center justify-center">
                     {loadingAccessory}
@@ -2285,6 +2313,7 @@ export default function MerchQuantumApp() {
   const [activeGridProductId, setActiveGridProductId] = useState("");
 
   const resolvedProviderId = provider === "spreadconnect" ? "spod" : provider;
+  const providerTokenStorageKey = getProviderTokenStorageKey(resolvedProviderId);
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
   const isLiveProvider = selectedProvider?.isLive || false;
   const isCreateMode = workspaceMode === "create";
@@ -2594,6 +2623,9 @@ export default function MerchQuantumApp() {
   }
 
   function clearTokenDraft() {
+    if (providerTokenStorageKey) {
+      window.localStorage.removeItem(providerTokenStorageKey);
+    }
     setToken("");
     setApiStatus("");
     setIsTokenInputFocused(true);
@@ -2602,6 +2634,18 @@ export default function MerchQuantumApp() {
       input?.focus();
     });
   }
+
+  useEffect(() => {
+    if (!providerTokenStorageKey) {
+      setToken("");
+      return;
+    }
+
+    const storedToken = window.localStorage.getItem(providerTokenStorageKey) || "";
+    setToken(storedToken);
+    setApiStatus("");
+    setIsTokenInputFocused(false);
+  }, [providerTokenStorageKey]);
 
   function nudgeProviderSelectionFromTokenArea() {
     if (!provider) {
@@ -3665,6 +3709,9 @@ export default function MerchQuantumApp() {
         ? data.shops.map((shop: ApiShop) => ({ id: String(shop.id), title: shop.title || `Shop ${shop.id}` }))
         : [];
 
+      if (providerTokenStorageKey) {
+        window.localStorage.setItem(providerTokenStorageKey, submittedToken);
+      }
       setToken(submittedToken);
       setApiShops(shopsFromApi);
       setConnected(true);
@@ -3700,6 +3747,9 @@ export default function MerchQuantumApp() {
     } finally {
       setIsDisconnectArmed(false);
       setIsTokenInputFocused(false);
+      if (providerTokenStorageKey) {
+        window.localStorage.removeItem(providerTokenStorageKey);
+      }
       setToken("");
       resetProviderState(true);
       setApiStatus("");
