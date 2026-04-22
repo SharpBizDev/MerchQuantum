@@ -237,7 +237,6 @@ const DISPLAY_ALPHA_THRESHOLD = 12;
 const DISPLAY_TRANSPARENCY_RATIO_THRESHOLD = 0.04;
 const DISPLAY_DARK_BACKGROUND = "#000000";
 const DISPLAY_LIGHT_BACKGROUND = "#FFFFFF";
-const DISPLAY_NEUTRAL_BACKGROUND = "#020616";
 const ARTWORK_SAFE_ZONE_PCT = 0.08;
 const PROVIDER_TOKEN_STORAGE_PREFIX = "merchQuantumApiKey";
 const STOP_WORDS = new Set([
@@ -522,6 +521,10 @@ function choosePreviewBackground(averageBrightness: number | null) {
   return averageBrightness > 128 ? DISPLAY_DARK_BACKGROUND : DISPLAY_LIGHT_BACKGROUND;
 }
 
+function ensureContrastPreviewBackground(background: string | null | undefined) {
+  return background === DISPLAY_LIGHT_BACKGROUND ? DISPLAY_LIGHT_BACKGROUND : DISPLAY_DARK_BACKGROUND;
+}
+
 function getProviderTokenStorageKey(providerId: string | null | undefined) {
   if (!providerId) return null;
   return `${PROVIDER_TOKEN_STORAGE_PREFIX}:${providerId}`;
@@ -620,13 +623,13 @@ function choosePreviewBackgroundFromImageElement(img: HTMLImageElement) {
 }
 
 async function resolvePreviewSurfaceBackground(src: string | null | undefined): Promise<string> {
-  if (!src) return DISPLAY_NEUTRAL_BACKGROUND;
+  if (!src) return DISPLAY_DARK_BACKGROUND;
 
   try {
     const img = await loadImageElement(src);
     return choosePreviewBackgroundFromImageElement(img);
   } catch {
-    return DISPLAY_NEUTRAL_BACKGROUND;
+    return DISPLAY_DARK_BACKGROUND;
   }
 }
 
@@ -704,7 +707,7 @@ async function createContrastSafePreview(file: File): Promise<{ src: string; bac
     return { src: objectUrl, background: previewBackground };
   } catch {
     keepObjectUrl = true;
-    return { src: objectUrl, background: DISPLAY_NEUTRAL_BACKGROUND };
+    return { src: objectUrl, background: DISPLAY_DARK_BACKGROUND };
   } finally {
     if (!keepObjectUrl) {
       URL.revokeObjectURL(objectUrl);
@@ -1707,7 +1710,7 @@ function ProductGrid({
               const isSelected = selectedIds.includes(product.id);
               const isActive = activeId === product.id;
               const alreadyImported = importedProductIds.has(product.id);
-              const previewSurfaceBackground = previewSurfaceBackgrounds[product.id] || DISPLAY_NEUTRAL_BACKGROUND;
+              const previewSurfaceBackground = ensureContrastPreviewBackground(previewSurfaceBackgrounds[product.id]);
               const cardTone = isSelected
                 ? "border-[#7F22FE] shadow-[inset_0_0_0_2px_rgba(127,34,254,0.85),0_0_10px_rgba(147,51,234,0.32)] opacity-100"
                 : isActive
@@ -4475,7 +4478,7 @@ export default function MerchQuantumApp() {
                                         {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
                                         <div
                                           className={`group relative box-border flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border bg-center bg-cover bg-no-repeat transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${previewFrameTone}`}
-                                          style={{ backgroundColor: img.previewBackground || DISPLAY_NEUTRAL_BACKGROUND }}
+                                          style={{ backgroundColor: ensureContrastPreviewBackground(img.previewBackground) }}
                                         >
                                           {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
                                           {statusIndicator ? (
@@ -4842,7 +4845,7 @@ export default function MerchQuantumApp() {
                         <div className="space-y-1.5">
                           {batchResults.map((result) => (
                             <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-800 p-2.5">
-                              <div className="font-medium">{result.title}</div>
+                              <div className="text-[13px] font-medium leading-5 text-slate-100">{result.title}</div>
                               <div className="text-xs text-slate-100">{result.fileName}</div>
                               <div className="mt-1 text-sm">{result.message}</div>
                               {result.productId ? <div className="mt-1 text-xs text-slate-100">Product ID: {result.productId}</div> : null}
