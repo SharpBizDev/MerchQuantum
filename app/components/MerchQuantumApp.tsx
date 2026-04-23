@@ -8,7 +8,7 @@ const BOOT_TAGLINE = "EFFORTLESS PRODUCT CREATION.";
 const ACTIVE_BATCH_FILES = 50;
 const CONNECTED_TOTAL_BATCH_FILES = 50;
 const FIXED_TAG_COUNT = 13;
-const BRAND_REVEAL_FADE_MS = 2000;
+const BRAND_REVEAL_FADE_MS = 420;
 const BRAND_WORDMARK_TEXT_CLASSES = "text-4xl sm:text-5xl";
 const BRAND_TAGLINE_TEXT_CLASSES = "text-[11px] sm:text-xs";
 const WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY = "mq-workspace-selection-condensed";
@@ -1428,7 +1428,7 @@ type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
 function Input({ className = "", ...props }: InputProps) {
   return (
     <input
-      className={`h-11 w-full min-w-0 rounded-xl border border-slate-700 bg-[#020616] px-3 font-sans text-sm text-white outline-none transition placeholder:text-slate-200 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
+      className={`box-border h-11 w-full min-w-0 rounded-xl border border-slate-700 bg-[#020616] px-3 font-sans text-sm text-white outline-none transition placeholder:text-slate-200 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
       {...props}
     />
   );
@@ -1440,7 +1440,7 @@ function Select({ className = "", children, ...props }: SelectProps) {
   return (
     <div className={`relative min-w-0 w-full ${props.disabled ? "cursor-not-allowed" : ""}`}>
       <select
-        className={`h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 pr-9 font-sans text-sm text-white outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
+        className={`box-border h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 pr-9 font-sans text-sm text-white outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
         {...props}
       >
         {children}
@@ -4000,12 +4000,12 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <div className="w-full bg-[#0d1117] font-sans text-white transition-colors">
+    <div className="box-border w-full overflow-x-hidden bg-[#0d1117] font-sans text-white transition-colors">
       <div
-        className="mx-auto flex min-h-screen w-full max-w-[630px] box-border flex-col px-3 pb-3 pt-3 md:px-4 md:pb-4 md:pt-4"
+        className="quantum-fade-in-up mx-auto flex w-full max-w-[630px] box-border flex-col overflow-x-hidden px-3 pb-3 pt-3 md:px-4 md:pb-4 md:pt-4"
         style={{ minWidth: "min(360px, 100%)" }}
       >
-      <div className="relative z-10 flex flex-1 flex-col gap-3">
+      <div className="relative z-10 flex min-w-0 flex-col gap-3">
         <div className="sticky top-0 z-50 space-y-2 bg-[#0d1117]/95 pb-2 backdrop-blur-md">
           {!workspaceMode || isRoutingGridExpanded ? (
           <div className="relative">
@@ -4779,7 +4779,7 @@ export default function MerchQuantumApp() {
       </div>
 
       <div
-        className={`pointer-events-none relative z-0 mt-auto flex w-full justify-center pt-6 transition-opacity ease-out ${
+        className={`pointer-events-none relative z-0 flex w-full justify-center pt-6 transition-opacity ease-out ${
           isBrandMarkPrimed ? "opacity-100" : "opacity-0"
         }`}
         style={{ transitionDuration: `${BRAND_REVEAL_FADE_MS}ms` }}
@@ -4789,6 +4789,31 @@ export default function MerchQuantumApp() {
           <CreativeWellspringBrandMark docked className="w-full bg-transparent" />
         </div>
       </div>
+      <style jsx global>{`
+        @keyframes quantumFadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(12px);
+          }
+
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .quantum-fade-in-up {
+          animation: quantumFadeInUp 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .quantum-fade-in-up {
+            animation: none;
+            opacity: 1;
+            transform: none;
+          }
+        }
+      `}</style>
       </div>
     </div>
   );
