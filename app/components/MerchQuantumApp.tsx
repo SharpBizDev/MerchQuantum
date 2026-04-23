@@ -14,6 +14,7 @@ const DETAIL_DATA_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-w
 const TAG_PILL_TEXT_CLASSES = "font-sans text-sm font-normal text-white";
 const PRIMARY_ACTION_BUTTON_CLASSES = "inline-flex h-8 shrink-0 items-center justify-center rounded-lg bg-purple-600 px-3 font-sans text-sm font-semibold text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-950/40 disabled:text-slate-200";
 const WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY = "mq-workspace-selection-condensed";
+const QUANTUM_PRODUCT_AWAITING_TEXT = "Awaiting Quantum AI Product...";
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
 export const QUANTUM_DESCRIPTION_AWAITING_TEXT = "Awaiting Quantum AI description...";
 
@@ -167,7 +168,6 @@ type ProductGridProps = {
   loading: boolean;
   headerAccessory?: React.ReactNode;
   onToggleCollapsed?: () => void;
-  loadingAccessory?: React.ReactNode;
   onSelectAll?: () => void;
   footerLabel?: React.ReactNode;
   onItemActivate: (
@@ -1603,7 +1603,6 @@ function ProductGrid({
   loading,
   headerAccessory,
   onToggleCollapsed,
-  loadingAccessory,
   onSelectAll,
   footerLabel,
   onItemActivate,
@@ -1707,13 +1706,11 @@ function ProductGrid({
           <div className="w-full">
             <div className="grid min-h-[148px] w-full overflow-hidden rounded-lg" aria-hidden={loading ? undefined : true}>
             {loading ? (
-              <div className="col-start-1 row-start-1 relative z-10 flex h-full min-h-[148px] flex-col items-center justify-center gap-2 px-3 py-6 text-sm text-slate-100">
-                {loadingAccessory ? (
-                  <span className="inline-flex items-center justify-center">
-                    {loadingAccessory}
-                  </span>
-                ) : null}
-                <span>Loading provider listings...</span>
+              <div className="col-start-1 row-start-1 relative z-10 flex h-full min-h-[148px] items-center justify-center px-3 py-3">
+                <div className="inline-flex items-center gap-2 font-sans text-sm font-normal text-white">
+                  <div className="h-3 w-3 rounded-full bg-purple-500 animate-pulse" />
+                  <span>{QUANTUM_PRODUCT_AWAITING_TEXT}</span>
+                </div>
               </div>
             ) : null}
           </div>
@@ -1726,6 +1723,15 @@ function ProductGrid({
         </div>
         <div className="flex items-center justify-end gap-2">
           {footerActions}
+          {onToggleCollapsed && !collapsed ? (
+            <button
+              type="button"
+              onClick={onToggleCollapsed}
+              className="text-sm font-normal text-gray-400 transition-colors hover:text-white"
+            >
+              Minimize
+            </button>
+          ) : null}
           <button
             type="button"
             aria-label={`Previous ${pageSize} items`}
@@ -4196,7 +4202,6 @@ export default function MerchQuantumApp() {
                 pageSize={bulkEditPageSize}
                 totalPages={bulkEditTotalPages}
                 loading={loadingProducts}
-                loadingAccessory={loadingProducts || isImportingListings ? <QuantOrbLoader /> : null}
                 footerLabel={importStatus || bulkEditVisibleRangeLabel}
                 collapsed={isWorkspaceSelectionCollapsed}
                 headerAccessory={
@@ -4205,7 +4210,7 @@ export default function MerchQuantumApp() {
                     onClick={() => setIsRoutingGridExpanded((current) => !current)}
                     className="font-medium text-slate-100 transition hover:text-white"
                   >
-                    Setup
+                    Mode
                   </button>
                 }
                 onToggleCollapsed={() => setIsWorkspaceSelectionCollapsed((current) => !current)}
@@ -4247,7 +4252,6 @@ export default function MerchQuantumApp() {
                 pageSize={createTemplatePageSize}
                 totalPages={createTemplateTotalPages}
                 loading={loadingProducts}
-                loadingAccessory={loadingProducts || loadingTemplateDetails ? <QuantOrbLoader /> : null}
                 collapsed={isWorkspaceSelectionCollapsed}
                 headerAccessory={
                   <button
@@ -4255,7 +4259,7 @@ export default function MerchQuantumApp() {
                     onClick={() => setIsRoutingGridExpanded((current) => !current)}
                     className="font-medium text-slate-100 transition hover:text-white"
                   >
-                    Setup
+                    Mode
                   </button>
                 }
                 onToggleCollapsed={() => setIsWorkspaceSelectionCollapsed((current) => !current)}
