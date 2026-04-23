@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import {
   generateListingResponse,
-  type GeminiDiagnosticEvent,
+  type VisionDiagnosticEvent,
   ListingInputGuardError,
   type ListingRequest,
 } from "../../../../lib/ai/listing-engine";
@@ -29,12 +29,10 @@ export async function POST(request: NextRequest) {
     const debugRequested =
       request.nextUrl.searchParams.get("debug") === "1" ||
       request.headers.get("x-quantum-debug") === "1";
-    const diagnostics: GeminiDiagnosticEvent[] = [];
+    const diagnostics: VisionDiagnosticEvent[] = [];
     const imageMimeType = detectImageMimeType(body?.imageDataUrl);
-    const geminiApiKeyPresent = Boolean(process.env.GEMINI_API_KEY);
-    const googleGenerativeApiKeyPresent = Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
-    const googleApiKeyPresent = Boolean(process.env.GOOGLE_API_KEY);
-    const resolvedApiKeyPresent = geminiApiKeyPresent || googleGenerativeApiKeyPresent || googleApiKeyPresent;
+    const xaiApiKeyPresent = Boolean(process.env.XAI_API_KEY);
+    const resolvedApiKeyPresent = xaiApiKeyPresent;
 
     console.log(
       "[api/ai/listing] request",
@@ -44,9 +42,7 @@ export async function POST(request: NextRequest) {
         fileNamePresent: Boolean(body?.fileName),
         productFamily: body?.productFamily || null,
         resolvedApiKeyPresent,
-        geminiApiKeyPresent,
-        googleGenerativeApiKeyPresent,
-        googleApiKeyPresent,
+        xaiApiKeyPresent,
       })
     );
 
@@ -63,10 +59,10 @@ export async function POST(request: NextRequest) {
     });
     if (
       result.source === "fallback" &&
-      result.reasonFlags.some((flag) => /bounded gemini attempt|gemini output was unavailable or unparseable/i.test(flag))
+      result.reasonFlags.some((flag) => /bounded grok attempt|grok output was unavailable or unparseable/i.test(flag))
     ) {
       console.warn(
-        "[api/ai/listing] returning fallback after Gemini failure",
+        "[api/ai/listing] returning fallback after Grok failure",
         JSON.stringify({
           requestId,
           title: result.title,

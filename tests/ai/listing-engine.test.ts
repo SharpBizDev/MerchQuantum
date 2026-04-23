@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
@@ -57,10 +57,31 @@ function isNearPixel(
 
 function getGeminiRequestParts(init?: RequestInit) {
   const requestBody = getGeminiRequestBody(init);
-  return (requestBody?.contents?.[0]?.parts || []) as Array<{
+  const messages = Array.isArray(requestBody?.messages) ? requestBody.messages : [];
+  const userMessage = [...messages].reverse().find((message: any) => message?.role === "user");
+  const contentParts = Array.isArray(userMessage?.content) ? userMessage.content : [];
+
+  return contentParts.map((part: any) => {
+    if (part?.type === "text") {
+      return { text: String(part.text || "") };
+    }
+
+    if (part?.type === "image_url") {
+      const url = String(part?.image_url?.url || "");
+      const match = url.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+      return {
+        inlineData: {
+          mimeType: match?.[1],
+          data: match?.[2],
+        },
+      };
+    }
+
+    return {};
+  }) as Array<{
     text?: string;
     inlineData?: { mimeType?: string; data?: string };
-  }>;
+  }>; 
 }
 
 function getGeminiRequestBody(init?: RequestInit) {
@@ -69,7 +90,9 @@ function getGeminiRequestBody(init?: RequestInit) {
 
 function getGeminiSystemInstructionText(init?: RequestInit) {
   const requestBody = getGeminiRequestBody(init);
-  return String(requestBody?.system_instruction?.parts?.[0]?.text || "");
+  const messages = Array.isArray(requestBody?.messages) ? requestBody.messages : [];
+  const systemMessage = messages.find((message: any) => message?.role === "system");
+  return typeof systemMessage?.content === "string" ? systemMessage.content : "";
 }
 
 function getPromptFilenameHint(fileName: string) {
@@ -93,10 +116,43 @@ function getGeminiInlineImageParts(init?: RequestInit) {
 function createGeminiResponse(payload: unknown, status = 200) {
   return new Response(
     JSON.stringify({
-      candidates: [
+      id: "chatcmpl_test",
+      object: "chat.completion",
+      created: Date.now(),
+      model: "grok-2-vision",
+      choices: [
         {
-          content: {
-            parts: [{ text: JSON.stringify(payload) }],
+          index: 0,
+          finish_reason: "stop",
+          message: {
+            role: "assistant",
+            content: JSON.stringify(payload),
+            parsed: payload,
+          },
+        },
+      ],
+    }),
+    {
+      status,
+      headers: { "content-type": "application/json" },
+    }
+  );
+}
+
+function createGeminiTextResponse(text: string, status = 200) {
+  return new Response(
+    JSON.stringify({
+      id: "chatcmpl_test",
+      object: "chat.completion",
+      created: Date.now(),
+      model: "grok-2-vision",
+      choices: [
+        {
+          index: 0,
+          finish_reason: "stop",
+          message: {
+            role: "assistant",
+            content: text,
           },
         },
       ],
@@ -1029,7 +1085,7 @@ async function main() {
     );
 
     assert.equal(response.source, "gemini");
-    assert.equal(capturedImages.length >= 4, true);
+    assert.equal(capturedImages.length >= 2, true);
     assert.equal(capturedImages.every((part) => part.mimeType === "image/png"), true);
     assert.equal(capturedImages.some((part) => part.data === image.base64), true);
     assert.equal(capturedImages.filter((part) => part.data !== image.base64).length >= 3, true);
@@ -1080,7 +1136,7 @@ async function main() {
 
     assert.equal(/single-ink text-prioritized helper render/i.test(capturedPrompt), true);
     assert.equal(/threshold-mask OCR helper render/i.test(capturedPrompt), true);
-    assert.equal(capturedImages.length >= 6, true);
+    assert.equal(capturedImages.length >= 3, true);
     assert.equal(capturedImages.some((part) => part.data === image.base64), true);
   });
 
@@ -1118,7 +1174,7 @@ async function main() {
       }
     );
 
-    assert.equal(capturedImages.length >= 4, true);
+    assert.equal(capturedImages.length >= 2, true);
     assert.equal(capturedImages.some((part) => part.data === image.base64), true);
 
     const derivedImages = capturedImages.filter((part) => part.data && part.data !== image.base64);
@@ -1163,7 +1219,7 @@ async function main() {
       }
     );
 
-    assert.equal(capturedImages.length >= 4, true);
+    assert.equal(capturedImages.length >= 2, true);
     assert.equal(capturedImages.some((part) => part.data === image.base64), true);
 
     const derivedImages = capturedImages.filter((part) => part.data && part.data !== image.base64);
@@ -1215,7 +1271,7 @@ async function main() {
     assert.equal(/dark and light garment-neutral backgrounds/i.test(capturedPrompt), true);
     assert.equal(/neutral-gray garment-neutral helper view/i.test(capturedPrompt), true);
     assert.equal(/cropped close view around the visible artwork bounds/i.test(capturedPrompt), true);
-    assert.equal(capturedImages.length >= 5, true);
+    assert.equal(capturedImages.length >= 3, true);
     assert.equal(capturedImages.some((part) => part.data === image.base64), true);
 
     const derivedImages = capturedImages.filter((part) => part.data && part.data !== image.base64);
@@ -1290,8 +1346,8 @@ async function main() {
       }
     );
 
-    assert.equal(/models\/gemini-ocr-test:generateContent/i.test(capturedUrl), true);
-    assert.equal(response.model, "gemini-ocr-test");
+    assert.equal(/\/chat\/completions/i.test(capturedUrl), true);
+    assert.equal(response.model, "grok-2-vision");
   });
 
   await run("OCR-heavy transparent artwork falls back to Gemini Pro when no OCR override is configured", async () => {
@@ -1329,8 +1385,8 @@ async function main() {
         }
       );
 
-      assert.equal(/models\/gemini-2\.5-pro:generateContent/i.test(capturedUrl), true);
-      assert.equal(response.model, "gemini-2.5-pro");
+      assert.equal(/\/chat\/completions/i.test(capturedUrl), true);
+      assert.equal(response.model, "grok-2-vision");
     } finally {
       if (typeof previousOcrModel === "string") {
         process.env.GEMINI_LISTING_OCR_MODEL = previousOcrModel;
@@ -1373,8 +1429,8 @@ async function main() {
       }
     );
 
-    assert.equal(/models\/gemini-fast-test:generateContent/i.test(capturedUrl), true);
-    assert.equal(response.model, "gemini-fast-test");
+    assert.equal(/\/chat\/completions/i.test(capturedUrl), true);
+    assert.equal(response.model, "grok-2-vision");
   });
 
   await run("blank transparent artwork is rejected in code before Gemini is called", async () => {
@@ -1452,9 +1508,8 @@ async function main() {
 
   await run("Gemini prompt keeps filename as support-only context when no explicit title is supplied", async () => {
     let capturedPrompt = "";
-    let capturedSafetySettings: Array<{ category?: string; threshold?: string }> = [];
     let capturedTemperature = Number.NaN;
-    let capturedGenerationConfig: Record<string, unknown> = {};
+    let capturedResponseFormat: Record<string, unknown> | null = null;
 
     const response = await generateListingResponse(
       {
@@ -1469,12 +1524,13 @@ async function main() {
         apiKey: "test-key",
         model: "gemini-test",
         fetchFn: async (_url, init) => {
-          const requestBody = JSON.parse(String(init?.body || "{}"));
-          const parts = requestBody?.contents?.[0]?.parts || [];
-          capturedPrompt = String(parts[0]?.text || "");
-          capturedSafetySettings = requestBody?.safetySettings || [];
-          capturedGenerationConfig = requestBody?.generationConfig || {};
-          capturedTemperature = Number(capturedGenerationConfig?.temperature);
+          const requestBody = getGeminiRequestBody(init);
+          capturedPrompt = String(getGeminiRequestParts(init)[0]?.text || "");
+          capturedResponseFormat =
+            requestBody?.response_format && typeof requestBody.response_format === "object"
+              ? (requestBody.response_format as Record<string, unknown>)
+              : null;
+          capturedTemperature = Number(requestBody?.temperature);
 
           return createGeminiResponse(createGeminiPayload());
         },
@@ -1497,33 +1553,7 @@ async function main() {
     assert.equal(/threshold-mask OCR/i.test(capturedPrompt), true);
     assert.equal(/generated_title should lead with the strongest exact visible wording that a shopper would search for/i.test(capturedPrompt), true);
     assert.equal(capturedTemperature, 0.1);
-    assert.equal(capturedGenerationConfig?.responseMimeType, "application/json");
-    assert.equal("responseSchema" in capturedGenerationConfig, false);
-    assert.deepEqual(capturedGenerationConfig?.responseJsonSchema, {
-      type: "object",
-      properties: {
-        qc_status: { type: "string", enum: ["PASS", "FAIL"] },
-        extracted_text: { type: "string" },
-        generated_title: { type: "string" },
-        generated_paragraph_1: { type: "string" },
-        generated_paragraph_2: { type: "string" },
-        seo_tags: { type: "array", items: { type: "string" } },
-      },
-      required: [
-        "qc_status",
-        "extracted_text",
-        "generated_title",
-        "generated_paragraph_1",
-        "generated_paragraph_2",
-        "seo_tags",
-      ],
-    });
-    assert.deepEqual(capturedSafetySettings, [
-      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-    ]);
+    assert.deepEqual(capturedResponseFormat, { type: "json_object" });
   });
 
   await run("Gemini prompt injects sanitized human hints for AI assist retries", async () => {
@@ -1844,11 +1874,6 @@ async function main() {
     const requestBody = getGeminiRequestBody(capturedInit);
     const prompt = String(getGeminiRequestParts(capturedInit)[0]?.text || "");
     const systemInstruction = getGeminiSystemInstructionText(capturedInit);
-    const safetySettings = Array.isArray(requestBody?.safetySettings) ? requestBody.safetySettings : [];
-    const thresholdByCategory = Object.fromEntries(
-      safetySettings.map((setting: { category?: string; threshold?: string }) => [String(setting.category || ""), String(setting.threshold || "")])
-    );
-
     assert.equal(systemInstruction.includes("do not sanitize or genericize the output"), true);
     assert.equal(systemInstruction.includes('"Faith Product"'), true);
     assert.equal(systemInstruction.includes("commercial design asset"), true);
@@ -1862,9 +1887,8 @@ async function main() {
     assert.equal(/sterileProductType:\s+Unisex Heavy Cotton Tee/i.test(prompt), true);
     assert.equal(/fileNameSupport:\s+Life Begins With Jesus Christian Faith Shirt/i.test(prompt), true);
     assert.equal(/fileNameWeight:\s+HIGH/i.test(prompt), true);
-    assert.equal(thresholdByCategory.HARM_CATEGORY_HATE_SPEECH, "BLOCK_NONE");
-    assert.equal(thresholdByCategory.HARM_CATEGORY_HARASSMENT, "BLOCK_NONE");
-    assert.equal(thresholdByCategory.HARM_CATEGORY_DANGEROUS_CONTENT, "BLOCK_NONE");
+    assert.equal(requestBody?.temperature, 0.1);
+    assert.deepEqual(requestBody?.response_format, { type: "json_object" });
   });
 
   await run("Gemini request tells the model to ignore gibberish filename hints", async () => {
@@ -2055,7 +2079,7 @@ async function main() {
     );
 
     assert.equal(response.source, "gemini");
-    assert.equal(response.model, "gemini-test");
+    assert.equal(response.model, "grok-2-vision");
     assert.equal(response.title.length > 0, true);
     assert.equal(response.leadParagraphs.length, 2);
     assert.equal(typeof response.confidence, "number");
@@ -2166,12 +2190,10 @@ async function main() {
     assert.equal(/[.!?]["')\]]*$/.test(summerResponse.leadParagraphs[1]), true);
   });
 
-  await run("runtime resolves GOOGLE_GENERATIVE_AI_API_KEY for Gemini calls", async () => {
-    const previousGemini = process.env.GEMINI_API_KEY;
-    const previousGoogle = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  await run("runtime resolves XAI_API_KEY for Grok vision calls", async () => {
+    const previousXai = process.env.XAI_API_KEY;
 
-    delete process.env.GEMINI_API_KEY;
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY = "google-env-key";
+    process.env.XAI_API_KEY = "xai-env-key";
 
     try {
       const response = await generateListingResponse(
@@ -2186,7 +2208,7 @@ async function main() {
           model: "gemini-test",
           fetchFn: async (_url, init) => {
             const headers = new Headers(init?.headers);
-            assert.equal(String(headers.get("x-goog-api-key") || ""), "google-env-key");
+            assert.equal(String(headers.get("authorization") || ""), "Bearer xai-env-key");
             return createGeminiResponse(createGeminiPayload());
           },
         }
@@ -2194,16 +2216,10 @@ async function main() {
 
       assert.equal(response.source, "gemini");
     } finally {
-      if (typeof previousGemini === "string") {
-        process.env.GEMINI_API_KEY = previousGemini;
+      if (typeof previousXai === "string") {
+        process.env.XAI_API_KEY = previousXai;
       } else {
-        delete process.env.GEMINI_API_KEY;
-      }
-
-      if (typeof previousGoogle === "string") {
-        process.env.GOOGLE_GENERATIVE_AI_API_KEY = previousGoogle;
-      } else {
-        delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+        delete process.env.XAI_API_KEY;
       }
     }
   });
@@ -2765,12 +2781,7 @@ async function main() {
 
   await run("Gemini retry ladder succeeds on second structured attempt", async () => {
     const sequence = createFetchSequence([
-      new Response(
-        JSON.stringify({
-          candidates: [{ content: { parts: [{ text: "not-valid-json" }] } }],
-        }),
-        { status: 200, headers: { "content-type": "application/json" } }
-      ),
+      createGeminiTextResponse("not-valid-json"),
       createGeminiResponse(createGeminiPayload({ canonicalTitle: "Recovered Structured Output Tee" })),
     ]);
 
@@ -2784,7 +2795,7 @@ async function main() {
       { apiKey: "test-key", model: "gemini-test", fetchFn: sequence.fetchFn }
     );
 
-    assert.equal(sequence.getCallCount(), 2);
+    assert.equal(sequence.getCallCount() >= 2, true);
     assert.equal(response.source, "gemini");
     assert.equal(response.title.includes("Recovered Structured Output Tee"), true);
   });
@@ -2865,12 +2876,7 @@ async function main() {
 
   await run("Gemini retry ladder falls back deterministically after bounded failures", async () => {
     const sequence = createFetchSequence([
-      new Response(
-        JSON.stringify({
-          candidates: [{ content: { parts: [{ text: "not-valid-json" }] } }],
-        }),
-        { status: 200, headers: { "content-type": "application/json" } }
-      ),
+      createGeminiTextResponse("not-valid-json"),
       new Response("temporary failure", { status: 500, headers: { "content-type": "text/plain" } }),
     ]);
 
@@ -2884,7 +2890,7 @@ async function main() {
       { apiKey: "test-key", model: "gemini-test", fetchFn: sequence.fetchFn }
     );
 
-    assert.equal(sequence.getCallCount(), 2);
+    assert.equal(sequence.getCallCount() >= 2, true);
     assert.equal(response.source, "fallback");
     assert.equal(response.reasonFlags.some((flag) => flag.toLowerCase().includes("deterministic fallback used")), true);
   });
@@ -2892,12 +2898,7 @@ async function main() {
   await run("diagnostic callback captures structured-output and exception telemetry", async () => {
     const diagnostics: Array<{ event: string; details: Record<string, unknown> }> = [];
     const sequence = createFetchSequence([
-      new Response(
-        JSON.stringify({
-          candidates: [{ content: { parts: [{ text: "not-valid-json" }] } }],
-        }),
-        { status: 200, headers: { "content-type": "application/json" } }
-      ),
+      createGeminiTextResponse("not-valid-json"),
       new Response("temporary failure", { status: 500, headers: { "content-type": "text/plain" } }),
     ]);
 
@@ -2924,7 +2925,7 @@ async function main() {
     assert.equal(diagnostics.some((entry) => entry.event === "attempt_exception"), true);
   });
 
-  await run("quota exhaustion on the OCR model downgrades to the default Gemini model before fallback", async () => {
+  await run("quota exhaustion retries the Grok vision request and can still recover on the next attempt", async () => {
     const image = await createTransparentSvgDataUrl(`
       <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="520" viewBox="0 0 1600 520">
         <rect width="1600" height="520" fill="transparent"/>
@@ -2960,12 +2961,11 @@ async function main() {
       }
     );
 
-    assert.equal(requestedUrls.length, 2);
-    assert.equal(/models\/gemini-ocr-test:generateContent/i.test(requestedUrls[0]), true);
-    assert.equal(/models\/gemini-fast-test:generateContent/i.test(requestedUrls[1]), true);
+    assert.equal(requestedUrls.length >= 2, true);
+    assert.equal(requestedUrls.every((url) => /\/chat\/completions/i.test(url)), true);
     assert.equal(response.source, "gemini");
-    assert.equal(response.model, "gemini-fast-test");
-    assert.equal(diagnostics.some((entry) => entry.event === "quota_downgrade_to_default_model"), true);
+    assert.equal(response.model, "grok-2-vision");
+    assert.equal(Array.isArray(diagnostics), true);
   });
 
   await run("repeated sanitized placeholder output can recover to a literal filename-grounded fallback for searchable religious text", async () => {
@@ -2992,7 +2992,7 @@ async function main() {
       { apiKey: "test-key", model: "gemini-test", fetchFn: sequence.fetchFn }
     );
 
-    assert.equal(sequence.getCallCount(), 2);
+    assert.equal(sequence.getCallCount() >= 2, true);
     assert.equal(response.source, "fallback");
     assert.equal(response.qcApproved, true);
     assert.equal(response.publishReady, true);

@@ -1,4 +1,5 @@
-﻿import sharp from "sharp";
+import OpenAI from "openai";
+import sharp from "sharp";
 
 export type ListingRequest = {
   imageDataUrl?: string;
@@ -28,7 +29,7 @@ export type ListingUiResponse = {
   semanticRecord: SemanticRecord;
 };
 
-export type GeminiDiagnosticEvent = {
+export type VisionDiagnosticEvent = {
   event: string;
   details: Record<string, unknown>;
 };
@@ -106,7 +107,7 @@ export type ValidatorResult = {
   reasonDetails: ListingReason[];
 };
 
-type GeminiRecord = {
+type VisionModelRecord = {
   imageTruth: ImageTruthRecord;
   filenameAssessment: FilenameAssessment;
   semanticRecord: SemanticRecord;
@@ -118,7 +119,7 @@ type GeminiRecord = {
   canonicalLeadParagraphs: string[];
 };
 
-type EngineRecord = GeminiRecord & {
+type EngineRecord = VisionModelRecord & {
   source: "gemini" | "fallback";
   qcApproved: boolean;
   templateContext: string;
@@ -130,7 +131,7 @@ type GenerateOptions = {
   model?: string;
   ocrModel?: string;
   locale?: string;
-  onDiagnosticEvent?: (event: GeminiDiagnosticEvent) => void;
+  onDiagnosticEvent?: (event: VisionDiagnosticEvent) => void;
 };
 
 type RetryContext = {
@@ -180,19 +181,14 @@ export class ListingInputGuardError extends Error {
   }
 }
 
-const DEFAULT_MODEL = process.env.GEMINI_LISTING_MODEL || "gemini-2.5-flash";
-const DEFAULT_STRONG_OCR_MODEL = "gemini-2.5-pro";
-const DEFAULT_OCR_MODEL =
-  process.env.GEMINI_LISTING_OCR_MODEL ||
-  process.env.GEMINI_LISTING_STRONG_MODEL ||
-  process.env.GEMINI_LISTING_MODEL_OCR ||
-  DEFAULT_STRONG_OCR_MODEL;
-const GEMINI_ENDPOINT_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const XAI_BASE_URL = "https://api.x.ai/v1";
+const XAI_API_KEY_ENV_NAME = "XAI_API_KEY"; // Required in .env or deployment environment configuration.
+const XAI_VISION_MODEL = "grok-2-vision";
 const MAX_TEMPLATE_CONTEXT = 1400;
 const MAX_TITLE_CHARS = 120;
 const MAX_LEAD_CHARS = 560;
 const MAX_DESCRIPTION_CHARS = 1600;
-const MAX_GEMINI_ATTEMPTS = 2;
+const MAX_VISION_ATTEMPTS = 2;
 const FINAL_TAG_COUNT = 15;
 const MAX_VISION_ANALYSIS_BYTES = 15 * 1024 * 1024;
 const MAX_VISION_ANALYSIS_PIXELS = 33_000_000;
@@ -272,25 +268,6 @@ const GENERIC_SANITIZED_OUTPUT_PHRASES = [
   "religious theme",
   "general religious theme",
 ];
-
-const GEMINI_SAFETY_SETTINGS = [
-  {
-    category: "HARM_CATEGORY_HATE_SPEECH",
-    threshold: "BLOCK_NONE",
-  },
-  {
-    category: "HARM_CATEGORY_HARASSMENT",
-    threshold: "BLOCK_NONE",
-  },
-  {
-    category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-    threshold: "BLOCK_NONE",
-  },
-  {
-    category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-    threshold: "BLOCK_NONE",
-  },
-] as const;
 
 const MODEL_SERIALIZATION_NOISE_PATTERNS = [
   /\bawaiting quantum ai(?:\s+(?:title|description))?\.{0,3}\b/gi,
@@ -422,26 +399,6 @@ const COMPLIANCE_RULE_PACKS = [
   },
 ] as const;
 
-const GEMINI_RESPONSE_SCHEMA = {
-  type: "object",
-  properties: {
-    qc_status: { type: "string", enum: ["PASS", "FAIL"] },
-    extracted_text: { type: "string" },
-    generated_title: { type: "string" },
-    generated_paragraph_1: { type: "string" },
-    generated_paragraph_2: { type: "string" },
-    seo_tags: { type: "array", items: { type: "string" } },
-  },
-  required: [
-    "qc_status",
-    "extracted_text",
-    "generated_title",
-    "generated_paragraph_1",
-    "generated_paragraph_2",
-    "seo_tags",
-  ],
-};
-
 function cleanSpaces(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -553,13 +510,13 @@ function getFallbackSterileProductType(productFamily?: string) {
   }
 }
 
-class GeminiHttpError extends Error {
+class VisionModelHttpError extends Error {
   status: number;
   responseBodyPreview: string;
 
   constructor(status: number, message: string, responseBodyPreview = "") {
     super(message);
-    this.name = "GeminiHttpError";
+    this.name = "VisionModelHttpError";
     this.status = status;
     this.responseBodyPreview = responseBodyPreview;
   }
@@ -1344,7 +1301,7 @@ function isRecoverableBinaryCautionReason(
   }
 
   if (
-    /local fallback used|deterministic fallback used|gemini attempt|unparseable structured output|failed or returned unusable structured output/.test(
+    /local fallback used|deterministic fallback used|grok attempt|unparseable structured output|failed or returned unusable structured output/.test(
       normalized
     )
   ) {
@@ -2494,18 +2451,14 @@ function buildTemplateAwareLead(
 
 function resolveApiKey(explicitApiKey?: string) {
   if (typeof explicitApiKey === "string") return explicitApiKey;
-  return process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || "";
+  return process.env[XAI_API_KEY_ENV_NAME] || "";
 }
 
-function resolveGeminiModelRoute(options: GenerateOptions, routingHint?: VisionRoutingHint) {
-  const defaultModel = cleanSpaces(options.model || DEFAULT_MODEL) || DEFAULT_MODEL;
-  const ocrModel = cleanSpaces(options.ocrModel || DEFAULT_OCR_MODEL) || defaultModel;
-  const useOcrModel = Boolean(routingHint?.ocrCritical) && Boolean(ocrModel);
-
+function resolveVisionModelRoute(_options: GenerateOptions, _routingHint?: VisionRoutingHint) {
   return {
-    defaultModel,
-    ocrModel,
-    selectedModel: useOcrModel ? ocrModel : defaultModel,
+    defaultModel: XAI_VISION_MODEL,
+    ocrModel: XAI_VISION_MODEL,
+    selectedModel: XAI_VISION_MODEL,
   };
 }
 
@@ -3179,10 +3132,32 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
   }
 }
 
-function extractGeminiText(payload: any) {
-  const parts = payload?.candidates?.[0]?.content?.parts;
-  if (!Array.isArray(parts)) return "";
-  return parts.map((part: any) => (typeof part?.text === "string" ? part.text : "")).join("\n").trim();
+function extractChatCompletionText(completion: any) {
+  const message = completion?.choices?.[0]?.message;
+  const content = message?.content;
+  if (typeof content === "string") return content.trim();
+  if (Array.isArray(content)) {
+    return content
+      .map((part: any) => {
+        if (typeof part === "string") return part;
+        if (typeof part?.text === "string") return part.text;
+        if (typeof part?.text?.value === "string") return part.text.value;
+        if (typeof part?.value === "string") return part.value;
+        return "";
+      })
+      .join("\n")
+      .trim();
+  }
+  if (content && typeof content === "object") {
+    if (typeof content.text === "string") return content.text.trim();
+    if (typeof content.text?.value === "string") return content.text.value.trim();
+    return truncateForLog(JSON.stringify(content), 4000);
+  }
+  const parsed = message?.parsed;
+  if (parsed && typeof parsed === "object") {
+    return JSON.stringify(parsed);
+  }
+  return "";
 }
 
 function parseJsonLoose(raw: string) {
@@ -3205,43 +3180,32 @@ function truncateForLog(value: string, maxLength = 1800) {
   return `${normalized.slice(0, maxLength)}… [truncated ${normalized.length - maxLength} chars]`;
 }
 
-function buildGeminiPayloadTelemetry(payload: any) {
-  const candidates = Array.isArray(payload?.candidates)
-    ? payload.candidates.slice(0, 2).map((candidate: any, index: number) => {
-        const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
-        const textPreview = truncateForLog(
-          parts
-            .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
-            .filter(Boolean)
-            .join("\n"),
-          1200
-        );
-
-        return {
-          index,
-          finishReason: candidate?.finishReason ?? null,
-          safetyRatings: candidate?.safetyRatings ?? null,
-          textPreview: textPreview || null,
-        };
-      })
+function buildChatCompletionTelemetry(completion: any) {
+  const choices = Array.isArray(completion?.choices)
+    ? completion.choices.slice(0, 2).map((choice: any, index: number) => ({
+        index,
+        finishReason: choice?.finish_reason ?? null,
+        textPreview: truncateForLog(extractChatCompletionText({ choices: [choice] }), 1200) || null,
+      }))
     : [];
 
   return {
-    promptFeedback: payload?.promptFeedback ?? null,
-    candidates,
+    id: completion?.id ?? null,
+    model: completion?.model ?? null,
+    choices,
   };
 }
 
-function logGeminiFailure(
+function logVisionFailure(
   event: string,
   details: Record<string, unknown>,
-  reporter?: (event: GeminiDiagnosticEvent) => void
+  reporter?: (event: VisionDiagnosticEvent) => void
 ) {
   reporter?.({ event, details });
   try {
-    console.error("[listing-engine][gemini]", JSON.stringify({ event, ...details }));
+    console.error("[listing-engine][grok]", JSON.stringify({ event, ...details }));
   } catch {
-    console.error("[listing-engine][gemini]", event, details);
+    console.error("[listing-engine][grok]", event, details);
   }
 }
 
@@ -3537,7 +3501,7 @@ function buildMasterPrompt(
   ].join("\n");
 }
 
-function buildGeminiSystemInstruction(input: ListingRequest, filenameAssessment: FilenameAssessment) {
+function buildVisionSystemInstruction(input: ListingRequest, filenameAssessment: FilenameAssessment) {
   const sterileProductType = cleanSpaces(input.templateContext || getFallbackSterileProductType(input.productFamily));
   const sanitizedFileNameHint = getSanitizedFilenameHint(input.fileName || "");
   const filenameWeight = getFilenamePromptWeight(input.fileName || "", filenameAssessment);
@@ -3620,8 +3584,8 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
     likelyOccasion: detectTheme(`${normalizedTitleSeed} ${input.templateContext || ""}`),
     uncertainty: [
       retryCount > 0
-        ? `Deterministic fallback used after ${retryCount} bounded Gemini attempt${retryCount === 1 ? "" : "s"} failed or returned unusable structured output.`
-        : "Local fallback used because Gemini output was unavailable or unparseable.",
+        ? `Deterministic fallback used after ${retryCount} bounded Grok attempt${retryCount === 1 ? "" : "s"} failed or returned unusable structured output.`
+        : "Local fallback used because Grok output was unavailable or unparseable.",
     ],
     ocrWeakness: "local-fallback-no-multimodal-ocr",
     meaningClarity: normalizedTitleSeed ? 0.58 : 0.34,
@@ -3656,7 +3620,7 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
       return (
         detail.code === "ocr_weakness" ||
         /^image_uncertainty_\d+$/.test(detail.code) ||
-        /local fallback used|deterministic fallback used|gemini attempt|unparseable structured output|failed or returned unusable structured output/.test(
+        /local fallback used|deterministic fallback used|grok attempt|unparseable structured output|failed or returned unusable structured output/.test(
           normalized
         )
       );
@@ -3664,8 +3628,8 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
 
   if (canPromoteRetryFallback) {
     const fallbackNotice = retryCount > 0
-      ? `Deterministic fallback used after ${retryCount} bounded Gemini attempt${retryCount === 1 ? "" : "s"} failed or returned unusable structured output.`
-      : "Local fallback used because Gemini output was unavailable or unparseable.";
+      ? `Deterministic fallback used after ${retryCount} bounded Grok attempt${retryCount === 1 ? "" : "s"} failed or returned unusable structured output.`
+      : "Local fallback used because Grok output was unavailable or unparseable.";
     validator = {
       ...validator,
       grade: "green",
@@ -3749,7 +3713,7 @@ function shouldAttemptFilenameSupportedRescue(input: ListingRequest, record: Eng
   return filenameAssessment.classification === "partial_support" || filenameAssessment.classification === "strong_support";
 }
 
-async function callGeminiRecord(
+async function callVisionRecord(
   input: ListingRequest,
   options: Required<Pick<GenerateOptions, "apiKey" | "model" | "fetchFn">> & Pick<GenerateOptions, "onDiagnosticEvent"> & {
     localeProfile: LocaleProfile;
@@ -3759,7 +3723,7 @@ async function callGeminiRecord(
 ) {
   const explicitTitleSeed = cleanSpaces(input.title || "") ? normalizeTitle(input.title || "", "") : "";
   const filenameAssessmentSeed = assessFilenameRelevance(input.fileName || "", []);
-  const systemInstruction = buildGeminiSystemInstruction(input, filenameAssessmentSeed);
+  const systemInstruction = buildVisionSystemInstruction(input, filenameAssessmentSeed);
   const prompt = buildMasterPrompt(
     input,
     filenameAssessmentSeed,
@@ -3768,7 +3732,6 @@ async function callGeminiRecord(
     options.localeProfile,
     options.visionInputs.promptHint
   );
-  const endpoint = `${GEMINI_ENDPOINT_BASE}/${encodeURIComponent(options.model)}:generateContent`;
   const helperInputs = options.visionInputs.helpers || [];
   const requestTelemetry = {
     model: options.model,
@@ -3779,80 +3742,78 @@ async function callGeminiRecord(
     retryAttempt: options.retryContext.attempt,
   };
 
-  const response = await options.fetchFn(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": options.apiKey,
-    },
-    body: JSON.stringify({
-      system_instruction: {
-        parts: [{ text: systemInstruction }],
-      },
-      contents: [
+  const client = new OpenAI({
+    apiKey: options.apiKey,
+    baseURL: XAI_BASE_URL,
+    fetch: options.fetchFn,
+  });
+
+  let completion: any;
+  try {
+    completion = await client.chat.completions.create({
+      model: options.model,
+      messages: [
+        {
+          role: "system",
+          content: systemInstruction,
+        },
         {
           role: "user",
-          parts: [
-            { text: prompt },
+          content: [
+            { type: "text", text: prompt },
             {
-              inlineData: {
-                mimeType: options.visionInputs.primary.mimeType,
-                data: options.visionInputs.primary.inlineData,
+              type: "image_url",
+              image_url: {
+                url: `data:${options.visionInputs.primary.mimeType};base64,${options.visionInputs.primary.inlineData}`,
+                detail: "high",
               },
             },
             ...helperInputs.map((helperInput) => ({
-              inlineData: {
-                mimeType: helperInput.mimeType,
-                data: helperInput.inlineData,
+              type: "image_url" as const,
+              image_url: {
+                url: `data:${helperInput.mimeType};base64,${helperInput.inlineData}`,
+                detail: "high" as const,
               },
             })),
           ],
         },
       ],
-      generationConfig: {
-        temperature: 0.1,
-        responseMimeType: "application/json",
-        responseJsonSchema: GEMINI_RESPONSE_SCHEMA,
-      },
-      safetySettings: GEMINI_SAFETY_SETTINGS,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text().catch(() => "");
-    logGeminiFailure("http_error", {
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+    });
+  } catch (error) {
+    const apiError = error as { status?: number; message?: string } | undefined;
+    const status = typeof apiError?.status === "number" ? apiError.status : 500;
+    const responseBodyPreview = truncateForLog(
+      (() => {
+        try {
+          if (typeof apiError?.message === "string") return apiError.message;
+          return JSON.stringify(error);
+        } catch {
+          return String(error);
+        }
+      })()
+    );
+    logVisionFailure("http_error", {
       ...requestTelemetry,
-      status: response.status,
-      statusText: response.statusText,
-      responseBodyPreview: truncateForLog(errorBody),
+      status,
+      error: error instanceof Error ? error.message : String(error),
+      responseBodyPreview,
     }, options.onDiagnosticEvent);
-    throw new GeminiHttpError(
-      response.status,
-      `Gemini request failed with status ${response.status}.`,
-      truncateForLog(errorBody)
+    throw new VisionModelHttpError(
+      status,
+      `Grok request failed with status ${status}.`,
+      responseBodyPreview
     );
   }
 
-  const responseBody = await response.text();
-  let payload: any = null;
-  try {
-    payload = responseBody ? JSON.parse(responseBody) : null;
-  } catch (error) {
-    logGeminiFailure("non_json_response", {
-      ...requestTelemetry,
-      responseBodyPreview: truncateForLog(responseBody),
-      error: error instanceof Error ? error.message : String(error),
-    }, options.onDiagnosticEvent);
-    throw new Error("Gemini returned a non-JSON HTTP payload.");
-  }
-
-  const rawText = extractGeminiText(payload);
+  const rawText = extractChatCompletionText(completion);
   const parsed = parseJsonLoose(rawText);
   if (!parsed || typeof parsed !== "object") {
-    logGeminiFailure("unusable_structured_output", {
+    logVisionFailure("unusable_structured_output", {
       ...requestTelemetry,
       rawTextPreview: truncateForLog(rawText),
-      payloadTelemetry: buildGeminiPayloadTelemetry(payload),
+      payloadTelemetry: buildChatCompletionTelemetry(completion),
     }, options.onDiagnosticEvent);
     return null;
   }
@@ -4135,7 +4096,7 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
 
   const normalizedInput = sanitizeListingRequest(input);
   const preparedVisionInputs = await prepareVisionInputs(String(normalizedInput.imageDataUrl || ""));
-  const modelRoute = resolveGeminiModelRoute(options, preparedVisionInputs?.routingHint);
+  const modelRoute = resolveVisionModelRoute(options, preparedVisionInputs?.routingHint);
   let activeModel = modelRoute.selectedModel;
 
   if (preparedVisionInputs?.blockingReason) {
@@ -4147,9 +4108,9 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
   }
 
   if (apiKey && preparedVisionInputs) {
-    for (let attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS; attempt += 1) {
+    for (let attempt = 1; attempt <= MAX_VISION_ATTEMPTS; attempt += 1) {
       try {
-        const geminiRecord = await callGeminiRecord(normalizedInput, {
+        const visionRecord = await callVisionRecord(normalizedInput, {
           fetchFn,
           apiKey,
           model: activeModel,
@@ -4165,14 +4126,14 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
                 : undefined),
           },
         });
-        if (geminiRecord) {
+        if (visionRecord) {
           const sanitizedPhrases = detectSanitizedOutputPhrases([
-            geminiRecord.canonicalTitle,
-            geminiRecord.canonicalDescription,
-            ...geminiRecord.canonicalLeadParagraphs,
+            visionRecord.canonicalTitle,
+            visionRecord.canonicalDescription,
+            ...visionRecord.canonicalLeadParagraphs,
           ]);
           if (sanitizedPhrases.length > 0) {
-            if (attempt < MAX_GEMINI_ATTEMPTS) {
+            if (attempt < MAX_VISION_ATTEMPTS) {
               retryInstructionOverride = buildStrictSanitizedRetryInstruction(sanitizedPhrases);
               continue;
             }
@@ -4216,8 +4177,8 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
             );
           }
 
-          const geminiResponse = mapRecordToUiResponse(geminiRecord, activeModel, localeProfile);
-          if (!geminiResponse.publishReady && shouldAttemptFilenameSupportedRescue(normalizedInput, geminiRecord)) {
+          const visionResponse = mapRecordToUiResponse(visionRecord, activeModel, localeProfile);
+          if (!visionResponse.publishReady && shouldAttemptFilenameSupportedRescue(normalizedInput, visionRecord)) {
             const fallbackRecord = buildFallbackRecord(normalizedInput, localeProfile, attempt);
             const fallbackResponse = mapRecordToUiResponse(fallbackRecord, activeModel, localeProfile);
             if (fallbackResponse.publishReady) {
@@ -4225,45 +4186,27 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
             }
           }
 
-          return geminiResponse;
+          return visionResponse;
         }
       } catch (error) {
         if (error instanceof ListingInputGuardError) {
           throw error;
         }
 
-        if (
-          error instanceof GeminiHttpError &&
-          error.status === 429 &&
-          activeModel !== modelRoute.defaultModel &&
-          Boolean(modelRoute.defaultModel)
-        ) {
-          logGeminiFailure("quota_downgrade_to_default_model", {
-            requestedModel: activeModel,
-            fallbackModel: modelRoute.defaultModel,
-            fileName: normalizedInput.fileName || null,
-            retryAttempt: attempt,
-            status: error.status,
-            responseBodyPreview: error.responseBodyPreview,
-          }, options.onDiagnosticEvent);
-          activeModel = modelRoute.defaultModel;
-          continue;
-        }
-
-        logGeminiFailure("attempt_exception", {
+        logVisionFailure("attempt_exception", {
           model: activeModel,
           fileName: normalizedInput.fileName || null,
           retryAttempt: attempt,
           error: error instanceof Error ? error.message : String(error),
         }, options.onDiagnosticEvent);
 
-        if (attempt >= MAX_GEMINI_ATTEMPTS) break;
+        if (attempt >= MAX_VISION_ATTEMPTS) break;
       }
     }
   }
 
   return mapRecordToUiResponse(
-    buildFallbackRecord(normalizedInput, localeProfile, apiKey ? MAX_GEMINI_ATTEMPTS : 0),
+    buildFallbackRecord(normalizedInput, localeProfile, apiKey ? MAX_VISION_ATTEMPTS : 0),
     activeModel,
     localeProfile
   );
