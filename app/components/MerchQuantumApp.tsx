@@ -4589,7 +4589,7 @@ export default function MerchQuantumApp() {
                                         {detailTemplateSpecBlock ? (
                                           <>
                                             <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
-                                            <div className={`max-h-20 w-full overflow-hidden whitespace-pre-wrap text-left ${DETAIL_DATA_TEXT_CLASSES}`}>
+                                            <div className={`max-h-24 w-full overflow-y-auto whitespace-pre-wrap text-left [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${DETAIL_DATA_TEXT_CLASSES}`}>
                                               {detailTemplateSpecBlock}
                                             </div>
                                           </>
@@ -4646,7 +4646,7 @@ export default function MerchQuantumApp() {
                                         {detailTemplateSpecBlock ? (
                                           <>
                                             <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
-                                            <div className={`max-h-20 w-full overflow-hidden whitespace-pre-wrap text-left ${DETAIL_DATA_TEXT_CLASSES}`}>
+                                            <div className={`max-h-24 w-full overflow-y-auto whitespace-pre-wrap text-left [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${DETAIL_DATA_TEXT_CLASSES}`}>
                                               {detailTemplateSpecBlock}
                                             </div>
                                           </>
