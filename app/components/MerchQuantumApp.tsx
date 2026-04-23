@@ -1585,80 +1585,82 @@ function CreativeWellspringBrandMark({
       } ${className}`}
       aria-hidden="true"
     >
-      <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div
-          className={`absolute left-1/2 top-1/2 ${
-            docked
-              ? "h-24 w-[11rem] -translate-x-[96%] -translate-y-[62%] rotate-[-18deg] blur-[38px]"
-              : "h-36 w-[16rem] -translate-x-[102%] -translate-y-[66%] rotate-[-18deg] blur-[56px]"
-          }`}
-          style={{
-            borderRadius: "41% 59% 67% 33% / 38% 42% 58% 62%",
-            background:
-              "radial-gradient(circle at 28% 30%, rgba(244,114,182,0.34) 0%, rgba(192,132,252,0.28) 24%, rgba(127,34,254,0.18) 58%, transparent 84%)",
-          }}
-        />
-        <div
-          className={`absolute left-1/2 top-1/2 ${
-            docked
-              ? "h-20 w-[17rem] -translate-x-[56%] -translate-y-[30%] rotate-[8deg] blur-[34px]"
-              : "h-28 w-[24rem] -translate-x-[58%] -translate-y-[32%] rotate-[8deg] blur-[50px]"
-          }`}
-          style={{
-            borderRadius: "63% 37% 45% 55% / 51% 34% 66% 49%",
-            background:
-              "radial-gradient(circle at 52% 42%, rgba(129,140,248,0.18) 0%, rgba(127,34,254,0.34) 30%, rgba(88,28,135,0.18) 56%, transparent 82%)",
-          }}
-        />
-        <div
-          className={`absolute left-1/2 top-1/2 ${
-            docked
-              ? "h-24 w-[12rem] translate-x-[12%] -translate-y-[54%] rotate-[22deg] blur-[40px]"
-              : "h-34 w-[17rem] translate-x-[16%] -translate-y-[58%] rotate-[22deg] blur-[58px]"
-          }`}
-          style={{
-            borderRadius: "36% 64% 58% 42% / 47% 60% 40% 53%",
-            background:
-              "radial-gradient(circle at 60% 34%, rgba(196,181,253,0.28) 0%, rgba(167,139,250,0.22) 26%, rgba(127,34,254,0.2) 52%, transparent 82%)",
-          }}
-        />
-        <div
-          className={`absolute left-1/2 top-1/2 ${
-            docked
-              ? "h-14 w-[15rem] -translate-x-[6%] translate-y-[8%] rotate-[-6deg] blur-[30px]"
-              : "h-20 w-[22rem] -translate-x-[4%] translate-y-[10%] rotate-[-6deg] blur-[42px]"
-          }`}
-          style={{
-            borderRadius: "58% 42% 62% 38% / 43% 57% 43% 57%",
-            background:
-              "radial-gradient(circle at 45% 45%, rgba(76,29,149,0.22) 0%, rgba(127,34,254,0.18) 34%, rgba(15,23,42,0.04) 62%, transparent 82%)",
-          }}
-        />
-        <div
-          className={`absolute left-1/2 top-1/2 ${
-            docked
-              ? "h-14 w-[8rem] translate-x-[66%] -translate-y-[18%] rotate-[26deg] blur-[26px]"
-              : "h-20 w-[11rem] translate-x-[72%] -translate-y-[22%] rotate-[26deg] blur-[36px]"
-          }`}
-          style={{
-            borderRadius: "47% 53% 34% 66% / 58% 40% 60% 42%",
-            background:
-              "radial-gradient(circle at 42% 46%, rgba(216,180,254,0.24) 0%, rgba(168,85,247,0.18) 36%, transparent 80%)",
-          }}
-        />
-        <div
-          className={`absolute left-1/2 top-1/2 ${
-            docked
-              ? "h-10 w-[6rem] -translate-x-[18%] -translate-y-[70%] rotate-[12deg] blur-[20px]"
-              : "h-16 w-[9rem] -translate-x-[20%] -translate-y-[76%] rotate-[12deg] blur-[30px]"
-          }`}
-          style={{
-            borderRadius: "32% 68% 61% 39% / 41% 33% 67% 59%",
-            background:
-              "radial-gradient(circle at 35% 30%, rgba(244,114,182,0.2) 0%, rgba(192,132,252,0.22) 34%, transparent 82%)",
-          }}
-        />
-      </div>
+      {!docked ? (
+        <div className="absolute inset-0 -z-10 overflow-hidden">
+          <div
+            className={`absolute left-1/2 top-1/2 ${
+              docked
+                ? "h-24 w-[11rem] -translate-x-[96%] -translate-y-[62%] rotate-[-18deg] blur-[38px]"
+                : "h-36 w-[16rem] -translate-x-[102%] -translate-y-[66%] rotate-[-18deg] blur-[56px]"
+            }`}
+            style={{
+              borderRadius: "41% 59% 67% 33% / 38% 42% 58% 62%",
+              background:
+                "radial-gradient(circle at 28% 30%, rgba(244,114,182,0.34) 0%, rgba(192,132,252,0.28) 24%, rgba(127,34,254,0.18) 58%, transparent 84%)",
+            }}
+          />
+          <div
+            className={`absolute left-1/2 top-1/2 ${
+              docked
+                ? "h-20 w-[17rem] -translate-x-[56%] -translate-y-[30%] rotate-[8deg] blur-[34px]"
+                : "h-28 w-[24rem] -translate-x-[58%] -translate-y-[32%] rotate-[8deg] blur-[50px]"
+            }`}
+            style={{
+              borderRadius: "63% 37% 45% 55% / 51% 34% 66% 49%",
+              background:
+                "radial-gradient(circle at 52% 42%, rgba(129,140,248,0.18) 0%, rgba(127,34,254,0.34) 30%, rgba(88,28,135,0.18) 56%, transparent 82%)",
+            }}
+          />
+          <div
+            className={`absolute left-1/2 top-1/2 ${
+              docked
+                ? "h-24 w-[12rem] translate-x-[12%] -translate-y-[54%] rotate-[22deg] blur-[40px]"
+                : "h-34 w-[17rem] translate-x-[16%] -translate-y-[58%] rotate-[22deg] blur-[58px]"
+            }`}
+            style={{
+              borderRadius: "36% 64% 58% 42% / 47% 60% 40% 53%",
+              background:
+                "radial-gradient(circle at 60% 34%, rgba(196,181,253,0.28) 0%, rgba(167,139,250,0.22) 26%, rgba(127,34,254,0.2) 52%, transparent 82%)",
+            }}
+          />
+          <div
+            className={`absolute left-1/2 top-1/2 ${
+              docked
+                ? "h-14 w-[15rem] -translate-x-[6%] translate-y-[8%] rotate-[-6deg] blur-[30px]"
+                : "h-20 w-[22rem] -translate-x-[4%] translate-y-[10%] rotate-[-6deg] blur-[42px]"
+            }`}
+            style={{
+              borderRadius: "58% 42% 62% 38% / 43% 57% 43% 57%",
+              background:
+                "radial-gradient(circle at 45% 45%, rgba(76,29,149,0.22) 0%, rgba(127,34,254,0.18) 34%, rgba(15,23,42,0.04) 62%, transparent 82%)",
+            }}
+          />
+          <div
+            className={`absolute left-1/2 top-1/2 ${
+              docked
+                ? "h-14 w-[8rem] translate-x-[66%] -translate-y-[18%] rotate-[26deg] blur-[26px]"
+                : "h-20 w-[11rem] translate-x-[72%] -translate-y-[22%] rotate-[26deg] blur-[36px]"
+            }`}
+            style={{
+              borderRadius: "47% 53% 34% 66% / 58% 40% 60% 42%",
+              background:
+                "radial-gradient(circle at 42% 46%, rgba(216,180,254,0.24) 0%, rgba(168,85,247,0.18) 36%, transparent 80%)",
+            }}
+          />
+          <div
+            className={`absolute left-1/2 top-1/2 ${
+              docked
+                ? "h-10 w-[6rem] -translate-x-[18%] -translate-y-[70%] rotate-[12deg] blur-[20px]"
+                : "h-16 w-[9rem] -translate-x-[20%] -translate-y-[76%] rotate-[12deg] blur-[30px]"
+            }`}
+            style={{
+              borderRadius: "32% 68% 61% 39% / 41% 33% 67% 59%",
+              background:
+                "radial-gradient(circle at 35% 30%, rgba(244,114,182,0.2) 0%, rgba(192,132,252,0.22) 34%, transparent 82%)",
+            }}
+          />
+        </div>
+      ) : null}
       <div className="relative z-10 flex items-center justify-center">
         <div className="flex flex-col items-center gap-1 px-6 text-center">
           <div
@@ -1772,7 +1774,6 @@ function ProductGrid({
       <div className="flex w-full min-w-0 items-center justify-between gap-2">
         <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-white">{heading}</span>
         <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 text-[11px]">
-          {headerAccessory}
           {onSelectAll ? (
             <button
               type="button"
@@ -1783,6 +1784,7 @@ function ProductGrid({
               Select All
             </button>
           ) : null}
+          {headerAccessory}
         </div>
       </div>
 
@@ -4529,35 +4531,33 @@ export default function MerchQuantumApp() {
                                       }}
                                       className={`w-full snap-start rounded-lg transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
                                     >
-                                      <div className="relative">
+                                      <SmartThumbnail
+                                        src={img.preview}
+                                        alt={img.final}
+                                        className={`group rounded-lg border transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${previewFrameTone}`}
+                                      >
                                         {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
-                                        <SmartThumbnail
-                                          src={img.preview}
-                                          alt={img.final}
-                                          className={`group rounded-lg border transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${previewFrameTone}`}
-                                        >
-                                          {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
-                                          {statusIndicator ? (
-                                            <div
-                                              aria-label={statusIndicator.tone}
-                                              className="absolute bottom-2 left-1/2 z-20 inline-flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full bg-black"
-                                            >
-                                              <StatusThumbIcon tone={statusIndicator.tone} direction={statusIndicator.direction} />
-                                            </div>
-                                          ) : null}
-                                          <button
-                                            type="button"
-                                            aria-label="remove"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              removePreviewItem(img.id);
-                                            }}
-                                            className="absolute right-1 top-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#020616]/92 p-0 text-[8px] font-normal leading-none text-slate-300 shadow-sm transition-colors hover:text-[#FF2056]"
+                                        {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
+                                        {statusIndicator ? (
+                                          <div
+                                            aria-label={statusIndicator.tone}
+                                            className="absolute bottom-2 left-1/2 z-20 inline-flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full bg-black"
                                           >
-                                            x
-                                          </button>
-                                        </SmartThumbnail>
-                                      </div>
+                                            <StatusThumbIcon tone={statusIndicator.tone} direction={statusIndicator.direction} />
+                                          </div>
+                                        ) : null}
+                                        <button
+                                          type="button"
+                                          aria-label="remove"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            removePreviewItem(img.id);
+                                          }}
+                                          className="absolute right-1 top-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#020616]/92 p-0 text-[8px] font-normal leading-none text-slate-300 shadow-sm transition-colors hover:text-[#FF2056]"
+                                        >
+                                          x
+                                        </button>
+                                      </SmartThumbnail>
                                     </div>
                                   );
                                 })}
