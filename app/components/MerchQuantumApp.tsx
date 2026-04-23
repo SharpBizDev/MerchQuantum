@@ -1528,7 +1528,7 @@ function SmartThumbnail({
   src,
   alt,
   className = "",
-  safeZoneClassName = "p-4",
+  safeZoneClassName = "p-2",
   imageClassName = "block h-full w-full object-contain",
   fallbackClassName = "",
   children,
@@ -1569,7 +1569,7 @@ function SmartThumbnail({
       className={`relative box-border flex aspect-square w-full overflow-hidden bg-center bg-cover bg-no-repeat ${className}`}
       style={{ backgroundColor }}
     >
-      <div className={`relative box-border h-full w-full ${safeZoneClassName}`}>
+      <div className={`relative box-border flex h-full w-full items-center justify-center ${safeZoneClassName}`}>
         {resolvedSrc ? (
           <img
             src={resolvedSrc}
@@ -4471,7 +4471,7 @@ export default function MerchQuantumApp() {
                                             setInlineSaveFeedback(null);
                                           }
                                         }}
-                                        className={`h-9 px-3 py-1 pr-20 ${DETAIL_DATA_TEXT_CLASSES}`}
+                                        className="h-9 px-3 py-1 pr-20 font-sans text-sm font-normal text-white"
                                       />
                                       <div className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-100">
                                         <span>{editableTitleDraft.trim().length}/{LISTING_LIMITS.titleMax}</span>
@@ -4489,17 +4489,17 @@ export default function MerchQuantumApp() {
                                         }
                                       }}
                                       disabled={!canEditDetailTitle}
-                                      className={`group relative flex min-h-[36px] w-full items-center rounded-xl border bg-[#020616] px-3 py-1 pr-24 text-left transition ${DETAIL_DATA_TEXT_CLASSES} ${canEditDetailTitle ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
+                                      className={`group relative flex min-h-[36px] w-full items-center rounded-xl border bg-[#020616] px-3 py-1 pr-24 text-left transition ${canEditDetailTitle ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
                                     >
                                       {shouldAwaitQuantumTitle ? (
-                                        <div className={`flex w-full items-center justify-start gap-2 text-left ${DETAIL_DATA_TEXT_CLASSES}`}>
+                                        <div className="flex w-full items-center justify-start gap-2 text-left font-sans text-sm font-normal text-white">
                                           <QuantOrbLoader />
                                           <span>{QUANTUM_TITLE_AWAITING_TEXT}</span>
                                         </div>
                                       ) : (
                                         <div className="flex w-full min-w-0 items-center justify-between gap-3">
-                                          <span className="min-w-0 flex-1 truncate">
-                                            {detailTitle || <span className={DETAIL_DATA_TEXT_CLASSES}>Click to add a final title.</span>}
+                                          <span className="min-w-0 flex-1 truncate font-sans text-sm font-normal text-white">
+                                            {detailTitle || <span className="font-sans text-sm font-normal text-white">Click to add a final title.</span>}
                                           </span>
                                         </div>
                                       )}
