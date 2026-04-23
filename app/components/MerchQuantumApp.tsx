@@ -1527,8 +1527,8 @@ function SmartThumbnail({
   src,
   alt,
   className = "",
-  safeZoneClassName = "p-3",
-  imageClassName = "absolute inset-0 box-border h-full w-full object-contain",
+  safeZoneClassName = "p-4",
+  imageClassName = "block h-full w-full object-contain",
   fallbackClassName = "",
   children,
 }: SmartThumbnailProps) {
@@ -1565,19 +1565,21 @@ function SmartThumbnail({
 
   return (
     <div
-      className={`relative box-border flex aspect-square w-full items-center justify-center overflow-hidden bg-center bg-cover bg-no-repeat ${safeZoneClassName} ${className}`}
+      className={`relative box-border flex aspect-square w-full overflow-hidden bg-center bg-cover bg-no-repeat ${className}`}
       style={{ backgroundColor }}
     >
-      {resolvedSrc ? (
-        <img
-          src={resolvedSrc}
-          alt={alt}
-          className={imageClassName}
-          onLoad={handleImageLoad}
-        />
-      ) : (
-        <div className={`absolute inset-0 ${fallbackClassName}`} />
-      )}
+      <div className={`relative box-border h-full w-full ${safeZoneClassName}`}>
+        {resolvedSrc ? (
+          <img
+            src={resolvedSrc}
+            alt={alt}
+            className={imageClassName}
+            onLoad={handleImageLoad}
+          />
+        ) : (
+          <div className={`h-full w-full ${fallbackClassName}`} />
+        )}
+      </div>
       {children}
     </div>
   );
@@ -1675,7 +1677,7 @@ function ProductGrid({
                     onItemActivate(product, globalIndex, event);
                   }
                 }}
-                className={`w-full snap-start rounded-lg transition-all duration-500 focus-visible:outline-none ${frameGlow}`}
+                className={`w-full snap-start transition-all duration-500 focus-visible:outline-none ${frameGlow}`}
                 aria-label={product.title}
               >
                 <SmartThumbnail
@@ -4361,7 +4363,7 @@ export default function MerchQuantumApp() {
                                       onClick={() => {
                                         setSelectedId(img.id);
                                       }}
-                                      className={`w-full snap-start rounded-lg transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
+                                      className={`w-full snap-start transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
                                     >
                                       <SmartThumbnail
                                         src={img.preview}
@@ -4369,7 +4371,6 @@ export default function MerchQuantumApp() {
                                         className={`group rounded-lg border transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${previewFrameTone}`}
                                       >
                                         {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
-                                        {isProcessing ? <div className="pointer-events-none absolute inset-0 rounded-lg border border-[#7F22FE]/80 animate-pulse" /> : null}
                                         {statusIndicator ? (
                                           <div
                                             aria-label={statusIndicator.tone}
