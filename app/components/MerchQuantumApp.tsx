@@ -151,12 +151,14 @@ type ProductGridProps = {
   activeId?: string;
   importedProductIds: Set<string>;
   highlighted?: boolean;
+  collapsed?: boolean;
   rangeLabel: string;
   page: number;
   pageSize: number;
   totalPages: number;
   loading: boolean;
   headerAccessory?: React.ReactNode;
+  onToggleCollapsed?: () => void;
   loadingAccessory?: React.ReactNode;
   onSelectAll?: () => void;
   footerLabel?: React.ReactNode;
@@ -1541,7 +1543,7 @@ function SmartThumbnail({
   src,
   alt,
   className = "",
-  safeZoneClassName = "p-[8%]",
+  safeZoneClassName = "p-3",
   imageClassName = "absolute inset-0 h-full w-full object-contain",
   fallbackClassName = "",
   children,
@@ -1606,12 +1608,14 @@ function ProductGrid({
   activeId,
   importedProductIds,
   highlighted = false,
+  collapsed = false,
   rangeLabel,
   page,
   pageSize,
   totalPages,
   loading,
   headerAccessory,
+  onToggleCollapsed,
   loadingAccessory,
   onSelectAll,
   footerLabel,
@@ -1622,10 +1626,10 @@ function ProductGrid({
 }: ProductGridProps) {
   return (
     <div className={`mx-auto flex w-full max-w-6xl flex-col gap-1.5 overflow-hidden rounded-xl border border-gray-800 bg-gray-900/50 p-2 ${highlighted ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)]" : ""}`}>
-      <div className="flex w-full min-w-0 items-center justify-between gap-2">
+      <div className="flex w-full min-w-0 items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-white">{heading}</span>
-        <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 text-[11px]">
-          {onSelectAll ? (
+        <div className="ml-auto flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 text-[11px]">
+          {onSelectAll && !collapsed ? (
             <button
               type="button"
               className="font-medium text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
@@ -1636,10 +1640,18 @@ function ProductGrid({
             </button>
           ) : null}
           {headerAccessory}
+          {onToggleCollapsed ? (
+            <BareChevronButton
+              open={!collapsed}
+              onClick={onToggleCollapsed}
+              label={collapsed ? "Expand section" : "Collapse section"}
+              className="ml-auto"
+            />
+          ) : null}
         </div>
       </div>
 
-      {items.length > 0 ? (
+      {!collapsed && items.length > 0 ? (
         <div className="grid h-full w-full grid-cols-5 gap-1 overflow-hidden snap-y snap-mandatory">
           {items.map((product, index) => {
             const globalIndex = page * pageSize + index;
@@ -1693,7 +1705,7 @@ function ProductGrid({
             );
           })}
         </div>
-      ) : (
+      ) : !collapsed ? (
         <div className="w-full p-1">
           <div className="grid min-h-[148px] w-full overflow-hidden rounded-xl" aria-hidden={loading ? undefined : true}>
             {loading ? (
@@ -1708,34 +1720,36 @@ function ProductGrid({
             ) : null}
           </div>
         </div>
-      )}
+      ) : null}
 
-      <div className="flex w-full items-center justify-between gap-2 pt-1 text-[11px]">
-        <div className="min-w-0 flex-1 truncate text-slate-100">
-          {footerLabel || rangeLabel}
+      {!collapsed ? (
+        <div className="flex w-full items-center justify-between gap-2 pt-1 text-[11px]">
+          <div className="min-w-0 flex-1 truncate text-slate-100">
+            {footerLabel || rangeLabel}
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            {footerActions}
+            <button
+              type="button"
+              aria-label={`Previous ${pageSize} items`}
+              className="inline-flex items-center justify-center text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
+              disabled={page <= 0}
+              onClick={onPreviousPage}
+            >
+              <ChevronIcon open={false} className="h-4 w-4 rotate-90" />
+            </button>
+            <button
+              type="button"
+              aria-label={`Next ${pageSize} items`}
+              className="inline-flex items-center justify-center text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
+              disabled={page >= totalPages - 1}
+              onClick={onNextPage}
+            >
+              <ChevronIcon open={false} className="h-4 w-4 -rotate-90" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center justify-end gap-2">
-          {footerActions}
-          <button
-            type="button"
-            aria-label={`Previous ${pageSize} items`}
-            className="inline-flex items-center justify-center text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
-            disabled={page <= 0}
-            onClick={onPreviousPage}
-          >
-            <ChevronIcon open={false} className="h-4 w-4 rotate-90" />
-          </button>
-          <button
-            type="button"
-            aria-label={`Next ${pageSize} items`}
-            className="inline-flex items-center justify-center text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
-            disabled={page >= totalPages - 1}
-            onClick={onNextPage}
-          >
-            <ChevronIcon open={false} className="h-4 w-4 -rotate-90" />
-          </button>
-        </div>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -1920,6 +1934,7 @@ export default function MerchQuantumApp() {
   const [isTokenInputFocused, setIsTokenInputFocused] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("");
   const [isRoutingGridExpanded, setIsRoutingGridExpanded] = useState(true);
+  const [isWorkspaceSelectionCollapsed, setIsWorkspaceSelectionCollapsed] = useState(false);
   const [isImportingListings, setIsImportingListings] = useState(false);
   const [importStatus, setImportStatus] = useState("");
   const [isSyncingImportedListings, setIsSyncingImportedListings] = useState(false);
@@ -3085,6 +3100,7 @@ export default function MerchQuantumApp() {
     setImportedListingDescription("");
     setWorkspaceMode("");
     setIsRoutingGridExpanded(true);
+    setIsWorkspaceSelectionCollapsed(false);
     setManualPrebufferOverride(false);
     setBatchResults([]);
     setRunStatus("");
@@ -3119,6 +3135,7 @@ export default function MerchQuantumApp() {
   function handleWorkspaceModeChange(nextMode: WorkspaceMode) {
     setWorkspaceMode(nextMode);
     setIsRoutingGridExpanded(!nextMode);
+    setIsWorkspaceSelectionCollapsed(false);
     setProductId("");
     setActiveGridProductId("");
     setTemplate(null);
@@ -3142,6 +3159,7 @@ export default function MerchQuantumApp() {
     setApiProducts([]);
     setWorkspaceMode("");
     setIsRoutingGridExpanded(true);
+    setIsWorkspaceSelectionCollapsed(false);
     setProductId("");
     setActiveGridProductId("");
     setTemplate(null);
@@ -3962,7 +3980,7 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <div className="relative min-h-screen max-w-full overflow-x-hidden bg-[#0d1117] px-4 pb-28 pt-3 text-white transition-colors md:px-6 md:pb-32 md:pt-4">
+    <div className="relative flex min-h-screen max-w-full flex-col overflow-x-hidden bg-[#0d1117] px-4 pb-4 pt-3 text-white transition-colors md:px-6 md:pb-6 md:pt-4">
 
       <div className="relative z-10 mx-auto w-full max-w-3xl space-y-3">
         <div className="sticky top-0 z-50 space-y-2 bg-[#0d1117]/95 pb-2 backdrop-blur-md">
@@ -4190,13 +4208,17 @@ export default function MerchQuantumApp() {
                 loading={loadingProducts}
                 loadingAccessory={loadingProducts || isImportingListings ? <QuantOrbLoader /> : null}
                 footerLabel={importStatus || bulkEditVisibleRangeLabel}
+                collapsed={isWorkspaceSelectionCollapsed}
                 headerAccessory={
-                  <BareChevronButton
-                    open={isRoutingGridExpanded}
+                  <button
+                    type="button"
                     onClick={() => setIsRoutingGridExpanded((current) => !current)}
-                    label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
-                  />
+                    className="font-medium text-slate-100 transition hover:text-white"
+                  >
+                    {isRoutingGridExpanded ? "Hide setup" : "Show setup"}
+                  </button>
                 }
+                onToggleCollapsed={() => setIsWorkspaceSelectionCollapsed((current) => !current)}
                 onSelectAll={() => {
                   setPendingTemplateSelectionIds(normalizeSelectionIds(visibleProducts.map((product) => product.id)));
                   setActiveGridProductId(visibleProducts[0]?.id || "");
@@ -4236,13 +4258,17 @@ export default function MerchQuantumApp() {
                 totalPages={createTemplateTotalPages}
                 loading={loadingProducts}
                 loadingAccessory={loadingProducts || loadingTemplateDetails ? <QuantOrbLoader /> : null}
+                collapsed={isWorkspaceSelectionCollapsed}
                 headerAccessory={
-                  <BareChevronButton
-                    open={isRoutingGridExpanded}
+                  <button
+                    type="button"
                     onClick={() => setIsRoutingGridExpanded((current) => !current)}
-                    label={isRoutingGridExpanded ? "Hide setup" : "Show setup"}
-                  />
+                    className="font-medium text-slate-100 transition hover:text-white"
+                  >
+                    {isRoutingGridExpanded ? "Hide setup" : "Show setup"}
+                  </button>
                 }
+                onToggleCollapsed={() => setIsWorkspaceSelectionCollapsed((current) => !current)}
                 onItemActivate={(product, index, event) => {
                   event.preventDefault();
                   event.stopPropagation();
@@ -4263,7 +4289,7 @@ export default function MerchQuantumApp() {
                             <div
                               role={isWorkspaceConfigured ? "button" : undefined}
                               tabIndex={isWorkspaceConfigured ? 0 : -1}
-                              className={`w-full rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-3 py-1.5 text-center transition-colors ${isWorkspaceConfigured ? "cursor-pointer hover:bg-[#0b1024]" : "cursor-default"}`}
+                              className={`w-full rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-3 py-1 text-center transition-colors ${isWorkspaceConfigured ? "cursor-pointer hover:bg-[#0b1024]" : "cursor-default"}`}
                               onClick={isWorkspaceConfigured ? openArtworkPicker : undefined}
                               onKeyDown={(e) => {
                                 if (!isWorkspaceConfigured) return;
@@ -4286,14 +4312,14 @@ export default function MerchQuantumApp() {
                                 void addFiles(e.dataTransfer.files);
                               }}
                             >
-                              <div className="flex min-h-[64px] flex-col justify-between gap-1">
+                              <div className="flex min-h-[52px] flex-col justify-between gap-1">
                                 <div className="flex items-center justify-center">
                                   <div className="flex flex-col items-center gap-0.5 text-center">
                                     <p className="text-[11px] font-medium leading-5 text-white sm:text-xs">
-                                      Click or Drag to Add Images (Max 50)
+                                      Drop Images Here
                                     </p>
                                     <p className="text-[10px] font-medium leading-4 text-slate-100 sm:text-[11px]">
-                                      AI Queues Additional (API Enforced)
+                                      50 per batch • 500 max queue
                                     </p>
                                   </div>
                                 </div>
@@ -4730,12 +4756,12 @@ export default function MerchQuantumApp() {
       </div>
 
       <div
-        className={`pointer-events-none fixed bottom-0 left-0 z-20 flex w-full justify-center pb-4 transition-opacity ease-out ${
+        className={`pointer-events-none relative z-0 mt-auto flex w-full justify-center pt-6 transition-opacity ease-out ${
           isBrandMarkPrimed ? "opacity-100" : "opacity-0"
         }`}
         style={{ transitionDuration: `${BRAND_REVEAL_FADE_MS}ms` }}
       >
-        <div className="relative w-full max-w-3xl px-4 md:px-6">
+        <div className="relative w-full max-w-3xl">
           <CreativeWellspringAmbientBackground />
           <CreativeWellspringBrandMark docked className="w-full bg-transparent" />
         </div>
