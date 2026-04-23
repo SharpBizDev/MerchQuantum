@@ -8,7 +8,7 @@ const BOOT_TAGLINE = "EFFORTLESS PRODUCT CREATION.";
 const ACTIVE_BATCH_FILES = 50;
 const CONNECTED_TOTAL_BATCH_FILES = 50;
 const FIXED_TAG_COUNT = 13;
-const BOOT_OVERLAY_FADE_MS = 2000;
+const BRAND_REVEAL_FADE_MS = 2000;
 const BRAND_WORDMARK_TEXT_CLASSES = "text-4xl sm:text-5xl";
 const BRAND_TAGLINE_TEXT_CLASSES = "text-[11px] sm:text-xs";
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
@@ -1469,58 +1469,41 @@ function MerchQuantumInlineHeading({ className = "" }: { className?: string }) {
   );
 }
 
-function CreativeWellspringBootOverlay({
-  visible,
-  primed,
-  onDismiss,
-}: {
-  visible: boolean;
-  primed: boolean;
-  onDismiss: () => void;
-}) {
-  if (!visible) return null;
-
+function CreativeWellspringAmbientBackground({ className = "" }: { className?: string }) {
   return (
     <div
-      onClick={onDismiss}
-      className="fixed inset-0 z-[140] overflow-hidden bg-[#03050d] transition-opacity duration-500 opacity-100 pointer-events-auto"
+      className={`pointer-events-none absolute inset-x-0 top-0 z-0 overflow-hidden ${className}`}
+      aria-hidden="true"
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_center,rgba(127,34,254,0.16),rgba(3,5,13,0.94)_36%,rgba(0,0,0,1)_78%)]" />
-
-      <div className="relative flex min-h-screen w-full items-end justify-center overflow-hidden px-4 pb-4 md:px-6 md:pb-6">
-        <div className={`w-full max-w-3xl transition-opacity duration-[2000ms] ease-out ${primed ? "opacity-100" : "opacity-0"}`}>
-          <div className="pointer-events-none relative z-0 flex w-full justify-center pt-1 pb-2">
-            <CreativeWellspringBrandMark docked className="w-full opacity-100" />
-          </div>
-        </div>
-      </div>
-
-      <style jsx>{`
-        @keyframes creativeWellspringDriftA {
-          0% {
-            transform: translate3d(0, 0, 0) scale(1);
-          }
-          100% {
-            transform: translate3d(4vw, 3svh, 0) scale(1.08);
-          }
-        }
-        @keyframes creativeWellspringDriftB {
-          0% {
-            transform: translate3d(0, 0, 0) scale(1);
-          }
-          100% {
-            transform: translate3d(-5vw, 2svh, 0) scale(1.05);
-          }
-        }
-        @keyframes creativeWellspringDriftC {
-          0% {
-            transform: translate3d(0, 0, 0) scale(1);
-          }
-          100% {
-            transform: translate3d(2vw, -3svh, 0) scale(1.07);
-          }
-        }
-      `}</style>
+      <div className="absolute inset-x-[-14%] top-[-12rem] h-[30rem] bg-[radial-gradient(circle_at_top_center,rgba(216,180,254,0.18),rgba(167,139,250,0.18)_18%,rgba(127,34,254,0.1)_34%,rgba(29,7,64,0.08)_48%,rgba(13,17,23,0)_72%)]" />
+      <div
+        className="absolute left-1/2 top-[-7rem] h-[20rem] w-[27rem] -translate-x-[66%] rounded-[43%_57%_61%_39%/54%_42%_58%_46%] blur-3xl"
+        style={{
+          background:
+            "radial-gradient(circle at 34% 38%, rgba(244,114,182,0.16) 0%, rgba(192,132,252,0.24) 28%, rgba(127,34,254,0.12) 56%, transparent 84%)",
+        }}
+      />
+      <div
+        className="absolute left-1/2 top-[-5rem] h-[22rem] w-[34rem] -translate-x-[10%] rounded-[62%_38%_45%_55%/46%_33%_67%_54%] blur-[96px]"
+        style={{
+          background:
+            "radial-gradient(circle at 48% 40%, rgba(129,140,248,0.14) 0%, rgba(127,34,254,0.2) 24%, rgba(88,28,135,0.12) 54%, transparent 80%)",
+        }}
+      />
+      <div
+        className="absolute left-1/2 top-[1rem] h-[18rem] w-[20rem] -translate-x-[6%] rounded-[36%_64%_52%_48%/51%_61%_39%_49%] blur-[88px]"
+        style={{
+          background:
+            "radial-gradient(circle at 52% 34%, rgba(196,181,253,0.14) 0%, rgba(167,139,250,0.12) 32%, rgba(76,29,149,0.1) 58%, transparent 80%)",
+        }}
+      />
+      <div
+        className="absolute left-1/2 top-[5rem] h-[14rem] w-[40rem] -translate-x-1/2 rounded-full blur-[100px]"
+        style={{
+          background:
+            "radial-gradient(circle at 50% 50%, rgba(127,34,254,0.12) 0%, rgba(76,29,149,0.08) 34%, rgba(13,17,23,0) 78%)",
+        }}
+      />
     </div>
   );
 }
@@ -1534,85 +1517,11 @@ function CreativeWellspringBrandMark({
 }) {
   return (
     <div
-      className={`pointer-events-none relative isolate z-0 flex w-full items-center justify-center overflow-hidden ${
-        docked ? "min-h-[96px]" : "min-h-[148px]"
+      className={`pointer-events-none relative z-10 flex w-full items-center justify-center ${
+        docked ? "min-h-[92px]" : "min-h-[148px]"
       } ${className}`}
       aria-hidden="true"
     >
-      <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div
-          className={`absolute left-1/2 top-1/2 ${
-            docked
-              ? "h-24 w-[11rem] -translate-x-[96%] -translate-y-[62%] rotate-[-18deg] blur-[38px]"
-              : "h-36 w-[16rem] -translate-x-[102%] -translate-y-[66%] rotate-[-18deg] blur-[56px]"
-          }`}
-          style={{
-            borderRadius: "41% 59% 67% 33% / 38% 42% 58% 62%",
-            background:
-              "radial-gradient(circle at 28% 30%, rgba(244,114,182,0.34) 0%, rgba(192,132,252,0.28) 24%, rgba(127,34,254,0.18) 58%, transparent 84%)",
-          }}
-        />
-        <div
-          className={`absolute left-1/2 top-1/2 ${
-            docked
-              ? "h-20 w-[17rem] -translate-x-[56%] -translate-y-[30%] rotate-[8deg] blur-[34px]"
-              : "h-28 w-[24rem] -translate-x-[58%] -translate-y-[32%] rotate-[8deg] blur-[50px]"
-          }`}
-          style={{
-            borderRadius: "63% 37% 45% 55% / 51% 34% 66% 49%",
-            background:
-              "radial-gradient(circle at 52% 42%, rgba(129,140,248,0.18) 0%, rgba(127,34,254,0.34) 30%, rgba(88,28,135,0.18) 56%, transparent 82%)",
-          }}
-        />
-        <div
-          className={`absolute left-1/2 top-1/2 ${
-            docked
-              ? "h-24 w-[12rem] translate-x-[12%] -translate-y-[54%] rotate-[22deg] blur-[40px]"
-              : "h-34 w-[17rem] translate-x-[16%] -translate-y-[58%] rotate-[22deg] blur-[58px]"
-          }`}
-          style={{
-            borderRadius: "36% 64% 58% 42% / 47% 60% 40% 53%",
-            background:
-              "radial-gradient(circle at 60% 34%, rgba(196,181,253,0.28) 0%, rgba(167,139,250,0.22) 26%, rgba(127,34,254,0.2) 52%, transparent 82%)",
-          }}
-        />
-        <div
-          className={`absolute left-1/2 top-1/2 ${
-            docked
-              ? "h-14 w-[15rem] -translate-x-[6%] translate-y-[8%] rotate-[-6deg] blur-[30px]"
-              : "h-20 w-[22rem] -translate-x-[4%] translate-y-[10%] rotate-[-6deg] blur-[42px]"
-          }`}
-          style={{
-            borderRadius: "58% 42% 62% 38% / 43% 57% 43% 57%",
-            background:
-              "radial-gradient(circle at 45% 45%, rgba(76,29,149,0.22) 0%, rgba(127,34,254,0.18) 34%, rgba(15,23,42,0.04) 62%, transparent 82%)",
-          }}
-        />
-        <div
-          className={`absolute left-1/2 top-1/2 ${
-            docked
-              ? "h-14 w-[8rem] translate-x-[66%] -translate-y-[18%] rotate-[26deg] blur-[26px]"
-              : "h-20 w-[11rem] translate-x-[72%] -translate-y-[22%] rotate-[26deg] blur-[36px]"
-          }`}
-          style={{
-            borderRadius: "47% 53% 34% 66% / 58% 40% 60% 42%",
-            background:
-              "radial-gradient(circle at 42% 46%, rgba(216,180,254,0.24) 0%, rgba(168,85,247,0.18) 36%, transparent 80%)",
-          }}
-        />
-        <div
-          className={`absolute left-1/2 top-1/2 ${
-            docked
-              ? "h-10 w-[6rem] -translate-x-[18%] -translate-y-[70%] rotate-[12deg] blur-[20px]"
-              : "h-16 w-[9rem] -translate-x-[20%] -translate-y-[76%] rotate-[12deg] blur-[30px]"
-          }`}
-          style={{
-            borderRadius: "32% 68% 61% 39% / 41% 33% 67% 59%",
-            background:
-              "radial-gradient(circle at 35% 30%, rgba(244,114,182,0.2) 0%, rgba(192,132,252,0.22) 34%, transparent 82%)",
-          }}
-        />
-      </div>
       <div className="relative z-10 flex items-center justify-center">
         <div className="flex flex-col items-center gap-1 px-6 text-center">
           <div className={`flex flex-wrap items-baseline justify-center gap-x-2 tracking-tight ${BRAND_WORDMARK_TEXT_CLASSES}`}>
@@ -2029,8 +1938,7 @@ export default function MerchQuantumApp() {
   const [inlineSaveFeedback, setInlineSaveFeedback] = useState<InlineSaveFeedback | null>(null);
   const [aiAssistStatus, setAiAssistStatus] = useState("");
   const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
-  const [isBootOverlayVisible, setIsBootOverlayVisible] = useState(true);
-  const [isBootOverlayPrimed, setIsBootOverlayPrimed] = useState(false);
+  const [isBrandMarkPrimed, setIsBrandMarkPrimed] = useState(false);
   const [activeGridProductId, setActiveGridProductId] = useState("");
 
   const resolvedProviderId = provider === "spreadconnect" ? "spod" : provider;
@@ -2988,19 +2896,14 @@ export default function MerchQuantumApp() {
   }, []);
 
   useEffect(() => {
-    setIsBootOverlayPrimed(false);
+    setIsBrandMarkPrimed(false);
 
     const primeTimer = window.setTimeout(() => {
-      setIsBootOverlayPrimed(true);
+      setIsBrandMarkPrimed(true);
     }, 24);
-
-    const timer = window.setTimeout(() => {
-      setIsBootOverlayVisible(false);
-    }, BOOT_OVERLAY_FADE_MS);
 
     return () => {
       window.clearTimeout(primeTimer);
-      window.clearTimeout(timer);
     };
   }, []);
 
@@ -3197,10 +3100,6 @@ export default function MerchQuantumApp() {
     setCompletedImportedImages([]);
     setQueuedImages([]);
     setSelectedId("");
-  }
-
-  function dismissBootOverlay() {
-    setIsBootOverlayVisible(false);
   }
 
   function clearPreviewWorkspace() {
@@ -4063,16 +3962,10 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <div className="relative z-10 min-h-screen max-w-full overflow-x-hidden bg-[#0d1117] px-4 pb-4 pt-3 text-white transition-colors md:px-6 md:pb-6 md:pt-4">
-      {isBootOverlayVisible ? (
-        <CreativeWellspringBootOverlay
-          visible={isBootOverlayVisible}
-          primed={isBootOverlayPrimed}
-          onDismiss={dismissBootOverlay}
-        />
-      ) : null}
+    <div className="relative min-h-screen max-w-full overflow-x-hidden bg-[#0d1117] px-4 pb-4 pt-3 text-white transition-colors md:px-6 md:pb-6 md:pt-4">
+      <CreativeWellspringAmbientBackground className="h-[30rem]" />
 
-      <div className={`relative z-10 mx-auto w-full max-w-3xl space-y-3 transition-all duration-300 ${isBootOverlayVisible ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"}`}>
+      <div className="relative z-10 mx-auto w-full max-w-3xl space-y-3">
         <div className="sticky top-0 z-50 space-y-2 bg-[#0d1117]/95 pb-2 backdrop-blur-md">
           {!workspaceMode || isRoutingGridExpanded ? (
           <div className="relative">
@@ -4264,6 +4157,15 @@ export default function MerchQuantumApp() {
           </div>
           ) : null}
 
+        </div>
+
+        <div
+          className={`pointer-events-none relative z-0 flex w-full justify-center pt-1 pb-2 transition-opacity ease-out ${
+            isBrandMarkPrimed ? "opacity-100" : "opacity-0"
+          }`}
+          style={{ transitionDuration: `${BRAND_REVEAL_FADE_MS}ms` }}
+        >
+          <CreativeWellspringBrandMark docked className="w-full" />
         </div>
 
         {connected && shopId && workspaceMode ? (
@@ -4836,11 +4738,6 @@ export default function MerchQuantumApp() {
           </Box>
         ) : null}
 
-        {!isBootOverlayVisible ? (
-          <div className="pointer-events-none relative z-0 flex w-full justify-center pt-1 pb-2">
-            <CreativeWellspringBrandMark docked className="w-full opacity-100" />
-          </div>
-        ) : null}
       </div>
     </div>
   );
