@@ -8,7 +8,6 @@ const BOOT_TAGLINE = "EFFORTLESS PRODUCT CREATION.";
 const ACTIVE_BATCH_FILES = 50;
 const CONNECTED_TOTAL_BATCH_FILES = 50;
 const FIXED_TAG_COUNT = 13;
-const BRAND_REVEAL_FADE_MS = 420;
 const BRAND_WORDMARK_TEXT_CLASSES = "text-4xl sm:text-5xl";
 const BRAND_TAGLINE_TEXT_CLASSES = "text-[11px] sm:text-xs";
 const WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY = "mq-workspace-selection-condensed";
@@ -1966,7 +1965,6 @@ export default function MerchQuantumApp() {
   const [inlineSaveFeedback, setInlineSaveFeedback] = useState<InlineSaveFeedback | null>(null);
   const [aiAssistStatus, setAiAssistStatus] = useState("");
   const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
-  const [isBrandMarkPrimed, setIsBrandMarkPrimed] = useState(false);
   const [activeGridProductId, setActiveGridProductId] = useState("");
 
   useEffect(() => {
@@ -2927,18 +2925,6 @@ export default function MerchQuantumApp() {
       }
       window.clearTimeout((triggerAttentionCue as typeof triggerAttentionCue & { timeoutId?: number }).timeoutId);
       clearInlineFeedbackTimer();
-    };
-  }, []);
-
-  useEffect(() => {
-    setIsBrandMarkPrimed(false);
-
-    const primeTimer = window.setTimeout(() => {
-      setIsBrandMarkPrimed(true);
-    }, 24);
-
-    return () => {
-      window.clearTimeout(primeTimer);
     };
   }, []);
 
@@ -4000,12 +3986,14 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <div className="box-border w-full overflow-x-hidden bg-[#0d1117] font-sans text-white transition-colors">
+    <main className="h-screen w-screen overflow-hidden bg-[#0d1117] font-sans text-white">
+      <div className="flex h-full w-full items-center justify-center overflow-hidden">
       <div
-        className="quantum-fade-in-up mx-auto flex w-full max-w-[630px] box-border flex-col overflow-x-hidden px-3 pb-3 pt-3 md:px-4 md:pb-4 md:pt-4"
+        className="relative flex h-[946px] w-[630px] max-h-full max-w-full flex-col overflow-hidden box-border px-3 pt-3 md:px-4 md:pt-4"
         style={{ minWidth: "min(360px, 100%)" }}
       >
-      <div className="relative z-10 flex min-w-0 flex-col gap-3">
+      <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+      <div className="flex min-w-0 flex-col gap-3 pb-3 md:pb-4">
         <div className="sticky top-0 z-50 space-y-2 bg-[#0d1117]/95 pb-2 backdrop-blur-md">
           {!workspaceMode || isRoutingGridExpanded ? (
           <div className="relative">
@@ -4777,45 +4765,17 @@ export default function MerchQuantumApp() {
         ) : null}
 
       </div>
+      </div>
 
-      <div
-        className={`pointer-events-none relative z-0 flex w-full justify-center pt-6 transition-opacity ease-out ${
-          isBrandMarkPrimed ? "opacity-100" : "opacity-0"
-        }`}
-        style={{ transitionDuration: `${BRAND_REVEAL_FADE_MS}ms` }}
-      >
+      <div className="pointer-events-none relative z-0 flex w-full flex-none justify-center pb-3 pt-4 md:pb-4">
         <div className="relative w-full">
           <CreativeWellspringAmbientBackground />
           <CreativeWellspringBrandMark docked className="w-full bg-transparent" />
         </div>
       </div>
-      <style jsx global>{`
-        @keyframes quantumFadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(12px);
-          }
-
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        .quantum-fade-in-up {
-          animation: quantumFadeInUp 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .quantum-fade-in-up {
-            animation: none;
-            opacity: 1;
-            transform: none;
-          }
-        }
-      `}</style>
       </div>
-    </div>
+      </div>
+    </main>
   );
 }
 
