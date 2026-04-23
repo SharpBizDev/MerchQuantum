@@ -11,6 +11,8 @@ const FIXED_TAG_COUNT = 13;
 const BRAND_WORDMARK_TEXT_CLASSES = "text-4xl sm:text-5xl";
 const BRAND_TAGLINE_TEXT_CLASSES = "text-[11px] sm:text-xs";
 const DETAIL_DATA_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-white";
+const TAG_PILL_TEXT_CLASSES = "font-sans text-sm font-normal text-white";
+const PRIMARY_ACTION_BUTTON_CLASSES = "inline-flex h-8 shrink-0 items-center justify-center rounded-lg bg-purple-600 px-3 font-sans text-sm font-semibold text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-950/40 disabled:text-slate-200";
 const WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY = "mq-workspace-selection-condensed";
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
 export const QUANTUM_DESCRIPTION_AWAITING_TEXT = "Awaiting Quantum AI description...";
@@ -2192,7 +2194,7 @@ export default function MerchQuantumApp() {
       ? "Syncing..."
       : isPublishingImportedListings
         ? "Publishing..."
-        : "Sync Shops";
+        : "Sync";
   const triggerDescriptionAction = () => {
     if (isCreateMode) {
       void runDraftBatch();
@@ -4681,7 +4683,7 @@ export default function MerchQuantumApp() {
                                   type="button"
                                   onClick={triggerDescriptionAction}
                                   disabled={descriptionActionDisabled}
-                                  className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg bg-purple-600 px-3 font-sans text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-950/40 disabled:text-slate-200"
+                                  className={PRIMARY_ACTION_BUTTON_CLASSES}
                                 >
                                   {descriptionActionLabel}
                                 </button>
@@ -4691,7 +4693,7 @@ export default function MerchQuantumApp() {
                                   Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
                                     <div
                                       key={`loading-tag-${index}`}
-                                      className={`flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center ${DETAIL_DATA_TEXT_CLASSES}`}
+                                      className={`flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center ${TAG_PILL_TEXT_CLASSES}`}
                                     >
                                       <QuantOrbLoader />
                                     </div>
@@ -4701,13 +4703,13 @@ export default function MerchQuantumApp() {
                                     <div
                                       key={`${selectedImage?.id || productId}-tag-${index}`}
                                       title={tag}
-                                      className={`flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center ${DETAIL_DATA_TEXT_CLASSES}`}
+                                      className={`flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center ${TAG_PILL_TEXT_CLASSES}`}
                                     >
-                                      <span className={`truncate ${DETAIL_DATA_TEXT_CLASSES}`}>{tag}</span>
+                                      <span className={`truncate ${TAG_PILL_TEXT_CLASSES}`}>{tag}</span>
                                     </div>
                                   ))
                                 ) : (
-                                  <div className={`flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center ${DETAIL_DATA_TEXT_CLASSES}`}>
+                                  <div className={`flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center ${TAG_PILL_TEXT_CLASSES}`}>
                                     Tags will appear after Quantum AI processing completes.
                                   </div>
                                 )}
