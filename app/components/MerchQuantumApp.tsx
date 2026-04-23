@@ -1476,45 +1476,6 @@ function MerchQuantumInlineHeading({ className = "" }: { className?: string }) {
   );
 }
 
-function CreativeWellspringAmbientBackground({ className = "" }: { className?: string }) {
-  return (
-    <div
-      className={`pointer-events-none absolute inset-0 -z-10 overflow-visible ${className}`}
-      aria-hidden="true"
-    >
-      <div className="absolute inset-x-[-18%] bottom-[-4rem] h-[18rem] bg-[radial-gradient(circle_at_bottom_center,rgba(216,180,254,0.14),rgba(167,139,250,0.16)_18%,rgba(127,34,254,0.1)_34%,rgba(29,7,64,0.08)_48%,rgba(13,17,23,0)_74%)]" />
-      <div
-        className="absolute left-1/2 bottom-[-1.5rem] h-[12rem] w-[18rem] -translate-x-[88%] rounded-[43%_57%_61%_39%/54%_42%_58%_46%] blur-[76px]"
-        style={{
-          background:
-            "radial-gradient(circle at 34% 38%, rgba(244,114,182,0.18) 0%, rgba(192,132,252,0.24) 28%, rgba(127,34,254,0.16) 56%, transparent 84%)",
-        }}
-      />
-      <div
-        className="absolute left-1/2 bottom-[-3rem] h-[14rem] w-[28rem] -translate-x-[6%] rounded-[62%_38%_45%_55%/46%_33%_67%_54%] blur-[92px]"
-        style={{
-          background:
-            "radial-gradient(circle at 48% 40%, rgba(129,140,248,0.16) 0%, rgba(127,34,254,0.24) 24%, rgba(88,28,135,0.14) 54%, transparent 80%)",
-        }}
-      />
-      <div
-        className="absolute left-1/2 bottom-[0.25rem] h-[10rem] w-[12rem] translate-x-[54%] rounded-[36%_64%_52%_48%/51%_61%_39%_49%] blur-[72px]"
-        style={{
-          background:
-            "radial-gradient(circle at 52% 34%, rgba(196,181,253,0.16) 0%, rgba(167,139,250,0.14) 32%, rgba(76,29,149,0.1) 58%, transparent 80%)",
-        }}
-      />
-      <div
-        className="absolute left-1/2 bottom-[-4.5rem] h-[10rem] w-[36rem] -translate-x-1/2 rounded-full blur-[110px]"
-        style={{
-          background:
-            "radial-gradient(circle at 50% 50%, rgba(127,34,254,0.14) 0%, rgba(76,29,149,0.1) 34%, rgba(13,17,23,0) 78%)",
-        }}
-      />
-    </div>
-  );
-}
-
 function CreativeWellspringBrandMark({
   docked = false,
   className = "",
@@ -3992,7 +3953,7 @@ export default function MerchQuantumApp() {
         className="relative flex h-[946px] w-[630px] max-h-full max-w-full flex-col overflow-hidden box-border px-3 pt-3 md:px-4 md:pt-4"
         style={{ minWidth: "min(360px, 100%)" }}
       >
-      <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+      <div className="quantum-scroll-hidden relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
       <div className="flex min-w-0 flex-col gap-3 pb-3 md:pb-4">
         <div className="sticky top-0 z-50 space-y-2 bg-[#0d1117]/95 pb-2 backdrop-blur-md">
           {!workspaceMode || isRoutingGridExpanded ? (
@@ -4363,7 +4324,7 @@ export default function MerchQuantumApp() {
                           ) : null}
                           {canShowLoadedQueueGrid ? (
                             <div className="space-y-1 p-1">
-                              <div className="grid grid-cols-5 gap-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
+                        <div className="quantum-scroll-hidden grid grid-cols-5 gap-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
                                 {visibleCreateThumbnails.map((img) => {
                                   const isSelected = selectedImage?.id === img.id;
                                   const resolvedStatus = getResolvedItemStatus(img);
@@ -4743,7 +4704,7 @@ export default function MerchQuantumApp() {
                     </div>
                     {runStatus ? <p className="mt-3 text-sm text-slate-300">{runStatus}</p> : null}
                     {batchResults.length > 0 ? (
-                      <div className="mt-3 max-h-[14rem] overflow-auto rounded-xl border border-slate-800 bg-[#020616] p-3 text-sm">
+                      <div className="quantum-scroll-hidden mt-3 max-h-[14rem] overflow-auto rounded-xl border border-slate-800 bg-[#020616] p-3 text-sm">
                         <div className="space-y-1.5">
                           {batchResults.map((result) => (
                             <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-800 p-2.5">
@@ -4767,14 +4728,25 @@ export default function MerchQuantumApp() {
       </div>
       </div>
 
-      <div className="pointer-events-none relative z-0 flex w-full flex-none justify-center pb-3 pt-4 md:pb-4">
-        <div className="relative w-full">
-          <CreativeWellspringAmbientBackground />
+      <div className="pointer-events-none relative z-0 flex w-full flex-none justify-center bg-transparent pb-3 pt-4 md:pb-4">
+        <div className="relative w-full bg-transparent">
           <CreativeWellspringBrandMark docked className="w-full bg-transparent" />
         </div>
       </div>
       </div>
       </div>
+      <style jsx global>{`
+        .quantum-scroll-hidden {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+
+        .quantum-scroll-hidden::-webkit-scrollbar {
+          display: none;
+          width: 0;
+          height: 0;
+        }
+      `}</style>
     </main>
   );
 }
