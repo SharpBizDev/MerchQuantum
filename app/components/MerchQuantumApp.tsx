@@ -8,8 +8,9 @@ const BOOT_TAGLINE = "EFFORTLESS PRODUCT CREATION.";
 const ACTIVE_BATCH_FILES = 50;
 const CONNECTED_TOTAL_BATCH_FILES = 50;
 const FIXED_TAG_COUNT = 13;
-const BOOT_SWEEP_START_MS = 1200;
-const BOOT_OVERLAY_FADE_MS = 1520;
+const BOOT_OVERLAY_FADE_MS = 2000;
+const BRAND_WORDMARK_TEXT_CLASSES = "text-4xl sm:text-5xl";
+const BRAND_TAGLINE_TEXT_CLASSES = "text-[11px] sm:text-xs";
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
 export const QUANTUM_DESCRIPTION_AWAITING_TEXT = "Awaiting Quantum AI description...";
 
@@ -1471,12 +1472,10 @@ function MerchQuantumInlineHeading({ className = "" }: { className?: string }) {
 function CreativeWellspringBootOverlay({
   visible,
   primed,
-  sweepActive,
   onDismiss,
 }: {
   visible: boolean;
   primed: boolean;
-  sweepActive: boolean;
   onDismiss: () => void;
 }) {
   if (!visible) return null;
@@ -1486,58 +1485,13 @@ function CreativeWellspringBootOverlay({
       onClick={onDismiss}
       className="fixed inset-0 z-[140] overflow-hidden bg-[#03050d] transition-opacity duration-500 opacity-100 pointer-events-auto"
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(127,34,254,0.16),rgba(3,5,13,0.95)_42%,rgba(0,0,0,1)_82%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_center,rgba(127,34,254,0.16),rgba(3,5,13,0.94)_36%,rgba(0,0,0,1)_78%)]" />
 
-      <div className={`pointer-events-none absolute left-1/2 top-[14svh] h-[42svh] w-[42svh] -translate-x-[62%] rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(196,181,253,0.92),rgba(127,34,254,0.78)_24%,rgba(53,32,164,0.36)_56%,transparent_78%)] blur-[72px] transition-all duration-500 ${sweepActive ? "opacity-0 scale-110" : "opacity-100"}`} style={{ animation: "creativeWellspringDriftA 16s ease-in-out infinite alternate" }} />
-      <div className={`pointer-events-none absolute left-1/2 top-[16svh] h-[34svh] w-[34svh] translate-x-[8%] rounded-full bg-[radial-gradient(circle_at_35%_35%,rgba(244,114,182,0.46),rgba(129,140,248,0.3)_34%,rgba(37,99,235,0.18)_60%,transparent_78%)] blur-[88px] transition-all duration-500 ${sweepActive ? "opacity-0 scale-105" : "opacity-100"}`} style={{ animation: "creativeWellspringDriftB 18s ease-in-out infinite alternate" }} />
-      <div className={`pointer-events-none absolute left-1/2 top-[34svh] h-[30svh] w-[30svh] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_40%_40%,rgba(96,165,250,0.26),rgba(29,78,216,0.2)_40%,rgba(236,72,153,0.12)_68%,transparent_82%)] blur-[80px] transition-all duration-500 ${sweepActive ? "opacity-0 scale-110" : "opacity-100"}`} style={{ animation: "creativeWellspringDriftC 14s ease-in-out infinite alternate" }} />
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <div
-          className="h-96 w-96 rounded-full bg-[#7F22FE]/30 blur-[100px]"
-          style={{
-            transform: sweepActive
-              ? "translate3d(38vw,-30svh,0) scale(1.08)"
-              : primed
-                ? "translate3d(0,0,0) scale(1)"
-                : "translate3d(-42vw,32svh,0) scale(0.92)",
-            opacity: sweepActive ? 0 : primed ? 0.78 : 0,
-            transition: "transform 1180ms cubic-bezier(0.22,1,0.36,1), opacity 920ms ease-out",
-            willChange: "transform, opacity",
-          }}
-        />
-      </div>
-
-      <div className={`pointer-events-none absolute inset-0 transition-opacity duration-500 ${sweepActive ? "opacity-0" : "opacity-100"}`} style={{ mixBlendMode: "screen" }}>
-        <svg aria-hidden="true" className="absolute inset-0 h-full w-full opacity-[0.08]" viewBox="0 0 1440 900" preserveAspectRatio="none">
-          <defs>
-            <pattern id="creative-wellspring-grid" width="96" height="96" patternUnits="userSpaceOnUse">
-              <path d="M96 0H0V96" fill="none" stroke="rgba(226,232,240,0.22)" strokeWidth="1" />
-            </pattern>
-            <pattern id="creative-wellspring-files" width="240" height="220" patternUnits="userSpaceOnUse">
-              <path d="M48 40h78l22 22v98H48z" fill="none" stroke="rgba(192,132,252,0.24)" strokeWidth="1.15" />
-              <path d="M126 40v22h22" fill="none" stroke="rgba(192,132,252,0.24)" strokeWidth="1.15" />
-              <path d="M72 112h48M72 136h60M72 160h36" fill="none" stroke="rgba(148,163,184,0.2)" strokeWidth="1" strokeLinecap="round" />
-            </pattern>
-          </defs>
-          <rect width="1440" height="900" fill="url(#creative-wellspring-grid)" />
-          <rect width="1440" height="900" fill="url(#creative-wellspring-files)" />
-        </svg>
-      </div>
-
-      <div className={`pointer-events-none absolute inset-x-[-10%] top-[-36svh] h-[70svh] bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,rgba(244,244,255,0.12)_28%,rgba(192,132,252,0.24)_54%,rgba(10,14,30,0)_100%)] blur-2xl transition-all duration-[520ms] ease-out ${sweepActive ? "translate-y-[140svh] opacity-100" : "translate-y-0 opacity-0"}`} />
-
-      <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden">
-        <div className="relative z-10 flex max-w-xl flex-col items-center gap-2 px-[8vw] text-center">
-          <div className={`flex flex-wrap items-baseline justify-center gap-x-2 text-center text-4xl tracking-tight transition-all duration-[600ms] ease-out sm:text-5xl ${primed ? "translate-y-0 scale-100 blur-0 opacity-100" : "translate-y-1 scale-[1.05] blur-[10px] opacity-0"}`}>
-            <span className="font-bold text-[#7F22FE]">Merch</span>
-            <span className="font-medium text-white">Quantum</span>
+      <div className="relative flex min-h-screen w-full items-end justify-center overflow-hidden px-4 pb-4 md:px-6 md:pb-6">
+        <div className={`w-full max-w-3xl transition-opacity duration-[2000ms] ease-out ${primed ? "opacity-100" : "opacity-0"}`}>
+          <div className="pointer-events-none relative z-0 flex w-full justify-center pt-1 pb-2">
+            <CreativeWellspringBrandMark docked className="w-full opacity-100" />
           </div>
-          <p
-            className={`text-center text-[11px] font-light uppercase tracking-[0.38em] text-slate-300/90 transition-all duration-[400ms] ease-out sm:text-xs ${primed ? "translate-y-0 opacity-100" : "translate-y-[10px] opacity-0"}`}
-            style={{ transitionDelay: primed ? "120ms" : "0ms" }}
-          >
-            {BOOT_TAGLINE}
-          </p>
         </div>
       </div>
 
@@ -1585,97 +1539,87 @@ function CreativeWellspringBrandMark({
       } ${className}`}
       aria-hidden="true"
     >
-      {!docked ? (
-        <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div
-            className={`absolute left-1/2 top-1/2 ${
-              docked
-                ? "h-24 w-[11rem] -translate-x-[96%] -translate-y-[62%] rotate-[-18deg] blur-[38px]"
-                : "h-36 w-[16rem] -translate-x-[102%] -translate-y-[66%] rotate-[-18deg] blur-[56px]"
-            }`}
-            style={{
-              borderRadius: "41% 59% 67% 33% / 38% 42% 58% 62%",
-              background:
-                "radial-gradient(circle at 28% 30%, rgba(244,114,182,0.34) 0%, rgba(192,132,252,0.28) 24%, rgba(127,34,254,0.18) 58%, transparent 84%)",
-            }}
-          />
-          <div
-            className={`absolute left-1/2 top-1/2 ${
-              docked
-                ? "h-20 w-[17rem] -translate-x-[56%] -translate-y-[30%] rotate-[8deg] blur-[34px]"
-                : "h-28 w-[24rem] -translate-x-[58%] -translate-y-[32%] rotate-[8deg] blur-[50px]"
-            }`}
-            style={{
-              borderRadius: "63% 37% 45% 55% / 51% 34% 66% 49%",
-              background:
-                "radial-gradient(circle at 52% 42%, rgba(129,140,248,0.18) 0%, rgba(127,34,254,0.34) 30%, rgba(88,28,135,0.18) 56%, transparent 82%)",
-            }}
-          />
-          <div
-            className={`absolute left-1/2 top-1/2 ${
-              docked
-                ? "h-24 w-[12rem] translate-x-[12%] -translate-y-[54%] rotate-[22deg] blur-[40px]"
-                : "h-34 w-[17rem] translate-x-[16%] -translate-y-[58%] rotate-[22deg] blur-[58px]"
-            }`}
-            style={{
-              borderRadius: "36% 64% 58% 42% / 47% 60% 40% 53%",
-              background:
-                "radial-gradient(circle at 60% 34%, rgba(196,181,253,0.28) 0%, rgba(167,139,250,0.22) 26%, rgba(127,34,254,0.2) 52%, transparent 82%)",
-            }}
-          />
-          <div
-            className={`absolute left-1/2 top-1/2 ${
-              docked
-                ? "h-14 w-[15rem] -translate-x-[6%] translate-y-[8%] rotate-[-6deg] blur-[30px]"
-                : "h-20 w-[22rem] -translate-x-[4%] translate-y-[10%] rotate-[-6deg] blur-[42px]"
-            }`}
-            style={{
-              borderRadius: "58% 42% 62% 38% / 43% 57% 43% 57%",
-              background:
-                "radial-gradient(circle at 45% 45%, rgba(76,29,149,0.22) 0%, rgba(127,34,254,0.18) 34%, rgba(15,23,42,0.04) 62%, transparent 82%)",
-            }}
-          />
-          <div
-            className={`absolute left-1/2 top-1/2 ${
-              docked
-                ? "h-14 w-[8rem] translate-x-[66%] -translate-y-[18%] rotate-[26deg] blur-[26px]"
-                : "h-20 w-[11rem] translate-x-[72%] -translate-y-[22%] rotate-[26deg] blur-[36px]"
-            }`}
-            style={{
-              borderRadius: "47% 53% 34% 66% / 58% 40% 60% 42%",
-              background:
-                "radial-gradient(circle at 42% 46%, rgba(216,180,254,0.24) 0%, rgba(168,85,247,0.18) 36%, transparent 80%)",
-            }}
-          />
-          <div
-            className={`absolute left-1/2 top-1/2 ${
-              docked
-                ? "h-10 w-[6rem] -translate-x-[18%] -translate-y-[70%] rotate-[12deg] blur-[20px]"
-                : "h-16 w-[9rem] -translate-x-[20%] -translate-y-[76%] rotate-[12deg] blur-[30px]"
-            }`}
-            style={{
-              borderRadius: "32% 68% 61% 39% / 41% 33% 67% 59%",
-              background:
-                "radial-gradient(circle at 35% 30%, rgba(244,114,182,0.2) 0%, rgba(192,132,252,0.22) 34%, transparent 82%)",
-            }}
-          />
-        </div>
-      ) : null}
+      <div className="absolute inset-0 -z-10 overflow-hidden">
+        <div
+          className={`absolute left-1/2 top-1/2 ${
+            docked
+              ? "h-24 w-[11rem] -translate-x-[96%] -translate-y-[62%] rotate-[-18deg] blur-[38px]"
+              : "h-36 w-[16rem] -translate-x-[102%] -translate-y-[66%] rotate-[-18deg] blur-[56px]"
+          }`}
+          style={{
+            borderRadius: "41% 59% 67% 33% / 38% 42% 58% 62%",
+            background:
+              "radial-gradient(circle at 28% 30%, rgba(244,114,182,0.34) 0%, rgba(192,132,252,0.28) 24%, rgba(127,34,254,0.18) 58%, transparent 84%)",
+          }}
+        />
+        <div
+          className={`absolute left-1/2 top-1/2 ${
+            docked
+              ? "h-20 w-[17rem] -translate-x-[56%] -translate-y-[30%] rotate-[8deg] blur-[34px]"
+              : "h-28 w-[24rem] -translate-x-[58%] -translate-y-[32%] rotate-[8deg] blur-[50px]"
+          }`}
+          style={{
+            borderRadius: "63% 37% 45% 55% / 51% 34% 66% 49%",
+            background:
+              "radial-gradient(circle at 52% 42%, rgba(129,140,248,0.18) 0%, rgba(127,34,254,0.34) 30%, rgba(88,28,135,0.18) 56%, transparent 82%)",
+          }}
+        />
+        <div
+          className={`absolute left-1/2 top-1/2 ${
+            docked
+              ? "h-24 w-[12rem] translate-x-[12%] -translate-y-[54%] rotate-[22deg] blur-[40px]"
+              : "h-34 w-[17rem] translate-x-[16%] -translate-y-[58%] rotate-[22deg] blur-[58px]"
+          }`}
+          style={{
+            borderRadius: "36% 64% 58% 42% / 47% 60% 40% 53%",
+            background:
+              "radial-gradient(circle at 60% 34%, rgba(196,181,253,0.28) 0%, rgba(167,139,250,0.22) 26%, rgba(127,34,254,0.2) 52%, transparent 82%)",
+          }}
+        />
+        <div
+          className={`absolute left-1/2 top-1/2 ${
+            docked
+              ? "h-14 w-[15rem] -translate-x-[6%] translate-y-[8%] rotate-[-6deg] blur-[30px]"
+              : "h-20 w-[22rem] -translate-x-[4%] translate-y-[10%] rotate-[-6deg] blur-[42px]"
+          }`}
+          style={{
+            borderRadius: "58% 42% 62% 38% / 43% 57% 43% 57%",
+            background:
+              "radial-gradient(circle at 45% 45%, rgba(76,29,149,0.22) 0%, rgba(127,34,254,0.18) 34%, rgba(15,23,42,0.04) 62%, transparent 82%)",
+          }}
+        />
+        <div
+          className={`absolute left-1/2 top-1/2 ${
+            docked
+              ? "h-14 w-[8rem] translate-x-[66%] -translate-y-[18%] rotate-[26deg] blur-[26px]"
+              : "h-20 w-[11rem] translate-x-[72%] -translate-y-[22%] rotate-[26deg] blur-[36px]"
+          }`}
+          style={{
+            borderRadius: "47% 53% 34% 66% / 58% 40% 60% 42%",
+            background:
+              "radial-gradient(circle at 42% 46%, rgba(216,180,254,0.24) 0%, rgba(168,85,247,0.18) 36%, transparent 80%)",
+          }}
+        />
+        <div
+          className={`absolute left-1/2 top-1/2 ${
+            docked
+              ? "h-10 w-[6rem] -translate-x-[18%] -translate-y-[70%] rotate-[12deg] blur-[20px]"
+              : "h-16 w-[9rem] -translate-x-[20%] -translate-y-[76%] rotate-[12deg] blur-[30px]"
+          }`}
+          style={{
+            borderRadius: "32% 68% 61% 39% / 41% 33% 67% 59%",
+            background:
+              "radial-gradient(circle at 35% 30%, rgba(244,114,182,0.2) 0%, rgba(192,132,252,0.22) 34%, transparent 82%)",
+          }}
+        />
+      </div>
       <div className="relative z-10 flex items-center justify-center">
         <div className="flex flex-col items-center gap-1 px-6 text-center">
-          <div
-            className={`flex flex-wrap items-baseline justify-center gap-x-2 tracking-tight ${
-              docked ? "text-2xl sm:text-3xl" : "text-2xl sm:text-3xl"
-            }`}
-          >
+          <div className={`flex flex-wrap items-baseline justify-center gap-x-2 tracking-tight ${BRAND_WORDMARK_TEXT_CLASSES}`}>
             <span className="font-bold text-[#7F22FE]">Merch</span>
             <span className="font-medium text-white">Quantum</span>
           </div>
-          <p
-            className={`font-light uppercase tracking-[0.3em] text-slate-300 ${
-              docked ? "text-[10px] sm:text-xs" : "text-[10px] sm:text-[11px]"
-            }`}
-          >
+          <p className={`font-light uppercase tracking-[0.3em] text-slate-300 ${BRAND_TAGLINE_TEXT_CLASSES}`}>
             {BOOT_TAGLINE}
           </p>
         </div>
@@ -2092,7 +2036,6 @@ export default function MerchQuantumApp() {
   const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
   const [isBootOverlayVisible, setIsBootOverlayVisible] = useState(true);
   const [isBootOverlayPrimed, setIsBootOverlayPrimed] = useState(false);
-  const [isBootOverlaySweepActive, setIsBootOverlaySweepActive] = useState(false);
   const [activeGridProductId, setActiveGridProductId] = useState("");
 
   const resolvedProviderId = provider === "spreadconnect" ? "spod" : provider;
@@ -3051,15 +2994,10 @@ export default function MerchQuantumApp() {
 
   useEffect(() => {
     setIsBootOverlayPrimed(false);
-    setIsBootOverlaySweepActive(false);
 
     const primeTimer = window.setTimeout(() => {
       setIsBootOverlayPrimed(true);
     }, 24);
-
-    const sweepTimer = window.setTimeout(() => {
-      setIsBootOverlaySweepActive(true);
-    }, BOOT_SWEEP_START_MS);
 
     const timer = window.setTimeout(() => {
       setIsBootOverlayVisible(false);
@@ -3067,7 +3005,6 @@ export default function MerchQuantumApp() {
 
     return () => {
       window.clearTimeout(primeTimer);
-      window.clearTimeout(sweepTimer);
       window.clearTimeout(timer);
     };
   }, []);
@@ -3268,7 +3205,6 @@ export default function MerchQuantumApp() {
   }
 
   function dismissBootOverlay() {
-    setIsBootOverlaySweepActive(true);
     setIsBootOverlayVisible(false);
   }
 
@@ -4137,7 +4073,6 @@ export default function MerchQuantumApp() {
         <CreativeWellspringBootOverlay
           visible={isBootOverlayVisible}
           primed={isBootOverlayPrimed}
-          sweepActive={isBootOverlaySweepActive}
           onDismiss={dismissBootOverlay}
         />
       ) : null}
