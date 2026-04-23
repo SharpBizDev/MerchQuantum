@@ -11,6 +11,8 @@ const FIXED_TAG_COUNT = 13;
 const BRAND_REVEAL_FADE_MS = 2000;
 const BRAND_WORDMARK_TEXT_CLASSES = "text-4xl sm:text-5xl";
 const BRAND_TAGLINE_TEXT_CLASSES = "text-[11px] sm:text-xs";
+const QUANTUM_APP_MAX_WIDTH_PX = 630;
+const QUANTUM_APP_MAX_HEIGHT_PX = 946;
 const WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY = "mq-workspace-selection-condensed";
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
 export const QUANTUM_DESCRIPTION_AWAITING_TEXT = "Awaiting Quantum AI description...";
@@ -4000,9 +4002,18 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <div className="relative flex min-h-screen max-w-full flex-col overflow-x-hidden bg-[#0d1117] px-4 pb-4 pt-3 text-white transition-colors md:px-6 md:pb-6 md:pt-4">
-
-      <div className="relative z-10 mx-auto w-full max-w-3xl space-y-3">
+    <div className="flex min-h-screen w-full items-center justify-center overflow-hidden bg-[#0d1117] px-3 py-3 text-white transition-colors">
+      <div
+        className="relative flex w-full min-h-0 flex-col overflow-hidden"
+        style={{
+          minWidth: "min(360px, 100%)",
+          maxWidth: `${QUANTUM_APP_MAX_WIDTH_PX}px`,
+          height: `min(${QUANTUM_APP_MAX_HEIGHT_PX}px, calc(100dvh - 24px))`,
+          maxHeight: `${QUANTUM_APP_MAX_HEIGHT_PX}px`,
+        }}
+      >
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-4 pb-4 pt-3 md:px-5 md:pb-5 md:pt-4">
+      <div className="relative z-10 flex min-h-full w-full flex-col gap-3">
         <div className="sticky top-0 z-50 space-y-2 bg-[#0d1117]/95 pb-2 backdrop-blur-md">
           {!workspaceMode || isRoutingGridExpanded ? (
           <div className="relative">
@@ -4781,10 +4792,12 @@ export default function MerchQuantumApp() {
         }`}
         style={{ transitionDuration: `${BRAND_REVEAL_FADE_MS}ms` }}
       >
-        <div className="relative w-full max-w-3xl">
+        <div className="relative w-full">
           <CreativeWellspringAmbientBackground />
           <CreativeWellspringBrandMark docked className="w-full bg-transparent" />
         </div>
+      </div>
+      </div>
       </div>
     </div>
   );
