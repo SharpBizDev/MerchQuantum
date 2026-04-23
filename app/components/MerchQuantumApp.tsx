@@ -1488,19 +1488,9 @@ function CreativeWellspringBrandMark({
 }) {
   if (docked) {
     return (
-      <div
-        className={`pointer-events-none relative z-10 flex w-full items-center justify-center py-4 ${className}`}
-        aria-hidden="true"
-      >
-        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-4 text-center text-sm font-normal tracking-tight text-slate-300">
-          <span className="inline-flex items-center font-semibold">
-            <span className="text-[#7F22FE]">Merch</span>
-            <span className="ml-1 text-white">Quantum</span>
-          </span>
-          <span className="text-slate-500">|</span>
-          <span className="text-slate-300">Effortless product creation</span>
-        </div>
-      </div>
+      <footer className={`mt-auto w-full bg-transparent py-6 text-center text-sm font-normal text-white/50 ${className}`}>
+        Merch Quantum &mdash; Effortless product creation
+      </footer>
     );
   }
 
@@ -3976,9 +3966,9 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <main className="box-border min-h-screen w-full bg-[#0d1117] p-6 font-sans text-white">
-      <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-2xl flex-col">
-      <div className="flex min-w-0 flex-col gap-3">
+    <main className="box-border flex min-h-screen w-full flex-col bg-[#0d1117] p-6 font-sans text-white">
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
         <div className="sticky top-0 z-50 space-y-2 bg-[#0d1117]/95 pb-2 backdrop-blur-md">
           {!workspaceMode || isRoutingGridExpanded ? (
           <div className="relative">
@@ -4747,13 +4737,7 @@ export default function MerchQuantumApp() {
         ) : null}
 
       </div>
-      <div className="flex-grow" />
-
-      <div className="pointer-events-none relative z-0 flex w-full flex-none justify-center bg-transparent pt-6">
-        <div className="relative w-full bg-transparent">
-          <CreativeWellspringBrandMark docked className="w-full bg-transparent" />
-        </div>
-      </div>
+      <CreativeWellspringBrandMark docked />
       </div>
       <style jsx global>{`
         .quantum-scroll-hidden {
