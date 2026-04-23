@@ -1472,36 +1472,36 @@ function MerchQuantumInlineHeading({ className = "" }: { className?: string }) {
 function CreativeWellspringAmbientBackground({ className = "" }: { className?: string }) {
   return (
     <div
-      className={`pointer-events-none absolute inset-x-0 top-0 z-0 overflow-hidden ${className}`}
+      className={`pointer-events-none absolute inset-0 -z-10 overflow-visible ${className}`}
       aria-hidden="true"
     >
-      <div className="absolute inset-x-[-14%] top-[-12rem] h-[30rem] bg-[radial-gradient(circle_at_top_center,rgba(216,180,254,0.18),rgba(167,139,250,0.18)_18%,rgba(127,34,254,0.1)_34%,rgba(29,7,64,0.08)_48%,rgba(13,17,23,0)_72%)]" />
+      <div className="absolute inset-x-[-18%] bottom-[-4rem] h-[18rem] bg-[radial-gradient(circle_at_bottom_center,rgba(216,180,254,0.14),rgba(167,139,250,0.16)_18%,rgba(127,34,254,0.1)_34%,rgba(29,7,64,0.08)_48%,rgba(13,17,23,0)_74%)]" />
       <div
-        className="absolute left-1/2 top-[-7rem] h-[20rem] w-[27rem] -translate-x-[66%] rounded-[43%_57%_61%_39%/54%_42%_58%_46%] blur-3xl"
+        className="absolute left-1/2 bottom-[-1.5rem] h-[12rem] w-[18rem] -translate-x-[88%] rounded-[43%_57%_61%_39%/54%_42%_58%_46%] blur-[76px]"
         style={{
           background:
-            "radial-gradient(circle at 34% 38%, rgba(244,114,182,0.16) 0%, rgba(192,132,252,0.24) 28%, rgba(127,34,254,0.12) 56%, transparent 84%)",
+            "radial-gradient(circle at 34% 38%, rgba(244,114,182,0.18) 0%, rgba(192,132,252,0.24) 28%, rgba(127,34,254,0.16) 56%, transparent 84%)",
         }}
       />
       <div
-        className="absolute left-1/2 top-[-5rem] h-[22rem] w-[34rem] -translate-x-[10%] rounded-[62%_38%_45%_55%/46%_33%_67%_54%] blur-[96px]"
+        className="absolute left-1/2 bottom-[-3rem] h-[14rem] w-[28rem] -translate-x-[6%] rounded-[62%_38%_45%_55%/46%_33%_67%_54%] blur-[92px]"
         style={{
           background:
-            "radial-gradient(circle at 48% 40%, rgba(129,140,248,0.14) 0%, rgba(127,34,254,0.2) 24%, rgba(88,28,135,0.12) 54%, transparent 80%)",
+            "radial-gradient(circle at 48% 40%, rgba(129,140,248,0.16) 0%, rgba(127,34,254,0.24) 24%, rgba(88,28,135,0.14) 54%, transparent 80%)",
         }}
       />
       <div
-        className="absolute left-1/2 top-[1rem] h-[18rem] w-[20rem] -translate-x-[6%] rounded-[36%_64%_52%_48%/51%_61%_39%_49%] blur-[88px]"
+        className="absolute left-1/2 bottom-[0.25rem] h-[10rem] w-[12rem] translate-x-[54%] rounded-[36%_64%_52%_48%/51%_61%_39%_49%] blur-[72px]"
         style={{
           background:
-            "radial-gradient(circle at 52% 34%, rgba(196,181,253,0.14) 0%, rgba(167,139,250,0.12) 32%, rgba(76,29,149,0.1) 58%, transparent 80%)",
+            "radial-gradient(circle at 52% 34%, rgba(196,181,253,0.16) 0%, rgba(167,139,250,0.14) 32%, rgba(76,29,149,0.1) 58%, transparent 80%)",
         }}
       />
       <div
-        className="absolute left-1/2 top-[5rem] h-[14rem] w-[40rem] -translate-x-1/2 rounded-full blur-[100px]"
+        className="absolute left-1/2 bottom-[-4.5rem] h-[10rem] w-[36rem] -translate-x-1/2 rounded-full blur-[110px]"
         style={{
           background:
-            "radial-gradient(circle at 50% 50%, rgba(127,34,254,0.12) 0%, rgba(76,29,149,0.08) 34%, rgba(13,17,23,0) 78%)",
+            "radial-gradient(circle at 50% 50%, rgba(127,34,254,0.14) 0%, rgba(76,29,149,0.1) 34%, rgba(13,17,23,0) 78%)",
         }}
       />
     </div>
@@ -1518,7 +1518,7 @@ function CreativeWellspringBrandMark({
   return (
     <div
       className={`pointer-events-none relative z-10 flex w-full items-center justify-center ${
-        docked ? "min-h-[92px]" : "min-h-[148px]"
+        docked ? "min-h-[88px]" : "min-h-[148px]"
       } ${className}`}
       aria-hidden="true"
     >
@@ -3962,8 +3962,7 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <div className="relative min-h-screen max-w-full overflow-x-hidden bg-[#0d1117] px-4 pb-4 pt-3 text-white transition-colors md:px-6 md:pb-6 md:pt-4">
-      <CreativeWellspringAmbientBackground className="h-[30rem]" />
+    <div className="relative min-h-screen max-w-full overflow-x-hidden bg-[#0d1117] px-4 pb-28 pt-3 text-white transition-colors md:px-6 md:pb-32 md:pt-4">
 
       <div className="relative z-10 mx-auto w-full max-w-3xl space-y-3">
         <div className="sticky top-0 z-50 space-y-2 bg-[#0d1117]/95 pb-2 backdrop-blur-md">
@@ -4158,16 +4157,6 @@ export default function MerchQuantumApp() {
           ) : null}
 
         </div>
-
-        <div
-          className={`pointer-events-none relative z-0 flex w-full justify-center pt-1 pb-2 transition-opacity ease-out ${
-            isBrandMarkPrimed ? "opacity-100" : "opacity-0"
-          }`}
-          style={{ transitionDuration: `${BRAND_REVEAL_FADE_MS}ms` }}
-        >
-          <CreativeWellspringBrandMark docked className="w-full" />
-        </div>
-
         {connected && shopId && workspaceMode ? (
           <Box className="relative z-10 border-slate-800 bg-[#020616] shadow-[0_24px_70px_-38px_rgba(2,6,22,0.95)]">
             <input
@@ -4738,6 +4727,18 @@ export default function MerchQuantumApp() {
           </Box>
         ) : null}
 
+      </div>
+
+      <div
+        className={`pointer-events-none fixed bottom-0 left-0 z-20 flex w-full justify-center pb-4 transition-opacity ease-out ${
+          isBrandMarkPrimed ? "opacity-100" : "opacity-0"
+        }`}
+        style={{ transitionDuration: `${BRAND_REVEAL_FADE_MS}ms` }}
+      >
+        <div className="relative w-full max-w-3xl px-4 md:px-6">
+          <CreativeWellspringAmbientBackground />
+          <CreativeWellspringBrandMark docked className="w-full bg-transparent" />
+        </div>
       </div>
     </div>
   );
