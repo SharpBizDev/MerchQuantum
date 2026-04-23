@@ -1483,6 +1483,24 @@ function CreativeWellspringBrandMark({
   docked?: boolean;
   className?: string;
 }) {
+  if (docked) {
+    return (
+      <div
+        className={`pointer-events-none relative z-10 flex w-full items-center justify-center py-4 ${className}`}
+        aria-hidden="true"
+      >
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-4 text-center text-sm font-normal tracking-tight text-slate-300">
+          <span className="inline-flex items-center font-semibold">
+            <span className="text-[#7F22FE]">Merch</span>
+            <span className="ml-1 text-white">Quantum</span>
+          </span>
+          <span className="text-slate-500">|</span>
+          <span className="text-slate-300">Effortless product creation</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`pointer-events-none relative z-10 flex w-full items-center justify-center ${
@@ -1600,7 +1618,7 @@ function ProductGrid({
   }, [collapsed, footerLabel, rangeLabel, visibleItems.length]);
 
   return (
-    <div className={`mx-auto flex w-full max-w-6xl flex-col gap-1.5 overflow-hidden rounded-xl border border-gray-800 bg-gray-900/50 p-2 ${highlighted ? "ring-2 ring-[#7F22FE]/70 shadow-[0_0_0_1px_rgba(127,34,254,0.24),0_22px_55px_-30px_rgba(127,34,254,0.6)]" : ""}`}>
+    <div className={`mx-auto flex w-full max-w-6xl flex-col gap-2 ${highlighted ? "drop-shadow-[0_10px_24px_rgba(127,34,254,0.18)]" : ""}`}>
       <div className="flex w-full min-w-0 items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-white">{heading}</span>
         <div className="ml-auto flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 text-[11px]">
@@ -1681,8 +1699,8 @@ function ProductGrid({
           })}
         </div>
       ) : (
-        <div className="w-full p-1">
-          <div className="grid min-h-[148px] w-full overflow-hidden rounded-xl" aria-hidden={loading ? undefined : true}>
+          <div className="w-full">
+            <div className="grid min-h-[148px] w-full overflow-hidden rounded-lg" aria-hidden={loading ? undefined : true}>
             {loading ? (
               <div className="col-start-1 row-start-1 relative z-10 flex h-full min-h-[148px] flex-col items-center justify-center gap-2 px-3 py-6 text-sm text-slate-100">
                 {loadingAccessory ? (
@@ -3947,14 +3965,9 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <main className="h-screen w-screen overflow-hidden bg-[#0d1117] font-sans text-white">
-      <div className="flex h-full w-full items-center justify-center overflow-hidden">
-      <div
-        className="relative flex h-[946px] w-[630px] max-h-full max-w-full flex-col overflow-hidden box-border px-3 pt-3 md:px-4 md:pt-4"
-        style={{ minWidth: "min(360px, 100%)" }}
-      >
-      <div className="quantum-scroll-hidden relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
-      <div className="flex min-w-0 flex-col gap-3 pb-3 md:pb-4">
+    <main className="box-border min-h-screen w-full bg-[#0d1117] p-6 font-sans text-white">
+      <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-2xl flex-col">
+      <div className="flex min-w-0 flex-col gap-3">
         <div className="sticky top-0 z-50 space-y-2 bg-[#0d1117]/95 pb-2 backdrop-blur-md">
           {!workspaceMode || isRoutingGridExpanded ? (
           <div className="relative">
@@ -4456,7 +4469,7 @@ export default function MerchQuantumApp() {
                                             setInlineSaveFeedback(null);
                                           }
                                         }}
-                                        className="h-10 px-3 py-1.5 pr-20 text-sm font-normal leading-6"
+                                        className="h-9 px-3 py-1 pr-20 text-sm font-normal leading-5"
                                       />
                                       <div className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-100">
                                         <span>{editableTitleDraft.trim().length}/{LISTING_LIMITS.titleMax}</span>
@@ -4474,7 +4487,7 @@ export default function MerchQuantumApp() {
                                         }
                                       }}
                                       disabled={!canEditDetailTitle}
-                                      className={`group relative flex min-h-[40px] w-full items-center rounded-xl border bg-[#020616] px-3 py-1.5 pr-24 text-left text-sm font-normal leading-6 text-white transition ${canEditDetailTitle ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
+                                      className={`group relative flex min-h-[36px] w-full items-center rounded-xl border bg-[#020616] px-3 py-1 pr-24 text-left text-sm font-normal leading-5 text-white transition ${canEditDetailTitle ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
                                     >
                                       {shouldAwaitQuantumTitle ? (
                                         <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-normal text-slate-300">
@@ -4574,7 +4587,7 @@ export default function MerchQuantumApp() {
                                         {detailTemplateSpecBlock ? (
                                           <>
                                             <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
-                                            <div className="w-full whitespace-pre-wrap text-left text-sm font-normal leading-6 text-slate-300">
+                                            <div className="max-h-20 w-full overflow-hidden whitespace-pre-wrap text-left text-sm font-normal leading-6 text-slate-300">
                                               {detailTemplateSpecBlock}
                                             </div>
                                           </>
@@ -4631,7 +4644,7 @@ export default function MerchQuantumApp() {
                                         {detailTemplateSpecBlock ? (
                                           <>
                                             <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
-                                            <div className="w-full whitespace-pre-wrap text-left text-sm font-normal leading-6 text-slate-300">
+                                            <div className="max-h-20 w-full overflow-hidden whitespace-pre-wrap text-left text-sm font-normal leading-6 text-slate-300">
                                               {detailTemplateSpecBlock}
                                             </div>
                                           </>
@@ -4726,13 +4739,12 @@ export default function MerchQuantumApp() {
         ) : null}
 
       </div>
-      </div>
+      <div className="flex-grow" />
 
-      <div className="pointer-events-none relative z-0 flex w-full flex-none justify-center bg-transparent pb-3 pt-4 md:pb-4">
+      <div className="pointer-events-none relative z-0 flex w-full flex-none justify-center bg-transparent pt-6">
         <div className="relative w-full bg-transparent">
           <CreativeWellspringBrandMark docked className="w-full bg-transparent" />
         </div>
-      </div>
       </div>
       </div>
       <style jsx global>{`
