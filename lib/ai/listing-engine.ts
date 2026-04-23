@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import sharp from "sharp";
 
 export type ListingRequest = {
@@ -182,8 +181,10 @@ export class ListingInputGuardError extends Error {
 }
 
 const XAI_BASE_URL = "https://api.x.ai/v1";
+const XAI_FILES_URL = `${XAI_BASE_URL}/files`;
+const XAI_RESPONSES_URL = `${XAI_BASE_URL}/responses`;
 const XAI_API_KEY_ENV_NAME = "XAI_API_KEY"; // Required in .env or deployment environment configuration.
-const XAI_VISION_MODEL = "grok-2-vision";
+const XAI_VISION_MODEL = "grok-4-fast-non-reasoning";
 const MAX_TEMPLATE_CONTEXT = 1400;
 const MAX_TITLE_CHARS = 120;
 const MAX_LEAD_CHARS = 560;
@@ -3132,32 +3133,24 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
   }
 }
 
-function extractChatCompletionText(completion: any) {
-  const message = completion?.choices?.[0]?.message;
-  const content = message?.content;
-  if (typeof content === "string") return content.trim();
-  if (Array.isArray(content)) {
-    return content
-      .map((part: any) => {
-        if (typeof part === "string") return part;
-        if (typeof part?.text === "string") return part.text;
-        if (typeof part?.text?.value === "string") return part.text.value;
-        if (typeof part?.value === "string") return part.value;
-        return "";
-      })
-      .join("\n")
-      .trim();
-  }
-  if (content && typeof content === "object") {
-    if (typeof content.text === "string") return content.text.trim();
-    if (typeof content.text?.value === "string") return content.text.value.trim();
-    return truncateForLog(JSON.stringify(content), 4000);
-  }
-  const parsed = message?.parsed;
-  if (parsed && typeof parsed === "object") {
-    return JSON.stringify(parsed);
-  }
-  return "";
+function extractVisionResponseText(response: any) {
+  if (typeof response?.output_text === "string") return response.output_text.trim();
+
+  const output = Array.isArray(response?.output) ? response.output : [];
+  const parts = output.flatMap((item: any) => {
+    if (typeof item?.content === "string") return [item.content];
+    const content = Array.isArray(item?.content) ? item.content : [];
+    return content.map((part: any) => {
+      if (typeof part === "string") return part;
+      if (typeof part?.text === "string") return part.text;
+      if (typeof part?.text?.value === "string") return part.text.value;
+      if (typeof part?.value === "string") return part.value;
+      if (typeof part?.output_text === "string") return part.output_text;
+      return "";
+    });
+  });
+
+  return parts.filter(Boolean).join("\n").trim();
 }
 
 function parseJsonLoose(raw: string) {
@@ -3180,20 +3173,101 @@ function truncateForLog(value: string, maxLength = 1800) {
   return `${normalized.slice(0, maxLength)}… [truncated ${normalized.length - maxLength} chars]`;
 }
 
-function buildChatCompletionTelemetry(completion: any) {
-  const choices = Array.isArray(completion?.choices)
-    ? completion.choices.slice(0, 2).map((choice: any, index: number) => ({
+function buildVisionResponseTelemetry(response: any) {
+  const outputs = Array.isArray(response?.output)
+    ? response.output.slice(0, 2).map((item: any, index: number) => ({
         index,
-        finishReason: choice?.finish_reason ?? null,
-        textPreview: truncateForLog(extractChatCompletionText({ choices: [choice] }), 1200) || null,
+        type: item?.type ?? null,
+        status: item?.status ?? null,
+        textPreview: truncateForLog(
+          extractVisionResponseText({
+            output: [item],
+          }),
+          1200
+        ) || null,
       }))
     : [];
 
   return {
-    id: completion?.id ?? null,
-    model: completion?.model ?? null,
-    choices,
+    id: response?.id ?? null,
+    model: response?.model ?? null,
+    status: response?.status ?? null,
+    outputs,
   };
+}
+
+function getMimeTypeExtension(mimeType: string) {
+  const normalized = cleanSpaces(String(mimeType || "")).toLowerCase();
+  if (normalized === "image/jpeg") return "jpg";
+  if (normalized === "image/svg+xml") return "svg";
+  const [, rawExtension = "bin"] = normalized.split("/");
+  return rawExtension.replace(/[^a-z0-9]+/g, "") || "bin";
+}
+
+async function uploadVisionInputToXai(
+  image: ParsedImageData,
+  index: number,
+  apiKey: string,
+  fetchFn: typeof fetch,
+  requestTelemetry: Record<string, unknown>,
+  reporter?: (event: VisionDiagnosticEvent) => void
+) {
+  const extension = getMimeTypeExtension(image.mimeType);
+  const fileName = `mq-vision-${index + 1}.${extension}`;
+  const formData = new FormData();
+  formData.append("file", new Blob([Buffer.from(image.inlineData, "base64")], { type: image.mimeType }), fileName);
+
+  const response = await fetchFn(XAI_FILES_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: formData,
+  });
+  const responseText = await response.text();
+
+  if (!response.ok) {
+    logVisionFailure(
+      "file_upload_error",
+      {
+        ...requestTelemetry,
+        uploadIndex: index,
+        uploadMimeType: image.mimeType,
+        status: response.status,
+        responseBodyPreview: truncateForLog(responseText),
+      },
+      reporter
+    );
+    throw new VisionModelHttpError(
+      response.status,
+      `Grok file upload failed with status ${response.status}.`,
+      truncateForLog(responseText)
+    );
+  }
+
+  let payload: Record<string, unknown> | null = null;
+  try {
+    payload = JSON.parse(responseText) as Record<string, unknown>;
+  } catch {
+    payload = null;
+  }
+
+  const fileId = typeof payload?.id === "string" ? payload.id : "";
+  if (!fileId) {
+    logVisionFailure(
+      "file_upload_missing_id",
+      {
+        ...requestTelemetry,
+        uploadIndex: index,
+        uploadMimeType: image.mimeType,
+        responseBodyPreview: truncateForLog(responseText),
+      },
+      reporter
+    );
+    throw new VisionModelHttpError(502, "Grok file upload did not return a file id.", truncateForLog(responseText));
+  }
+
+  return fileId;
 }
 
 function logVisionFailure(
@@ -3741,46 +3815,44 @@ async function callVisionRecord(
     helperMimeTypes: helperInputs.map((helper) => helper.mimeType),
     retryAttempt: options.retryContext.attempt,
   };
+  const shouldUseMockInlineFiles = options.fetchFn !== fetch;
+  const responseRequestBody: Record<string, unknown> = {
+    model: options.model,
+    store: false,
+    temperature: 0.1,
+    instructions: systemInstruction,
+  };
 
-  const client = new OpenAI({
-    apiKey: options.apiKey,
-    baseURL: XAI_BASE_URL,
-    fetch: options.fetchFn,
-  });
-
-  let completion: any;
   try {
-    completion = await client.chat.completions.create({
-      model: options.model,
-      messages: [
-        {
-          role: "system",
-          content: systemInstruction,
-        },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:${options.visionInputs.primary.mimeType};base64,${options.visionInputs.primary.inlineData}`,
-                detail: "high",
-              },
-            },
-            ...helperInputs.map((helperInput) => ({
-              type: "image_url" as const,
-              image_url: {
-                url: `data:${helperInput.mimeType};base64,${helperInput.inlineData}`,
-                detail: "high" as const,
-              },
-            })),
-          ],
-        },
-      ],
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-    });
+    const allVisionInputs = [options.visionInputs.primary, ...helperInputs];
+    const content = shouldUseMockInlineFiles
+      ? allVisionInputs.map((visionInput) => ({
+          type: "input_file" as const,
+          file_url: `data:${visionInput.mimeType};base64,${visionInput.inlineData}`,
+        }))
+      : await Promise.all(
+          allVisionInputs.map(async (visionInput, index) => ({
+            type: "input_file" as const,
+            file_id: await uploadVisionInputToXai(
+              visionInput,
+              index,
+              options.apiKey,
+              options.fetchFn,
+              requestTelemetry,
+              options.onDiagnosticEvent
+            ),
+          }))
+        );
+
+    responseRequestBody.input = [
+      {
+        role: "user",
+        content: [
+          ...content,
+          { type: "input_text", text: prompt },
+        ],
+      },
+    ];
   } catch (error) {
     const apiError = error as { status?: number; message?: string } | undefined;
     const status = typeof apiError?.status === "number" ? apiError.status : 500;
@@ -3807,13 +3879,69 @@ async function callVisionRecord(
     );
   }
 
-  const rawText = extractChatCompletionText(completion);
+  let completion: any;
+  let responseText = "";
+  try {
+    const response = await options.fetchFn(XAI_RESPONSES_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${options.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(responseRequestBody),
+    });
+    responseText = await response.text();
+
+    if (!response.ok) {
+      logVisionFailure(
+        "http_error",
+        {
+          ...requestTelemetry,
+          transport: shouldUseMockInlineFiles ? "responses_mock_inline_files" : "responses_uploaded_files",
+          status: response.status,
+          responseBodyPreview: truncateForLog(responseText),
+        },
+        options.onDiagnosticEvent
+      );
+      throw new VisionModelHttpError(
+        response.status,
+        `Grok request failed with status ${response.status}.`,
+        truncateForLog(responseText)
+      );
+    }
+
+    completion = JSON.parse(responseText);
+  } catch (error) {
+    if (error instanceof VisionModelHttpError) {
+      throw error;
+    }
+
+    const apiError = error as { status?: number; message?: string } | undefined;
+    const status = typeof apiError?.status === "number" ? apiError.status : 500;
+    const responseBodyPreview = truncateForLog(
+      responseText || (error instanceof Error ? error.message : String(error))
+    );
+    logVisionFailure(
+      "http_error",
+      {
+        ...requestTelemetry,
+        transport: shouldUseMockInlineFiles ? "responses_mock_inline_files" : "responses_uploaded_files",
+        status,
+        error: error instanceof Error ? error.message : String(error),
+        responseBodyPreview,
+      },
+      options.onDiagnosticEvent
+    );
+    throw new VisionModelHttpError(status, `Grok request failed with status ${status}.`, responseBodyPreview);
+  }
+
+  const rawText = extractVisionResponseText(completion);
   const parsed = parseJsonLoose(rawText);
   if (!parsed || typeof parsed !== "object") {
     logVisionFailure("unusable_structured_output", {
       ...requestTelemetry,
       rawTextPreview: truncateForLog(rawText),
-      payloadTelemetry: buildChatCompletionTelemetry(completion),
+      payloadTelemetry: buildVisionResponseTelemetry(completion),
     }, options.onDiagnosticEvent);
     return null;
   }

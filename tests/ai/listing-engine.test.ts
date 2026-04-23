@@ -57,18 +57,32 @@ function isNearPixel(
 
 function getGeminiRequestParts(init?: RequestInit) {
   const requestBody = getGeminiRequestBody(init);
-  const messages = Array.isArray(requestBody?.messages) ? requestBody.messages : [];
-  const userMessage = [...messages].reverse().find((message: any) => message?.role === "user");
-  const contentParts = Array.isArray(userMessage?.content) ? userMessage.content : [];
+  const inputs = Array.isArray(requestBody?.input) ? requestBody.input : [];
+  const userInput = [...inputs].reverse().find((entry: any) => entry?.role === "user");
+  const contentParts = Array.isArray(userInput?.content) ? userInput.content : [];
 
-  return contentParts.map((part: any) => {
-    if (part?.type === "text") {
+  const normalizedParts = contentParts.map((part: any) => {
+    if (part?.type === "input_text") {
       return { text: String(part.text || "") };
     }
 
-    if (part?.type === "image_url") {
-      const url = String(part?.image_url?.url || "");
+    if (part?.type === "input_file") {
+      const url = String(part?.file_url || "");
       const match = url.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+      return {
+        inlineData: {
+          mimeType: match?.[1],
+          data: match?.[2],
+        },
+      };
+    }
+
+    if (part?.type === "input_image") {
+      const rawUrl =
+        typeof part?.image_url === "string"
+          ? part.image_url
+          : String(part?.image_url?.url || "");
+      const match = rawUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
       return {
         inlineData: {
           mimeType: match?.[1],
@@ -81,18 +95,25 @@ function getGeminiRequestParts(init?: RequestInit) {
   }) as Array<{
     text?: string;
     inlineData?: { mimeType?: string; data?: string };
-  }>; 
+  }>;
+
+  return [
+    ...normalizedParts.filter((part) => typeof part.text === "string"),
+    ...normalizedParts.filter((part) => part.inlineData),
+  ];
 }
 
 function getGeminiRequestBody(init?: RequestInit) {
-  return JSON.parse(String(init?.body || "{}")) as Record<string, any>;
+  try {
+    return JSON.parse(String(init?.body || "{}")) as Record<string, any>;
+  } catch {
+    return {};
+  }
 }
 
 function getGeminiSystemInstructionText(init?: RequestInit) {
   const requestBody = getGeminiRequestBody(init);
-  const messages = Array.isArray(requestBody?.messages) ? requestBody.messages : [];
-  const systemMessage = messages.find((message: any) => message?.role === "system");
-  return typeof systemMessage?.content === "string" ? systemMessage.content : "";
+  return typeof requestBody?.instructions === "string" ? requestBody.instructions : "";
 }
 
 function getPromptFilenameHint(fileName: string) {
@@ -116,19 +137,23 @@ function getGeminiInlineImageParts(init?: RequestInit) {
 function createGeminiResponse(payload: unknown, status = 200) {
   return new Response(
     JSON.stringify({
-      id: "chatcmpl_test",
-      object: "chat.completion",
+      id: "resp_test",
+      object: "response",
       created: Date.now(),
-      model: "grok-2-vision",
-      choices: [
+      model: "grok-4-fast-non-reasoning",
+      status: "completed",
+      output: [
         {
-          index: 0,
-          finish_reason: "stop",
-          message: {
-            role: "assistant",
-            content: JSON.stringify(payload),
-            parsed: payload,
-          },
+          id: "msg_test",
+          type: "message",
+          role: "assistant",
+          status: "completed",
+          content: [
+            {
+              type: "output_text",
+              text: JSON.stringify(payload),
+            },
+          ],
         },
       ],
     }),
@@ -142,18 +167,23 @@ function createGeminiResponse(payload: unknown, status = 200) {
 function createGeminiTextResponse(text: string, status = 200) {
   return new Response(
     JSON.stringify({
-      id: "chatcmpl_test",
-      object: "chat.completion",
+      id: "resp_test",
+      object: "response",
       created: Date.now(),
-      model: "grok-2-vision",
-      choices: [
+      model: "grok-4-fast-non-reasoning",
+      status: "completed",
+      output: [
         {
-          index: 0,
-          finish_reason: "stop",
-          message: {
-            role: "assistant",
-            content: text,
-          },
+          id: "msg_test",
+          type: "message",
+          role: "assistant",
+          status: "completed",
+          content: [
+            {
+              type: "output_text",
+              text,
+            },
+          ],
         },
       ],
     }),
@@ -1346,8 +1376,8 @@ async function main() {
       }
     );
 
-    assert.equal(/\/chat\/completions/i.test(capturedUrl), true);
-    assert.equal(response.model, "grok-2-vision");
+    assert.equal(/\/responses/i.test(capturedUrl), true);
+    assert.equal(response.model, "grok-4-fast-non-reasoning");
   });
 
   await run("OCR-heavy transparent artwork falls back to Gemini Pro when no OCR override is configured", async () => {
@@ -1385,8 +1415,8 @@ async function main() {
         }
       );
 
-      assert.equal(/\/chat\/completions/i.test(capturedUrl), true);
-      assert.equal(response.model, "grok-2-vision");
+      assert.equal(/\/responses/i.test(capturedUrl), true);
+      assert.equal(response.model, "grok-4-fast-non-reasoning");
     } finally {
       if (typeof previousOcrModel === "string") {
         process.env.GEMINI_LISTING_OCR_MODEL = previousOcrModel;
@@ -1429,8 +1459,8 @@ async function main() {
       }
     );
 
-    assert.equal(/\/chat\/completions/i.test(capturedUrl), true);
-    assert.equal(response.model, "grok-2-vision");
+    assert.equal(/\/responses/i.test(capturedUrl), true);
+    assert.equal(response.model, "grok-4-fast-non-reasoning");
   });
 
   await run("blank transparent artwork is rejected in code before Gemini is called", async () => {
@@ -1509,7 +1539,7 @@ async function main() {
   await run("Gemini prompt keeps filename as support-only context when no explicit title is supplied", async () => {
     let capturedPrompt = "";
     let capturedTemperature = Number.NaN;
-    let capturedResponseFormat: Record<string, unknown> | null = null;
+    let capturedStore = true;
 
     const response = await generateListingResponse(
       {
@@ -1526,11 +1556,8 @@ async function main() {
         fetchFn: async (_url, init) => {
           const requestBody = getGeminiRequestBody(init);
           capturedPrompt = String(getGeminiRequestParts(init)[0]?.text || "");
-          capturedResponseFormat =
-            requestBody?.response_format && typeof requestBody.response_format === "object"
-              ? (requestBody.response_format as Record<string, unknown>)
-              : null;
           capturedTemperature = Number(requestBody?.temperature);
+          capturedStore = Boolean(requestBody?.store);
 
           return createGeminiResponse(createGeminiPayload());
         },
@@ -1553,7 +1580,7 @@ async function main() {
     assert.equal(/threshold-mask OCR/i.test(capturedPrompt), true);
     assert.equal(/generated_title should lead with the strongest exact visible wording that a shopper would search for/i.test(capturedPrompt), true);
     assert.equal(capturedTemperature, 0.1);
-    assert.deepEqual(capturedResponseFormat, { type: "json_object" });
+    assert.equal(capturedStore, false);
   });
 
   await run("Gemini prompt injects sanitized human hints for AI assist retries", async () => {
@@ -1888,7 +1915,7 @@ async function main() {
     assert.equal(/fileNameSupport:\s+Life Begins With Jesus Christian Faith Shirt/i.test(prompt), true);
     assert.equal(/fileNameWeight:\s+HIGH/i.test(prompt), true);
     assert.equal(requestBody?.temperature, 0.1);
-    assert.deepEqual(requestBody?.response_format, { type: "json_object" });
+    assert.equal(requestBody?.store, false);
   });
 
   await run("Gemini request tells the model to ignore gibberish filename hints", async () => {
@@ -2079,7 +2106,7 @@ async function main() {
     );
 
     assert.equal(response.source, "gemini");
-    assert.equal(response.model, "grok-2-vision");
+    assert.equal(response.model, "grok-4-fast-non-reasoning");
     assert.equal(response.title.length > 0, true);
     assert.equal(response.leadParagraphs.length, 2);
     assert.equal(typeof response.confidence, "number");
@@ -2962,9 +2989,9 @@ async function main() {
     );
 
     assert.equal(requestedUrls.length >= 2, true);
-    assert.equal(requestedUrls.every((url) => /\/chat\/completions/i.test(url)), true);
+    assert.equal(requestedUrls.every((url) => /\/responses/i.test(url)), true);
     assert.equal(response.source, "gemini");
-    assert.equal(response.model, "grok-2-vision");
+    assert.equal(response.model, "grok-4-fast-non-reasoning");
     assert.equal(Array.isArray(diagnostics), true);
   });
 
@@ -3247,3 +3274,5 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+
+
