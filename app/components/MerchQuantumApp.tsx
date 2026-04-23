@@ -1428,7 +1428,7 @@ type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
 function Input({ className = "", ...props }: InputProps) {
   return (
     <input
-      className={`h-11 w-full min-w-0 rounded-xl border border-slate-700 bg-[#020616] px-3 text-sm text-white outline-none transition placeholder:text-slate-200 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
+      className={`h-11 w-full min-w-0 rounded-xl border border-slate-700 bg-[#020616] px-3 font-sans text-sm text-white outline-none transition placeholder:text-slate-200 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
       {...props}
     />
   );
@@ -1440,7 +1440,7 @@ function Select({ className = "", children, ...props }: SelectProps) {
   return (
     <div className={`relative min-w-0 w-full ${props.disabled ? "cursor-not-allowed" : ""}`}>
       <select
-        className={`h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 pr-9 text-sm text-white outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
+        className={`h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 pr-9 font-sans text-sm text-white outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
         {...props}
       >
         {children}
@@ -4000,7 +4000,7 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <div className="w-full bg-[#0d1117] text-white transition-colors">
+    <div className="w-full bg-[#0d1117] font-sans text-white transition-colors">
       <div
         className="mx-auto flex min-h-screen w-full max-w-[630px] box-border flex-col px-3 pb-3 pt-3 md:px-4 md:pb-4 md:pt-4"
         style={{ minWidth: "min(360px, 100%)" }}
@@ -4528,7 +4528,7 @@ export default function MerchQuantumApp() {
                                       className={`group relative flex min-h-[40px] w-full items-center rounded-xl border bg-[#020616] px-3 py-1.5 pr-24 text-left text-sm font-normal leading-6 text-white transition ${canEditDetailTitle ? "cursor-text border-slate-700 hover:border-slate-500 focus-visible:border-[#7F22FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/30" : "cursor-default border-slate-700"}`}
                                     >
                                       {shouldAwaitQuantumTitle ? (
-                                        <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
+                                        <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-normal text-slate-300">
                                           <QuantOrbLoader />
                                           <span>{QUANTUM_TITLE_AWAITING_TEXT}</span>
                                         </div>
@@ -4604,7 +4604,7 @@ export default function MerchQuantumApp() {
                                                 setInlineSaveFeedback(null);
                                               }
                                             }}
-                                            className="min-h-[112px] w-full resize-none overflow-hidden bg-transparent px-0 py-0 pb-7 text-left text-sm leading-6 text-white outline-none transition placeholder:text-slate-200"
+                                            className="min-h-[112px] w-full resize-none overflow-hidden bg-transparent px-0 py-0 pb-7 text-left text-sm font-normal leading-6 text-white outline-none transition placeholder:text-slate-200"
                                           />
                                           <div className="absolute bottom-2 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-100">
                                             <span className="pointer-events-none">{editableDescriptionDraft.trim().length}/{LISTING_LIMITS.descriptionMax}</span>
@@ -4625,7 +4625,7 @@ export default function MerchQuantumApp() {
                                         {detailTemplateSpecBlock ? (
                                           <>
                                             <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
-                                            <div className="w-full whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
+                                            <div className="w-full whitespace-pre-wrap text-left text-sm font-normal leading-6 text-slate-300">
                                               {detailTemplateSpecBlock}
                                             </div>
                                           </>
@@ -4647,7 +4647,7 @@ export default function MerchQuantumApp() {
                                           className={`group relative flex min-h-[112px] w-full items-start bg-transparent px-0 py-0 pb-7 text-left text-sm font-normal leading-6 text-white transition ${canEditDetailDescription ? "cursor-text focus-visible:outline-none" : "cursor-default"}`}
                                         >
                                           {shouldAwaitQuantumDescription ? (
-                                            <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-medium text-slate-300">
+                                            <div className="flex w-full items-center justify-start gap-2 text-left text-sm font-normal text-slate-300">
                                               <QuantOrbLoader />
                                               <span>{QUANTUM_DESCRIPTION_AWAITING_TEXT}</span>
                                             </div>
@@ -4682,7 +4682,7 @@ export default function MerchQuantumApp() {
                                         {detailTemplateSpecBlock ? (
                                           <>
                                             <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
-                                            <div className="w-full whitespace-pre-wrap text-left text-sm leading-6 text-slate-300">
+                                            <div className="w-full whitespace-pre-wrap text-left text-sm font-normal leading-6 text-slate-300">
                                               {detailTemplateSpecBlock}
                                             </div>
                                           </>
@@ -4717,7 +4717,7 @@ export default function MerchQuantumApp() {
                                   type="button"
                                   onClick={triggerDescriptionAction}
                                   disabled={descriptionActionDisabled}
-                                  className="shrink-0 text-[10px] font-medium text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
+                                  className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg bg-purple-600 px-3 font-sans text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-950/40 disabled:text-slate-200"
                                 >
                                   {descriptionActionLabel}
                                 </button>
@@ -4727,7 +4727,7 @@ export default function MerchQuantumApp() {
                                   Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
                                     <div
                                       key={`loading-tag-${index}`}
-                                      className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-300"
+                                      className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm font-normal leading-5 text-slate-300"
                                     >
                                       <QuantOrbLoader />
                                     </div>
@@ -4737,13 +4737,13 @@ export default function MerchQuantumApp() {
                                     <div
                                       key={`${selectedImage?.id || productId}-tag-${index}`}
                                       title={tag}
-                                      className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-white"
+                                      className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm font-normal leading-5 text-white"
                                     >
                                       <span className="truncate">{tag}</span>
                                     </div>
                                   ))
                                 ) : (
-                                  <div className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm leading-5 text-slate-100">
+                                  <div className="flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center text-sm font-normal leading-5 text-slate-100">
                                     Tags will appear after Quantum AI processing completes.
                                   </div>
                                 )}
