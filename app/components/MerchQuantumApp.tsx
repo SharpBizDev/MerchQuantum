@@ -1675,14 +1675,12 @@ function SmartThumbnail({
     >
       {resolvedSrc ? (
         <div className={`relative h-full w-full ${safeZoneClassName}`}>
-          <div className="relative h-full w-full">
-            <img
-              src={resolvedSrc}
-              alt={alt}
-              className={imageClassName}
-              onLoad={handleImageLoad}
-            />
-          </div>
+          <img
+            src={resolvedSrc}
+            alt={alt}
+            className={imageClassName}
+            onLoad={handleImageLoad}
+          />
         </div>
       ) : (
         <div className={`absolute inset-0 ${fallbackClassName}`} />
@@ -1763,7 +1761,7 @@ function ProductGrid({
                     onItemActivate(product, globalIndex, event);
                   }
                 }}
-                className={`w-full snap-start transition-all duration-500 focus-visible:outline-none ${frameGlow}`}
+                className={`w-full snap-start rounded-lg transition-all duration-500 focus-visible:outline-none ${frameGlow}`}
                 aria-label={product.title}
               >
                 <SmartThumbnail
@@ -1772,9 +1770,6 @@ function ProductGrid({
                   className={`group rounded-lg border transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
                   fallbackClassName="flex items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))]"
                 >
-                  <div className={`pointer-events-none absolute inset-0 transition ${
-                    isSelected ? "bg-[#7F22FE]/14" : isActive ? "bg-[#7F22FE]/8" : "bg-black/10"
-                  }`} />
                   {(isSelected || alreadyImported) ? (
                     <span
                       className={`absolute left-2 top-2 h-2.5 w-2.5 rounded-full ${
