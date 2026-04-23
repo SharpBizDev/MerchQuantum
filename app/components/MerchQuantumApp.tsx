@@ -1488,8 +1488,11 @@ function CreativeWellspringBrandMark({
 }) {
   if (docked) {
     return (
-      <footer className={`mt-auto w-full bg-transparent py-6 text-center text-sm font-normal text-white/50 ${className}`}>
-        Merch Quantum &mdash; Effortless product creation
+      <footer className={`mt-auto w-full bg-transparent py-6 text-center ${className}`}>
+        <span className="block text-lg font-semibold tracking-wide text-white/90">Merch Quantum</span>
+        <span className="mt-1 block text-xs font-medium uppercase tracking-widest text-purple-400/70">
+          Effortless product creation
+        </span>
       </footer>
     );
   }
@@ -4110,7 +4113,11 @@ export default function MerchQuantumApp() {
                       disabled={!canSubmitProviderConnection}
                       aria-label="Connect provider"
                       title="Connect"
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 p-2 text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/80 disabled:text-slate-200"
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 p-2 text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/80 disabled:text-slate-200 ${
+                        !connected && token.trim().length > 0
+                          ? "animate-pulse border-purple-400/40 text-purple-200 shadow-[0_0_15px_rgba(168,85,247,0.5)]"
+                          : ""
+                      }`}
                     >
                       <ConnectArrowIcon className="h-3.5 w-3.5" />
                     </button>
