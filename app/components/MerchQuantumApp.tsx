@@ -15,6 +15,7 @@ const TAG_PILL_TEXT_CLASSES = "font-sans text-sm font-normal text-white";
 const PRIMARY_ACTION_BUTTON_CLASSES = "inline-flex h-8 shrink-0 items-center justify-center rounded-lg bg-purple-600 px-3 font-sans text-sm font-semibold text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-950/40 disabled:text-slate-200";
 const WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY = "mq-workspace-selection-condensed";
 const QUANTUM_PRODUCT_AWAITING_TEXT = "Awaiting Quantum AI Product...";
+const QUANTUM_TEMPLATE_AWAITING_TEXT = "Awaiting Quantum AI Template...";
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
 export const QUANTUM_DESCRIPTION_AWAITING_TEXT = "Awaiting Quantum AI description...";
 
@@ -170,6 +171,7 @@ type ProductGridProps = {
   onToggleCollapsed?: () => void;
   onSelectAll?: () => void;
   footerLabel?: React.ReactNode;
+  loadingLabel?: string;
   onItemActivate: (
     product: Product,
     index: number,
@@ -1598,6 +1600,7 @@ function ProductGrid({
   onToggleCollapsed,
   onSelectAll,
   footerLabel,
+  loadingLabel = QUANTUM_PRODUCT_AWAITING_TEXT,
   onItemActivate,
   onPreviousPage,
   onNextPage,
@@ -1630,14 +1633,6 @@ function ProductGrid({
             </button>
           ) : null}
           {headerAccessory}
-          {onToggleCollapsed ? (
-            <BareChevronButton
-              open={!collapsed}
-              onClick={onToggleCollapsed}
-              label={collapsed ? "Show all items" : "Show first row only"}
-              className="ml-auto"
-            />
-          ) : null}
         </div>
       </div>
 
@@ -1702,7 +1697,7 @@ function ProductGrid({
               <div className="col-start-1 row-start-1 relative z-10 flex h-full min-h-[148px] items-center justify-center px-3 py-3">
                 <div className="inline-flex items-center gap-2 font-sans text-sm font-normal text-white">
                   <div className="h-3 w-3 rounded-full bg-purple-500 animate-pulse" />
-                  <span>{QUANTUM_PRODUCT_AWAITING_TEXT}</span>
+                  <span>{loadingLabel}</span>
                 </div>
               </div>
             ) : null}
@@ -1716,13 +1711,13 @@ function ProductGrid({
         </div>
         <div className="flex items-center justify-end gap-2">
           {footerActions}
-          {onToggleCollapsed && !collapsed ? (
+          {onToggleCollapsed ? (
             <button
               type="button"
               onClick={onToggleCollapsed}
               className="text-sm font-normal text-gray-400 transition-colors hover:text-white"
             >
-              Minimize
+              {collapsed ? "Maximize" : "Minimize"}
             </button>
           ) : null}
           <button
@@ -1837,29 +1832,6 @@ function ChevronIcon({ open, className = "" }: { open: boolean; className?: stri
     >
       <path d="M4.75 6.25 8 9.5l3.25-3.25" />
     </svg>
-  );
-}
-
-function BareChevronButton({
-  open,
-  onClick,
-  label,
-  className = "",
-}: {
-  open: boolean;
-  onClick: () => void;
-  label: string;
-  className?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      className={`inline-flex shrink-0 items-center justify-center text-slate-100 transition-colors duration-200 hover:text-[#C084FC] focus-visible:outline-none ${className}`}
-    >
-      <ChevronIcon open={open} className="h-5 w-5" />
-    </button>
   );
 }
 
@@ -4249,6 +4221,7 @@ export default function MerchQuantumApp() {
                 pageSize={createTemplatePageSize}
                 totalPages={createTemplateTotalPages}
                 loading={loadingProducts}
+                loadingLabel={QUANTUM_TEMPLATE_AWAITING_TEXT}
                 collapsed={isWorkspaceSelectionCollapsed}
                 headerAccessory={
                   <button
