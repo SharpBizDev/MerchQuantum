@@ -2192,9 +2192,6 @@ export default function MerchQuantumApp() {
     || isPublishingImportedListings
     || isQuantumAiGenerating
     || (!supportsImportedListingSync && !supportsImportedPublish);
-  const DETAIL_TAG_PILL_BLUEPRINT = "inline-flex items-center justify-center px-3 py-1 text-sm leading-tight border rounded-full font-sans font-normal";
-  const DETAIL_AI_TAG_PILL_CLASSES = `my-1 mx-1 ${DETAIL_TAG_PILL_BLUEPRINT} border-slate-700 text-white`;
-  const DETAIL_UPLOAD_TAG_PILL_CLASSES = `float-right my-1 mx-1 ${DETAIL_TAG_PILL_BLUEPRINT} border-[#7F22FE] text-[#7F22FE]`;
   const descriptionActionDisabled = isCreateMode ? uploadDisabled : bulkEditPublishDisabled;
   const triggerDescriptionAction = () => {
     if (isCreateMode) {
@@ -4647,24 +4644,15 @@ export default function MerchQuantumApp() {
                             </div>
                           </div>
                           <div className="pt-0">
-                            <div className="block w-full overflow-hidden text-center">
-                              <div className="float-left my-1 inline-block min-h-[30px] py-1 font-sans text-sm font-normal leading-6 text-white align-middle">
-                                <span className="text-[#7F22FE]">Quantum</span>
-                                <span className="ml-1 text-white">AI Tags</span>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="text-sm font-sans font-normal leading-tight text-white">
+                                Quantum AI Tags
                               </div>
-                              <button
-                                type="button"
-                                onClick={triggerDescriptionAction}
-                                disabled={descriptionActionDisabled}
-                                className={DETAIL_UPLOAD_TAG_PILL_CLASSES}
-                              >
-                                Upload
-                              </button>
                               {isDetailTagsLoading ? (
                                 Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
                                   <div
                                     key={`loading-tag-${index}`}
-                                    className={DETAIL_AI_TAG_PILL_CLASSES}
+                                    className="inline-flex items-center justify-center px-3 py-1 text-sm leading-tight border rounded-full font-sans font-normal text-white border-white/20 bg-transparent"
                                   >
                                     <QuantOrbLoader />
                                   </div>
@@ -4674,16 +4662,24 @@ export default function MerchQuantumApp() {
                                   <div
                                     key={`${selectedImage?.id || productId}-tag-${index}`}
                                     title={tag}
-                                    className={DETAIL_AI_TAG_PILL_CLASSES}
+                                    className="inline-flex items-center justify-center px-3 py-1 text-sm leading-tight border rounded-full font-sans font-normal text-white border-white/20 bg-transparent"
                                   >
                                     {tag}
                                   </div>
                                 ))
                               ) : (
-                                <div className={DETAIL_AI_TAG_PILL_CLASSES}>
+                                <div className="inline-flex items-center justify-center px-3 py-1 text-sm leading-tight border rounded-full font-sans font-normal text-white border-white/20 bg-transparent">
                                   Tags will appear after Quantum AI processing completes.
                                 </div>
                               )}
+                              <button
+                                type="button"
+                                onClick={triggerDescriptionAction}
+                                disabled={descriptionActionDisabled}
+                                className="inline-flex items-center justify-center px-3 py-1 text-sm leading-tight border rounded-full font-sans font-normal text-[#7F22FE] border-[#7F22FE] bg-transparent"
+                              >
+                                Upload
+                              </button>
                             </div>
                           </div>
                         </div>
