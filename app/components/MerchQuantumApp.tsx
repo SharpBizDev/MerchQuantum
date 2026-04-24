@@ -1906,7 +1906,7 @@ export default function MerchQuantumApp() {
   const [isRoutingGridExpanded, setIsRoutingGridExpanded] = useState(true);
   const [isWorkspaceSelectionCollapsed, setIsWorkspaceSelectionCollapsed] = useState(getStoredWorkspaceSelectionCondensed);
   const [isImportingListings, setIsImportingListings] = useState(false);
-  const [importStatus, setImportStatus] = useState("");
+  const [, setImportStatus] = useState("");
   const [isSyncingImportedListings, setIsSyncingImportedListings] = useState(false);
   const [isPublishingImportedListings, setIsPublishingImportedListings] = useState(false);
   const [images, setImages] = useState<Img[]>([]);
@@ -4184,7 +4184,7 @@ export default function MerchQuantumApp() {
                 pageSize={bulkEditPageSize}
                 totalPages={bulkEditTotalPages}
                 loading={loadingProducts}
-                footerLabel={importStatus || bulkEditVisibleRangeLabel}
+                footerLabel={bulkEditVisibleRangeLabel}
                 collapsed={isWorkspaceSelectionCollapsed}
                 selectAllLabel={hasAllBulkEditVisibleSelections ? "Deselect All" : "Select All"}
                 headerAccessory={
@@ -4217,13 +4217,16 @@ export default function MerchQuantumApp() {
                 onNextPage={() => setBulkEditGridPage((current) => Math.min(bulkEditTotalPages - 1, current + 1))}
                 footerActions={
                   <>
+                    <span className="inline-flex h-4 w-4 items-center justify-center">
+                      {isImportingListings ? <QuantOrbLoader /> : null}
+                    </span>
                     <button
                       type="button"
                       className="font-semibold text-[#C084FC] transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
                       disabled={!hasBulkEditStagedSelections || isImportingListings}
                       onClick={() => { void commitTemplateSelections(pendingTemplateSelectionIds); }}
                     >
-                      {isImportingListings ? "Loading..." : "Load Selected"}
+                      Load Selected
                     </button>
                   </>
                 }
