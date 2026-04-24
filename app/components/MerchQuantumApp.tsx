@@ -1526,8 +1526,8 @@ function SmartThumbnail({
   src,
   alt,
   className = "",
-  safeZoneClassName = "pt-[5%] px-1",
-  imageClassName = "block h-full w-full object-contain object-top",
+  safeZoneClassName = "p-[5%]",
+  imageClassName = "w-full h-full object-contain object-top",
   fallbackClassName = "",
   children,
 }: SmartThumbnailProps) {
@@ -1567,7 +1567,7 @@ function SmartThumbnail({
       className={`relative box-border flex aspect-square w-full overflow-hidden bg-center bg-cover bg-no-repeat ${className}`}
       style={{ backgroundColor }}
     >
-      <div className={`relative box-border flex h-full w-full items-center justify-center ${safeZoneClassName}`}>
+      <div className={`relative box-border flex h-full w-full items-center justify-center overflow-hidden ${safeZoneClassName}`}>
         {resolvedSrc ? (
           <img
             src={resolvedSrc}
