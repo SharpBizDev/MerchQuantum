@@ -4644,9 +4644,10 @@ export default function MerchQuantumApp() {
                             </div>
                           </div>
                           <div className="pt-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-sm font-sans font-normal leading-tight text-white">
-                                Quantum AI Tags
+                            <div className="relative w-full flex flex-wrap justify-center items-center gap-2 pt-1 pb-1 px-[140px]">
+                              <div className="absolute left-0 flex items-center h-full">
+                                <span className="text-[#7F22FE] text-sm font-sans font-normal leading-6">Quantum </span>
+                                <span className="text-white text-sm font-sans font-normal leading-6">AI Tags</span>
                               </div>
                               {isDetailTagsLoading ? (
                                 Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
@@ -4676,7 +4677,7 @@ export default function MerchQuantumApp() {
                                 type="button"
                                 onClick={triggerDescriptionAction}
                                 disabled={descriptionActionDisabled}
-                                className="inline-flex items-center justify-center px-3 py-1 text-sm leading-tight border rounded-full font-sans font-normal text-[#7F22FE] border-[#7F22FE] bg-transparent"
+                                className="absolute right-0 flex items-center h-full text-[#7F22FE] text-sm font-sans font-normal leading-6 bg-transparent border-none p-0 cursor-pointer"
                               >
                                 Upload
                               </button>
