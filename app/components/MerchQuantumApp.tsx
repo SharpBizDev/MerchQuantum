@@ -12,6 +12,7 @@ const BRAND_WORDMARK_TEXT_CLASSES = "text-4xl sm:text-5xl";
 const BRAND_TAGLINE_TEXT_CLASSES = "text-[11px] sm:text-xs";
 const DETAIL_DATA_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-white";
 const TAG_PILL_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-white";
+const TAG_PILL_CONTAINER_CLASSES = "flex min-h-[30px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-1 text-center";
 const PRIMARY_ACTION_LINK_CLASSES = "text-purple-400 hover:text-purple-300 font-bold text-sm uppercase tracking-wide disabled:cursor-not-allowed disabled:text-slate-500";
 const WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY = "mq-workspace-selection-condensed";
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
@@ -4626,21 +4627,19 @@ export default function MerchQuantumApp() {
                             </div>
                           </div>
                           <div className="pt-0">
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="flex min-h-[20px] min-w-0 flex-1 items-center text-left text-sm font-medium leading-5 tracking-tight text-slate-200">
-                                  <span className="inline-flex items-center text-sm font-semibold">
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center justify-start gap-1">
+                                <div className={TAG_PILL_CONTAINER_CLASSES}>
+                                  <span className={`truncate ${TAG_PILL_TEXT_CLASSES}`}>
                                     <span className="text-[#7F22FE]">Quantum</span>
                                     <span className="ml-1 text-white">AI Tags</span>
                                   </span>
                                 </div>
-                              </div>
-                              <div className="flex flex-wrap items-center justify-start gap-1.5">
                                 {isDetailTagsLoading ? (
                                   Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
                                     <div
                                       key={`loading-tag-${index}`}
-                                      className={`flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center ${TAG_PILL_TEXT_CLASSES}`}
+                                      className={`${TAG_PILL_CONTAINER_CLASSES} ${TAG_PILL_TEXT_CLASSES}`}
                                     >
                                       <QuantOrbLoader />
                                     </div>
@@ -4650,13 +4649,13 @@ export default function MerchQuantumApp() {
                                     <div
                                       key={`${selectedImage?.id || productId}-tag-${index}`}
                                       title={tag}
-                                      className={`flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center ${TAG_PILL_TEXT_CLASSES}`}
+                                      className={`${TAG_PILL_CONTAINER_CLASSES} ${TAG_PILL_TEXT_CLASSES}`}
                                     >
                                       <span className={`truncate ${TAG_PILL_TEXT_CLASSES}`}>{tag}</span>
                                     </div>
                                   ))
                                 ) : (
-                                  <div className={`flex min-h-[34px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2.5 py-1.5 text-center ${TAG_PILL_TEXT_CLASSES}`}>
+                                  <div className={`${TAG_PILL_CONTAINER_CLASSES} ${TAG_PILL_TEXT_CLASSES}`}>
                                     Tags will appear after Quantum AI processing completes.
                                   </div>
                                 )}
