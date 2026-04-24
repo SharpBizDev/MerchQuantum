@@ -12,7 +12,7 @@ const BRAND_WORDMARK_TEXT_CLASSES = "text-4xl sm:text-5xl";
 const BRAND_TAGLINE_TEXT_CLASSES = "text-[11px] sm:text-xs";
 const DETAIL_DATA_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-white";
 const TAG_PILL_TEXT_CLASSES = "font-sans text-sm font-normal text-white";
-const PRIMARY_ACTION_LINK_CLASSES = "text-sm font-bold uppercase tracking-wide text-purple-400 transition-colors hover:text-purple-300 disabled:cursor-not-allowed disabled:text-slate-500";
+const PRIMARY_ACTION_LINK_CLASSES = "text-purple-400 hover:text-purple-300 font-bold text-sm uppercase tracking-wide disabled:cursor-not-allowed disabled:text-slate-500";
 const WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY = "mq-workspace-selection-condensed";
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
 export const QUANTUM_DESCRIPTION_AWAITING_TEXT = "Awaiting Quantum AI description...";
@@ -1488,12 +1488,12 @@ function CreativeWellspringBrandMark({
 }) {
   if (docked) {
     return (
-      <div className={`mt-auto flex flex-col items-center justify-center py-8 text-center ${className}`}>
+      <div className={`mt-auto py-8 flex flex-col items-center justify-center text-center ${className}`.trim()}>
         <div className="flex items-center space-x-1.5">
           <span className="text-xl font-bold tracking-tighter text-purple-500">Merch</span>
           <span className="text-xl font-bold tracking-tighter text-white">Quantum</span>
         </div>
-        <span className="mt-1 block text-xs font-medium uppercase tracking-widest text-white">
+        <span className="block text-xs font-medium tracking-widest text-white uppercase mt-1">
           effortless product creation
         </span>
       </div>
@@ -1692,8 +1692,8 @@ function ProductGrid({
           })}
         </div>
       ) : loading ? (
-        <div className="flex min-h-[50vh] w-full flex-col items-center justify-center space-y-3">
-          <div className="h-3 w-3 animate-pulse rounded-full bg-purple-500"></div>
+        <div className="flex flex-col items-center justify-center space-y-3 min-h-[50vh] w-full">
+          <div className="w-3 h-3 bg-purple-500 rounded-full animate-pulse"></div>
           <span className="font-sans text-sm font-normal text-white">Awaiting Quantum AI...</span>
         </div>
       ) : null}
@@ -4422,7 +4422,7 @@ export default function MerchQuantumApp() {
                         <div className="flex min-w-0 flex-col space-y-3">
                           <div className="space-y-3">
                             <div className="space-y-1.5">
-                              <div className="flex w-full items-center justify-between gap-3">
+                              <div className="flex justify-between items-center w-full">
                                 <div className="flex min-h-[20px] min-w-0 flex-1 items-center text-left text-sm font-medium leading-5 tracking-tight text-slate-200">
                                   <span className="inline-flex items-center text-sm font-semibold">
                                     <span className="text-[#7F22FE]">Quantum</span>
@@ -4620,14 +4620,6 @@ export default function MerchQuantumApp() {
                                     <span className="ml-1 text-white">AI Tags</span>
                                   </span>
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={triggerDescriptionAction}
-                                  disabled={descriptionActionDisabled}
-                                  className={PRIMARY_ACTION_LINK_CLASSES}
-                                >
-                                  {descriptionActionLabel}
-                                </button>
                               </div>
                               <div className="flex flex-wrap items-center justify-start gap-1.5">
                                 {isDetailTagsLoading ? (
@@ -4654,6 +4646,16 @@ export default function MerchQuantumApp() {
                                     Tags will appear after Quantum AI processing completes.
                                   </div>
                                 )}
+                              </div>
+                              <div className="mt-4 flex w-full justify-end">
+                                <button
+                                  type="button"
+                                  onClick={triggerDescriptionAction}
+                                  disabled={descriptionActionDisabled}
+                                  className={PRIMARY_ACTION_LINK_CLASSES}
+                                >
+                                  {descriptionActionLabel}
+                                </button>
                               </div>
                             </div>
                           </div>
