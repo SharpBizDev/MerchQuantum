@@ -4452,8 +4452,8 @@ export default function MerchQuantumApp() {
                         </div>
                         {canShowDetailPanel ? (
                         <div className="flex min-w-0 flex-col space-y-3">
-                          <div className="space-y-3">
-                            <div className="flex flex-col gap-1 w-full mb-0">
+                          <div className="flex flex-col gap-4 w-full">
+                            <div className="flex flex-col gap-2 w-full">
                               <div className="flex justify-between items-center w-full">
                                 <div className="flex min-h-[20px] min-w-0 flex-1 items-center text-left text-sm font-medium leading-5 tracking-tight text-slate-200">
                                   <span className="inline-flex items-center text-sm font-semibold">
@@ -4540,7 +4540,7 @@ export default function MerchQuantumApp() {
                               </div>
                             </div>
 
-                            <div className="space-y-1.5">
+                            <div className="flex flex-col gap-2 w-full">
                               <div className="flex items-center justify-between gap-3">
                                 <div className="flex min-h-[20px] min-w-0 flex-1 items-center text-left text-sm font-medium leading-5 tracking-tight text-slate-200">
                                   <span className="inline-flex min-w-0 items-center text-sm font-semibold">
