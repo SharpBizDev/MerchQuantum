@@ -1438,11 +1438,20 @@ function Input({ className = "", ...props }: InputProps) {
 
 type SelectProps = React.SelectHTMLAttributes<HTMLSelectElement>;
 
-function Select({ className = "", children, ...props }: SelectProps) {
+function SetupInput({ className = "", ...props }: InputProps) {
   return (
-    <div className={`relative min-w-0 w-full ${props.disabled ? "cursor-not-allowed" : ""}`}>
+    <input
+      className={`box-border w-full min-w-0 rounded-xl border border-slate-700 bg-[#020616] px-3 py-2 leading-tight font-sans text-sm font-normal text-white outline-none transition placeholder:text-slate-200 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
+      {...props}
+    />
+  );
+}
+
+function SetupSelect({ className = "", children, ...props }: SelectProps) {
+  return (
+    <div className={`relative min-w-0 w-full text-sm font-normal text-white ${props.disabled ? "cursor-not-allowed" : ""}`}>
       <select
-        className={`box-border h-11 w-full min-w-0 appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 pr-9 font-sans text-sm text-white outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
+        className={`box-border w-full min-w-0 appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 py-2 pr-8 leading-tight font-sans text-sm font-normal text-white outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
         {...props}
       >
         {children}
@@ -3959,9 +3968,8 @@ export default function MerchQuantumApp() {
             </div>
             <div className="grid w-full grid-cols-2 gap-2">
             <div className={`min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
-              <Select
+              <SetupSelect
                 value={provider}
-                className="h-auto px-3 py-2 pr-8 leading-tight text-sm font-normal text-white"
                 onChange={(e) => {
                   const nextProvider = e.target.value as ProviderChoiceId | "";
                   setProvider(nextProvider);
@@ -3979,7 +3987,7 @@ export default function MerchQuantumApp() {
                     {entry.label}
                   </option>
                 ))}
-              </Select>
+              </SetupSelect>
             </div>
 
             <div
@@ -4002,7 +4010,7 @@ export default function MerchQuantumApp() {
               className={`min-w-0 ${getRoutingFieldGlowClass("token")}`}
             >
               <div className="relative flex min-w-0 items-center">
-                <Input
+                <SetupInput
                   id="provider-api-key-input"
                   type={connected || showCompactDisconnectedToken ? "text" : "password"}
                   value={tokenFieldValue}
@@ -4034,7 +4042,7 @@ export default function MerchQuantumApp() {
                       void connectProvider();
                     }
                   }}
-                  className="h-auto min-w-0 truncate px-3 py-2 pr-14 leading-tight text-sm font-normal text-white disabled:cursor-not-allowed sm:pr-16"
+                  className="min-w-0 truncate pr-14 sm:pr-16"
                 />
                 <div
                   className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center"
@@ -4097,10 +4105,9 @@ export default function MerchQuantumApp() {
             </div>
 
             <div className={`relative min-w-0 ${getRoutingFieldGlowClass("shop")}`}>
-              <Select
+              <SetupSelect
                 value={shopId}
                 disabled={!connected || loadingApi}
-                className="h-auto px-3 py-2 pr-8 leading-tight text-sm font-normal text-white"
                 onChange={(event) => {
                   handleShopSelection(event.target.value);
                 }}
@@ -4113,14 +4120,13 @@ export default function MerchQuantumApp() {
                     {shop.title}
                   </option>
                 ))}
-              </Select>
+              </SetupSelect>
             </div>
 
             <div className={`relative min-w-0 ${getRoutingFieldGlowClass("mode")}`}>
-              <Select
+              <SetupSelect
                 value={workspaceMode}
                 disabled={!connected || !shopId}
-                className="h-auto px-3 py-2 pr-8 leading-tight text-sm font-normal text-white"
                 onChange={(event) => {
                   handleWorkspaceModeChange(event.target.value as WorkspaceMode);
                 }}
@@ -4128,7 +4134,7 @@ export default function MerchQuantumApp() {
                 <option value="">{workspaceModePickerLabel}</option>
                 <option value="create">Bulk Create</option>
                 <option value="edit">Bulk Edit</option>
-              </Select>
+              </SetupSelect>
             </div>
             </div>
 
