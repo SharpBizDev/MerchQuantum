@@ -13,7 +13,6 @@ const BRAND_TAGLINE_TEXT_CLASSES = "text-[11px] sm:text-xs";
 const DETAIL_DATA_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-white";
 const TAG_PILL_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-white";
 const TAG_PILL_CONTAINER_CLASSES = "flex min-h-[30px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-1 text-center";
-const PRIMARY_ACTION_LINK_CLASSES = "text-purple-400 hover:text-purple-300 font-bold text-sm uppercase tracking-wide disabled:cursor-not-allowed disabled:text-slate-500";
 const WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY = "mq-workspace-selection-condensed";
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
 export const QUANTUM_DESCRIPTION_AWAITING_TEXT = "Awaiting Quantum AI description...";
@@ -2194,13 +2193,6 @@ export default function MerchQuantumApp() {
     || isPublishingImportedListings
     || (!supportsImportedListingSync && !supportsImportedPublish);
   const descriptionActionDisabled = isCreateMode ? uploadDisabled : bulkEditPublishDisabled;
-  const descriptionActionLabel = isCreateMode
-    ? (isRunningBatch ? "Uploading..." : "Upload")
-    : isSyncingImportedListings
-      ? "Syncing..."
-      : isPublishingImportedListings
-        ? "Publishing..."
-        : "Sync";
   const triggerDescriptionAction = () => {
     if (isCreateMode) {
       void runDraftBatch();
@@ -4652,14 +4644,24 @@ export default function MerchQuantumApp() {
                             </div>
                           </div>
                           <div className="pt-0">
-                            <div className="space-y-1">
-                              <div className="flex flex-wrap items-center justify-start gap-1">
-                                <div className={TAG_PILL_CONTAINER_CLASSES}>
-                                  <span className={`truncate ${TAG_PILL_TEXT_CLASSES}`}>
-                                    <span className="text-[#7F22FE]">Quantum</span>
-                                    <span className="ml-1 text-white">AI Tags</span>
-                                  </span>
+                            <div className="space-y-2">
+                              <div className="flex w-full items-center justify-between gap-3">
+                                <div className={`min-w-0 ${TAG_PILL_TEXT_CLASSES}`}>
+                                  <span className="text-[#7F22FE]">Quantum</span>
+                                  <span className="ml-1 text-white">AI Tags</span>
                                 </div>
+                                <button
+                                  type="button"
+                                  onClick={triggerDescriptionAction}
+                                  disabled={descriptionActionDisabled}
+                                  className={`${TAG_PILL_CONTAINER_CLASSES} shrink-0 transition-colors disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-500`}
+                                >
+                                  <span className="font-sans text-sm font-normal leading-6 text-[#7F22FE]">
+                                    Upload
+                                  </span>
+                                </button>
+                              </div>
+                              <div className="flex flex-wrap items-center justify-start gap-1">
                                 {isDetailTagsLoading ? (
                                   Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
                                     <div
@@ -4684,16 +4686,6 @@ export default function MerchQuantumApp() {
                                     Tags will appear after Quantum AI processing completes.
                                   </div>
                                 )}
-                              </div>
-                              <div className="mt-4 flex w-full justify-end">
-                                <button
-                                  type="button"
-                                  onClick={triggerDescriptionAction}
-                                  disabled={descriptionActionDisabled}
-                                  className={PRIMARY_ACTION_LINK_CLASSES}
-                                >
-                                  {descriptionActionLabel}
-                                </button>
                               </div>
                             </div>
                           </div>
