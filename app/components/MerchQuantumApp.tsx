@@ -4453,7 +4453,7 @@ export default function MerchQuantumApp() {
                         {canShowDetailPanel ? (
                         <div className="flex min-w-0 flex-col space-y-3">
                           <div className="space-y-3">
-                            <div className="space-y-1.5">
+                            <div className="flex flex-col gap-1 w-full mb-0">
                               <div className="flex justify-between items-center w-full">
                                 <div className="flex min-h-[20px] min-w-0 flex-1 items-center text-left text-sm font-medium leading-5 tracking-tight text-slate-200">
                                   <span className="inline-flex items-center text-sm font-semibold">
@@ -4644,7 +4644,7 @@ export default function MerchQuantumApp() {
                             </div>
                           </div>
                           <div className="pt-0">
-                            <div className="flow-root w-full text-center mt-2">
+                            <div className="flow-root w-full text-center mt-4">
                               <div className="float-left flex items-center h-8">
                                 <span className="text-[#7F22FE] text-sm leading-6 font-normal font-sans">Quantum </span>
                                 <span className="text-white text-sm leading-6 font-normal font-sans">AI Tags</span>
