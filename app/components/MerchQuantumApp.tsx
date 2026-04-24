@@ -3485,7 +3485,7 @@ export default function MerchQuantumApp() {
               <MerchQuantumInlineHeading className="max-w-full" />
             </div>
             <div className="grid w-full grid-cols-2 gap-2">
-            <div className={`relative min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
+            <div className={`relative self-start min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
               <SetupSelect
                 value={provider}
                 onChange={(e) => {
