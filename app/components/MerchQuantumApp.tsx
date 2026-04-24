@@ -3973,7 +3973,7 @@ export default function MerchQuantumApp() {
             <div className={`min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
               <Select
                 value={provider}
-                className={provider ? "text-[13px] font-normal text-white" : "font-medium text-slate-100"}
+                className="h-auto px-3 py-2 pr-9 leading-tight text-sm font-normal text-white"
                 onChange={(e) => {
                   const nextProvider = e.target.value as ProviderChoiceId | "";
                   setProvider(nextProvider);
@@ -4046,7 +4046,7 @@ export default function MerchQuantumApp() {
                       void connectProvider();
                     }
                   }}
-                  className="min-w-0 truncate pr-14 disabled:cursor-not-allowed sm:pr-16"
+                  className="h-auto min-w-0 truncate px-3 py-2 pr-14 leading-tight text-sm font-normal text-white disabled:cursor-not-allowed sm:pr-16"
                 />
                 <div
                   className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center"
@@ -4065,7 +4065,7 @@ export default function MerchQuantumApp() {
                   }}
                 >
                   {loadingApi ? (
-                    <span className="inline-flex h-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-slate-300">
+                    <span className="inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 px-3 py-2 leading-tight text-sm font-normal text-white">
                       <QuantOrbLoader />
                     </span>
                   ) : connected ? (
@@ -4073,7 +4073,7 @@ export default function MerchQuantumApp() {
                       <button
                         type="button"
                         onClick={() => { void disconnectProvider(); }}
-                        className="inline-flex h-8 items-center rounded-lg border border-[#FF2056]/40 bg-[#FF2056]/12 px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#FF8CA8] transition hover:bg-[#FF2056]/18"
+                        className="inline-flex items-center rounded-lg border border-[#FF2056]/40 bg-[#FF2056]/12 px-3 py-2 leading-tight text-sm font-normal text-white transition hover:bg-[#FF2056]/18"
                       >
                         Off
                       </button>
@@ -4082,7 +4082,7 @@ export default function MerchQuantumApp() {
                         type="button"
                         aria-label="Provider connected. Hover or click to disconnect."
                         onClick={() => setIsDisconnectArmed(true)}
-                        className="relative inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#00BC7D]/35 bg-[#00BC7D]/10 transition hover:bg-[#00BC7D]/14"
+                        className="relative inline-flex items-center justify-center rounded-full border border-[#00BC7D]/35 bg-[#00BC7D]/10 px-3 py-2 leading-tight text-sm font-normal text-white transition hover:bg-[#00BC7D]/14"
                       >
                         <span className="absolute inset-[7px] rounded-full bg-[#00BC7D] shadow-[0_0_14px_rgba(0,188,125,0.95)]" />
                         <span className="absolute inset-[3px] rounded-full border border-[#00BC7D]/55 animate-pulse" />
@@ -4095,7 +4095,7 @@ export default function MerchQuantumApp() {
                       disabled={!canSubmitProviderConnection}
                       aria-label="Connect provider"
                       title="Connect"
-                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 p-2 text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/80 disabled:text-slate-200 ${
+                      className={`inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 px-3 py-2 leading-tight text-sm font-normal text-white transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/80 disabled:text-slate-200 ${
                         !connected && token.trim().length > 0
                           ? "animate-pulse border-purple-400/40 text-purple-200 shadow-[0_0_15px_rgba(168,85,247,0.5)]"
                           : ""
@@ -4112,7 +4112,7 @@ export default function MerchQuantumApp() {
               <Select
                 value={shopId}
                 disabled={!connected || loadingApi}
-                className={shopId ? "text-[13px] font-normal text-white" : "font-medium text-slate-100"}
+                className="h-auto px-3 py-2 pr-9 leading-tight text-sm font-normal text-white"
                 onChange={(event) => {
                   handleShopSelection(event.target.value);
                 }}
@@ -4132,7 +4132,7 @@ export default function MerchQuantumApp() {
               <Select
                 value={workspaceMode}
                 disabled={!connected || !shopId}
-                className={workspaceMode ? "text-[13px] font-normal text-white" : "font-medium text-slate-100"}
+                className="h-auto px-3 py-2 pr-9 leading-tight text-sm font-normal text-white"
                 onChange={(event) => {
                   handleWorkspaceModeChange(event.target.value as WorkspaceMode);
                 }}
@@ -4189,7 +4189,7 @@ export default function MerchQuantumApp() {
                   <button
                     type="button"
                     onClick={() => setIsRoutingGridExpanded((current) => !current)}
-                    className="font-medium text-slate-100 transition hover:text-white"
+                    className="px-3 py-2 leading-tight text-sm font-normal text-white transition hover:text-white"
                   >
                     Mode
                   </button>
@@ -4244,7 +4244,7 @@ export default function MerchQuantumApp() {
                   <button
                     type="button"
                     onClick={() => setIsRoutingGridExpanded((current) => !current)}
-                    className="font-medium text-slate-100 transition hover:text-white"
+                    className="px-3 py-2 leading-tight text-sm font-normal text-white transition hover:text-white"
                   >
                     Mode
                   </button>
