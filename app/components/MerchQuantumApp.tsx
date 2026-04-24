@@ -1158,20 +1158,35 @@ function SetupSelect({ className = "", children, ...props }: SelectProps) {
     const label = getNodeText(child.props.children).trim();
     return label || foundLabel;
   }, null);
+  const enabledSelectClasses = "border-slate-700 bg-[#020616] text-white focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30";
+  const disabledSelectClasses = "disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60";
+  const selectBaseClasses = `box-border h-9 w-full min-w-0 appearance-none rounded-xl px-3 pr-8 font-sans text-sm font-normal outline-none transition ${disabledSelectClasses}`;
 
   return (
     <div className={`relative min-w-0 w-full text-sm font-normal text-white ${props.disabled ? "cursor-not-allowed" : ""}`}>
-      <select
-        className={`box-border h-9 w-full min-w-0 appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 pr-8 font-sans text-sm font-normal outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${isEmptyValue ? "text-transparent" : "text-white"} ${className}`}
-        {...props}
-      >
-        {children}
-      </select>
       {isEmptyValue && emptyOptionLabel ? (
-        <span className={`pointer-events-none absolute left-3 right-8 top-1/2 -translate-y-1/2 truncate font-sans text-sm font-normal leading-6 ${props.disabled ? "text-slate-200" : "text-white"}`}>
-          {emptyOptionLabel}
-        </span>
-      ) : null}
+        <>
+          <div
+            aria-hidden="true"
+            className={`pointer-events-none flex h-9 w-full items-center rounded-xl border px-3 pr-8 font-sans text-sm font-normal ${props.disabled ? "border-slate-800 bg-[#020616] text-slate-200 opacity-60" : "border-slate-700 bg-[#020616] text-white"}`}
+          >
+            <span className="min-w-0 truncate">{emptyOptionLabel}</span>
+          </div>
+          <select
+            className={`absolute inset-0 z-10 ${selectBaseClasses} border-transparent bg-transparent text-transparent focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 ${className}`}
+            {...props}
+          >
+            {children}
+          </select>
+        </>
+      ) : (
+        <select
+          className={`${selectBaseClasses} border ${enabledSelectClasses} ${className}`}
+          {...props}
+        >
+          {children}
+        </select>
+      )}
       <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-100" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
       </svg>
