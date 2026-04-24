@@ -4651,7 +4651,7 @@ export default function MerchQuantumApp() {
                                 type="button"
                                 onClick={triggerDescriptionAction}
                                 disabled={descriptionActionDisabled}
-                                className="float-right my-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-1 text-center align-middle transition-colors disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-500"
+                                className="float-right my-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-0.5 text-center align-middle transition-colors disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-500"
                               >
                                 <span className="font-sans text-sm font-normal leading-6 text-[#7F22FE]">
                                   Upload
@@ -4661,7 +4661,7 @@ export default function MerchQuantumApp() {
                                 Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
                                   <div
                                     key={`loading-tag-${index}`}
-                                    className="my-1 mx-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-1 text-center align-middle"
+                                    className="my-1 mx-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-0.5 text-center align-middle"
                                   >
                                     <QuantOrbLoader />
                                   </div>
@@ -4671,7 +4671,7 @@ export default function MerchQuantumApp() {
                                   <div
                                     key={`${selectedImage?.id || productId}-tag-${index}`}
                                     title={tag}
-                                    className="my-1 mx-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-1 text-center align-middle"
+                                    className="my-1 mx-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-0.5 text-center align-middle"
                                   >
                                     <span className="inline-block truncate font-sans text-sm font-normal leading-6 text-white">
                                       {tag}
@@ -4679,7 +4679,7 @@ export default function MerchQuantumApp() {
                                   </div>
                                 ))
                               ) : (
-                                <div className="my-1 mx-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-1 text-center align-middle font-sans text-sm font-normal leading-6 text-white">
+                                <div className="my-1 mx-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-0.5 text-center align-middle font-sans text-sm font-normal leading-6 text-white">
                                   Tags will appear after Quantum AI processing completes.
                                 </div>
                               )}
