@@ -11,8 +11,6 @@ const FIXED_TAG_COUNT = 13;
 const BRAND_WORDMARK_TEXT_CLASSES = "text-4xl sm:text-5xl";
 const BRAND_TAGLINE_TEXT_CLASSES = "text-[11px] sm:text-xs";
 const DETAIL_DATA_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-white";
-const TAG_PILL_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-white";
-const TAG_PILL_CONTAINER_CLASSES = "flex min-h-[30px] items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-1 text-center";
 const WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY = "mq-workspace-selection-condensed";
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
 export const QUANTUM_DESCRIPTION_AWAITING_TEXT = "Awaiting Quantum AI description...";
@@ -1925,9 +1923,9 @@ export default function MerchQuantumApp() {
   const [completedImportedImages, setCompletedImportedImages] = useState<Img[]>([]);
   const [queuedImages, setQueuedImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
-  const [runStatus, setRunStatus] = useState("");
+  const [, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
-  const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
+  const [, setBatchResults] = useState<BatchResult[]>([]);
   const [attentionTarget, setAttentionTarget] = useState<"provider" | "token" | "import" | "shop" | "template" | "mode" | null>(null);
   const [editingField, setEditingField] = useState<InlineEditableField>(null);
   const [editableTitleDraft, setEditableTitleDraft] = useState("");
@@ -4644,69 +4642,52 @@ export default function MerchQuantumApp() {
                             </div>
                           </div>
                           <div className="pt-0">
-                            <div className="space-y-2">
-                              <div className="flex w-full items-center justify-between gap-3">
-                                <div className={`min-w-0 ${TAG_PILL_TEXT_CLASSES}`}>
-                                  <span className="text-[#7F22FE]">Quantum</span>
-                                  <span className="ml-1 text-white">AI Tags</span>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={triggerDescriptionAction}
-                                  disabled={descriptionActionDisabled}
-                                  className={`${TAG_PILL_CONTAINER_CLASSES} shrink-0 transition-colors disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-500`}
-                                >
-                                  <span className="font-sans text-sm font-normal leading-6 text-[#7F22FE]">
-                                    Upload
-                                  </span>
-                                </button>
+                            <div className="block w-full overflow-hidden text-center">
+                              <div className="float-left my-1 inline-block min-h-[30px] py-1 font-sans text-sm font-normal leading-6 text-white align-middle">
+                                <span className="text-[#7F22FE]">Quantum</span>
+                                <span className="ml-1 text-white">AI Tags</span>
                               </div>
-                              <div className="flex flex-wrap items-center justify-start gap-1">
-                                {isDetailTagsLoading ? (
-                                  Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
-                                    <div
-                                      key={`loading-tag-${index}`}
-                                      className={`${TAG_PILL_CONTAINER_CLASSES} ${TAG_PILL_TEXT_CLASSES}`}
-                                    >
-                                      <QuantOrbLoader />
-                                    </div>
-                                  ))
-                                ) : detailTags.length > 0 ? (
-                                  detailTags.map((tag, index) => (
-                                    <div
-                                      key={`${selectedImage?.id || productId}-tag-${index}`}
-                                      title={tag}
-                                      className={`${TAG_PILL_CONTAINER_CLASSES} ${TAG_PILL_TEXT_CLASSES}`}
-                                    >
-                                      <span className={`truncate ${TAG_PILL_TEXT_CLASSES}`}>{tag}</span>
-                                    </div>
-                                  ))
-                                ) : (
-                                  <div className={`${TAG_PILL_CONTAINER_CLASSES} ${TAG_PILL_TEXT_CLASSES}`}>
-                                    Tags will appear after Quantum AI processing completes.
+                              <button
+                                type="button"
+                                onClick={triggerDescriptionAction}
+                                disabled={descriptionActionDisabled}
+                                className="float-right my-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-1 text-center align-middle transition-colors disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-500"
+                              >
+                                <span className="font-sans text-sm font-normal leading-6 text-[#7F22FE]">
+                                  Upload
+                                </span>
+                              </button>
+                              {isDetailTagsLoading ? (
+                                Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
+                                  <div
+                                    key={`loading-tag-${index}`}
+                                    className="my-1 mx-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-1 text-center align-middle"
+                                  >
+                                    <QuantOrbLoader />
                                   </div>
-                                )}
-                              </div>
+                                ))
+                              ) : detailTags.length > 0 ? (
+                                detailTags.map((tag, index) => (
+                                  <div
+                                    key={`${selectedImage?.id || productId}-tag-${index}`}
+                                    title={tag}
+                                    className="my-1 mx-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-1 text-center align-middle"
+                                  >
+                                    <span className="inline-block truncate font-sans text-sm font-normal leading-6 text-white">
+                                      {tag}
+                                    </span>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="my-1 mx-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-1 text-center align-middle font-sans text-sm font-normal leading-6 text-white">
+                                  Tags will appear after Quantum AI processing completes.
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
                         ) : null}
                     </div>
-                    {runStatus ? <p className="mt-3 text-sm text-slate-300">{runStatus}</p> : null}
-                    {batchResults.length > 0 ? (
-                      <div className="quantum-scroll-hidden mt-3 max-h-[14rem] overflow-auto rounded-xl border border-slate-800 bg-[#020616] p-3 text-sm">
-                        <div className="space-y-1.5">
-                          {batchResults.map((result) => (
-                            <div key={`${result.fileName}-${result.title}`} className="rounded-lg border border-slate-800 p-2.5">
-                              <div className="text-[13px] font-medium leading-5 text-slate-100">{result.title}</div>
-                              <div className="text-xs text-slate-100">{result.fileName}</div>
-                              <div className="mt-1 text-sm">{result.message}</div>
-                              {result.productId ? <div className="mt-1 text-xs text-slate-100">Product ID: {result.productId}</div> : null}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
                     </div>
                 </div>
               </div>
