@@ -1526,8 +1526,8 @@ function SmartThumbnail({
   src,
   alt,
   className = "",
-  safeZoneClassName = "p-[5%]",
-  imageClassName = "w-full h-full object-contain object-top",
+  safeZoneClassName = "",
+  imageClassName = "absolute top-[5%] h-[90%] w-full object-contain object-top",
   fallbackClassName = "",
   children,
 }: SmartThumbnailProps) {
@@ -1567,7 +1567,7 @@ function SmartThumbnail({
       className={`relative box-border flex aspect-square w-full overflow-hidden bg-center bg-cover bg-no-repeat ${className}`}
       style={{ backgroundColor }}
     >
-      <div className={`relative box-border flex h-full w-full items-center justify-center overflow-hidden ${safeZoneClassName}`}>
+      <div className={`relative flex w-full h-full overflow-hidden justify-center ${safeZoneClassName}`}>
         {resolvedSrc ? (
           <img
             src={resolvedSrc}
@@ -3939,10 +3939,10 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <main className="box-border flex min-h-screen w-full max-w-full flex-col overflow-x-hidden bg-[#0d1117] p-6 font-sans text-white">
+    <main className="box-border flex h-[100dvh] w-full max-w-full flex-col overflow-y-auto overflow-x-hidden bg-[#0d1117] p-6 font-sans text-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
       <div className="flex min-w-0 flex-1 flex-col gap-3">
-        <div className="sticky top-0 z-10 space-y-2 bg-[#0d1117] pb-2">
+        <div className="sticky top-0 z-10 bg-[#0d1117] pb-2 space-y-2">
           {!workspaceMode || isRoutingGridExpanded ? (
           <div className="relative">
             <Box
