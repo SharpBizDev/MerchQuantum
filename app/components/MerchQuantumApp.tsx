@@ -4644,16 +4644,24 @@ export default function MerchQuantumApp() {
                             </div>
                           </div>
                           <div className="pt-0">
-                            <div className="relative w-full flex flex-wrap justify-center items-center gap-2 pt-1 pb-1 px-[140px]">
-                              <div className="absolute left-0 flex items-center h-full">
-                                <span className="text-[#7F22FE] text-sm font-sans font-normal leading-6">Quantum </span>
-                                <span className="text-white text-sm font-sans font-normal leading-6">AI Tags</span>
+                            <div className="flow-root w-full text-center mt-2">
+                              <div className="float-left flex items-center h-8">
+                                <span className="text-[#7F22FE] text-sm leading-6 font-normal font-sans">Quantum </span>
+                                <span className="text-white text-sm leading-6 font-normal font-sans">AI Tags</span>
                               </div>
+                              <button
+                                type="button"
+                                onClick={triggerDescriptionAction}
+                                disabled={descriptionActionDisabled}
+                                className="float-right flex items-center h-8 text-[#7F22FE] text-sm leading-6 font-normal font-sans bg-transparent border-none p-0 cursor-pointer"
+                              >
+                                Upload
+                              </button>
                               {isDetailTagsLoading ? (
                                 Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
                                   <div
                                     key={`loading-tag-${index}`}
-                                    className="inline-flex items-center justify-center px-3 py-1 text-sm leading-tight border rounded-full font-sans font-normal text-white border-white/20 bg-transparent"
+                                    className="inline-block mx-1 my-1 border border-white/20 rounded-full py-1 px-3 bg-transparent text-white text-sm leading-6 font-normal font-sans"
                                   >
                                     <QuantOrbLoader />
                                   </div>
@@ -4663,24 +4671,16 @@ export default function MerchQuantumApp() {
                                   <div
                                     key={`${selectedImage?.id || productId}-tag-${index}`}
                                     title={tag}
-                                    className="inline-flex items-center justify-center px-3 py-1 text-sm leading-tight border rounded-full font-sans font-normal text-white border-white/20 bg-transparent"
+                                    className="inline-block mx-1 my-1 border border-white/20 rounded-full py-1 px-3 bg-transparent text-white text-sm leading-6 font-normal font-sans"
                                   >
                                     {tag}
                                   </div>
                                 ))
                               ) : (
-                                <div className="inline-flex items-center justify-center px-3 py-1 text-sm leading-tight border rounded-full font-sans font-normal text-white border-white/20 bg-transparent">
+                                <div className="inline-block mx-1 my-1 border border-white/20 rounded-full py-1 px-3 bg-transparent text-white text-sm leading-6 font-normal font-sans">
                                   Tags will appear after Quantum AI processing completes.
                                 </div>
                               )}
-                              <button
-                                type="button"
-                                onClick={triggerDescriptionAction}
-                                disabled={descriptionActionDisabled}
-                                className="absolute right-0 flex items-center h-full text-[#7F22FE] text-sm font-sans font-normal leading-6 bg-transparent border-none p-0 cursor-pointer"
-                              >
-                                Upload
-                              </button>
                             </div>
                           </div>
                         </div>
