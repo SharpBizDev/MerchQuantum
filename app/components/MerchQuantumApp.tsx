@@ -1959,6 +1959,7 @@ export default function MerchQuantumApp() {
   const templateKey = useMemo(() => `${template?.reference || "no-template"}::${templateDescription.trim()}`, [template?.reference, templateDescription]);
   const templateReadyForAi = !!template && !loadingTemplateDetails;
   const hasWorkspaceRoute = connected && !!shopId && !!workspaceMode;
+  const workspaceModeLoadingLabel = isCreateMode ? "Awaiting Quantum AI Templates..." : "Awaiting Quantum AI Edit...";
 
   const visibleProducts = useMemo(() => {
     return productSource.filter((p) => p.shopId === shopId);
@@ -2020,6 +2021,7 @@ export default function MerchQuantumApp() {
   const canShowDetailPanel = canShowWorkspacePreview && hasAnyLoadedImages && !!selectedImage;
   const canShowLoadedQueueGrid = canShowWorkspacePreview && sortedImages.length > 0;
   const showPreviewStats = hasAnyLoadedImages;
+  const showWorkspaceModeLoader = hasWorkspaceRoute && loadingProducts && visibleProducts.length === 0;
   const selectedImageFieldStates = selectedImage?.aiFieldStates ?? createAiFieldStates("idle");
   const detailTemplateDescription = selectedImage?.templateDescriptionOverride ?? templateDescription;
   const selectedImageTemplateKey = selectedImage
@@ -4145,6 +4147,12 @@ export default function MerchQuantumApp() {
 
         </div>
         {connected && shopId && workspaceMode ? (
+          showWorkspaceModeLoader ? (
+            <div className="relative z-10 flex min-h-[50vh] w-full flex-col items-center justify-center space-y-3">
+              <div className="h-3 w-3 rounded-full bg-purple-500 animate-pulse"></div>
+              <span className="font-sans text-sm font-normal text-white">{workspaceModeLoadingLabel}</span>
+            </div>
+          ) : (
           <Box className="relative z-10 border-slate-800 bg-[#020616] shadow-[0_24px_70px_-38px_rgba(2,6,22,0.95)]">
             <input
               ref={fileRef}
@@ -4689,6 +4697,7 @@ export default function MerchQuantumApp() {
               </>
             ) : null}
           </Box>
+          )
         ) : null}
 
       </div>
