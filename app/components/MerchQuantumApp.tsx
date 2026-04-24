@@ -165,7 +165,6 @@ type ProductGridProps = {
   pageSize: number;
   totalPages: number;
   loading: boolean;
-  isEditMode?: boolean;
   headerAccessory?: React.ReactNode;
   onToggleCollapsed?: () => void;
   onSelectAll?: () => void;
@@ -1598,7 +1597,6 @@ function ProductGrid({
   pageSize,
   totalPages,
   loading,
-  isEditMode = false,
   headerAccessory,
   onToggleCollapsed,
   onSelectAll,
@@ -1693,22 +1691,12 @@ function ProductGrid({
             );
           })}
         </div>
-      ) : (
-        <div className="w-full">
-            <div className="grid min-h-[148px] w-full overflow-hidden rounded-lg" aria-hidden={loading ? undefined : true}>
-            {loading ? (
-              <div className="col-start-1 row-start-1 relative z-10 flex h-full min-h-[148px] items-center justify-center px-3 py-3">
-                <div className="flex flex-col items-center justify-center space-y-3 py-10">
-                  <div className="h-3 w-3 animate-pulse rounded-full bg-purple-500"></div>
-                  <span className="font-sans text-sm font-normal text-white">
-                    Awaiting Quantum AI {isEditMode ? "Template" : "Product"}...
-                  </span>
-                </div>
-              </div>
-            ) : null}
-          </div>
+      ) : loading ? (
+        <div className="flex min-h-[50vh] w-full flex-col items-center justify-center space-y-3">
+          <div className="h-3 w-3 animate-pulse rounded-full bg-purple-500"></div>
+          <span className="font-sans text-sm font-normal text-white">Awaiting Quantum AI...</span>
         </div>
-      )}
+      ) : null}
 
       <div className="flex w-full items-center justify-between gap-2 pt-1 text-[11px]">
         <div className="min-w-0 flex-1 truncate text-slate-100">
@@ -4065,7 +4053,7 @@ export default function MerchQuantumApp() {
                   }}
                 >
                   {loadingApi ? (
-                    <span className="inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 px-3 py-2 leading-tight text-sm font-normal text-white">
+                    <span className="inline-flex h-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-slate-300">
                       <QuantOrbLoader />
                     </span>
                   ) : connected ? (
@@ -4073,7 +4061,7 @@ export default function MerchQuantumApp() {
                       <button
                         type="button"
                         onClick={() => { void disconnectProvider(); }}
-                        className="inline-flex items-center rounded-lg border border-[#FF2056]/40 bg-[#FF2056]/12 px-3 py-2 leading-tight text-sm font-normal text-white transition hover:bg-[#FF2056]/18"
+                        className="inline-flex h-8 items-center rounded-lg border border-[#FF2056]/40 bg-[#FF2056]/12 px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#FF8CA8] transition hover:bg-[#FF2056]/18"
                       >
                         Off
                       </button>
@@ -4082,7 +4070,7 @@ export default function MerchQuantumApp() {
                         type="button"
                         aria-label="Provider connected. Hover or click to disconnect."
                         onClick={() => setIsDisconnectArmed(true)}
-                        className="relative inline-flex items-center justify-center rounded-full border border-[#00BC7D]/35 bg-[#00BC7D]/10 px-3 py-2 leading-tight text-sm font-normal text-white transition hover:bg-[#00BC7D]/14"
+                        className="relative inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#00BC7D]/35 bg-[#00BC7D]/10 transition hover:bg-[#00BC7D]/14"
                       >
                         <span className="absolute inset-[7px] rounded-full bg-[#00BC7D] shadow-[0_0_14px_rgba(0,188,125,0.95)]" />
                         <span className="absolute inset-[3px] rounded-full border border-[#00BC7D]/55 animate-pulse" />
@@ -4095,7 +4083,7 @@ export default function MerchQuantumApp() {
                       disabled={!canSubmitProviderConnection}
                       aria-label="Connect provider"
                       title="Connect"
-                      className={`inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 px-3 py-2 leading-tight text-sm font-normal text-white transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/80 disabled:text-slate-200 ${
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 p-2 text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/80 disabled:text-slate-200 ${
                         !connected && token.trim().length > 0
                           ? "animate-pulse border-purple-400/40 text-purple-200 shadow-[0_0_15px_rgba(168,85,247,0.5)]"
                           : ""
@@ -4181,7 +4169,6 @@ export default function MerchQuantumApp() {
                 pageSize={bulkEditPageSize}
                 totalPages={bulkEditTotalPages}
                 loading={loadingProducts}
-                isEditMode
                 footerLabel={importStatus || bulkEditVisibleRangeLabel}
                 collapsed={isWorkspaceSelectionCollapsed}
                 selectAllLabel={hasAllBulkEditVisibleSelections ? "Deselect All" : "Select All"}
@@ -4189,7 +4176,7 @@ export default function MerchQuantumApp() {
                   <button
                     type="button"
                     onClick={() => setIsRoutingGridExpanded((current) => !current)}
-                    className="px-3 py-2 leading-tight text-sm font-normal text-white transition hover:text-white"
+                    className="font-medium text-slate-100 transition hover:text-white"
                   >
                     Mode
                   </button>
@@ -4244,7 +4231,7 @@ export default function MerchQuantumApp() {
                   <button
                     type="button"
                     onClick={() => setIsRoutingGridExpanded((current) => !current)}
-                    className="px-3 py-2 leading-tight text-sm font-normal text-white transition hover:text-white"
+                    className="font-medium text-slate-100 transition hover:text-white"
                   >
                     Mode
                   </button>
