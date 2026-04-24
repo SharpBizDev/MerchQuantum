@@ -6,8 +6,6 @@ import { getUserFacingErrorMessage, logErrorToConsole, type UserFacingErrorKind 
 
 const BOOT_TAGLINE = "EFFORTLESS PRODUCT CREATION.";
 const ACTIVE_BATCH_FILES = 50;
-const CONNECTED_TOTAL_BATCH_FILES = 50;
-const FIXED_TAG_COUNT = 13;
 const BRAND_WORDMARK_TEXT_CLASSES = "text-4xl sm:text-5xl";
 const BRAND_TAGLINE_TEXT_CLASSES = "text-[11px] sm:text-xs";
 const DETAIL_DATA_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-white";
@@ -252,7 +250,6 @@ const AI_LEAD_MAX_CHARS = 380;
 const IMPORT_QUEUE_LIMIT = 50;
 const DISPLAY_PREVIEW_SAMPLE_DIMENSION = 256;
 const DISPLAY_ALPHA_THRESHOLD = 12;
-const DISPLAY_TRANSPARENCY_RATIO_THRESHOLD = 0.04;
 const DISPLAY_DARK_BACKGROUND = "#000000";
 const DISPLAY_LIGHT_BACKGROUND = "#FFFFFF";
 const ARTWORK_SAFE_ZONE_PCT = 0.08;
@@ -400,21 +397,6 @@ const TEMPLATE_SPEC_SIGNAL =
 const TEMPLATE_THEME_FLUFF_SIGNAL =
   /\b(gift(?:able|ing)?|perfect for|great for|ideal for|buyers?|shoppers?|boutique|message-led|statement|conversation-starting|style|vibe|mood|weekend|casual wear|daily wear|everyday wear|show your|share your|uplifting|encouraging|inspiring)\b/i;
 
-const STERILE_PRODUCT_TYPE_RULES: Array<{ pattern: RegExp }> = [
-  { pattern: /\b(unisex(?: [a-z0-9&/+'-]+){0,5} (?:tee|t-shirt|t shirt))\b/i },
-  { pattern: /\b((?:heavy cotton|garment-dyed|ring-spun cotton|classic|premium|softstyle|oversized|women's|youth)(?: [a-z0-9&/+'-]+){0,4} (?:tee|t-shirt|t shirt))\b/i },
-  { pattern: /\b((?:unisex|pullover|zip|heavy blend|midweight|premium)(?: [a-z0-9&/+'-]+){0,4} hoodie)\b/i },
-  { pattern: /\b((?:unisex|crewneck|heavy blend|fleece|classic)(?: [a-z0-9&/+'-]+){0,4} sweatshirt)\b/i },
-  { pattern: /\b((?:racerback|muscle|women's|unisex)(?: [a-z0-9&/+'-]+){0,4} tank top)\b/i },
-  { pattern: /\b((?:ceramic|accent|travel|camping|latte)(?: [a-z0-9&/+'-]+){0,3} mug)\b/i },
-  { pattern: /\b((?:dad|trucker|snapback|bucket|beanie)(?: [a-z0-9&/+'-]+){0,3} hat)\b/i },
-  { pattern: /\b((?:vinyl|kiss-cut|die-cut|transparent)(?: [a-z0-9&/+'-]+){0,3} sticker)\b/i },
-  { pattern: /\b((?:tote|duffel|drawstring|crossbody)(?: [a-z0-9&/+'-]+){0,3} bag)\b/i },
-  { pattern: /\b((?:soy|scented|jar)(?: [a-z0-9&/+'-]+){0,3} candle)\b/i },
-  { pattern: /\b((?:cutting board|serving board|throw pillow|area rug|tea towel|journal|notebook)(?: [a-z0-9&/+'-]+){0,2})\b/i },
-  { pattern: /\b((?:canvas print|art print|poster|wall art)(?: [a-z0-9&/+'-]+){0,2})\b/i },
-];
-
 function makeId() {
   return typeof crypto !== "undefined" && crypto.randomUUID
     ? crypto.randomUUID()
@@ -445,22 +427,6 @@ function cleanTitle(filename: string) {
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     })
     .join(" ");
-}
-
-function normalizeRef(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  if (!/^https?:\/\//i.test(trimmed)) return trimmed;
-  try {
-    const url = new URL(trimmed);
-    const segments = url.pathname.split("/").filter(Boolean);
-    const idx = segments.findIndex((segment) => segment.toLowerCase() === "products");
-    return idx >= 0 && segments[idx + 1]
-      ? segments[idx + 1]
-      : segments[segments.length - 1] || trimmed;
-  } catch {
-    return trimmed;
-  }
 }
 
 function maskTokenCompact(value: string) {
@@ -678,14 +644,6 @@ async function choosePreviewBackgroundFromSource(src: string | null | undefined)
   }
 }
 
-function getFileSignature(file: File) {
-  return `${file.name}__${file.size}__${file.lastModified}`;
-}
-
-function isImage(file: File) {
-  return file.type.startsWith("image/");
-}
-
 function createPreviewObjectUrl(file: File) {
   return URL.createObjectURL(file);
 }
@@ -701,21 +659,160 @@ function buildLeadOnlyDescription(paragraphs: string[]) {
   return paragraphs.join("\n\n").trim();
 }
 
-function sanitizeTemplateDescriptionForPrebuffer(value: string, title: string) {
-  const paragraphs = buildParagraphsFromRawText(value);
-  if (paragraphs.length === 0) return "";
+function formatTemplateDescription(templateDescription: string) {
+  const normalized = decodeHtmlEntities(templateDescription)
+    .replace(/\r\n?/g, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")
+    .replace(/<p[^>]*>/gi, "")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/?(?:ul|ol)[^>]*>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "- ")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\u00a0/g, " ");
 
-  const filtered = paragraphs.filter((paragraph) => {
-    if (!paragraph) return false;
-    if (TEMPLATE_SPEC_SECTION_HEADERS.has(paragraph)) return true;
-    if (TEMPLATE_SPEC_SIGNAL.test(paragraph)) return true;
-    if (paragraph.length <= 30) return false;
-    const mentionsTitle = title && paragraph.toLowerCase().includes(title.toLowerCase());
-    if (mentionsTitle && TEMPLATE_THEME_FLUFF_SIGNAL.test(paragraph)) return false;
+  const rawLines = normalized.split("\n");
+  const out: string[] = [];
+
+  for (const rawLine of rawLines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      if (out.length && out[out.length - 1] !== "") out.push("");
+      continue;
+    }
+
+    const cleaned = trimmed.startsWith("-")
+      ? `- ${trimmed.replace(/^[-–—]\s*/, "")}`
+      : trimmed.replace(/\s+/g, " ");
+    const header = cleaned.replace(/:$/, "");
+
+    if (TEMPLATE_SPEC_SECTION_HEADERS.has(header) && out.length && out[out.length - 1] !== "") out.push("");
+    out.push(cleaned);
+  }
+
+  while (out.length && out[out.length - 1] === "") out.pop();
+  return out.join("\n");
+}
+
+function parseTemplateDescription(formattedDescription: string) {
+  const introParagraphs: string[] = [];
+  const sections: Array<{ heading: string; paragraphs: string[]; bullets: string[] }> = [];
+  let currentSection: { heading: string; paragraphs: string[]; bullets: string[] } | null = null;
+
+  const lines = formattedDescription
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const normalizedHeader = line.replace(/:$/, "");
+
+    if (TEMPLATE_SPEC_SECTION_HEADERS.has(normalizedHeader)) {
+      currentSection = {
+        heading: normalizedHeader,
+        paragraphs: [],
+        bullets: [],
+      };
+      sections.push(currentSection);
+      continue;
+    }
+
+    if (line.startsWith("- ")) {
+      const bullet = line.replace(/^[-–—]\s*/, "").trim();
+      if (currentSection) {
+        currentSection.bullets.push(bullet);
+      } else {
+        introParagraphs.push(bullet);
+      }
+      continue;
+    }
+
+    if (currentSection) {
+      currentSection.paragraphs.push(line);
+    } else {
+      introParagraphs.push(line);
+    }
+  }
+
+  return { introParagraphs, sections };
+}
+
+function normalizeTemplateComparableValue(value: string) {
+  return stripHtmlTags(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function isStaticTemplateSpecLine(line: string, templateTitle = "") {
+  const cleaned = decodeHtmlEntities(String(line || ""))
+    .replace(/^[-–—]\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return false;
+
+  const normalizedHeader = cleaned.replace(/:$/, "");
+  if (TEMPLATE_SPEC_SECTION_HEADERS.has(normalizedHeader)) return true;
+
+  const normalizedLine = normalizeTemplateComparableValue(cleaned);
+  const normalizedTitle = normalizeTemplateComparableValue(templateTitle);
+  if (normalizedTitle && normalizedLine === normalizedTitle) return false;
+
+  if (!TEMPLATE_SPEC_SIGNAL.test(cleaned)) return false;
+
+  if (TEMPLATE_THEME_FLUFF_SIGNAL.test(cleaned) && !TEMPLATE_SPEC_SECTION_HEADERS.has(normalizedHeader)) {
     return false;
-  });
+  }
 
-  return filtered.join("\n").trim();
+  return true;
+}
+
+function joinTemplateSpecLines(lines: string[]) {
+  const out: string[] = [];
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      if (out.length && out[out.length - 1] !== "") out.push("");
+      continue;
+    }
+    out.push(line);
+  }
+  while (out.length && out[out.length - 1] === "") out.pop();
+  return out.join("\n");
+}
+
+export function sanitizeTemplateDescriptionForPrebuffer(value: string, title: string) {
+  const formatted = formatTemplateDescription(value);
+  if (!formatted.trim()) return "";
+
+  const parsed = parseTemplateDescription(formatted);
+  if (parsed.sections.length > 0) {
+    const anchoredSectionLines: string[] = [];
+    for (const section of parsed.sections) {
+      anchoredSectionLines.push(section.heading);
+      for (const paragraph of section.paragraphs) {
+        anchoredSectionLines.push(paragraph);
+      }
+      for (const bullet of section.bullets) {
+        anchoredSectionLines.push(`- ${bullet}`);
+      }
+      anchoredSectionLines.push("");
+    }
+    const sanitizedFromSections = joinTemplateSpecLines(anchoredSectionLines);
+    if (sanitizedFromSections) return sanitizedFromSections;
+  }
+
+  const preservedIntro = parsed.introParagraphs.filter((line) => isStaticTemplateSpecLine(line, title));
+  const sanitizedIntro = joinTemplateSpecLines(preservedIntro);
+  if (sanitizedIntro) return sanitizedIntro;
+
+  const looseLines = formatted
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => isStaticTemplateSpecLine(line, title));
+
+  return joinTemplateSpecLines(looseLines);
 }
 
 function decodeHtmlEntities(value: string) {
@@ -784,7 +881,7 @@ function normalizeAiLeadParagraphs(paragraphs: string[]) {
     .map((paragraph) => trimToSentence(paragraph, AI_LEAD_MAX_CHARS));
 }
 
-function splitDetailDescriptionForDisplay(specBlock: string, leadParagraphs: string[], fullDescriptionHtml: string) {
+export function splitDetailDescriptionForDisplay(specBlock: string, leadParagraphs: string[], fullDescriptionHtml: string) {
   const normalizedLead = normalizeAiLeadParagraphs(leadParagraphs);
   if (normalizedLead.length > 0) {
     return {
@@ -818,6 +915,29 @@ function extractBuyerFacingDescriptionFromListing(rawDescription: string, specBl
   return buyerParagraphs.join("\n\n").trim() || specBlock;
 }
 
+export function canManualOverrideListingCopy(title: string, description: string) {
+  const normalizedTitle = clampTitleForListing(title).trim();
+  const normalizedDescription = String(description || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, LISTING_LIMITS.descriptionMax)
+    .trim();
+  const paragraphs = normalizedDescription
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  return (
+    normalizedTitle.length >= LISTING_LIMITS.titleMin
+    && normalizedDescription.length >= LISTING_LIMITS.descriptionMin
+    && paragraphs.length >= 2
+    && paragraphs[0].trim().length >= 24
+    && paragraphs[1].trim().length >= 24
+  );
+}
+
 function normalizeTagsFromPayload(payload: unknown) {
   const base = Array.isArray(payload)
     ? payload
@@ -838,6 +958,16 @@ function normalizeTagsFromPayload(payload: unknown) {
     });
 }
 
+function buildManualOverrideTags(title: string, description: string, count: number) {
+  const words = `${title} ${description}`
+    .split(/\s+/)
+    .map((word) => word.replace(/[^A-Za-z0-9'-]+/g, "").trim())
+    .filter((word) => word.length >= 3)
+    .filter((word) => !STOP_WORDS.has(word.toLowerCase()));
+
+  return normalizeTagsFromPayload(words).slice(0, count);
+}
+
 function clampTitleForListing(value: string) {
   const clean = value.replace(/\s+/g, " ").trim();
   return safeTitle(clean, clean).slice(0, LISTING_LIMITS.titleMax);
@@ -846,6 +976,12 @@ function clampTitleForListing(value: string) {
 function clampDescriptionForListing(value: string) {
   const clean = stripHtmlTags(value).replace(/\s+/g, " ").trim();
   return clean.slice(0, LISTING_LIMITS.descriptionMax);
+}
+
+function autosizeTextarea(element: HTMLTextAreaElement | null) {
+  if (!element) return;
+  element.style.height = "0px";
+  element.style.height = `${Math.max(element.scrollHeight, 124)}px`;
 }
 
 function buildLegacyContextForImage(image: Img) {
@@ -989,6 +1125,13 @@ function Box({ className = "", children }: { className?: string; children: React
 type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
 type SelectProps = React.SelectHTMLAttributes<HTMLSelectElement>;
 
+function getNodeText(node: React.ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(getNodeText).join("");
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) return getNodeText(node.props.children);
+  return "";
+}
+
 function Input({ className = "", ...props }: InputProps) {
   return (
     <input
@@ -1008,14 +1151,27 @@ function SetupInput({ className = "", ...props }: InputProps) {
 }
 
 function SetupSelect({ className = "", children, ...props }: SelectProps) {
+  const isEmptyValue = props.value === "" || props.value == null;
+  const emptyOptionLabel = React.Children.toArray(children).reduce<string | null>((foundLabel, child) => {
+    if (foundLabel || !React.isValidElement<{ value?: string | number | readonly string[]; children?: React.ReactNode }>(child)) return foundLabel;
+    if (String(child.props.value ?? "") !== "") return foundLabel;
+    const label = getNodeText(child.props.children).trim();
+    return label || foundLabel;
+  }, null);
+
   return (
     <div className={`relative min-w-0 w-full text-sm font-normal text-white ${props.disabled ? "cursor-not-allowed" : ""}`}>
       <select
-        className={`box-border h-9 w-full min-w-0 appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 pr-8 font-sans text-sm font-normal text-white outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
+        className={`box-border h-9 w-full min-w-0 appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 pr-8 font-sans text-sm font-normal outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${isEmptyValue ? "text-transparent" : "text-white"} ${className}`}
         {...props}
       >
         {children}
       </select>
+      {isEmptyValue && emptyOptionLabel ? (
+        <span className={`pointer-events-none absolute left-3 right-8 top-1/2 -translate-y-1/2 truncate font-sans text-sm font-normal leading-6 ${props.disabled ? "text-slate-200" : "text-white"}`}>
+          {emptyOptionLabel}
+        </span>
+      ) : null}
       <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-100" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
       </svg>
@@ -1088,7 +1244,6 @@ function ProductGrid({
   collapsed,
   rangeLabel,
   page,
-  pageSize,
   totalPages,
   loading,
   headerAccessory,
@@ -1382,7 +1537,6 @@ export default function MerchQuantumApp() {
   const supportsImportedPublish = resolvedProviderId === "printify";
   const supportsProviderMetadataSync = resolvedProviderId === "printify";
   const activeBatchLimit = ACTIVE_BATCH_FILES;
-  const totalBatchLimit = CONNECTED_TOTAL_BATCH_FILES;
   const allImages = [...images, ...completedImportedImages];
   const queuedImportedImages = queuedImages.filter((img) => img.sourceType === "imported");
   const isCreateMode = workspaceMode === "create";
@@ -1404,11 +1558,6 @@ export default function MerchQuantumApp() {
   const visibleProducts = useMemo(() => {
     return productSource.filter((p) => p.shopId === shopId);
   }, [shopId, productSource]);
-  const importedQueueCount = useMemo(
-    () => allImages.filter((img) => img.sourceType === "imported").length + queuedImportedImages.length,
-    [allImages, queuedImportedImages]
-  );
-
   const sortedImages = useMemo(() => {
     return [...images].sort((a, b) => {
       const statusDelta = getStatusSortValue(getResolvedItemStatus(a)) - getStatusSortValue(getResolvedItemStatus(b));
@@ -1445,12 +1594,9 @@ export default function MerchQuantumApp() {
     [activeGridProductId, visibleProducts]
   );
   const readyCount = images.filter((img) => getResolvedItemStatus(img) === "ready").length;
-  const errorCount = images.filter((img) => getResolvedItemStatus(img) === "error").length;
   const processingCount = images.filter((img) => getResolvedItemStatus(img) === "pending").length;
   const draftReadyCount = images.filter((img) => img.sourceType !== "imported" && getResolvedItemStatus(img) === "ready").length;
   const hasAnyLoadedImages = allImages.length > 0 || queuedImages.length > 0;
-  const completedGenerationCount = readyCount + errorCount;
-  const generationProgressPct = images.length > 0 ? Math.round((completedGenerationCount / images.length) * 100) : 0;
   const isWorkspaceConfigured = isCreateMode ? connected && !!shopId && !!template : hasWorkspaceRoute;
   const canSubmitProviderConnection = Boolean(provider && isLiveProvider && token.trim() && !loadingApi && !connected);
   const isQuantumAiGenerating = processingCount > 0;
@@ -1460,7 +1606,6 @@ export default function MerchQuantumApp() {
     ? canShowDetailWorkspace && (!!activeGridProduct || hasAnyLoadedImages)
     : canShowDetailWorkspace && (hasAnyLoadedImages || !!selectedImage || !!activeGridProduct);
   const canShowDetailPanel = canShowWorkspacePreview && hasAnyLoadedImages && !!selectedImage;
-  const canShowLoadedQueueGrid = canShowWorkspacePreview && sortedImages.length > 0;
   const showPreviewStats = hasAnyLoadedImages;
   const showWorkspaceModeLoader = hasWorkspaceRoute && loadingProducts && visibleProducts.length === 0;
   const selectedImageFieldStates = selectedImage?.aiFieldStates ?? createAiFieldStates("idle");
@@ -1560,8 +1705,6 @@ export default function MerchQuantumApp() {
     () => new Set([...allImages, ...queuedImages].map((img) => img.providerProductId).filter((value): value is string => !!value)),
     [allImages, queuedImages]
   );
-  const loadedStatCount = allImages.length;
-  const queuedStatCount = queuedImages.length;
   const hasBulkEditStagedSelections = pendingTemplateSelectionIds.length > 0;
   const selectionPageSize = 25;
   const createTemplatePageSize = selectionPageSize;
@@ -1774,6 +1917,484 @@ export default function MerchQuantumApp() {
     if (descriptionParagraphs.length > 0) hints.push(`Buyer-facing lead: ${descriptionParagraphs.join(" | ")}`);
     if (tagsForHints.length > 0) hints.push(`Preserve these search tags if they still fit: ${tagsForHints.join(", ")}`);
     return hints;
+  }
+
+  async function runAiListingForImage(
+    nextImage: Img,
+    options: {
+      userHints?: string[];
+      legacyContext?: string;
+      titleSeed?: string;
+      pendingReason?: string;
+      preserveVisibleCopyOnFailure?: boolean;
+      successMessage?: string;
+      targetField?: "title" | "description" | "full";
+    } = {}
+  ) {
+    const requestTemplateDescription = nextImage.templateDescriptionOverride ?? templateDescription;
+    const requestTemplateReference = nextImage.templateReferenceOverride ?? (template?.reference || "");
+    const requestTemplateKey = `${requestTemplateReference || "no-template"}::${requestTemplateDescription.trim()}`;
+    const requestUsesGlobalTemplate = !nextImage.templateDescriptionOverride;
+    const requestOwner = Symbol(nextImage.id);
+
+    aiLoopBusyRef.current = requestOwner;
+    setImages((current) =>
+      current.map((img) =>
+        img.id === nextImage.id
+          ? {
+              ...img,
+              aiProcessing: true,
+              aiFieldStates: createAiFieldStates("loading"),
+              status: "pending",
+              statusReason: options.pendingReason || "Quantum AI is analyzing artwork.",
+            }
+          : img
+      )
+    );
+
+    try {
+      const imageDataUrl = await readDataUrl(nextImage.file);
+      const requestProductFamily = nextImage.productFamilyOverride || resolveProductFamily(nextImage.cleaned, requestTemplateDescription);
+      const sterileTemplateContext = buildTemplateContext(requestTemplateDescription, requestProductFamily);
+      const legacyContext = options.legacyContext || buildLegacyContextForImage(nextImage);
+      const response = await fetchWithTimeout(
+        "/api/ai/listing",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            imageDataUrl,
+            title: options.titleSeed || nextImage.originalListingTitle || undefined,
+            fileName: nextImage.name,
+            templateContext: sterileTemplateContext,
+            productFamily: requestProductFamily,
+            userHints: options.userHints?.length ? options.userHints : undefined,
+            legacyContext,
+          }),
+        },
+        60000
+      );
+
+      const data = await parseResponsePayload(response);
+      if (!response.ok) throw new Error(data?.error || `AI request failed with status ${response.status}.`);
+      if (requestUsesGlobalTemplate && activeTemplateKeyRef.current !== requestTemplateKey) return;
+
+      const qcApproved = data?.qcApproved !== false;
+      if (!qcApproved) {
+        const qcFlags = Array.isArray(data?.reasonFlags)
+          ? data.reasonFlags.filter((flag: unknown): flag is string => typeof flag === "string")
+          : [];
+        const message = qcFlags.length
+          ? qcFlags.join(" • ")
+          : "Quantum AI rejected this artwork because the design appears blank, illegible, or too distorted for safe listing generation.";
+
+        setImages((current) =>
+          current.map((img) => {
+            if (img.id !== nextImage.id) return img;
+
+            if (!options.preserveVisibleCopyOnFailure) {
+              return {
+                ...img,
+                final: "",
+                finalDescription: "",
+                tags: [],
+                aiProcessing: false,
+                aiFieldStates: {
+                  title: "error",
+                  description: "error",
+                  tags: "error",
+                },
+                status: "error",
+                statusReason: message,
+                processedTemplateKey: requestTemplateKey,
+                aiDraft: undefined,
+              };
+            }
+
+            const preservedBuyerDescription = splitDetailDescriptionForDisplay(
+              img.templateDescriptionOverride ?? templateDescription,
+              img.aiDraft?.leadParagraphs || [],
+              img.finalDescription
+            ).buyerFacingDescription;
+
+            return {
+              ...img,
+              aiProcessing: false,
+              aiFieldStates: {
+                title: cleanTitle(String(img.final || img.aiDraft?.title || "")).trim() ? "ready" : "error",
+                description: preservedBuyerDescription.trim() ? "ready" : "error",
+                tags: img.tags.some((tag) => String(tag || "").trim()) ? "ready" : "error",
+              },
+              status: "error",
+              statusReason: message,
+              processedTemplateKey: requestTemplateKey,
+            };
+          })
+        );
+        setAiAssistStatus(message);
+        return;
+      }
+
+      const fallbackTitle = clampTitleForListing(safeTitle(nextImage.final, nextImage.cleaned));
+      const titleFromApi = typeof data?.title === "string" ? data.title : "";
+      const finalTitle = clampTitleForListing(safeTitle(titleFromApi, fallbackTitle));
+      const descriptionText = clampDescriptionForListing(normalizeDescriptionText(data?.description));
+      const descriptionParagraphs = normalizeAiLeadParagraphs(
+        Array.isArray(data?.leadParagraphs)
+          ? data.leadParagraphs
+          : descriptionTextToParagraphs(descriptionText)
+      );
+      const finalDescription = descriptionParagraphs.length
+        ? (
+          requestTemplateDescription.trim()
+            ? formatProductDescriptionWithSections(descriptionParagraphs, requestTemplateDescription)
+            : buildLeadOnlyDescription(descriptionParagraphs)
+        )
+        : "";
+      const tags = normalizeTagsFromPayload(data?.tags).slice(0, LISTING_LIMITS.tagCount);
+      const finalLead = descriptionParagraphs;
+      const confidence = Number.isFinite(data?.confidence) ? clamp(Number(data.confidence), 0, 1) : 0;
+      const reasonFlags = Array.isArray(data?.reasonFlags)
+        ? data.reasonFlags.filter((flag: unknown): flag is string => typeof flag === "string")
+        : [];
+      const grade = data?.grade === "green" || data?.grade === "red"
+        ? data.grade
+        : data?.publishReady === true
+          ? "green"
+          : "red";
+      const source = data?.source === "gemini" || data?.source === "fallback"
+        ? data.source
+        : "fallback";
+      const publishReady =
+        typeof data?.publishReady === "boolean"
+          ? data.publishReady
+          : qcApproved && grade === "green";
+      const hasCompleteStructuredOutput = !!finalTitle && !!finalDescription && tags.length > 0;
+      if (!hasCompleteStructuredOutput) {
+        throw new Error("Quantum AI returned incomplete structured output.");
+      }
+
+      const nextFieldStates: AiFieldStates = publishReady
+        ? { title: "ready", description: "ready", tags: "ready" }
+        : { title: "error", description: "error", tags: "error" };
+      const status: ItemStatus = publishReady ? "ready" : "error";
+      const statusReason = reasonFlags.length
+        ? reasonFlags.join(" • ")
+        : status === "ready"
+          ? source === "fallback"
+            ? "Quantum AI produced a publish-ready fallback draft."
+            : "AI draft passed publish checks."
+          : source === "fallback"
+            ? "Quantum AI completed a fallback draft, but it did not pass publish checks."
+            : "Quantum AI could not generate a publish-ready draft for this image.";
+      const targetField = options.targetField || "full";
+      const currentVisibleTitle = safeTitle(nextImage.final, nextImage.originalListingTitle || nextImage.cleaned);
+      const currentBuyerDescription = splitDetailDescriptionForDisplay(
+        requestTemplateDescription,
+        nextImage.aiDraft?.leadParagraphs || [],
+        nextImage.finalDescription
+      ).buyerFacingDescription;
+      const currentVisibleDescription = currentBuyerDescription
+        ? buildImageDescriptionHtmlForEdit(currentBuyerDescription, nextImage)
+        : "";
+      const currentVisibleTags = normalizeTagsFromPayload(nextImage.tags).slice(0, LISTING_LIMITS.tagCount);
+      const targetedPublishReady =
+        targetField === "full"
+          ? publishReady
+          : qcApproved
+            && !!(targetField === "title" ? finalTitle : currentVisibleTitle)
+            && !!(targetField === "description" ? finalDescription : currentVisibleDescription)
+            && currentVisibleTags.length > 0;
+      const nextStatus: ItemStatus = targetedPublishReady ? "ready" : "error";
+      const nextStatusReason =
+        targetField === "full"
+          ? statusReason
+          : targetedPublishReady
+            ? targetField === "title"
+              ? "Quantum AI refreshed the title."
+              : "Quantum AI refreshed the description."
+            : reasonFlags.length > 0
+              ? reasonFlags.join(" • ")
+              : `Quantum AI refreshed the ${targetField}, but this draft still needs the remaining listing fields.`;
+      const visibleTitle =
+        targetField === "description"
+          ? currentVisibleTitle
+          : safeTitle(finalTitle, currentVisibleTitle);
+      const visibleDescription =
+        targetField === "title"
+          ? currentVisibleDescription
+          : finalDescription || currentVisibleDescription;
+      const visibleTags =
+        targetField === "full"
+          ? (publishReady ? tags : [])
+          : currentVisibleTags;
+
+      setImages((current) =>
+        current.map((img) =>
+          img.id === nextImage.id
+            ? {
+                ...img,
+                final: visibleTitle,
+                finalDescription: visibleDescription,
+                tags: visibleTags,
+                aiProcessing: false,
+                aiFieldStates:
+                  targetField === "title"
+                    ? { ...img.aiFieldStates, title: visibleTitle ? "ready" : "error" }
+                    : targetField === "description"
+                      ? { ...img.aiFieldStates, description: visibleDescription ? "ready" : "error" }
+                      : nextFieldStates,
+                status: targetField === "full" ? status : nextStatus,
+                statusReason: nextStatusReason,
+                processedTemplateKey: requestTemplateKey,
+                aiDraft: {
+                  title: targetField === "description" ? (img.aiDraft?.title || currentVisibleTitle) : finalTitle,
+                  leadParagraphs: targetField === "title" ? (img.aiDraft?.leadParagraphs || finalLead) : finalLead,
+                  model: typeof data?.model === "string" ? data.model : AI_MODEL_LABEL,
+                  confidence,
+                  templateReference: requestTemplateReference,
+                  reasonFlags,
+                  source,
+                  grade,
+                  qcApproved,
+                  publishReady: targetField === "full" ? publishReady : targetedPublishReady,
+                },
+              }
+            : img
+        )
+      );
+      setAiAssistStatus(options.successMessage || "");
+    } catch (error) {
+      if (requestUsesGlobalTemplate && activeTemplateKeyRef.current !== requestTemplateKey) return;
+      const message = formatApiError("listingGeneration", error, "[MerchQuantum] AI listing failed");
+      setImages((current) =>
+        current.map((img) => {
+          if (img.id !== nextImage.id) return img;
+
+          if (!options.preserveVisibleCopyOnFailure) {
+            return {
+              ...img,
+              aiProcessing: false,
+              aiFieldStates: {
+                title: "error",
+                description: "error",
+                tags: "error",
+              },
+              status: "error",
+              statusReason: message,
+              processedTemplateKey: requestTemplateKey,
+              aiDraft: undefined,
+            };
+          }
+
+          const preservedBuyerDescription = splitDetailDescriptionForDisplay(
+            img.templateDescriptionOverride ?? templateDescription,
+            img.aiDraft?.leadParagraphs || [],
+            img.finalDescription
+          ).buyerFacingDescription;
+          const preservedFieldStates: AiFieldStates = {
+            title: cleanTitle(String(img.final || img.aiDraft?.title || "")).trim() ? "ready" : "error",
+            description: preservedBuyerDescription.trim() ? "ready" : "error",
+            tags: img.tags.some((tag) => String(tag || "").trim()) ? "ready" : "error",
+          };
+
+          return {
+            ...img,
+            aiProcessing: false,
+            aiFieldStates: preservedFieldStates,
+            status: "error",
+            statusReason: message,
+            processedTemplateKey: requestTemplateKey,
+          };
+        })
+      );
+      setAiAssistStatus(message);
+    } finally {
+      if (aiLoopBusyRef.current === requestOwner) {
+        aiLoopBusyRef.current = null;
+      }
+    }
+  }
+
+  function beginInlineEdit(field: Exclude<InlineEditableField, null>) {
+    if (field === "title") {
+      if (!canEditDetailTitle) return;
+      setEditableTitleDraft(shouldAwaitQuantumTitle ? "" : detailTitle || "");
+    } else {
+      if (!canEditDetailDescription) return;
+      setEditableDescriptionDraft(shouldAwaitQuantumDescription ? "" : detailBuyerDescription || "");
+    }
+
+    setInlineSaveFeedback(null);
+    setAiAssistStatus("");
+    setEditingField(field);
+  }
+
+  async function commitInlineEdit(field: Exclude<InlineEditableField, null>, rawValue: string) {
+    const nextValue = (
+      field === "title"
+        ? clampTitleForListing(rawValue)
+        : clampDescriptionForListing(rawValue)
+    ).replace(/\r\n?/g, "\n").trim();
+    const previousValue = (field === "title" ? detailTitle : detailBuyerDescription).trim();
+
+    if (!nextValue) {
+      setEditingField(null);
+      setInlineFeedbackState(field, "error", `${field === "title" ? "Title" : "Description"} cannot be blank.`);
+      return;
+    }
+
+    if (nextValue === previousValue) {
+      setEditingField(null);
+      setInlineSaveFeedback(null);
+      return;
+    }
+
+    if (selectedImage && canEditSelectedImageCopy) {
+      setImages((current) =>
+        current.map((img) => {
+          if (img.id !== selectedImage.id) return img;
+
+          const currentBuyerDescription = splitDetailDescriptionForDisplay(
+            img.templateDescriptionOverride ?? templateDescription,
+            img.aiDraft?.leadParagraphs || [],
+            img.finalDescription
+          ).buyerFacingDescription;
+          const nextTitle = field === "title"
+            ? nextValue
+            : clampTitleForListing(
+              safeTitle(img.final, img.aiDraft?.title || img.originalListingTitle || img.cleaned)
+            );
+          const nextBuyerDescription = field === "description" ? nextValue : currentBuyerDescription;
+          const nextLeadParagraphs = descriptionTextToParagraphs(nextBuyerDescription);
+          const nextDescriptionHtml = buildImageDescriptionHtmlForEdit(nextBuyerDescription, img);
+          const preservedTags = normalizeTagsFromPayload(img.tags).slice(0, LISTING_LIMITS.tagCount);
+          const derivedTags = preservedTags.length > 0
+            ? preservedTags
+            : buildManualOverrideTags(nextTitle, nextBuyerDescription, LISTING_LIMITS.tagCount);
+          const readyAfterManualOverride =
+            canManualOverrideFlaggedImage(img)
+            && canManualOverrideListingCopy(nextTitle, nextBuyerDescription)
+            && derivedTags.length > 0;
+
+          return {
+            ...img,
+            final: nextTitle,
+            finalDescription: nextDescriptionHtml,
+            tags: readyAfterManualOverride ? derivedTags : preservedTags,
+            aiFieldStates: readyAfterManualOverride
+              ? {
+                  title: "ready",
+                  description: "ready",
+                  tags: derivedTags.length > 0 ? "ready" : "error",
+                }
+              : {
+                  ...img.aiFieldStates,
+                  [field]: "ready",
+                },
+            status: readyAfterManualOverride ? "ready" : "error",
+            statusReason: readyAfterManualOverride
+              ? "Manual override approved this draft for upload."
+              : img.statusReason,
+            aiDraft: {
+              title: nextTitle,
+              leadParagraphs: nextLeadParagraphs,
+              model: img.aiDraft?.model || AI_MODEL_LABEL,
+              confidence: Math.max(img.aiDraft?.confidence || 0, readyAfterManualOverride ? 0.74 : 0.52),
+              templateReference:
+                img.aiDraft?.templateReference
+                || img.templateReferenceOverride
+                || template?.reference
+                || "",
+              reasonFlags: readyAfterManualOverride
+                ? ["Manual override completed the missing listing fields."]
+                : img.aiDraft?.reasonFlags || [],
+              source: img.aiDraft?.source || "fallback",
+              grade: readyAfterManualOverride ? "green" : (img.aiDraft?.grade || "red"),
+              qcApproved: img.aiDraft?.qcApproved !== false,
+              publishReady: readyAfterManualOverride,
+            },
+          };
+        })
+      );
+
+      setEditingField(null);
+      setInlineFeedbackState(
+        field,
+        "saved",
+        canManualRescueSelectedImage
+          ? "Saved and marked Good."
+          : "Saved to this draft."
+      );
+      return;
+    }
+
+    if (!template || !shopId || !canEditImportedListing) {
+      setEditingField(null);
+      setInlineFeedbackState(field, "error", "Select a provider listing before editing metadata.");
+      return;
+    }
+
+    if (field === "title") {
+      setImportedListingTitle(nextValue);
+      setTemplate((current) => (current ? { ...current, nickname: nextValue } : current));
+    } else {
+      setImportedListingDescription(nextValue);
+    }
+
+    setManualPrebufferOverride(true);
+
+    if (!supportsProviderMetadataSync || !resolvedProviderId || !hasAnyLoadedImages) {
+      setEditingField(null);
+      const providerName = selectedProvider?.label || "This provider";
+      setInlineFeedbackState(
+        field,
+        "saved",
+        hasAnyLoadedImages
+          ? `${providerName} metadata sync is not live yet, so this change is saved locally.`
+          : "Saved locally for this draft."
+      );
+      return;
+    }
+
+    setInlineFeedbackState(field, "saving", field === "title" ? "Saving title..." : "Saving description...", 0);
+
+    try {
+      const body =
+        field === "title"
+          ? {
+              provider: resolvedProviderId,
+              shopId,
+              productId: template.reference,
+              title: nextValue,
+            }
+          : {
+              provider: resolvedProviderId,
+              shopId,
+              productId: template.reference,
+              description: buildEditableDescriptionHtml(nextValue),
+            };
+
+      const response = await fetchWithTimeout(
+        "/api/update-listing-metadata",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+        30000
+      );
+      const data = await parseResponsePayload(response);
+      if (!response.ok) {
+        throw new Error(data?.error || `Metadata save failed with status ${response.status}.`);
+      }
+
+      setEditingField(null);
+      setInlineFeedbackState(field, "saved", "Saved to provider.");
+    } catch (error) {
+      setEditingField(null);
+      setInlineFeedbackState(field, "error", formatApiError("metadataSave", error, "[MerchQuantum] metadata save failed"));
+    }
   }
 
   async function rerollSelectedImageField(field: "title" | "description") {
@@ -2094,64 +2715,6 @@ export default function MerchQuantumApp() {
     }
 
     fileRef.current?.click();
-  }
-
-  async function addFiles(list: FileList | null) {
-    if (!list) return;
-    if (!connected) return;
-    const incoming = Array.from(list);
-    const imageFiles = incoming.filter(isImage);
-    const ignoredByType = incoming.length - imageFiles.length;
-    const existingSignatures = new Set(
-      [...images, ...completedImportedImages, ...queuedImages]
-        .map((entry) => getFileSignature(entry.file))
-        .filter(Boolean)
-    );
-    const uniqueImageFiles = imageFiles.filter((file) => {
-      const signature = getFileSignature(file);
-      if (existingSignatures.has(signature)) return false;
-      existingSignatures.add(signature);
-      return true;
-    });
-    const currentTotal = images.length + queuedImages.length;
-    const room = Math.max(0, totalBatchLimit - currentTotal);
-    const accepted = uniqueImageFiles.slice(0, room);
-    const ignoredByLimit = Math.max(0, uniqueImageFiles.length - accepted.length);
-
-    const good = await Promise.all(accepted.map(async (file) => {
-      const cleaned = cleanTitle(file.name);
-      const preview = createPreviewObjectUrl(file);
-      return {
-        id: makeId(),
-        name: file.name,
-        file,
-        preview,
-        cleaned,
-        final: cleaned,
-        finalDescription: "",
-        tags: [],
-        status: "pending" as ItemStatus,
-        statusReason: "Quantum AI is preparing listing copy.",
-        aiFieldStates: createAiFieldStates("idle"),
-      } satisfies Img;
-    }));
-
-    const { active: mergedActive, queued: mergedQueued } = appendToActiveBatch(images, queuedImages, good, activeBatchLimit);
-    setImages(mergedActive);
-    setQueuedImages(mergedQueued);
-    if (!selectedId && mergedActive[0]) setSelectedId(mergedActive[0].id);
-
-    const parts: string[] = [];
-    if (mergedActive.length !== images.length || mergedQueued.length) {
-      parts.push(`Loaded ${good.length} image${good.length === 1 ? "" : "s"}.`);
-    }
-    if (mergedQueued.length) {
-      parts.push(`Queued ${mergedQueued.length} for later batches.`);
-    }
-    if (ignoredByType) parts.push(`Ignored ${ignoredByType} non-image file${ignoredByType === 1 ? "" : "s"}.`);
-    if (ignoredByLimit) {
-      parts.push(`Ignored ${ignoredByLimit} image${ignoredByLimit === 1 ? "" : "s"} above the ${CONNECTED_TOTAL_BATCH_FILES}-image total cap.`);
-    }
   }
 
   async function loadProductsForShop(nextShopId: string) {
@@ -3322,6 +3885,7 @@ export default function MerchQuantumApp() {
                                   </div>
                               </div>
                             </div>
+                          </div>
                           ) : null}
                         </div>
                         {canShowDetailPanel ? (
@@ -3565,11 +4129,9 @@ export default function MerchQuantumApp() {
               </div>
               </>
             ) : null}
-          </Box>
-            </div>
-          </div>
+          </>
         ) : null}
-
+        </div>
       </div>
       <CreativeWellspringBrandMark docked />
       </div>
