@@ -1647,9 +1647,9 @@ function ProductGrid({
         </div>
       </div>
 
-      {items.length > 0 ? (
-        <div className="grid h-full w-full grid-cols-5 gap-1 overflow-hidden snap-y snap-mandatory">
-          {visibleItems.map((product, index) => {
+        {items.length > 0 ? (
+          <div className="grid h-full w-full grid-cols-5 gap-1 overflow-hidden snap-y snap-mandatory">
+            {visibleItems.map((product, index) => {
             const globalIndex = page * pageSize + index;
             const isSelected = selectedIds.includes(product.id);
             const isActive = activeId === product.id;
@@ -1699,14 +1699,16 @@ function ProductGrid({
                 </SmartThumbnail>
               </button>
             );
-          })}
-        </div>
-      ) : loading ? (
-        <div className="flex flex-col items-center justify-center space-y-3 min-h-[50vh] w-full">
-          <div className="w-3 h-3 bg-purple-500 rounded-full animate-pulse"></div>
-          <span className="font-sans text-sm font-normal text-white">Awaiting Quantum AI...</span>
-        </div>
-      ) : null}
+            })}
+          </div>
+        ) : loading ? (
+          <div className="flex w-full min-h-[16rem] items-center justify-center">
+            <div className="flex flex-col items-center justify-center gap-3 px-6 text-center">
+              <QuantOrbLoader />
+              <span className="font-sans text-sm font-normal text-white">Awaiting Quantum AI...</span>
+            </div>
+          </div>
+        ) : null}
 
       <div className="flex w-full items-center justify-between gap-2 pt-1 text-[11px]">
         <div className="min-w-0 flex-1 truncate text-slate-100">
@@ -1759,6 +1761,17 @@ function QuantOrbLoader({ className = "" }: { className?: string }) {
       </span>
       <span className="absolute inset-[4px] rounded-full bg-[#7F22FE] shadow-[0_0_12px_rgba(127,34,254,0.9)]" />
     </span>
+  );
+}
+
+function WorkspaceModeLoadingOverlay({ label }: { label: string }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+      <div className="flex flex-col items-center justify-center gap-3 px-6 text-center">
+        <QuantOrbLoader />
+        <span className="font-sans text-sm font-normal text-white">{label}</span>
+      </div>
+    </div>
   );
 }
 
@@ -2149,6 +2162,18 @@ export default function MerchQuantumApp() {
   const bulkEditVisibleRangeLabel = visibleProducts.length > 0
     ? `${safeBulkEditPage * bulkEditPageSize + 1}-${Math.min(visibleProducts.length, safeBulkEditPage * bulkEditPageSize + bulkEditVisibleProducts.length)} of ${visibleProducts.length}`
     : "0 of 0";
+  const workspaceLoadingPlaceholderItems = useMemo<Product[]>(
+    () =>
+      Array.from({ length: isWorkspaceSelectionCollapsed ? 5 : selectionPageSize }, (_, index) => ({
+        id: `workspace-loading-placeholder-${workspaceMode || "mode"}-${index}`,
+        title: `Loading placeholder ${index + 1}`,
+        type: "Template",
+        shopId,
+        description: "",
+        previewUrl: "",
+      })),
+    [isWorkspaceSelectionCollapsed, selectionPageSize, shopId, workspaceMode]
+  );
   const createThumbCompactVisibleCount = 5;
   const createThumbExpandedPageSize = 25;
   const createThumbPageSize = isCreateThumbExpandedView ? createThumbExpandedPageSize : createThumbCompactVisibleCount;
@@ -4148,13 +4173,10 @@ export default function MerchQuantumApp() {
 
         </div>
         {connected && shopId && workspaceMode ? (
-          showWorkspaceModeLoader ? (
-            <div className="relative z-10 flex min-h-[50vh] w-full flex-col items-center justify-center space-y-3">
-              <div className="h-3 w-3 rounded-full bg-purple-500 animate-pulse"></div>
-              <span className="font-sans text-sm font-normal text-white">{workspaceModeLoadingLabel}</span>
-            </div>
-          ) : (
-          <Box className="relative z-10 border-slate-800 bg-[#020616] shadow-[0_24px_70px_-38px_rgba(2,6,22,0.95)]">
+          <div className="relative z-10">
+            {showWorkspaceModeLoader ? <WorkspaceModeLoadingOverlay label={workspaceModeLoadingLabel} /> : null}
+            <div aria-hidden={showWorkspaceModeLoader} className={showWorkspaceModeLoader ? "pointer-events-none opacity-0" : ""}>
+          <Box className="relative border-slate-800 bg-[#020616] shadow-[0_24px_70px_-38px_rgba(2,6,22,0.95)]">
             <input
               ref={fileRef}
               type="file"
@@ -4174,7 +4196,7 @@ export default function MerchQuantumApp() {
             {isBulkEditMode ? (
               <ProductGrid
                 heading={workspaceGridHeading}
-                items={bulkEditVisibleProducts}
+                items={showWorkspaceModeLoader ? workspaceLoadingPlaceholderItems : bulkEditVisibleProducts}
                 selectedIds={pendingTemplateSelectionIds}
                 activeId={activeGridProductId}
                 importedProductIds={importedProductIds}
@@ -4234,7 +4256,7 @@ export default function MerchQuantumApp() {
             ) : (
               <ProductGrid
                 heading={workspaceGridHeading}
-                items={createTemplateVisibleProducts}
+                items={showWorkspaceModeLoader ? workspaceLoadingPlaceholderItems : createTemplateVisibleProducts}
                 selectedIds={selectedImportIds}
                 activeId={activeGridProductId}
                 importedProductIds={importedProductIds}
@@ -4699,7 +4721,8 @@ export default function MerchQuantumApp() {
               </>
             ) : null}
           </Box>
-          )
+            </div>
+          </div>
         ) : null}
 
       </div>
