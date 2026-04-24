@@ -6,6 +6,8 @@ import { getUserFacingErrorMessage, logErrorToConsole, type UserFacingErrorKind 
 
 const BOOT_TAGLINE = "EFFORTLESS PRODUCT CREATION.";
 const ACTIVE_BATCH_FILES = 50;
+const CONNECTED_TOTAL_BATCH_FILES = 50;
+const FIXED_TAG_COUNT = 13;
 const BRAND_WORDMARK_TEXT_CLASSES = "text-4xl sm:text-5xl";
 const BRAND_TAGLINE_TEXT_CLASSES = "text-[11px] sm:text-xs";
 const DETAIL_DATA_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-white";
@@ -250,6 +252,7 @@ const AI_LEAD_MAX_CHARS = 380;
 const IMPORT_QUEUE_LIMIT = 50;
 const DISPLAY_PREVIEW_SAMPLE_DIMENSION = 256;
 const DISPLAY_ALPHA_THRESHOLD = 12;
+const DISPLAY_TRANSPARENCY_RATIO_THRESHOLD = 0.04;
 const DISPLAY_DARK_BACKGROUND = "#000000";
 const DISPLAY_LIGHT_BACKGROUND = "#FFFFFF";
 const ARTWORK_SAFE_ZONE_PCT = 0.08;
@@ -397,6 +400,21 @@ const TEMPLATE_SPEC_SIGNAL =
 const TEMPLATE_THEME_FLUFF_SIGNAL =
   /\b(gift(?:able|ing)?|perfect for|great for|ideal for|buyers?|shoppers?|boutique|message-led|statement|conversation-starting|style|vibe|mood|weekend|casual wear|daily wear|everyday wear|show your|share your|uplifting|encouraging|inspiring)\b/i;
 
+const STERILE_PRODUCT_TYPE_RULES: Array<{ pattern: RegExp }> = [
+  { pattern: /\b(unisex(?: [a-z0-9&/+'-]+){0,5} (?:tee|t-shirt|t shirt))\b/i },
+  { pattern: /\b((?:heavy cotton|garment-dyed|ring-spun cotton|classic|premium|softstyle|oversized|women's|youth)(?: [a-z0-9&/+'-]+){0,4} (?:tee|t-shirt|t shirt))\b/i },
+  { pattern: /\b((?:unisex|pullover|zip|heavy blend|midweight|premium)(?: [a-z0-9&/+'-]+){0,4} hoodie)\b/i },
+  { pattern: /\b((?:unisex|crewneck|heavy blend|fleece|classic)(?: [a-z0-9&/+'-]+){0,4} sweatshirt)\b/i },
+  { pattern: /\b((?:racerback|muscle|women's|unisex)(?: [a-z0-9&/+'-]+){0,4} tank top)\b/i },
+  { pattern: /\b((?:ceramic|accent|travel|camping|latte)(?: [a-z0-9&/+'-]+){0,3} mug)\b/i },
+  { pattern: /\b((?:dad|trucker|snapback|bucket|beanie)(?: [a-z0-9&/+'-]+){0,3} hat)\b/i },
+  { pattern: /\b((?:vinyl|kiss-cut|die-cut|transparent)(?: [a-z0-9&/+'-]+){0,3} sticker)\b/i },
+  { pattern: /\b((?:tote|duffel|drawstring|crossbody)(?: [a-z0-9&/+'-]+){0,3} bag)\b/i },
+  { pattern: /\b((?:soy|scented|jar)(?: [a-z0-9&/+'-]+){0,3} candle)\b/i },
+  { pattern: /\b((?:cutting board|serving board|throw pillow|area rug|tea towel|journal|notebook)(?: [a-z0-9&/+'-]+){0,2})\b/i },
+  { pattern: /\b((?:canvas print|art print|poster|wall art)(?: [a-z0-9&/+'-]+){0,2})\b/i },
+];
+
 function makeId() {
   return typeof crypto !== "undefined" && crypto.randomUUID
     ? crypto.randomUUID()
@@ -427,6 +445,22 @@ function cleanTitle(filename: string) {
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     })
     .join(" ");
+}
+
+function normalizeRef(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (!/^https?:\/\//i.test(trimmed)) return trimmed;
+  try {
+    const url = new URL(trimmed);
+    const segments = url.pathname.split("/").filter(Boolean);
+    const idx = segments.findIndex((segment) => segment.toLowerCase() === "products");
+    return idx >= 0 && segments[idx + 1]
+      ? segments[idx + 1]
+      : segments[segments.length - 1] || trimmed;
+  } catch {
+    return trimmed;
+  }
 }
 
 function maskTokenCompact(value: string) {
@@ -609,38 +643,109 @@ function measureVisiblePixelBrightness(img: HTMLImageElement) {
 
   sampleCtx.clearRect(0, 0, sampleWidth, sampleHeight);
   sampleCtx.drawImage(img, 0, 0, sampleWidth, sampleHeight);
-  const imageData = sampleCtx.getImageData(0, 0, sampleWidth, sampleHeight);
-  const { data } = imageData;
 
+  const imageData = sampleCtx.getImageData(0, 0, sampleWidth, sampleHeight).data;
+  const totalPixels = sampleWidth * sampleHeight;
   let visiblePixelCount = 0;
-  let brightnessTotal = 0;
+  let transparentPixelCount = 0;
+  let weightedBrightness = 0;
+  let totalAlpha = 0;
 
-  for (let index = 0; index < data.length; index += 4) {
-    const alpha = data[index + 3];
-    if (alpha < DISPLAY_ALPHA_THRESHOLD) continue;
-    const red = data[index];
-    const green = data[index + 1];
-    const blue = data[index + 2];
-    const brightness = (red * 299 + green * 587 + blue * 114) / 1000;
-    brightnessTotal += brightness;
+  for (let index = 0; index < imageData.length; index += 4) {
+    const alpha = imageData[index + 3];
+    if (alpha < 250) transparentPixelCount += 1;
+    if (alpha <= DISPLAY_ALPHA_THRESHOLD) continue;
+
+    const weight = alpha / 255;
+    const luminance = (imageData[index] * 0.2126) + (imageData[index + 1] * 0.7152) + (imageData[index + 2] * 0.0722);
     visiblePixelCount += 1;
+    weightedBrightness += luminance * weight;
+    totalAlpha += weight;
   }
 
-  return visiblePixelCount > 0 ? brightnessTotal / visiblePixelCount : null;
+  const transparencyRatio = totalPixels > 0 ? transparentPixelCount / totalPixels : 0;
+  if (!visiblePixelCount || transparencyRatio < DISPLAY_TRANSPARENCY_RATIO_THRESHOLD || totalAlpha <= 0) {
+    return null;
+  }
+
+  return weightedBrightness / totalAlpha;
 }
 
-async function choosePreviewBackgroundFromSource(src: string | null | undefined) {
-  const resolvedSrc = String(src || "").trim();
-  if (!resolvedSrc || typeof window === "undefined") {
-    return DISPLAY_DARK_BACKGROUND;
-  }
+function choosePreviewBackgroundFromImageElement(img: HTMLImageElement) {
+  return choosePreviewBackground(measureVisiblePixelBrightness(img));
+}
+
+async function resolvePreviewSurfaceBackground(src: string | null | undefined): Promise<string> {
+  if (!src) return DISPLAY_DARK_BACKGROUND;
 
   try {
-    const image = await loadImageElement(resolvedSrc);
-    const averageBrightness = measureVisiblePixelBrightness(image);
-    return choosePreviewBackground(averageBrightness);
+    const img = await loadImageElement(src);
+    return choosePreviewBackgroundFromImageElement(img);
   } catch {
     return DISPLAY_DARK_BACKGROUND;
+  }
+}
+
+async function analyzeArtworkBounds(file: File): Promise<ArtworkBounds> {
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const img = await loadImageElement(objectUrl);
+    const canvasWidth = img.naturalWidth || img.width || 1;
+    const canvasHeight = img.naturalHeight || img.height || 1;
+
+    if (canvasWidth <= 0 || canvasHeight <= 0) {
+      return normalizeArtworkBounds(undefined, 1, 1);
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+    if (!ctx) {
+      return normalizeArtworkBounds(undefined, canvasWidth, canvasHeight);
+    }
+
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+
+    const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight).data;
+    let minX = canvasWidth;
+    let minY = canvasHeight;
+    let maxX = -1;
+    let maxY = -1;
+
+    for (let y = 0; y < canvasHeight; y += 1) {
+      for (let x = 0; x < canvasWidth; x += 1) {
+        const alpha = imageData[(y * canvasWidth + x) * 4 + 3];
+        if (alpha > 8) {
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    if (maxX < minX || maxY < minY) {
+      return normalizeArtworkBounds(undefined, canvasWidth, canvasHeight);
+    }
+
+    return normalizeArtworkBounds(
+      {
+        canvasWidth,
+        canvasHeight,
+        visibleLeft: minX,
+        visibleTop: minY,
+        visibleWidth: maxX - minX + 1,
+        visibleHeight: maxY - minY + 1,
+      },
+      canvasWidth,
+      canvasHeight
+    );
+  } finally {
+    URL.revokeObjectURL(objectUrl);
   }
 }
 
@@ -648,15 +753,40 @@ function createPreviewObjectUrl(file: File) {
   return URL.createObjectURL(file);
 }
 
-function buildParagraphsFromRawText(value: string) {
-  return value
-    .split(/\n{2,}/)
-    .map((part) => part.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
+function decodeHtmlEntities(value: string) {
+  return String(value || "")
+    .replace(/&#(\d+);/g, (_match, decimal) => {
+      const codePoint = Number.parseInt(decimal, 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : _match;
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (_match, hex) => {
+      const codePoint = Number.parseInt(hex, 16);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : _match;
+    })
+    .replace(/&([a-z][a-z0-9]+);/gi, (match, entity) => HTML_ENTITY_MAP[entity.toLowerCase()] ?? match);
 }
 
-function buildLeadOnlyDescription(paragraphs: string[]) {
-  return paragraphs.join("\n\n").trim();
+function stripHtml(value: string) {
+  return decodeHtmlEntities(value)
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<li[^>]*>/gi, "- ")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\u00a0/g, " ")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function formatTemplateDescription(templateDescription: string) {
@@ -683,7 +813,7 @@ function formatTemplateDescription(templateDescription: string) {
     }
 
     const cleaned = trimmed.startsWith("-")
-      ? `- ${trimmed.replace(/^[-–—]\s*/, "")}`
+      ? "- " + trimmed.replace(/^[-–—]\s*/, "")
       : trimmed.replace(/\s+/g, " ");
     const header = cleaned.replace(/:$/, "");
 
@@ -695,10 +825,68 @@ function formatTemplateDescription(templateDescription: string) {
   return out.join("\n");
 }
 
+function detectProductFamilyFromText(value: string) {
+  const text = stripHtml(value).trim();
+  if (!text) return null;
+
+  for (const rule of FAMILY_RULES) {
+    if (rule.patterns.some((pattern) => pattern.test(text))) {
+      return rule.family;
+    }
+  }
+
+  return null;
+}
+
+function normalizeAiLeadParagraphs(paragraphs: string[]) {
+  const cleaned = paragraphs
+    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .map((paragraph) => trimToSentence(paragraph, 220));
+
+  if (cleaned.length === 0) return [];
+
+  let total = cleaned.join(" ").length;
+  if (total <= AI_LEAD_MAX_CHARS) return cleaned;
+
+  const next = [...cleaned];
+  while (next.length > 1 && total > AI_LEAD_MAX_CHARS) {
+    const last = next[next.length - 1];
+    const shortened = trimToSentence(last, Math.max(70, last.length - (total - AI_LEAD_MAX_CHARS)));
+    next[next.length - 1] = shortened;
+    total = next.join(" ").length;
+    if (total > AI_LEAD_MAX_CHARS && next.length > 1 && shortened.length < 90) {
+      next.pop();
+      total = next.join(" ").length;
+    }
+  }
+
+  if (next.join(" ").length > AI_LEAD_MAX_CHARS) {
+    next[0] = trimToSentence(next[0], AI_LEAD_MAX_CHARS);
+  }
+
+  return next.filter(Boolean);
+}
+
+function resolveProductFamily(title: string, templateDescription: string): ProductFamily {
+  const titleFamily = detectProductFamilyFromText(title);
+  const templateFamily = detectProductFamilyFromText(templateDescription);
+
+  if (titleFamily) return titleFamily;
+  if (templateFamily) return templateFamily;
+  return "product";
+}
+
+type TemplateSection = {
+  heading: string;
+  paragraphs: string[];
+  bullets: string[];
+};
+
 function parseTemplateDescription(formattedDescription: string) {
   const introParagraphs: string[] = [];
-  const sections: Array<{ heading: string; paragraphs: string[]; bullets: string[] }> = [];
-  let currentSection: { heading: string; paragraphs: string[]; bullets: string[] } | null = null;
+  const sections: TemplateSection[] = [];
+  let currentSection: TemplateSection | null = null;
 
   const lines = formattedDescription
     .split("\n")
@@ -739,7 +927,7 @@ function parseTemplateDescription(formattedDescription: string) {
 }
 
 function normalizeTemplateComparableValue(value: string) {
-  return stripHtmlTags(value)
+  return stripHtml(value)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
@@ -782,8 +970,8 @@ function joinTemplateSpecLines(lines: string[]) {
   return out.join("\n");
 }
 
-export function sanitizeTemplateDescriptionForPrebuffer(value: string, title: string) {
-  const formatted = formatTemplateDescription(value);
+export function sanitizeTemplateDescriptionForPrebuffer(templateDescription: string, templateTitle = "") {
+  const formatted = formatTemplateDescription(templateDescription);
   if (!formatted.trim()) return "";
 
   const parsed = parseTemplateDescription(formatted);
@@ -799,215 +987,255 @@ export function sanitizeTemplateDescriptionForPrebuffer(value: string, title: st
       }
       anchoredSectionLines.push("");
     }
+
     const sanitizedFromSections = joinTemplateSpecLines(anchoredSectionLines);
     if (sanitizedFromSections) return sanitizedFromSections;
   }
 
-  const preservedIntro = parsed.introParagraphs.filter((line) => isStaticTemplateSpecLine(line, title));
-  const sanitizedIntro = joinTemplateSpecLines(preservedIntro);
+  const introLines = parsed.introParagraphs.filter((paragraph) => isStaticTemplateSpecLine(paragraph, templateTitle));
+  const sanitizedIntro = joinTemplateSpecLines(introLines);
   if (sanitizedIntro) return sanitizedIntro;
 
   const looseLines = formatted
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => isStaticTemplateSpecLine(line, title));
+    .filter((line) => isStaticTemplateSpecLine(line, templateTitle));
 
   return joinTemplateSpecLines(looseLines);
 }
 
-function decodeHtmlEntities(value: string) {
-  if (!value) return "";
-  return value.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (full, entity) => {
-    const normalized = String(entity).toLowerCase();
-    if (normalized.startsWith("#x")) {
-      const parsed = Number.parseInt(normalized.slice(2), 16);
-      return Number.isFinite(parsed) ? String.fromCodePoint(parsed) : full;
-    }
-    if (normalized.startsWith("#")) {
-      const parsed = Number.parseInt(normalized.slice(1), 10);
-      return Number.isFinite(parsed) ? String.fromCodePoint(parsed) : full;
-    }
-    return HTML_ENTITY_MAP[normalized] || full;
-  });
+function normalizeSterileProductTypeLabel(value: string) {
+  return value
+    .replace(/\bt[- ]shirt\b/gi, "T-Shirt")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      if (/^t-shirt$/i.test(word)) return "T-Shirt";
+      if (/^tee$/i.test(word)) return "Tee";
+      if (/^(DTG|DTF|POD|UV)$/i.test(word)) return word.toUpperCase();
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(" ");
 }
 
-function stripHtmlTags(value: string) {
-  if (!value) return "";
-  return decodeHtmlEntities(
-    value
-      .replace(/<\s*br\s*\/?>/gi, "\n")
-      .replace(/<\s*\/p\s*>/gi, "\n\n")
-      .replace(/<[^>]+>/g, " ")
-  )
-    .replace(/[ \t]+\n/g, "\n")
+function getFallbackSterileProductType(family: ProductFamily) {
+  switch (family) {
+    case "t-shirt":
+      return "Unisex Heavy Cotton Tee";
+    case "hoodie":
+      return "Unisex Hoodie";
+    case "sweatshirt":
+      return "Crewneck Sweatshirt";
+    case "tank top":
+      return "Tank Top";
+    case "hat":
+      return "Hat";
+    case "drinkware":
+      return "Ceramic Mug";
+    case "candle":
+      return "Scented Candle";
+    case "bath-body":
+      return "Bath and Body Product";
+    case "home-kitchen":
+      return "Home and Kitchen Product";
+    case "wall-art":
+      return "Wall Art Print";
+    case "sticker":
+      return "Sticker";
+    case "bag":
+      return "Tote Bag";
+    case "accessory":
+      return "Accessory";
+    case "footwear":
+      return "Footwear";
+    default:
+      return "Product";
+  }
+}
+
+function buildTemplateContext(templateDescription: string, productFamily?: ProductFamily) {
+  const formatted = formatTemplateDescription(templateDescription);
+  const normalized = stripHtml(formatted).replace(/[•:]+/g, " ").replace(/\s+/g, " ").trim();
+
+  for (const rule of STERILE_PRODUCT_TYPE_RULES) {
+    const match = normalized.match(rule.pattern);
+    if (match?.[1] || match?.[0]) {
+      return normalizeSterileProductTypeLabel((match[1] || match[0]).trim());
+    }
+  }
+
+  const detectedFamily = productFamily || detectProductFamilyFromText(normalized) || "product";
+  return getFallbackSterileProductType(detectedFamily);
+}
+
+function dedupeParagraphs(paragraphs: string[]) {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const paragraph of paragraphs) {
+    const cleaned = paragraph.trim();
+    if (!cleaned) continue;
+    const key = cleaned.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(cleaned);
+  }
+
+  return unique;
+}
+
+function titleCaseTag(value: string) {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function deriveTags(title: string, templateDescription: string) {
+  const combined = `${title} ${stripHtml(templateDescription)}`.toLowerCase();
+  const words = combined.match(/[a-z0-9]+/g) || [];
+  const singles = Array.from(new Set(words.filter((word) => word.length >= 3 && !STOP_WORDS.has(word))));
+
+  const phrases: string[] = [];
+  for (let i = 0; i < words.length - 1; i += 1) {
+    const a = words[i];
+    const b = words[i + 1];
+    if (a.length < 3 || b.length < 3 || STOP_WORDS.has(a) || STOP_WORDS.has(b)) continue;
+    phrases.push(`${a} ${b}`);
+  }
+
+  return Array.from(new Set([...phrases, ...singles]))
+    .slice(0, FIXED_TAG_COUNT)
+    .map(titleCaseTag);
+}
+
+function leadToHtml(paragraphs: string[]) {
+  return paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
+}
+
+function htmlToEditableText(value: string) {
+  return stripHtml(value)
+    .split("\n")
+    .map((line) => line.trimStart().replace(/[ \t]+$/g, ""))
+    .join("\n")
     .replace(/\n{3,}/g, "\n\n")
-    .replace(/\s+/g, " ")
     .trim();
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+export function splitDetailDescriptionForDisplay(
+  templateDescription: string,
+  leadParagraphs: string[] = [],
+  fallbackDescription = ""
+) {
+  const buyerFacingParagraphs = dedupeParagraphs(normalizeAiLeadParagraphs(leadParagraphs));
+
+  return {
+    buyerFacingDescription: buyerFacingParagraphs.length > 0
+      ? buyerFacingParagraphs.join("\n\n")
+      : htmlToEditableText(fallbackDescription),
+    templateSpecBlock: formatTemplateDescription(templateDescription).trim(),
+  };
 }
 
-function formatProductDescriptionWithSections(paragraphs: string[], specBlock: string) {
-  const lead = paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
-  const spec = specBlock
-    ? `<p>Product features</p><p>${escapeHtml(specBlock).replace(/\n/g, "<br />")}</p>`
-    : "";
-  return `${lead}${spec}`;
-}
+function extractBuyerFacingDescriptionFromListing(listingDescription: string, templateDescription: string) {
+  const formattedListing = formatTemplateDescription(listingDescription);
+  if (!formattedListing.trim()) return "";
 
-function descriptionTextToParagraphs(value: string) {
-  return stripHtmlTags(value)
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-}
+  const parsedListing = parseTemplateDescription(formattedListing);
+  const intro = dedupeParagraphs(parsedListing.introParagraphs).join("\n\n").trim();
+  if (intro) return intro;
 
-function normalizeDescriptionText(value: unknown) {
-  return typeof value === "string" ? stripHtmlTags(value) : "";
-}
+  const formattedTemplate = formatTemplateDescription(templateDescription).trim();
+  if (!formattedTemplate) return htmlToEditableText(listingDescription);
 
-function normalizeAiLeadParagraphs(paragraphs: string[]) {
-  return paragraphs
-    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((paragraph) => trimToSentence(paragraph, AI_LEAD_MAX_CHARS));
-}
-
-export function splitDetailDescriptionForDisplay(specBlock: string, leadParagraphs: string[], fullDescriptionHtml: string) {
-  const normalizedLead = normalizeAiLeadParagraphs(leadParagraphs);
-  if (normalizedLead.length > 0) {
-    return {
-      buyerFacingDescription: normalizedLead.join("\n\n"),
-      templateSpecBlock: specBlock,
-    };
+  const normalizedTemplate = normalizeTemplateComparableValue(formattedTemplate);
+  if (normalizeTemplateComparableValue(formattedListing) === normalizedTemplate) {
+    return "";
   }
 
-  const paragraphs = descriptionTextToParagraphs(fullDescriptionHtml);
-  if (paragraphs.length === 0) {
-    return { buyerFacingDescription: "", templateSpecBlock: specBlock };
+  const templateLineKeys = new Set(
+    formattedTemplate
+      .split("\n")
+      .map((line) => normalizeTemplateComparableValue(line))
+      .filter(Boolean)
+  );
+
+  const filteredLines = formattedListing
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line) return false;
+      const normalizedLine = normalizeTemplateComparableValue(line);
+      if (!normalizedLine) return false;
+      if (templateLineKeys.has(normalizedLine)) return false;
+      return !TEMPLATE_SPEC_SECTION_HEADERS.has(line.replace(/:$/, ""));
+    });
+
+  const filtered = joinTemplateSpecLines(filteredLines);
+  if (filtered && normalizeTemplateComparableValue(filtered) !== normalizedTemplate) {
+    return filtered;
   }
 
-  const featuresIndex = paragraphs.findIndex((paragraph) => TEMPLATE_SPEC_SECTION_HEADERS.has(paragraph));
-  if (featuresIndex >= 0) {
-    return {
-      buyerFacingDescription: paragraphs.slice(0, featuresIndex).join("\n\n").trim(),
-      templateSpecBlock: paragraphs.slice(featuresIndex + 1).join("\n").trim() || specBlock,
-    };
-  }
-
-  return { buyerFacingDescription: paragraphs.join("\n\n").trim(), templateSpecBlock: specBlock };
+  return htmlToEditableText(listingDescription);
 }
 
-function extractBuyerFacingDescriptionFromListing(rawDescription: string, specBlock: string) {
-  const paragraphs = buildParagraphsFromRawText(stripHtmlTags(rawDescription));
-  if (paragraphs.length === 0) return "";
+function formatProductDescriptionWithSections(leadParagraphs: string[], templateDescription: string) {
+  const paragraphs = dedupeParagraphs(normalizeAiLeadParagraphs(leadParagraphs));
+  const leadHtml = leadToHtml(paragraphs);
 
-  const featuresIndex = paragraphs.findIndex((paragraph) => TEMPLATE_SPEC_SECTION_HEADERS.has(paragraph));
-  const buyerParagraphs = featuresIndex >= 0 ? paragraphs.slice(0, featuresIndex) : paragraphs;
-  return buyerParagraphs.join("\n\n").trim() || specBlock;
+  const formattedTemplate = formatTemplateDescription(templateDescription);
+  const parsed = parseTemplateDescription(formattedTemplate);
+  const detailPieces: string[] = [];
+
+  for (const paragraph of parsed.introParagraphs) {
+    detailPieces.push(`<p>${escapeHtml(paragraph)}</p>`);
+  }
+
+  for (const section of parsed.sections) {
+    detailPieces.push(`<h3>${escapeHtml(section.heading)}</h3>`);
+    for (const paragraph of section.paragraphs) {
+      detailPieces.push(`<p>${escapeHtml(paragraph)}</p>`);
+    }
+    if (section.bullets.length > 0) {
+      const items = section.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join("");
+      detailPieces.push(`<ul>${items}</ul>`);
+    }
+  }
+
+  if (detailPieces.length === 0) {
+    return leadHtml;
+  }
+
+  return `${leadHtml}${detailPieces.join("")}`;
+}
+
+function buildLeadOnlyDescription(leadParagraphs: string[]) {
+  return leadToHtml(dedupeParagraphs(normalizeAiLeadParagraphs(leadParagraphs)));
 }
 
 export function canManualOverrideListingCopy(title: string, description: string) {
   const normalizedTitle = clampTitleForListing(title).trim();
-  const normalizedDescription = String(description || "")
-    .replace(/\r\n?/g, "\n")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .slice(0, LISTING_LIMITS.descriptionMax)
-    .trim();
-  const paragraphs = normalizedDescription
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
+  const normalizedDescription = clampDescriptionForListing(description).trim();
+  const paragraphs = descriptionTextToParagraphs(normalizedDescription);
 
   return (
-    normalizedTitle.length >= LISTING_LIMITS.titleMin
-    && normalizedDescription.length >= LISTING_LIMITS.descriptionMin
-    && paragraphs.length >= 2
-    && paragraphs[0].trim().length >= 24
-    && paragraphs[1].trim().length >= 24
+    normalizedTitle.length >= LISTING_LIMITS.titleMin &&
+    normalizedDescription.length >= LISTING_LIMITS.descriptionMin &&
+    paragraphs.length >= 2 &&
+    paragraphs[0].trim().length >= 24 &&
+    paragraphs[1].trim().length >= 24
   );
 }
 
-function normalizeTagsFromPayload(payload: unknown) {
-  const base = Array.isArray(payload)
-    ? payload
-    : typeof payload === "string"
-      ? payload.split(/[,\n]/)
-      : [];
-
-  const seen = new Set<string>();
-  return base
-    .map((tag) => String(tag || "").trim())
-    .filter(Boolean)
-    .map((tag) => tag.replace(/\s+/g, " ").trim())
-    .filter((tag) => {
-      const normalized = tag.toLowerCase();
-      if (seen.has(normalized)) return false;
-      seen.add(normalized);
-      return true;
-    });
-}
-
 function buildManualOverrideTags(title: string, description: string, count: number) {
-  const words = `${title} ${description}`
-    .split(/\s+/)
-    .map((word) => word.replace(/[^A-Za-z0-9'-]+/g, "").trim())
-    .filter((word) => word.length >= 3)
-    .filter((word) => !STOP_WORDS.has(word.toLowerCase()));
-
-  return normalizeTagsFromPayload(words).slice(0, count);
+  return deriveTags(title, description)
+    .filter((tag) => !/^keyword\s+\d+$/i.test(tag.trim()))
+    .slice(0, count);
 }
 
-function clampTitleForListing(value: string) {
-  const clean = value.replace(/\s+/g, " ").trim();
-  return safeTitle(clean, clean).slice(0, LISTING_LIMITS.titleMax);
-}
-
-function clampDescriptionForListing(value: string) {
-  const clean = stripHtmlTags(value).replace(/\s+/g, " ").trim();
-  return clean.slice(0, LISTING_LIMITS.descriptionMax);
-}
-
-function autosizeTextarea(element: HTMLTextAreaElement | null) {
-  if (!element) return;
-  element.style.height = "0px";
-  element.style.height = `${Math.max(element.scrollHeight, 124)}px`;
-}
-
-function buildLegacyContextForImage(image: Img) {
-  const titleSeed = image.originalListingTitle || image.cleaned || image.name;
-  const parts = [titleSeed, image.originalListingDescription || "", image.templateDescriptionOverride || ""]
-    .map((value) => stripHtmlTags(value).replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-  return parts.join(" | ");
-}
-
-function buildTemplateContext(description: string, family: ProductFamily) {
-  const typeLabel = family === "product" ? "product" : family.replace(/-/g, " ");
-  const sanitized = sanitizeTemplateDescriptionForPrebuffer(description, "");
-  return [typeLabel, sanitized].filter(Boolean).join(" | ");
-}
-
-function resolveProductFamily(titleSeed: string, templateDescription: string) {
-  const combined = `${titleSeed} ${templateDescription}`.trim();
-  for (const rule of FAMILY_RULES) {
-    if (rule.patterns.some((pattern) => pattern.test(combined))) return rule.family;
-  }
-  return "product";
-}
-
-function getStatusSortValue(status: ItemStatus) {
-  return status === "ready" ? 0 : status === "pending" ? 1 : 2;
+function canManualOverrideFlaggedImage(image: Img | null) {
+  return !!image && image.aiDraft?.qcApproved !== false;
 }
 
 function createAiFieldStates(status: AiFieldStatus = "idle"): AiFieldStates {
@@ -1018,8 +1246,617 @@ function createAiFieldStates(status: AiFieldStatus = "idle"): AiFieldStates {
   };
 }
 
-function canManualOverrideFlaggedImage(image: Img | null) {
-  return !!image && image.aiDraft?.qcApproved !== false;
+function stripMarkdownFences(value: string) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+
+  return trimmed
+    .replace(/^```[a-z0-9_-]*\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function normalizeTagsFromPayload(input: unknown) {
+  const values = Array.isArray(input)
+    ? input.map((value) => String(value || ""))
+    : typeof input === "string"
+      ? input.split(/[,\n;|]/g)
+      : [];
+
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const rawTag of values) {
+    const cleaned = stripMarkdownFences(rawTag)
+      .replace(/^tags?\s*:\s*/i, "")
+      .replace(/^[-*•]+\s*/, "")
+      .replace(/^["'`]+|["'`]+$/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!cleaned) continue;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(cleaned);
+  }
+
+  return result.slice(0, FIXED_TAG_COUNT);
+}
+
+function normalizeDescriptionText(value: unknown) {
+  return stripMarkdownFences(String(value || ""))
+    .replace(/\r\n?/g, "\n")
+    .replace(/^\s*description\s*:\s*/i, "")
+    .replace(/^\s*final[_ ]description\s*:\s*/i, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function descriptionTextToParagraphs(value: string) {
+  return value
+    .split(/\n{2,}/)
+    .flatMap((block) => block.split(/\n/))
+    .map((paragraph) => paragraph.replace(/^[-*•]+\s*/, "").trim())
+    .filter(Boolean);
+}
+
+function isImage(file: File) {
+  if (file.type.startsWith("image/")) return true;
+  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+  return ["png", "jpg", "jpeg", "webp", "gif", "svg"].includes(ext);
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("Unable to read file."));
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.readAsDataURL(file);
+  });
+}
+
+function readDataUrl(file: File) {
+  return fileToDataUrl(file);
+}
+
+async function urlToFile(url: string, fileName: string, fallbackType = "image/png") {
+  const response = await fetchWithTimeout(url, undefined, 60000);
+  if (!response.ok) {
+    throw new Error(`Unable to retrieve rescued artwork (${response.status}).`);
+  }
+
+  const blob = await response.blob();
+  return new File([blob], fileName, {
+    type: blob.type || fallbackType,
+  });
+}
+
+function clampTitleForListing(value: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  if (normalized.length <= LISTING_LIMITS.titleMax) return normalized;
+  return trimTitleAtWordBoundary(normalized, LISTING_LIMITS.titleMax);
+}
+
+function clampDescriptionForListing(value: string) {
+  const normalized = value
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (!normalized) return "";
+  if (normalized.length <= LISTING_LIMITS.descriptionMax) return normalized;
+  return normalized.slice(0, LISTING_LIMITS.descriptionMax).trimEnd();
+}
+
+function autosizeTextarea(element: HTMLTextAreaElement | null) {
+  if (!element) return;
+  element.style.height = "0px";
+  element.style.height = `${Math.max(element.scrollHeight, 124)}px`;
+}
+
+const REQUEST_TIMEOUT_MS = 45000;
+
+async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function formatApiError(kind: UserFacingErrorKind, error: unknown, context: string) {
+  logErrorToConsole(context, error);
+  return getUserFacingErrorMessage(kind);
+}
+
+async function parseResponsePayload(response: Response) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  const text = await response.text();
+  return { error: text || `Request failed with status ${response.status}.` };
+}
+
+function fillActiveBatch(active: Img[], queued: Img[], limit: number) {
+  const room = Math.max(0, limit - active.length);
+  if (room === 0 || queued.length === 0) {
+    return { active, queued };
+  }
+
+  return {
+    active: [...active, ...queued.slice(0, room)],
+    queued: queued.slice(room),
+  };
+}
+
+function appendToActiveBatch(active: Img[], queued: Img[], incoming: Img[], limit: number) {
+  const room = queued.length > 0 ? 0 : Math.max(0, limit - active.length);
+  return {
+    active: [...active, ...incoming.slice(0, room)],
+    queued: [...queued, ...incoming.slice(room)],
+  };
+}
+
+function normalizeSelectionIds(ids: string[]) {
+  return Array.from(new Set(ids.filter(Boolean))).slice(0, IMPORT_QUEUE_LIMIT);
+}
+
+function selectionsMatch(a: string[], b: string[]) {
+  const left = normalizeSelectionIds(a).slice().sort();
+  const right = normalizeSelectionIds(b).slice().sort();
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+function getFileSignature(file: Pick<File, "name" | "size">) {
+  return `${String(file.name || "").trim().toLowerCase()}::${Number(file.size || 0)}`;
+}
+
+type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
+
+function Input({ className = "", ...props }: InputProps) {
+  return (
+    <input
+      className={`box-border h-11 w-full min-w-0 rounded-xl border border-slate-700 bg-[#020616] px-3 font-sans text-sm text-white outline-none transition placeholder:text-slate-200 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
+      {...props}
+    />
+  );
+}
+
+type SelectProps = React.SelectHTMLAttributes<HTMLSelectElement>;
+
+function SetupInput({ className = "", ...props }: InputProps) {
+  return (
+    <input
+      className={`box-border w-full min-w-0 rounded-xl border border-slate-700 bg-[#020616] px-3 py-2 leading-tight font-sans text-sm font-normal text-white outline-none transition placeholder:text-slate-200 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
+      {...props}
+    />
+  );
+}
+
+function SetupSelect({ className = "", children, ...props }: SelectProps) {
+  return (
+    <div className={`relative min-w-0 w-full text-sm font-normal text-white ${props.disabled ? "cursor-not-allowed" : ""}`}>
+      <select
+        className={`box-border h-9 w-full min-w-0 appearance-none rounded-xl border border-slate-700 bg-[#020616] px-3 pr-8 font-sans text-sm font-normal text-white outline-none transition focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
+        {...props}
+      >
+        {children}
+      </select>
+      <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-100" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+      </svg>
+    </div>
+  );
+}
+
+type BoxProps = {
+  title?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  headerClassName?: string;
+};
+
+function Box({ title, children, className = "", headerClassName = "" }: BoxProps) {
+  return (
+    <section className={`rounded-[28px] border border-slate-800 bg-[#020616] p-4 text-white shadow-[0_18px_60px_-38px_rgba(2,6,22,0.9)] backdrop-blur-sm ${className}`}>
+      {title ? <div className={`mb-4 text-base font-semibold tracking-tight ${headerClassName}`}>{title}</div> : null}
+      {children}
+    </section>
+  );
+}
+
+function MerchQuantumInlineHeading({ className = "" }: { className?: string }) {
+  return (
+    <span className={`min-w-0 text-sm font-semibold leading-tight tracking-tight text-white ${className}`}>
+      <span className="text-[#7F22FE]">Merch</span>{" "}
+      <span className="text-white">Quantum AI bulk auto listings</span>
+    </span>
+  );
+}
+
+function CreativeWellspringBrandMark({
+  docked = false,
+  className = "",
+}: {
+  docked?: boolean;
+  className?: string;
+}) {
+  if (docked) {
+    return (
+      <div className={`mt-auto py-8 flex flex-col items-center justify-center text-center ${className}`.trim()}>
+        <div className="flex items-center space-x-1.5">
+          <span className="text-xl font-bold tracking-tighter text-purple-500">Merch</span>
+          <span className="text-xl font-bold tracking-tighter text-white">Quantum</span>
+        </div>
+        <span className="block text-xs font-medium tracking-widest text-white uppercase mt-1">
+          effortless product creation
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`pointer-events-none relative z-10 flex w-full items-center justify-center ${
+        docked ? "min-h-[88px]" : "min-h-[148px]"
+      } ${className}`}
+      aria-hidden="true"
+    >
+      <div className="relative z-10 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-1 px-6 text-center">
+          <div className={`flex flex-wrap items-baseline justify-center gap-x-2 tracking-tight ${BRAND_WORDMARK_TEXT_CLASSES}`}>
+            <span className="font-bold text-[#7F22FE]">Merch</span>
+            <span className="font-medium text-white">Quantum</span>
+          </div>
+          <p className={`font-light uppercase tracking-[0.3em] text-slate-300 ${BRAND_TAGLINE_TEXT_CLASSES}`}>
+            {BOOT_TAGLINE}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SmartThumbnail({
+  src,
+  alt,
+  className = "",
+  safeZoneClassName = "",
+  imageClassName = "absolute top-[5%] h-[90%] w-full object-contain object-top",
+  fallbackClassName = "",
+  children,
+}: SmartThumbnailProps) {
+  const resolvedSrc = useMemo(() => buildSmartThumbnailSource(src), [src]);
+  const [backgroundColor, setBackgroundColor] = useState(DISPLAY_DARK_BACKGROUND);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (!resolvedSrc) {
+      setBackgroundColor(DISPLAY_DARK_BACKGROUND);
+      return;
+    }
+
+    void resolvePreviewSurfaceBackground(resolvedSrc).then((background) => {
+      if (isCancelled) return;
+      setBackgroundColor(ensureContrastPreviewBackground(background));
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [resolvedSrc]);
+
+  const handleImageLoad = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
+    try {
+      setBackgroundColor(
+        ensureContrastPreviewBackground(choosePreviewBackgroundFromImageElement(event.currentTarget))
+      );
+    } catch {
+      setBackgroundColor(DISPLAY_DARK_BACKGROUND);
+    }
+  }, []);
+
+  return (
+    <div
+      className={`relative box-border flex aspect-square w-full overflow-hidden bg-center bg-cover bg-no-repeat ${className}`}
+      style={{ backgroundColor }}
+    >
+      <div className={`relative flex w-full h-full overflow-hidden justify-center ${safeZoneClassName}`}>
+        {resolvedSrc ? (
+          <img
+            src={resolvedSrc}
+            alt={alt}
+            className={imageClassName}
+            onLoad={handleImageLoad}
+          />
+        ) : (
+          <div className={`h-full w-full ${fallbackClassName}`} />
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ProductGrid({
+  heading,
+  items,
+  selectedIds,
+  activeId,
+  importedProductIds,
+  highlighted = false,
+  collapsed = false,
+  rangeLabel,
+  page,
+  pageSize,
+  totalPages,
+  loading,
+  headerAccessory,
+  onToggleCollapsed,
+  onSelectAll,
+  selectAllLabel = "Select All",
+  footerLabel,
+  onItemActivate,
+  onPreviousPage,
+  onNextPage,
+  footerActions,
+}: ProductGridProps) {
+  const visibleItems = collapsed ? items.slice(0, 5) : items;
+  const displayedRangeLabel = useMemo(() => {
+    const sourceLabel = typeof footerLabel === "string" && footerLabel.trim().length > 0 ? footerLabel : rangeLabel;
+    const match = String(sourceLabel || "").match(/^(\d+)-(\d+) of (\d+)$/);
+    if (!match) return sourceLabel;
+    const start = Number(match[1]);
+    const total = Number(match[3]);
+    const end = collapsed ? Math.min(total, start + Math.max(visibleItems.length - 1, 0)) : Number(match[2]);
+    return `${start}-${end} of ${total}`;
+  }, [collapsed, footerLabel, rangeLabel, visibleItems.length]);
+
+  return (
+    <div className={`mx-auto flex w-full max-w-6xl flex-col gap-2 ${highlighted ? "drop-shadow-[0_10px_24px_rgba(127,34,254,0.18)]" : ""}`}>
+      <div className="flex w-full min-w-0 items-center gap-2">
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-white">{heading}</span>
+        <div className="ml-auto flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 text-[11px]">
+          {onSelectAll ? (
+            <button
+              type="button"
+              className="font-medium text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
+              disabled={items.length === 0}
+              onClick={onSelectAll}
+            >
+              {selectAllLabel}
+            </button>
+          ) : null}
+          {headerAccessory}
+        </div>
+      </div>
+
+        {items.length > 0 ? (
+          <div className="grid h-full w-full grid-cols-5 gap-1 overflow-hidden snap-y snap-mandatory">
+            {visibleItems.map((product, index) => {
+            const globalIndex = page * pageSize + index;
+            const isSelected = selectedIds.includes(product.id);
+            const isActive = activeId === product.id;
+            const alreadyImported = importedProductIds.has(product.id);
+            const cardTone = isSelected
+              ? "border-[#7F22FE] shadow-[inset_0_0_0_2px_rgba(127,34,254,0.85),0_0_10px_rgba(147,51,234,0.32)] opacity-100"
+              : isActive
+                ? "border-[#7F22FE]/70 shadow-[inset_0_0_0_2px_rgba(127,34,254,0.55)] opacity-100"
+                : alreadyImported
+                  ? "border-[#00BC7D]/45 opacity-75 hover:opacity-100"
+                  : "border-slate-800/80 opacity-85 hover:opacity-100";
+            const frameGlow = isSelected
+              ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]"
+              : isActive
+                ? "shadow-[0_8px_20px_-18px_rgba(124,58,237,0.38)]"
+                : "";
+
+            return (
+              <button
+                key={product.id}
+                type="button"
+                onClick={(event) => onItemActivate(product, globalIndex, event)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onItemActivate(product, globalIndex, event);
+                  }
+                }}
+                className={`w-full snap-start transition-all duration-500 focus-visible:outline-none ${frameGlow}`}
+                aria-label={product.title}
+              >
+                <SmartThumbnail
+                  src={product.previewUrl}
+                  alt={product.title}
+                  className={`group rounded-lg border transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
+                  fallbackClassName="flex items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))]"
+                >
+                  {(isSelected || alreadyImported) ? (
+                    <span
+                      className={`absolute left-2 top-2 h-2.5 w-2.5 rounded-full ${
+                        isSelected
+                          ? "bg-[#C084FC] shadow-[0_0_10px_rgba(192,132,252,0.95)]"
+                          : "bg-[#00BC7D] shadow-[0_0_8px_rgba(0,188,125,0.9)]"
+                      }`}
+                    />
+                  ) : null}
+                </SmartThumbnail>
+              </button>
+            );
+            })}
+          </div>
+        ) : loading ? (
+          <div className="flex w-full min-h-[16rem] items-center justify-center">
+            <div className="flex flex-col items-center justify-center gap-3 px-6 text-center">
+              <QuantOrbLoader />
+              <span className="font-sans text-sm font-normal text-white">Awaiting Quantum AI...</span>
+            </div>
+          </div>
+        ) : null}
+
+      <div className="flex w-full items-center justify-between gap-2 pt-1 text-[11px]">
+        <div className="min-w-0 flex-1 truncate text-slate-100">
+          {displayedRangeLabel}
+        </div>
+        <div className="flex items-center justify-end gap-2">
+          {footerActions}
+          {onToggleCollapsed ? (
+            <button
+              type="button"
+              onClick={onToggleCollapsed}
+              className="text-sm font-normal text-gray-400 transition-colors hover:text-white"
+            >
+              {collapsed ? "Maximize" : "Minimize"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            aria-label={`Previous ${pageSize} items`}
+            className="inline-flex items-center justify-center text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
+            disabled={page <= 0}
+            onClick={onPreviousPage}
+          >
+            <ChevronIcon open={false} className="h-4 w-4 rotate-90" />
+          </button>
+          <button
+            type="button"
+            aria-label={`Next ${pageSize} items`}
+            className="inline-flex items-center justify-center text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
+            disabled={page >= totalPages - 1}
+            onClick={onNextPage}
+          >
+            <ChevronIcon open={false} className="h-4 w-4 -rotate-90" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuantOrbLoader({ className = "" }: { className?: string }) {
+  return (
+    <span className={`relative inline-flex h-4 w-4 shrink-0 items-center justify-center ${className}`}>
+      <span className="absolute inset-0 rounded-full bg-[#7F22FE]/22 blur-[4px]" />
+      <span className="absolute inset-0 inline-flex items-center justify-center animate-[spin_2.4s_linear_infinite]">
+        <svg viewBox="0 0 16 16" aria-hidden="true" className="h-4 w-4 text-[#C084FC]">
+          <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeOpacity="0.18" strokeWidth="1.25" fill="none" />
+          <path d="M8 1.75a6.25 6.25 0 0 1 4.68 2.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+        </svg>
+      </span>
+      <span className="absolute inset-[4px] rounded-full bg-[#7F22FE] shadow-[0_0_12px_rgba(127,34,254,0.9)]" />
+    </span>
+  );
+}
+
+function WorkspaceModeLoadingOverlay({ label }: { label: string }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+      <div className="flex flex-col items-center justify-center gap-3 px-6 text-center">
+        <QuantOrbLoader />
+        <span className="font-sans text-sm font-normal text-white">{label}</span>
+      </div>
+    </div>
+  );
+}
+
+function StatusThumbIcon({ tone, direction }: { tone: "ready" | "error"; direction: "up" | "down" }) {
+  const colorClass = tone === "ready" ? "text-[#00BC7D]" : "text-[#FF2056]";
+
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className={`h-3 w-3 shrink-0 ${colorClass}`}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.35"
+    >
+      {direction === "up" ? (
+        <path d="M6.25 7 8.4 3.35c.22-.38.62-.6 1.06-.6h.16c.6 0 1.09.49 1.09 1.1v2.1h1.92c.77 0 1.35.7 1.23 1.46l-.63 3.86c-.1.58-.6 1.01-1.19 1.01H6.25m0-5.28H4.18c-.49 0-.88.39-.88.88v3.68c0 .49.39.88.88.88h2.07V7Z" />
+      ) : (
+        <path d="M9.75 9 7.6 12.65c-.22.38-.62.6-1.06.6h-.16c-.6 0-1.09-.49-1.09-1.1v-2.1H3.37c-.77 0-1.35-.7-1.23-1.46l.63-3.86c.1-.58.6-1.01 1.19-1.01h5.79m0 5.28h2.07c.49 0 .88-.39.88-.88V4.44c0-.49-.39-.88-.88-.88H9.75V9Z" />
+      )}
+    </svg>
+  );
+}
+
+function ReRollIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.2"
+    >
+      <path d="M12.75 5.25V2.8m0 0h-2.45m2.45 0L9.9 5.65" />
+      <path d="M12.1 8a4.7 4.7 0 1 1-1.38-3.32" />
+    </svg>
+  );
+}
+
+function ConnectArrowIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.4"
+    >
+      <path d="M3.25 8h8.5" />
+      <path d="m8.9 4.15 3.85 3.85-3.85 3.85" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ open, className = "" }: { open: boolean; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className={`${className} transition-transform ${open ? "rotate-180" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.4"
+    >
+      <path d="M4.75 6.25 8 9.5l3.25-3.25" />
+    </svg>
+  );
+}
+
+function getStatusSortValue(status: ItemStatus) {
+  switch (status) {
+    case "ready":
+      return 0;
+    case "error":
+      return 1;
+    default:
+      return 2;
+  }
 }
 
 function getResolvedItemStatus(image: Img): ItemStatus {
@@ -1043,452 +1880,6 @@ function getResolvedItemStatus(image: Img): ItemStatus {
   return image.aiDraft.publishReady === true && hasCompleteVisibleOutput ? "ready" : "error";
 }
 
-function QuantOrbLoader() {
-  return <div className="h-2.5 w-2.5 rounded-full bg-[#7F22FE] shadow-[0_0_12px_rgba(127,34,254,0.8)]" />;
-}
-
-function ChevronIcon({ open, className = "" }: { open: boolean; className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      {open ? <path d="M5 12l5-5 5 5" /> : <path d="M5 8l5 5 5-5" />}
-    </svg>
-  );
-}
-
-function ReRollIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className={className} aria-hidden="true">
-      <path d="M15.5 8.5V4.5h-4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M14.8 10A5.8 5.8 0 1 1 9 4.2c1.6 0 3 .6 4 1.6l2.5 2.7" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ConnectArrowIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
-      <path d="M5 10h10" />
-      <path d="m11 6 4 4-4 4" />
-    </svg>
-  );
-}
-
-function StatusThumbIcon({ tone, direction }: { tone: "ready" | "error"; direction: "up" | "down" }) {
-  const isUp = direction === "up";
-  const color = tone === "ready" ? "#00BC7D" : "#FF2056";
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
-      <path
-        d={isUp
-          ? "M9 16V8.7l-1.8 1.8-1.1-1.1L10 5.5l3.9 3.9-1.1 1.1L11 8.7V16H9Z"
-          : "M11 4v7.3l1.8-1.8 1.1 1.1L10 14.5l-3.9-3.9 1.1-1.1L9 11.3V4h2Z"}
-        fill={color}
-      />
-    </svg>
-  );
-}
-
-function CreativeWellspringBrandMark({ docked = false }: { docked?: boolean }) {
-  return (
-    <div className={`${docked ? "mt-auto pt-8" : "pt-6"} flex flex-col items-center justify-center text-center`}>
-      <div className={`${BRAND_WORDMARK_TEXT_CLASSES} font-bold tracking-tight`}>
-        <span className="text-[#7F22FE]">Merch</span>{" "}
-        <span className="text-white">Quantum</span>
-      </div>
-      <div className={`${BRAND_TAGLINE_TEXT_CLASSES} mt-1 font-semibold tracking-[0.16em] text-white`}>{BOOT_TAGLINE}</div>
-    </div>
-  );
-}
-
-function MerchQuantumInlineHeading({ className = "" }: { className?: string }) {
-  return (
-    <div className={`min-w-0 text-[15px] font-semibold tracking-tight text-white ${className}`}>
-      <span className="text-[#7F22FE]">Merch</span>{" "}
-      <span>Quantum</span>
-    </div>
-  );
-}
-
-function Box({ className = "", children }: { className?: string; children: React.ReactNode }) {
-  return <div className={`relative rounded-[24px] border p-3 ${className}`}>{children}</div>;
-}
-
-type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
-type SelectProps = React.SelectHTMLAttributes<HTMLSelectElement>;
-
-function getNodeText(node: React.ReactNode): string {
-  if (typeof node === "string" || typeof node === "number") return String(node);
-  if (Array.isArray(node)) return node.map(getNodeText).join("");
-  if (React.isValidElement<{ children?: React.ReactNode }>(node)) return getNodeText(node.props.children);
-  return "";
-}
-
-function Input({ className = "", ...props }: InputProps) {
-  return (
-    <input
-      className={`box-border h-11 w-full min-w-0 rounded-xl border border-slate-700 bg-[#020616] px-3 font-sans text-sm text-white outline-none transition placeholder:text-slate-200 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
-      {...props}
-    />
-  );
-}
-
-function SetupInput({ className = "", ...props }: InputProps) {
-  return (
-    <input
-      className={`box-border w-full min-w-0 rounded-xl border border-slate-700 bg-[#020616] px-3 py-2 leading-tight font-sans text-sm font-normal text-white outline-none transition placeholder:text-slate-200 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
-      {...props}
-    />
-  );
-}
-
-function SetupSelect({ className = "", children, ...props }: SelectProps) {
-  const isEmptyValue = props.value === "" || props.value == null;
-  const emptyOptionLabel = React.Children.toArray(children).reduce<string | null>((foundLabel, child) => {
-    if (foundLabel || !React.isValidElement<{ value?: string | number | readonly string[]; children?: React.ReactNode }>(child)) return foundLabel;
-    if (String(child.props.value ?? "") !== "") return foundLabel;
-    const label = getNodeText(child.props.children).trim();
-    return label || foundLabel;
-  }, null);
-  const enabledSelectClasses = "border-slate-700 bg-[#020616] text-white focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30";
-  const disabledSelectClasses = "disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60";
-  const selectBaseClasses = `box-border h-9 w-full min-w-0 appearance-none rounded-xl px-3 pr-8 font-sans text-sm font-normal outline-none transition ${disabledSelectClasses}`;
-  const emptyStateShellClasses = props.disabled
-    ? "border-slate-800 bg-[#020616] text-slate-200 opacity-60"
-    : "border-slate-700 bg-[#020616] text-white focus-within:border-[#7F22FE] focus-within:ring-2 focus-within:ring-[#7F22FE]/30";
-
-  return (
-    <div className={`relative min-w-0 w-full text-sm font-normal text-white ${props.disabled ? "cursor-not-allowed" : ""}`}>
-      {isEmptyValue && emptyOptionLabel ? (
-        <div className={`relative flex h-9 w-full items-center rounded-xl border px-3 pr-8 font-sans text-sm font-normal transition ${emptyStateShellClasses}`}>
-          <div aria-hidden="true" className="pointer-events-none flex min-w-0 items-center">
-            <span className="min-w-0 truncate">{emptyOptionLabel}</span>
-          </div>
-          <select
-            className={`absolute inset-0 z-10 h-full w-full appearance-none rounded-xl border-0 bg-transparent px-3 pr-8 font-sans text-sm font-normal text-transparent opacity-0 outline-none ${props.disabled ? "cursor-not-allowed" : "cursor-pointer"} ${className}`}
-            {...props}
-          >
-            {children}
-          </select>
-        </div>
-      ) : (
-        <select
-          className={`${selectBaseClasses} border ${enabledSelectClasses} ${className}`}
-          {...props}
-        >
-          {children}
-        </select>
-      )}
-      <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-100" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-      </svg>
-    </div>
-  );
-}
-
-function SmartThumbnail({
-  src,
-  alt,
-  className = "",
-  safeZoneClassName = "",
-  imageClassName = "",
-  fallbackClassName = "",
-  children,
-}: SmartThumbnailProps) {
-  const [backgroundColor, setBackgroundColor] = useState(DISPLAY_DARK_BACKGROUND);
-  const resolvedSrc = buildSmartThumbnailSource(src);
-
-  const handleImageLoad = useCallback(async () => {
-    const nextBackground = await choosePreviewBackgroundFromSource(resolvedSrc);
-    setBackgroundColor(ensureContrastPreviewBackground(nextBackground));
-  }, [resolvedSrc]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadBackground() {
-      const nextBackground = await choosePreviewBackgroundFromSource(resolvedSrc);
-      if (!cancelled) {
-        setBackgroundColor(ensureContrastPreviewBackground(nextBackground));
-      }
-    }
-
-    void loadBackground();
-    return () => {
-      cancelled = true;
-    };
-  }, [resolvedSrc]);
-
-  return (
-    <div
-      className={`relative box-border flex aspect-square w-full overflow-hidden bg-center bg-cover bg-no-repeat ${className}`}
-      style={{ backgroundColor }}
-    >
-      <div className={`relative w-full h-full overflow-hidden ${safeZoneClassName}`}>
-        {resolvedSrc ? (
-          <img
-            src={resolvedSrc}
-            alt={alt}
-            className={`absolute top-[5%] h-[90%] w-full object-contain object-top ${imageClassName}`.trim()}
-            onLoad={handleImageLoad}
-          />
-        ) : (
-          <div className={`h-full w-full ${fallbackClassName}`} />
-        )}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function ProductGrid({
-  heading,
-  items,
-  selectedIds,
-  activeId,
-  importedProductIds,
-  highlighted,
-  collapsed,
-  rangeLabel,
-  page,
-  totalPages,
-  loading,
-  headerAccessory,
-  onToggleCollapsed,
-  onSelectAll,
-  selectAllLabel,
-  footerLabel,
-  onItemActivate,
-  onPreviousPage,
-  onNextPage,
-  footerActions,
-}: ProductGridProps) {
-  const displayItems = collapsed ? items.slice(0, 5) : items;
-  const effectiveRangeLabel = footerLabel ?? rangeLabel;
-  return (
-    <div className={`relative rounded-[24px] border border-slate-700/80 bg-[#020616] p-3 shadow-[0_24px_70px_-40px_rgba(2,6,22,0.98)] ${highlighted ? "ring-1 ring-[#7F22FE]/55" : ""}`}>
-      <div className="flex items-center justify-between gap-3 pb-2">
-        <div className="min-w-0 text-[15px] font-semibold tracking-tight text-white">{heading}</div>
-        <div className="flex items-center gap-3 text-[11px] text-slate-100">
-          {headerAccessory}
-          {onSelectAll ? (
-            <button type="button" className="text-slate-100 transition hover:text-white" onClick={onSelectAll}>
-              {selectAllLabel || "Select All"}
-            </button>
-          ) : null}
-          {onToggleCollapsed ? (
-            <button type="button" className="text-slate-100 transition hover:text-white" onClick={onToggleCollapsed}>
-              Mode
-            </button>
-          ) : null}
-        </div>
-      </div>
-      {loading ? (
-        <div className="flex flex-col items-center justify-center space-y-3 min-h-[50vh] w-full">
-          <div className="w-3 h-3 bg-purple-500 rounded-full animate-pulse"></div>
-          <span className="font-sans text-sm font-normal text-white">Awaiting Quantum AI...</span>
-        </div>
-      ) : (
-        <>
-          <div className={`grid ${collapsed ? "grid-cols-5" : "grid-cols-5"} gap-2`}>{displayItems.map((product, index) => {
-            const isSelected = selectedIds.includes(product.id);
-            const isActive = activeId === product.id;
-            const alreadyImported = importedProductIds.has(product.id);
-            return (
-              <button
-                key={product.id}
-                type="button"
-                onClick={(event) => onItemActivate(product, index, event)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    onItemActivate(product, index, event);
-                  }
-                }}
-                className={`group relative overflow-hidden rounded-xl border bg-[#020616] transition ${isSelected ? "border-[#7F22FE] shadow-[0_0_0_1px_rgba(127,34,254,0.45)]" : alreadyImported ? "border-[#00BC7D]/45" : "border-slate-700 hover:border-slate-500"}`}
-                aria-pressed={isSelected}
-              >
-                <SmartThumbnail
-                  src={product.previewUrl}
-                  alt={product.title}
-                  className={`rounded-[10px] ${isActive ? "ring-1 ring-white/10" : ""}`}
-                />
-              </button>
-            );
-          })}</div>
-          <div className="flex items-center justify-between gap-2 pt-3 text-[11px] text-slate-100">
-            <span className="min-w-0 flex-1 truncate">{effectiveRangeLabel}</span>
-            <div className="flex items-center gap-2">
-              {footerActions}
-              {onToggleCollapsed ? (
-                <button type="button" className="text-slate-100 transition hover:text-white" onClick={onToggleCollapsed}>
-                  {collapsed ? "Maximize" : "Minimize"}
-                </button>
-              ) : null}
-              {totalPages > 1 ? (
-                <>
-                  <button type="button" className="text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200" onClick={onPreviousPage} disabled={page <= 0} aria-label="Previous page">
-                    <ChevronIcon open={false} className="h-4 w-4 rotate-90" />
-                  </button>
-                  <button type="button" className="text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200" onClick={onNextPage} disabled={page >= totalPages - 1} aria-label="Next page">
-                    <ChevronIcon open={false} className="h-4 w-4 -rotate-90" />
-                  </button>
-                </>
-              ) : null}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = 30000) {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(input, { ...init, signal: controller.signal });
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
-}
-
-async function parseResponsePayload(response: Response) {
-  const text = await response.text();
-  if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { error: text };
-  }
-}
-
-function formatApiError(kind: UserFacingErrorKind, error: unknown, consolePrefix?: string) {
-  logErrorToConsole(consolePrefix || `[MerchQuantum] ${kind} failed`, error);
-  return getUserFacingErrorMessage(kind);
-}
-
-function appendToActiveBatch(active: Img[], queued: Img[], incoming: Img[], activeLimit: number) {
-  const nextActive = [...active];
-  const nextQueued = [...queued];
-
-  for (const image of incoming) {
-    if (nextActive.length < activeLimit) {
-      nextActive.push(image);
-    } else {
-      nextQueued.push(image);
-    }
-  }
-
-  return { active: nextActive, queued: nextQueued };
-}
-
-function fillActiveBatch(active: Img[], queued: Img[], activeLimit: number) {
-  const nextActive = [...active];
-  const nextQueued = [...queued];
-
-  while (nextActive.length < activeLimit && nextQueued.length > 0) {
-    const next = nextQueued.shift();
-    if (next) nextActive.push(next);
-  }
-
-  return { active: nextActive, queued: nextQueued };
-}
-
-function normalizeSelectionIds(values: string[]) {
-  const seen = new Set<string>();
-  return values.filter((value) => {
-    const normalized = String(value || "").trim();
-    if (!normalized || seen.has(normalized)) return false;
-    seen.add(normalized);
-    return true;
-  });
-}
-
-function selectionsMatch(a: string[], b: string[]) {
-  if (a.length !== b.length) return false;
-  return a.every((value, index) => value === b[index]);
-}
-
-async function readDataUrl(file: File) {
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error || new Error("Unable to read file."));
-    reader.readAsDataURL(file);
-  });
-}
-
-async function analyzeArtworkBounds(file: File): Promise<ArtworkBounds> {
-  const previewUrl = createPreviewObjectUrl(file);
-  try {
-    const image = await loadImageElement(previewUrl);
-    const canvas = document.createElement("canvas");
-    canvas.width = image.naturalWidth || image.width || 1;
-    canvas.height = image.naturalHeight || image.height || 1;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) {
-      return {
-        canvasWidth: canvas.width,
-        canvasHeight: canvas.height,
-        visibleLeft: 0,
-        visibleTop: 0,
-        visibleWidth: canvas.width,
-        visibleHeight: canvas.height,
-      };
-    }
-
-    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    let left = canvas.width;
-    let top = canvas.height;
-    let right = 0;
-    let bottom = 0;
-    let found = false;
-
-    for (let y = 0; y < canvas.height; y += 1) {
-      for (let x = 0; x < canvas.width; x += 1) {
-        const alpha = data[(y * canvas.width + x) * 4 + 3];
-        if (alpha < DISPLAY_ALPHA_THRESHOLD) continue;
-        found = true;
-        if (x < left) left = x;
-        if (y < top) top = y;
-        if (x > right) right = x;
-        if (y > bottom) bottom = y;
-      }
-    }
-
-    if (!found) {
-      return {
-        canvasWidth: canvas.width,
-        canvasHeight: canvas.height,
-        visibleLeft: 0,
-        visibleTop: 0,
-        visibleWidth: canvas.width,
-        visibleHeight: canvas.height,
-      };
-    }
-
-    return normalizeArtworkBounds({
-      canvasWidth: canvas.width,
-      canvasHeight: canvas.height,
-      visibleLeft: left,
-      visibleTop: top,
-      visibleWidth: right - left + 1,
-      visibleHeight: bottom - top + 1,
-    }, canvas.width, canvas.height);
-  } finally {
-    if (previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
-  }
-}
-
 export default function MerchQuantumApp() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const previousPreviewUrlsRef = useRef<string[]>([]);
@@ -1497,29 +1888,40 @@ export default function MerchQuantumApp() {
   const inlineFeedbackTimeoutRef = useRef<number | null>(null);
 
   const [provider, setProvider] = useState<ProviderChoiceId | "">("");
-  const [token, setToken] = useState("");
-  const [apiStatus, setApiStatus] = useState("");
+    const [token, setToken] = useState("");
   const [connected, setConnected] = useState(false);
   const [loadingApi, setLoadingApi] = useState(false);
+  const [apiStatus, setApiStatus] = useState("");
   const [pulseConnected, setPulseConnected] = useState(false);
-  const [isDisconnectArmed, setIsDisconnectArmed] = useState(false);
-  const [isTokenInputFocused, setIsTokenInputFocused] = useState(false);
   const [apiShops, setApiShops] = useState<Shop[]>([]);
   const [apiProducts, setApiProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [loadingTemplateDetails, setLoadingTemplateDetails] = useState(false);
   const [shopId, setShopId] = useState("");
   const [productId, setProductId] = useState("");
-  const [activeGridProductId, setActiveGridProductId] = useState("");
-  const [template, setTemplate] = useState<Template | null>(null);
+  const [bulkEditGridPage, setBulkEditGridPage] = useState(0);
+  const [createTemplateGridPage, setCreateTemplateGridPage] = useState(0);
+  const [isCreateThumbExpandedView, setIsCreateThumbExpandedView] = useState(false);
+  const [createThumbGridPage, setCreateThumbGridPage] = useState(0);
   const [templateDescription, setTemplateDescription] = useState("");
-  const [loadingTemplateDetails, setLoadingTemplateDetails] = useState(false);
+  const [importedListingTitle, setImportedListingTitle] = useState("");
+  const [importedListingDescription, setImportedListingDescription] = useState("");
+  const [template, setTemplate] = useState<Template | null>(null);
+  const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
+  const [pendingTemplateSelectionIds, setPendingTemplateSelectionIds] = useState<string[]>([]);
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+  const [isDisconnectArmed, setIsDisconnectArmed] = useState(false);
+  const [isTokenInputFocused, setIsTokenInputFocused] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("");
   const [isRoutingGridExpanded, setIsRoutingGridExpanded] = useState(true);
-  const [isWorkspaceSelectionCollapsed, setIsWorkspaceSelectionCollapsed] = useState(getStoredWorkspaceSelectionCondensed());
-  const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
+  const [isWorkspaceSelectionCollapsed, setIsWorkspaceSelectionCollapsed] = useState(getStoredWorkspaceSelectionCondensed);
+  const [isImportingListings, setIsImportingListings] = useState(false);
+  const [, setImportStatus] = useState("");
+  const [isSyncingImportedListings, setIsSyncingImportedListings] = useState(false);
+  const [isPublishingImportedListings, setIsPublishingImportedListings] = useState(false);
   const [images, setImages] = useState<Img[]>([]);
-  const [queuedImages, setQueuedImages] = useState<Img[]>([]);
   const [completedImportedImages, setCompletedImportedImages] = useState<Img[]>([]);
+  const [queuedImages, setQueuedImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
@@ -1530,32 +1932,32 @@ export default function MerchQuantumApp() {
   const [editableDescriptionDraft, setEditableDescriptionDraft] = useState("");
   const [inlineSaveFeedback, setInlineSaveFeedback] = useState<InlineSaveFeedback | null>(null);
   const [aiAssistStatus, setAiAssistStatus] = useState("");
-  const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
-  const [pendingTemplateSelectionIds, setPendingTemplateSelectionIds] = useState<string[]>([]);
-  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
-  const [bulkEditGridPage, setBulkEditGridPage] = useState(0);
-  const [createTemplateGridPage, setCreateTemplateGridPage] = useState(0);
-  const [isCreateThumbExpandedView, setIsCreateThumbExpandedView] = useState(false);
-  const [createThumbGridPage, setCreateThumbGridPage] = useState(0);
-  const [, setImportStatus] = useState("");
-  const [isImportingListings, setIsImportingListings] = useState(false);
-  const [isSyncingImportedListings, setIsSyncingImportedListings] = useState(false);
-  const [isPublishingImportedListings, setIsPublishingImportedListings] = useState(false);
-  const [importedListingTitle, setImportedListingTitle] = useState("");
-  const [importedListingDescription, setImportedListingDescription] = useState("");
+  const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
+  const [activeGridProductId, setActiveGridProductId] = useState("");
 
-  const providerTokenStorageKey = getProviderTokenStorageKey(provider);
+  useEffect(() => {
+    window.localStorage.setItem(
+      WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY,
+      isWorkspaceSelectionCollapsed ? "1" : "0"
+    );
+  }, [isWorkspaceSelectionCollapsed]);
+
+  const resolvedProviderId = provider === "spreadconnect" ? "spod" : provider;
+  const providerTokenStorageKey = getProviderTokenStorageKey(resolvedProviderId);
   const selectedProvider = PROVIDERS.find((entry) => entry.id === provider) || null;
-  const resolvedProviderId = selectedProvider?.providerId || null;
-  const isLiveProvider = selectedProvider?.isLive === true;
-  const supportsImportedListingSync = resolvedProviderId === "printify";
-  const supportsImportedPublish = resolvedProviderId === "printify";
-  const supportsProviderMetadataSync = resolvedProviderId === "printify";
-  const activeBatchLimit = ACTIVE_BATCH_FILES;
-  const allImages = [...images, ...completedImportedImages];
-  const queuedImportedImages = queuedImages.filter((img) => img.sourceType === "imported");
+  const isLiveProvider = selectedProvider?.isLive || false;
   const isCreateMode = workspaceMode === "create";
   const isBulkEditMode = workspaceMode === "edit";
+  const supportsProviderMetadataSync = resolvedProviderId === "printify";
+  const supportsImportedListingSync = resolvedProviderId === "printify" || resolvedProviderId === "printful";
+  const supportsImportedPublish = resolvedProviderId === "printify";
+  const totalBatchLimit = CONNECTED_TOTAL_BATCH_FILES;
+  const activeBatchLimit = ACTIVE_BATCH_FILES;
+  const allImages = useMemo(() => [...completedImportedImages, ...images], [completedImportedImages, images]);
+  const queuedImportedImages = useMemo(
+    () => queuedImages.filter((img) => img.sourceType === "imported"),
+    [queuedImages]
+  );
   const availableShops = connected && isLiveProvider ? apiShops : [];
   const selectedShop = availableShops.find((shop) => shop.id === shopId) || null;
   const hasTokenValue = token.trim().length > 0;
@@ -1573,6 +1975,11 @@ export default function MerchQuantumApp() {
   const visibleProducts = useMemo(() => {
     return productSource.filter((p) => p.shopId === shopId);
   }, [shopId, productSource]);
+  const importedQueueCount = useMemo(
+    () => allImages.filter((img) => img.sourceType === "imported").length + queuedImportedImages.length,
+    [allImages, queuedImportedImages]
+  );
+
   const sortedImages = useMemo(() => {
     return [...images].sort((a, b) => {
       const statusDelta = getStatusSortValue(getResolvedItemStatus(a)) - getStatusSortValue(getResolvedItemStatus(b));
@@ -1609,9 +2016,12 @@ export default function MerchQuantumApp() {
     [activeGridProductId, visibleProducts]
   );
   const readyCount = images.filter((img) => getResolvedItemStatus(img) === "ready").length;
+  const errorCount = images.filter((img) => getResolvedItemStatus(img) === "error").length;
   const processingCount = images.filter((img) => getResolvedItemStatus(img) === "pending").length;
   const draftReadyCount = images.filter((img) => img.sourceType !== "imported" && getResolvedItemStatus(img) === "ready").length;
   const hasAnyLoadedImages = allImages.length > 0 || queuedImages.length > 0;
+  const completedGenerationCount = readyCount + errorCount;
+  const generationProgressPct = images.length > 0 ? Math.round((completedGenerationCount / images.length) * 100) : 0;
   const isWorkspaceConfigured = isCreateMode ? connected && !!shopId && !!template : hasWorkspaceRoute;
   const canSubmitProviderConnection = Boolean(provider && isLiveProvider && token.trim() && !loadingApi && !connected);
   const isQuantumAiGenerating = processingCount > 0;
@@ -1621,6 +2031,7 @@ export default function MerchQuantumApp() {
     ? canShowDetailWorkspace && (!!activeGridProduct || hasAnyLoadedImages)
     : canShowDetailWorkspace && (hasAnyLoadedImages || !!selectedImage || !!activeGridProduct);
   const canShowDetailPanel = canShowWorkspacePreview && hasAnyLoadedImages && !!selectedImage;
+  const canShowLoadedQueueGrid = canShowWorkspacePreview && sortedImages.length > 0;
   const showPreviewStats = hasAnyLoadedImages;
   const showWorkspaceModeLoader = hasWorkspaceRoute && loadingProducts && visibleProducts.length === 0;
   const selectedImageFieldStates = selectedImage?.aiFieldStates ?? createAiFieldStates("idle");
@@ -1720,6 +2131,8 @@ export default function MerchQuantumApp() {
     () => new Set([...allImages, ...queuedImages].map((img) => img.providerProductId).filter((value): value is string => !!value)),
     [allImages, queuedImages]
   );
+  const loadedStatCount = allImages.length;
+  const queuedStatCount = queuedImages.length;
   const hasBulkEditStagedSelections = pendingTemplateSelectionIds.length > 0;
   const selectionPageSize = 25;
   const createTemplatePageSize = selectionPageSize;
@@ -1772,7 +2185,6 @@ export default function MerchQuantumApp() {
     ? `${safeCreateThumbPage * createThumbPageSize + 1}-${Math.min(sortedImages.length, safeCreateThumbPage * createThumbPageSize + visibleCreateThumbnails.length)} of ${sortedImages.length}`
     : "0 of 0";
   const workspaceModePickerLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "Edit mode";
-
   const bulkEditPublishDisabled =
     !isBulkEditMode
     || approvedImportedItems.length === 0
@@ -1798,7 +2210,6 @@ export default function MerchQuantumApp() {
           : !workspaceMode
             ? "mode"
             : null;
-
   function getProviderRoute(path: "connect" | "disconnect" | "products" | "product" | "batch-create") {
     return `/api/providers/${path}`;
   }
@@ -1914,24 +2325,36 @@ export default function MerchQuantumApp() {
     );
     const descriptionParagraphs = descriptionTextToParagraphs(activeDescriptionHint).slice(0, 2);
     const seen = new Set<string>();
-    const derivedWords = [...activeTitleHint.split(/\s+/), ...descriptionParagraphs.flatMap((paragraph) => paragraph.split(/\s+/))]
-      .map((word) => word.replace(/[^A-Za-z0-9'-]+/g, "").trim())
-      .filter((word) => word.length >= 3)
-      .filter((word) => !STOP_WORDS.has(word.toLowerCase()))
-      .map((word) => (word.toLowerCase() === word ? word : word.toLowerCase()));
-    const candidateTags = normalizeTagsFromPayload(image.tags);
-    const fallbackTags = normalizeTagsFromPayload(derivedWords).slice(0, LISTING_LIMITS.tagCount);
-    const tagsForHints = (candidateTags.length > 0 ? candidateTags : fallbackTags).filter((tag) => {
-      const normalized = tag.toLowerCase();
-      if (seen.has(normalized)) return false;
-      seen.add(normalized);
-      return true;
-    });
-    const hints: string[] = [];
-    if (activeTitleHint) hints.push(`Title anchor: ${activeTitleHint}`);
-    if (descriptionParagraphs.length > 0) hints.push(`Buyer-facing lead: ${descriptionParagraphs.join(" | ")}`);
-    if (tagsForHints.length > 0) hints.push(`Preserve these search tags if they still fit: ${tagsForHints.join(", ")}`);
-    return hints;
+
+    return [
+      activeTitleHint,
+      ...image.tags.map((tag) => String(tag || "").trim()),
+      ...descriptionParagraphs,
+    ]
+      .map((hint) => hint.replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .filter((hint) => {
+        const key = hint.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 8);
+  }
+
+  function buildLegacyContextForImage(image: Img) {
+    if (image.sourceType !== "imported") return undefined;
+
+    const legacyParts = [
+      image.originalListingTitle?.trim()
+        ? `Legacy title: ${image.originalListingTitle.trim()}`
+        : "",
+      image.originalListingDescription?.trim()
+        ? `Legacy description: ${image.originalListingDescription.trim()}`
+        : "",
+    ].filter(Boolean);
+
+    return legacyParts.length > 0 ? legacyParts.join("\n") : undefined;
   }
 
   async function runAiListingForImage(
@@ -2070,7 +2493,7 @@ export default function MerchQuantumApp() {
       const finalLead = descriptionParagraphs;
       const confidence = Number.isFinite(data?.confidence) ? clamp(Number(data.confidence), 0, 1) : 0;
       const reasonFlags = Array.isArray(data?.reasonFlags)
-        ? data.reasonFlags.filter((flag: unknown): flag is string => typeof flag === "string")
+        ? data.reasonFlags.filter((flag: unknown) => typeof flag === "string")
         : [];
       const grade = data?.grade === "green" || data?.grade === "red"
         ? data.grade
@@ -2088,11 +2511,21 @@ export default function MerchQuantumApp() {
       if (!hasCompleteStructuredOutput) {
         throw new Error("Quantum AI returned incomplete structured output.");
       }
-
       const nextFieldStates: AiFieldStates = publishReady
-        ? { title: "ready", description: "ready", tags: "ready" }
-        : { title: "error", description: "error", tags: "error" };
-      const status: ItemStatus = publishReady ? "ready" : "error";
+        ? {
+            title: "ready",
+            description: "ready",
+            tags: "ready",
+          }
+        : {
+            title: "error",
+            description: "error",
+            tags: "error",
+          };
+      const status: ItemStatus =
+        publishReady
+          ? "ready"
+          : "error";
       const statusReason = reasonFlags.length
         ? reasonFlags.join(" • ")
         : status === "ready"
@@ -2155,9 +2588,15 @@ export default function MerchQuantumApp() {
                 aiProcessing: false,
                 aiFieldStates:
                   targetField === "title"
-                    ? { ...img.aiFieldStates, title: visibleTitle ? "ready" : "error" }
+                    ? {
+                        ...img.aiFieldStates,
+                        title: visibleTitle ? "ready" : "error",
+                      }
                     : targetField === "description"
-                      ? { ...img.aiFieldStates, description: visibleDescription ? "ready" : "error" }
+                      ? {
+                          ...img.aiFieldStates,
+                          description: visibleDescription ? "ready" : "error",
+                        }
                       : nextFieldStates,
                 status: targetField === "full" ? status : nextStatus,
                 statusReason: nextStatusReason,
@@ -2280,7 +2719,9 @@ export default function MerchQuantumApp() {
             : clampTitleForListing(
               safeTitle(img.final, img.aiDraft?.title || img.originalListingTitle || img.cleaned)
             );
-          const nextBuyerDescription = field === "description" ? nextValue : currentBuyerDescription;
+          const nextBuyerDescription = field === "description"
+            ? nextValue
+            : currentBuyerDescription;
           const nextLeadParagraphs = descriptionTextToParagraphs(nextBuyerDescription);
           const nextDescriptionHtml = buildImageDescriptionHtmlForEdit(nextBuyerDescription, img);
           const preservedTags = normalizeTagsFromPayload(img.tags).slice(0, LISTING_LIMITS.tagCount);
@@ -2732,6 +3173,64 @@ export default function MerchQuantumApp() {
     fileRef.current?.click();
   }
 
+  async function addFiles(list: FileList | null) {
+    if (!list) return;
+    if (!connected) return;
+    const incoming = Array.from(list);
+    const imageFiles = incoming.filter(isImage);
+    const ignoredByType = incoming.length - imageFiles.length;
+    const existingSignatures = new Set(
+      [...images, ...completedImportedImages, ...queuedImages]
+        .map((entry) => getFileSignature(entry.file))
+        .filter(Boolean)
+    );
+    const uniqueImageFiles = imageFiles.filter((file) => {
+      const signature = getFileSignature(file);
+      if (existingSignatures.has(signature)) return false;
+      existingSignatures.add(signature);
+      return true;
+    });
+    const currentTotal = images.length + queuedImages.length;
+    const room = Math.max(0, totalBatchLimit - currentTotal);
+    const accepted = uniqueImageFiles.slice(0, room);
+    const ignoredByLimit = Math.max(0, uniqueImageFiles.length - accepted.length);
+
+    const good = await Promise.all(accepted.map(async (file) => {
+      const cleaned = cleanTitle(file.name);
+      const preview = createPreviewObjectUrl(file);
+      return {
+        id: makeId(),
+        name: file.name,
+        file,
+        preview,
+        cleaned,
+        final: cleaned,
+        finalDescription: "",
+        tags: [],
+        status: "pending" as ItemStatus,
+        statusReason: "Quantum AI is preparing listing copy.",
+        aiFieldStates: createAiFieldStates("idle"),
+      } satisfies Img;
+    }));
+
+    const { active: mergedActive, queued: mergedQueued } = appendToActiveBatch(images, queuedImages, good, activeBatchLimit);
+    setImages(mergedActive);
+    setQueuedImages(mergedQueued);
+    if (!selectedId && mergedActive[0]) setSelectedId(mergedActive[0].id);
+
+    const parts: string[] = [];
+    if (mergedActive.length !== images.length || mergedQueued.length) {
+      parts.push(`Loaded ${good.length} image${good.length === 1 ? "" : "s"}.`);
+    }
+    if (mergedQueued.length) {
+      parts.push(`Queued ${mergedQueued.length} for later batches.`);
+    }
+    if (ignoredByType) parts.push(`Ignored ${ignoredByType} non-image file${ignoredByType === 1 ? "" : "s"}.`);
+    if (ignoredByLimit) {
+      parts.push(`Ignored ${ignoredByLimit} image${ignoredByLimit === 1 ? "" : "s"} above the ${CONNECTED_TOTAL_BATCH_FILES}-image total cap.`);
+    }
+  }
+
   async function loadProductsForShop(nextShopId: string) {
     if (!connected || !isLiveProvider || !nextShopId || !resolvedProviderId) {
       setApiProducts([]);
@@ -3001,23 +3500,48 @@ export default function MerchQuantumApp() {
       providerStoreId: record.storeId,
       providerProductId: record.id,
       templateDescriptionOverride: staticSpecBlock,
-      templateReferenceOverride: record.id,
-      productFamilyOverride: resolveProductFamily(record.title, staticSpecBlock),
+      templateReferenceOverride: normalizeRef(record.id) || record.id,
+      productFamilyOverride: resolveProductFamily(titleSeed || cleaned, staticSpecBlock),
       importedArtwork: record.artwork,
-      originalListingTitle: record.title,
+      originalListingTitle: titleSeed || cleaned,
       originalListingDescription: buyerDescription,
       syncState: "idle",
-      syncMessage: "",
+      syncMessage: "Awaiting Quantum AI rewrite.",
     };
   }
 
-  async function importSelectedListings(selectionIds: string[], options: { replaceExisting?: boolean } = {}) {
-    if (!resolvedProviderId || !shopId || selectionIds.length === 0) {
-      setImportStatus("Select at least one provider listing to import.");
+  async function importSelectedListings(
+    sourceIdsOverride = selectedImportIds,
+    options: { replaceExisting?: boolean } = {}
+  ) {
+    const sourceIds = normalizeSelectionIds(sourceIdsOverride);
+    if (!resolvedProviderId || !shopId || sourceIds.length === 0) {
+      return;
+    }
+
+    const existingImportedCount = options.replaceExisting ? 0 : importedQueueCount;
+    const existingImportedIds = options.replaceExisting ? new Set<string>() : importedProductIds;
+    const remainingCapacity = Math.max(0, IMPORT_QUEUE_LIMIT - existingImportedCount);
+    if (remainingCapacity === 0) {
+      setImportStatus(`The workspace is capped at ${IMPORT_QUEUE_LIMIT} listings in this pass.`);
+      return;
+    }
+
+    const uniqueIds = Array.from(new Set(sourceIds));
+    const duplicateIds = uniqueIds.filter((id) => existingImportedIds.has(id));
+    const idsToImport = uniqueIds
+      .filter((id) => !existingImportedIds.has(id))
+      .slice(0, remainingCapacity);
+    const skippedByLimit = Math.max(0, uniqueIds.length - duplicateIds.length - idsToImport.length);
+
+    if (idsToImport.length === 0) {
+      setImportStatus(duplicateIds.length > 0 ? "Those provider listings are already loaded in the review queue." : "Select at least one provider listing to import.");
       return;
     }
 
     setIsImportingListings(true);
+    setImportStatus(`Importing ${idsToImport.length} provider listing${idsToImport.length === 1 ? "" : "s"}...`);
+
     try {
       const response = await fetchWithTimeout(
         "/api/providers/import-listings",
@@ -3027,76 +3551,54 @@ export default function MerchQuantumApp() {
           body: JSON.stringify({
             provider: resolvedProviderId,
             shopId,
-            productIds: selectionIds,
+            sourceIds: idsToImport,
           }),
         },
         60000
       );
       const data = await parseResponsePayload(response);
-      if (!response.ok) throw new Error(data?.error || `Listing import failed with status ${response.status}.`);
+      if (!response.ok) {
+        throw new Error(data?.error || `Import request failed with status ${response.status}.`);
+      }
 
-      const importedRecords: ImportedListingRecord[] = Array.isArray(data?.products)
-        ? data.products.map((record: any) => ({
-            id: String(record?.id || ""),
-            storeId: String(record?.storeId || shopId),
-            title: String(record?.title || "Recovered Artwork"),
-            description: String(record?.description || ""),
-            tags: normalizeTagsFromPayload(record?.tags),
-            templateDescription: String(record?.templateDescription || ""),
-            artwork: record?.artwork && typeof record.artwork === "object"
-              ? {
-                  assetId: record.artwork.assetId ? String(record.artwork.assetId) : undefined,
-                  fileName: String(record.artwork.fileName || record.title || "artwork"),
-                  url: String(record.artwork.url || ""),
-                  previewUrl: record.artwork.previewUrl ? String(record.artwork.previewUrl) : undefined,
-                  contentType: record.artwork.contentType ? String(record.artwork.contentType) : undefined,
-                  width: Number.isFinite(record.artwork.width) ? Number(record.artwork.width) : undefined,
-                  height: Number.isFinite(record.artwork.height) ? Number(record.artwork.height) : undefined,
-                }
-              : null,
+      const importedRecords: ImportedListingRecord[] = Array.isArray(data?.items)
+        ? data.items.map((item: ImportedListingRecord) => ({
+            id: String(item.id || ""),
+            storeId: String(item.storeId || shopId),
+            title: String(item.title || ""),
+            description: String(item.description || ""),
+            tags: Array.isArray(item.tags) ? item.tags.map((tag) => String(tag || "")) : [],
+            templateDescription: String(item.templateDescription || ""),
+            artwork: item.artwork || null,
           }))
         : [];
 
+      const rescued: Img[] = [];
       let skippedMissingArtwork = 0;
       let skippedFailedRescue = 0;
-      const duplicateIds: string[] = [];
-      let skippedByLimit = 0;
-      const rescued: Img[] = [];
 
       for (const record of importedRecords) {
-        if (!record.id || importedProductIds.has(record.id)) {
-          if (record.id) duplicateIds.push(record.id);
-          continue;
-        }
         if (!record.artwork?.url) {
           skippedMissingArtwork += 1;
           continue;
         }
-        if (rescued.length >= IMPORT_QUEUE_LIMIT) {
-          skippedByLimit += 1;
-          continue;
-        }
 
         try {
-          const artworkResponse = await fetchWithTimeout(record.artwork.url);
-          if (!artworkResponse.ok) throw new Error(`Artwork download failed with status ${artworkResponse.status}.`);
-          const blob = await artworkResponse.blob();
-          const fileName = record.artwork.fileName || `${record.title || record.id}.png`;
-          const file = new File([blob], fileName, { type: blob.type || record.artwork.contentType || "image/png" });
+          const fallbackFileName = `${cleanTitle(record.title || record.artwork.fileName || "Recovered Artwork") || "Recovered Artwork"}.png`;
+          const file = await urlToFile(record.artwork.url, record.artwork.fileName || fallbackFileName, record.artwork.contentType || "image/png");
           const preview = createPreviewObjectUrl(file);
-          const bounds = await analyzeArtworkBounds(file);
-          rescued.push(buildImportedImageSeed(record, file, preview, bounds));
-        } catch (error) {
+          const artworkBounds = await analyzeArtworkBounds(file);
+          rescued.push(buildImportedImageSeed(record, file, preview, artworkBounds));
+        } catch {
           skippedFailedRescue += 1;
-          logErrorToConsole("[MerchQuantum] artwork rescue failed", error);
         }
       }
 
       let queuedImportedAfterImport = queuedImportedImages.length;
       if (rescued.length > 0) {
-        const { active: mergedActive, queued: mergedQueued } = options.replaceExisting
-          ? appendToActiveBatch([], [], rescued, activeBatchLimit)
-          : appendToActiveBatch(images, queuedImages, rescued, activeBatchLimit);
+        const baseActive = options.replaceExisting ? [] : images;
+        const baseQueued = options.replaceExisting ? [] : queuedImages;
+        const { active: mergedActive, queued: mergedQueued } = appendToActiveBatch(baseActive, baseQueued, rescued, activeBatchLimit);
         if (options.replaceExisting) {
           setCompletedImportedImages([]);
         }
@@ -3485,7 +3987,7 @@ export default function MerchQuantumApp() {
               <MerchQuantumInlineHeading className="max-w-full" />
             </div>
             <div className="grid w-full grid-cols-2 gap-2">
-            <div className={`relative min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
+            <div className={`min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
               <SetupSelect
                 value={provider}
                 onChange={(e) => {
@@ -3654,117 +4156,141 @@ export default function MerchQuantumApp() {
                 <option value="edit">Bulk Edit</option>
               </SetupSelect>
             </div>
-          </div>
-        </Box>
-      </div>
-    ) : null}
+            </div>
 
-        {showWorkspaceModeLoader ? (
-          <div className="relative">
-            <div className="pointer-events-none opacity-0">
-              <ProductGrid
-                heading={workspaceGridHeading}
-                items={workspaceLoadingPlaceholderItems}
-                selectedIds={[]}
-                importedProductIds={importedProductIds}
-                highlighted={false}
-                collapsed={isWorkspaceSelectionCollapsed}
-                rangeLabel="0 of 0"
-                page={0}
-                pageSize={selectionPageSize}
-                totalPages={1}
-                loading={false}
-                headerAccessory={null}
-                onToggleCollapsed={() => setIsWorkspaceSelectionCollapsed((current) => !current)}
-                onSelectAll={isBulkEditMode ? () => undefined : undefined}
-                selectAllLabel={isBulkEditMode ? "Select All" : undefined}
-                footerLabel="0 of 0"
-                onItemActivate={() => undefined}
-                onPreviousPage={() => undefined}
-                onNextPage={() => undefined}
-              />
-            </div>
-            <div className="absolute inset-0 z-10 flex items-center justify-center">
-              <div className="flex flex-col items-center justify-center gap-3 text-center font-sans text-sm font-normal text-white">
-                <QuantOrbLoader />
-                <span>{workspaceModeLoadingLabel}</span>
-              </div>
-            </div>
+            {apiStatus ? <p className="mt-3 text-sm text-[#FE9A00]">{apiStatus}</p> : null}
+          </Box>
           </div>
-        ) : workspaceMode && visibleProducts.length > 0 ? (
-          <>
-            <ProductGrid
-              heading={workspaceGridHeading}
-              items={isCreateMode ? createTemplateVisibleProducts : bulkEditVisibleProducts}
-              selectedIds={isCreateMode ? selectedImportIds : pendingTemplateSelectionIds}
-              activeId={activeGridProductId}
-              importedProductIds={importedProductIds}
-              highlighted={false}
-              collapsed={isWorkspaceSelectionCollapsed}
-              rangeLabel={isCreateMode ? createTemplateVisibleRangeLabel : bulkEditVisibleRangeLabel}
-              page={isCreateMode ? safeCreateTemplatePage : safeBulkEditPage}
-              pageSize={selectionPageSize}
-              totalPages={isCreateMode ? createTemplateTotalPages : bulkEditTotalPages}
-              loading={false}
-              headerAccessory={null}
-              onToggleCollapsed={() => setIsWorkspaceSelectionCollapsed((current) => !current)}
-              onSelectAll={isBulkEditMode
-                ? () => {
-                    if (hasAllBulkEditVisibleSelections) {
-                      void commitTemplateSelections([]);
-                      return;
-                    }
-                    void commitTemplateSelections(bulkEditVisibleProductIds);
-                  }
-                : undefined}
-              selectAllLabel={isBulkEditMode ? (hasAllBulkEditVisibleSelections ? "Deselect All" : "Select All") : undefined}
-              footerLabel={isCreateMode ? createTemplateVisibleRangeLabel : bulkEditVisibleRangeLabel}
-              onItemActivate={(product, index, event) => {
-                if (isCreateMode) {
-                  void handleCreateTemplateSelection(product.id, index);
-                  return;
+          ) : null}
+
+        </div>
+        {connected && shopId && workspaceMode ? (
+          <div className="relative z-10">
+            {showWorkspaceModeLoader ? <WorkspaceModeLoadingOverlay label={workspaceModeLoadingLabel} /> : null}
+            <div aria-hidden={showWorkspaceModeLoader} className={showWorkspaceModeLoader ? "pointer-events-none opacity-0" : ""}>
+          <Box className="relative border-slate-800 bg-[#020616] shadow-[0_24px_70px_-38px_rgba(2,6,22,0.95)]">
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg"
+              className="hidden"
+              onChange={(e) => {
+                if (isCreateMode && connected && isWorkspaceConfigured) {
+                  void addFiles(e.target.files);
+                } else {
+                  nudgeWorkflow(true);
                 }
-                handleBulkEditThumbnailSelection(product.id, index, { shiftKey: "shiftKey" in event ? Boolean(event.shiftKey) : false });
+                e.currentTarget.value = "";
               }}
-              onPreviousPage={() => {
-                if (isCreateMode) {
-                  setCreateTemplateGridPage((current) => Math.max(0, current - 1));
-                  return;
-                }
-                setBulkEditGridPage((current) => Math.max(0, current - 1));
-              }}
-              onNextPage={() => {
-                if (isCreateMode) {
-                  setCreateTemplateGridPage((current) => Math.min(createTemplateTotalPages - 1, current + 1));
-                  return;
-                }
-                setBulkEditGridPage((current) => Math.min(bulkEditTotalPages - 1, current + 1));
-              }}
-              footerActions={isBulkEditMode ? (
-                <button
-                  type="button"
-                  onClick={() => { void commitTemplateSelections(pendingTemplateSelectionIds); }}
-                  disabled={!hasBulkEditStagedSelections || isImportingListings}
-                  className="inline-flex items-center gap-2 text-sm font-normal text-[#7F22FE] transition hover:text-[#9550FF] disabled:cursor-not-allowed disabled:text-slate-200"
-                >
-                  {isImportingListings ? <QuantOrbLoader /> : null}
-                  <span>Load Selected</span>
-                </button>
-              ) : null}
             />
 
-            {canShowWorkspacePreview ? (
+            {isBulkEditMode ? (
+              <ProductGrid
+                heading={workspaceGridHeading}
+                items={showWorkspaceModeLoader ? workspaceLoadingPlaceholderItems : bulkEditVisibleProducts}
+                selectedIds={pendingTemplateSelectionIds}
+                activeId={activeGridProductId}
+                importedProductIds={importedProductIds}
+                highlighted={attentionTarget === "template"}
+                rangeLabel={bulkEditVisibleRangeLabel}
+                page={safeBulkEditPage}
+                pageSize={bulkEditPageSize}
+                totalPages={bulkEditTotalPages}
+                loading={loadingProducts}
+                footerLabel={bulkEditVisibleRangeLabel}
+                collapsed={isWorkspaceSelectionCollapsed}
+                selectAllLabel={hasAllBulkEditVisibleSelections ? "Deselect All" : "Select All"}
+                headerAccessory={
+                  <button
+                    type="button"
+                    onClick={() => setIsRoutingGridExpanded((current) => !current)}
+                    className="font-medium text-slate-100 transition hover:text-white"
+                  >
+                    Mode
+                  </button>
+                }
+                onToggleCollapsed={() => setIsWorkspaceSelectionCollapsed((current) => !current)}
+                onSelectAll={() => {
+                  if (hasAllBulkEditVisibleSelections) {
+                    setPendingTemplateSelectionIds([]);
+                    setActiveGridProductId("");
+                    setLastSelectedIndex(null);
+                    return;
+                  }
+                  setPendingTemplateSelectionIds(normalizeSelectionIds(bulkEditVisibleProductIds));
+                  setActiveGridProductId(bulkEditVisibleProductIds[0] || "");
+                  setLastSelectedIndex(null);
+                }}
+                onItemActivate={(product, index, event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  handleBulkEditThumbnailSelection(product.id, index, { shiftKey: "shiftKey" in event ? event.shiftKey : false });
+                }}
+                onPreviousPage={() => setBulkEditGridPage((current) => Math.max(0, current - 1))}
+                onNextPage={() => setBulkEditGridPage((current) => Math.min(bulkEditTotalPages - 1, current + 1))}
+                footerActions={
+                  <>
+                    <span className="inline-flex h-4 w-4 items-center justify-center">
+                      {isImportingListings ? <QuantOrbLoader /> : null}
+                    </span>
+                    <button
+                      type="button"
+                      className="font-semibold text-[#C084FC] transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
+                      disabled={!hasBulkEditStagedSelections || isImportingListings}
+                      onClick={() => { void commitTemplateSelections(pendingTemplateSelectionIds); }}
+                    >
+                      Load Selected
+                    </button>
+                  </>
+                }
+              />
+            ) : (
+              <ProductGrid
+                heading={workspaceGridHeading}
+                items={showWorkspaceModeLoader ? workspaceLoadingPlaceholderItems : createTemplateVisibleProducts}
+                selectedIds={selectedImportIds}
+                activeId={activeGridProductId}
+                importedProductIds={importedProductIds}
+                highlighted={attentionTarget === "template"}
+                rangeLabel={createTemplateVisibleRangeLabel}
+                page={safeCreateTemplatePage}
+                pageSize={createTemplatePageSize}
+                totalPages={createTemplateTotalPages}
+                loading={loadingProducts}
+                collapsed={isWorkspaceSelectionCollapsed}
+                headerAccessory={
+                  <button
+                    type="button"
+                    onClick={() => setIsRoutingGridExpanded((current) => !current)}
+                    className="font-medium text-slate-100 transition hover:text-white"
+                  >
+                    Mode
+                  </button>
+                }
+                onToggleCollapsed={() => setIsWorkspaceSelectionCollapsed((current) => !current)}
+                onItemActivate={(product, index, event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void handleCreateTemplateSelection(product.id, index);
+                }}
+                onPreviousPage={() => setCreateTemplateGridPage((current) => Math.max(0, current - 1))}
+                onNextPage={() => setCreateTemplateGridPage((current) => Math.min(createTemplateTotalPages - 1, current + 1))}
+              />
+            )}
+            {shopId && canShowWorkspacePreview ? (
               <>
                 <div className="mt-3">
                   <div className="space-y-3" onPointerDownCapture={() => nudgeWorkflow(true)}>
-                    <div className="relative rounded-[24px] transition-all">
+                      <div className="relative rounded-[24px] transition-all">
                       <div className="grid grid-cols-1 items-stretch gap-3">
                         <div className="flex h-full min-w-0 w-full flex-col gap-3">
                           {isCreateMode ? (
                             <div
                               role={isWorkspaceConfigured ? "button" : undefined}
                               tabIndex={isWorkspaceConfigured ? 0 : -1}
-                              onClick={openArtworkPicker}
+                              className={`w-full rounded-xl border border-dashed border-slate-700 bg-[#020616]/92 px-3 py-1 text-center transition-colors ${isWorkspaceConfigured ? "cursor-pointer hover:bg-[#0b1024]" : "cursor-default"}`}
+                              onClick={isWorkspaceConfigured ? openArtworkPicker : undefined}
                               onKeyDown={(e) => {
                                 if (!isWorkspaceConfigured) return;
                                 if (e.key === "Enter" || e.key === " ") {
@@ -3772,135 +4298,156 @@ export default function MerchQuantumApp() {
                                   openArtworkPicker();
                                 }
                               }}
-                              className={`group rounded-[22px] border bg-[#0b1022] px-4 pb-4 pt-5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/45 ${
-                                isWorkspaceConfigured
-                                  ? "cursor-pointer border-slate-700/80 shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_30px_90px_-52px_rgba(2,6,23,0.95)] hover:border-[#7F22FE]/45 hover:shadow-[0_0_0_1px_rgba(127,34,254,0.25),0_34px_100px_-54px_rgba(10,16,42,0.98)]"
-                                  : "cursor-default border-slate-800/70 shadow-[0_26px_80px_-56px_rgba(2,6,23,0.94)]"
-                              } ${attentionTarget === "import" ? "ring-2 ring-[#7F22FE]/65 shadow-[0_0_0_1px_rgba(127,34,254,0.28),0_0_0_22px_rgba(127,34,254,0.08)] animate-pulse" : ""}`}
+                              onDragOver={(e) => {
+                                if (isCreateMode) {
+                                  e.preventDefault();
+                                }
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                if (!isCreateMode || !connected || !isWorkspaceConfigured) {
+                                  nudgeWorkflow(true);
+                                  return;
+                                }
+                                void addFiles(e.dataTransfer.files);
+                              }}
                             >
-                              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/18 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-                              <div className="relative flex flex-col gap-4">
-                                <div className="rounded-2xl border border-slate-700 bg-[#090f23] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                                  <div className="grid grid-cols-[1fr_auto] items-start gap-4 text-sm text-white">
-                                    <div className="min-w-0">
-                                      <div className="truncate text-[13px] font-semibold tracking-tight text-slate-100">
-                                        Drop Images Here
-                                      </div>
-                                      <p className="mt-2 text-[11px] font-medium tracking-[0.02em] text-slate-200/90">
-                                        50 per batch • 500 max queue
-                                      </p>
-                                    </div>
-                                    <div className="justify-self-end text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55 transition-colors duration-300 group-hover:text-white/80">
-                                      Browse
-                                    </div>
-                                  </div>
-                                  <div className="mt-4 h-[2px] rounded-full bg-[linear-gradient(90deg,rgba(59,130,246,0.18),rgba(59,130,246,0.95),rgba(59,130,246,0.22))] shadow-[0_0_18px_rgba(59,130,246,0.42)]" />
-                                  <div className="mt-4 flex items-center justify-between gap-3 text-[11px] text-slate-100">
-                                    <span>Loaded: {images.length} | Queue: {queuedImages.length}</span>
-                                    {hasAnyLoadedImages ? (
-                                      <button
-                                        type="button"
-                                        className="pointer-events-auto text-slate-100 transition hover:text-white"
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          clearPreviewWorkspace();
-                                        }}
-                                      >
-                                        Clear
-                                      </button>
-                                    ) : null}
+                              <div className="flex min-h-[44px] flex-col justify-between gap-0.5">
+                                <div className="flex items-center justify-center">
+                                  <div className="flex flex-col items-center gap-0.5 text-center">
+                                    <p className="text-[11px] font-medium leading-4 text-white sm:text-xs">
+                                      Drop Images Here
+                                    </p>
+                                    <p className="text-[10px] font-medium leading-4 text-slate-100 sm:text-[11px]">
+                                      50 per batch • 500 max queue
+                                    </p>
                                   </div>
                                 </div>
+                                <div className="flex w-full items-center justify-between text-[10px] font-medium text-slate-100 sm:text-[11px]">
+                                  <span>{`Loaded: ${loadedStatCount} | Queue: ${queuedStatCount}`}</span>
+                                  <button
+                                    type="button"
+                                    disabled={!hasAnyLoadedImages}
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      if (!hasAnyLoadedImages) return;
+                                      clearPreviewWorkspace();
+                                    }}
+                                    className="text-[10px] font-medium text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200 sm:text-[11px]"
+                                  >
+                                    Clear
+                                  </button>
+                                </div>
                               </div>
+                              {showPreviewStats ? (
+                                <div className="pointer-events-none mt-1 h-[2px] rounded-full bg-slate-800/90">
+                                  <div
+                                    className={`h-full transition-all duration-500 ${processingCount > 0 ? "bg-[#7F22FE]" : "bg-[#00A6F4]"}`}
+                                    style={{ width: `${generationProgressPct}%` }}
+                                  />
+                                </div>
+                              ) : null}
                             </div>
                           ) : null}
+                          {canShowLoadedQueueGrid ? (
+                            <div className="space-y-1 p-1">
+                        <div className="quantum-scroll-hidden grid grid-cols-5 gap-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
+                                {visibleCreateThumbnails.map((img) => {
+                                  const isSelected = selectedImage?.id === img.id;
+                                  const resolvedStatus = getResolvedItemStatus(img);
+                                  const isProcessing = resolvedStatus === "pending";
+                                  const previewFrameTone = isProcessing
+                                    ? "border-[#7F22FE]/55"
+                                    : resolvedStatus === "ready"
+                                      ? "border-[#00BC7D]/55"
+                                      : resolvedStatus === "error"
+                                        ? "border-[#FF2056]/55"
+                                        : "border-slate-700";
+                                  const statusIndicator = resolvedStatus === "ready"
+                                    ? { tone: "ready" as const, direction: "up" as const }
+                                    : resolvedStatus === "error"
+                                      ? { tone: "error" as const, direction: "down" as const }
+                                      : null;
 
-                          {showPreviewStats ? (
-                            <div className="min-w-0">
-                              <div className="grid grid-cols-1 gap-4">
-                                <div className="grid grid-cols-1 gap-2">
-                                  <div className="grid grid-cols-5 gap-2">
-                                    {visibleCreateThumbnails.map((img) => {
-                                      const status = getResolvedItemStatus(img);
-                                      const statusIndicator =
-                                        status === "ready"
-                                          ? { tone: "ready" as const, direction: "up" as const }
-                                          : status === "error"
-                                            ? { tone: "error" as const, direction: "down" as const }
-                                            : null;
-                                      return (
-                                        <div key={img.id} className="relative">
-                                          <SmartThumbnail
-                                            src={img.preview}
-                                            alt={img.name}
-                                            className={`rounded-[10px] border ${status === "ready" ? "border-[#00BC7D]/45" : status === "error" ? "border-[#FF2056]/45" : "border-slate-700"}`}
+                                  return (
+                                    <div
+                                      key={img.id}
+                                      onClick={() => {
+                                        setSelectedId(img.id);
+                                      }}
+                                      className={`w-full snap-start transition-all duration-500 ${isProcessing ? "shadow-[0_12px_32px_-24px_rgba(124,58,237,0.45)]" : isSelected ? "shadow-[0_10px_24px_-20px_rgba(124,58,237,0.45)]" : ""}`}
+                                    >
+                                      <SmartThumbnail
+                                        src={img.preview}
+                                        alt={img.final}
+                                        className={`group rounded-lg border transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${previewFrameTone}`}
+                                      >
+                                        {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
+                                        {statusIndicator ? (
+                                          <div
+                                            aria-label={statusIndicator.tone}
+                                            className="absolute bottom-2 left-1/2 z-20 inline-flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full bg-black"
                                           >
-                                            {statusIndicator ? (
-                                              <div
-                                                aria-label={statusIndicator.tone}
-                                                className="absolute bottom-2 left-1/2 z-20 inline-flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full bg-black"
-                                              >
-                                                <StatusThumbIcon tone={statusIndicator.tone} direction={statusIndicator.direction} />
-                                              </div>
-                                            ) : null}
-                                            <button
-                                              type="button"
-                                              aria-label="remove"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                removePreviewItem(img.id);
-                                              }}
-                                              className="absolute right-1 top-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#020616]/92 p-0 text-[8px] font-normal leading-none text-slate-300 shadow-sm transition-colors hover:text-[#FF2056]"
-                                            >
-                                              x
-                                            </button>
-                                          </SmartThumbnail>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                  <div className="flex items-center justify-between gap-2 pt-1 text-[11px]">
-                                      <span className="min-w-0 flex-1 truncate text-slate-100">{createThumbVisibleRangeLabel}</span>
-                                      <div className="flex items-center justify-end gap-2">
-                                      {createThumbTotalPages > 1 ? (
-                                        <>
-                                          <button
-                                            type="button"
-                                            aria-label="Previous image set"
-                                            className="inline-flex items-center justify-center text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
-                                            disabled={safeCreateThumbPage <= 0}
-                                            onClick={() => setCreateThumbGridPage((current) => Math.max(0, current - 1))}
-                                          >
-                                            <ChevronIcon open={false} className="h-4 w-4 rotate-90" />
-                                          </button>
-                                          <button
-                                            type="button"
-                                            aria-label="Next image set"
-                                            className="inline-flex items-center justify-center text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
-                                            disabled={safeCreateThumbPage >= createThumbTotalPages - 1}
-                                            onClick={() => setCreateThumbGridPage((current) => Math.min(createThumbTotalPages - 1, current + 1))}
-                                          >
-                                            <ChevronIcon open={false} className="h-4 w-4 -rotate-90" />
-                                          </button>
-                                        </>
-                                      ) : null}
-                                      {sortedImages.length > createThumbCompactVisibleCount ? (
+                                            <StatusThumbIcon tone={statusIndicator.tone} direction={statusIndicator.direction} />
+                                          </div>
+                                        ) : null}
                                         <button
                                           type="button"
-                                          className="font-medium text-slate-100 transition hover:text-white"
-                                          onClick={() => {
-                                            setIsCreateThumbExpandedView((current) => !current);
-                                            setCreateThumbGridPage(0);
+                                          aria-label="remove"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            removePreviewItem(img.id);
                                           }}
+                                          className="absolute right-1 top-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#020616]/92 p-0 text-[8px] font-normal leading-none text-slate-300 shadow-sm transition-colors hover:text-[#FF2056]"
                                         >
-                                          {isCreateThumbExpandedView ? "Compact" : "View All"}
+                                          x
                                         </button>
-                                      ) : null}
-                                      </div>
+                                      </SmartThumbnail>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div className="flex items-center justify-between gap-2 pt-1 text-[11px]">
+                                  <span className="min-w-0 flex-1 truncate text-slate-100">{createThumbVisibleRangeLabel}</span>
+                                  <div className="flex items-center justify-end gap-2">
+                                  {createThumbTotalPages > 1 ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        aria-label="Previous image set"
+                                        className="inline-flex items-center justify-center text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
+                                        disabled={safeCreateThumbPage <= 0}
+                                        onClick={() => setCreateThumbGridPage((current) => Math.max(0, current - 1))}
+                                      >
+                                        <ChevronIcon open={false} className="h-4 w-4 rotate-90" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        aria-label="Next image set"
+                                        className="inline-flex items-center justify-center text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
+                                        disabled={safeCreateThumbPage >= createThumbTotalPages - 1}
+                                        onClick={() => setCreateThumbGridPage((current) => Math.min(createThumbTotalPages - 1, current + 1))}
+                                      >
+                                        <ChevronIcon open={false} className="h-4 w-4 -rotate-90" />
+                                      </button>
+                                    </>
+                                  ) : null}
+                                  {sortedImages.length > createThumbCompactVisibleCount ? (
+                                    <button
+                                      type="button"
+                                      className="font-medium text-slate-100 transition hover:text-white"
+                                      onClick={() => {
+                                        setIsCreateThumbExpandedView((current) => !current);
+                                        setCreateThumbGridPage(0);
+                                      }}
+                                    >
+                                      {isCreateThumbExpandedView ? "Compact" : "View All"}
+                                    </button>
+                                  ) : null}
                                   </div>
                               </div>
                             </div>
-                          </div>
                           ) : null}
                         </div>
                         {canShowDetailPanel ? (
@@ -4144,9 +4691,11 @@ export default function MerchQuantumApp() {
               </div>
               </>
             ) : null}
-          </>
+          </Box>
+            </div>
+          </div>
         ) : null}
-        </div>
+
       </div>
       <CreativeWellspringBrandMark docked />
       </div>
@@ -4165,3 +4714,5 @@ export default function MerchQuantumApp() {
     </main>
   );
 }
+
+
