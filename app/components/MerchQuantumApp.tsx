@@ -12,10 +12,8 @@ const BRAND_WORDMARK_TEXT_CLASSES = "text-4xl sm:text-5xl";
 const BRAND_TAGLINE_TEXT_CLASSES = "text-[11px] sm:text-xs";
 const DETAIL_DATA_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-white";
 const TAG_PILL_TEXT_CLASSES = "font-sans text-sm font-normal text-white";
-const PRIMARY_ACTION_BUTTON_CLASSES = "inline-flex h-8 shrink-0 items-center justify-center rounded-lg bg-purple-600 px-3 font-sans text-sm font-semibold text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-950/40 disabled:text-slate-200";
+const PRIMARY_ACTION_LINK_CLASSES = "text-sm font-bold uppercase tracking-wide text-purple-400 transition-colors hover:text-purple-300 disabled:cursor-not-allowed disabled:text-slate-500";
 const WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY = "mq-workspace-selection-condensed";
-const QUANTUM_PRODUCT_AWAITING_TEXT = "Awaiting Quantum AI Product...";
-const QUANTUM_TEMPLATE_AWAITING_TEXT = "Awaiting Quantum AI Template...";
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
 export const QUANTUM_DESCRIPTION_AWAITING_TEXT = "Awaiting Quantum AI description...";
 
@@ -167,11 +165,12 @@ type ProductGridProps = {
   pageSize: number;
   totalPages: number;
   loading: boolean;
+  isEditMode?: boolean;
   headerAccessory?: React.ReactNode;
   onToggleCollapsed?: () => void;
   onSelectAll?: () => void;
+  selectAllLabel?: string;
   footerLabel?: React.ReactNode;
-  loadingLabel?: string;
   onItemActivate: (
     product: Product,
     index: number,
@@ -1490,12 +1489,15 @@ function CreativeWellspringBrandMark({
 }) {
   if (docked) {
     return (
-      <footer className={`mt-auto w-full bg-transparent py-6 text-center ${className}`}>
-        <span className="block text-lg font-semibold tracking-wide text-white/90">Merch Quantum</span>
-        <span className="mt-1 block text-xs font-medium uppercase tracking-widest text-purple-400/70">
-          Effortless product creation
+      <div className={`mt-auto flex flex-col items-center justify-center py-8 text-center ${className}`}>
+        <div className="flex items-center space-x-1.5">
+          <span className="text-xl font-bold tracking-tighter text-purple-500">Merch</span>
+          <span className="text-xl font-bold tracking-tighter text-white">Quantum</span>
+        </div>
+        <span className="mt-1 block text-xs font-medium uppercase tracking-widest text-white">
+          effortless product creation
         </span>
-      </footer>
+      </div>
     );
   }
 
@@ -1525,8 +1527,8 @@ function SmartThumbnail({
   src,
   alt,
   className = "",
-  safeZoneClassName = "p-2",
-  imageClassName = "block h-full w-full object-contain",
+  safeZoneClassName = "pt-[5%] px-1",
+  imageClassName = "block h-full w-full object-contain object-top",
   fallbackClassName = "",
   children,
 }: SmartThumbnailProps) {
@@ -1596,11 +1598,12 @@ function ProductGrid({
   pageSize,
   totalPages,
   loading,
+  isEditMode = false,
   headerAccessory,
   onToggleCollapsed,
   onSelectAll,
+  selectAllLabel = "Select All",
   footerLabel,
-  loadingLabel = QUANTUM_PRODUCT_AWAITING_TEXT,
   onItemActivate,
   onPreviousPage,
   onNextPage,
@@ -1629,7 +1632,7 @@ function ProductGrid({
               disabled={items.length === 0}
               onClick={onSelectAll}
             >
-              Select All
+              {selectAllLabel}
             </button>
           ) : null}
           {headerAccessory}
@@ -1691,13 +1694,15 @@ function ProductGrid({
           })}
         </div>
       ) : (
-          <div className="w-full">
+        <div className="w-full">
             <div className="grid min-h-[148px] w-full overflow-hidden rounded-lg" aria-hidden={loading ? undefined : true}>
             {loading ? (
               <div className="col-start-1 row-start-1 relative z-10 flex h-full min-h-[148px] items-center justify-center px-3 py-3">
-                <div className="inline-flex items-center gap-2 font-sans text-sm font-normal text-white">
-                  <div className="h-3 w-3 rounded-full bg-purple-500 animate-pulse" />
-                  <span>{loadingLabel}</span>
+                <div className="flex flex-col items-center justify-center space-y-3 py-10">
+                  <div className="h-3 w-3 animate-pulse rounded-full bg-purple-500"></div>
+                  <span className="font-sans text-sm font-normal text-white">
+                    Awaiting Quantum AI {isEditMode ? "Template" : "Product"}...
+                  </span>
                 </div>
               </div>
             ) : null}
@@ -2136,6 +2141,11 @@ export default function MerchQuantumApp() {
     safeBulkEditPage * bulkEditPageSize,
     safeBulkEditPage * bulkEditPageSize + bulkEditPageSize
   );
+  const bulkEditVisibleProductIds = bulkEditVisibleProducts.map((product) => product.id);
+  const hasAllBulkEditVisibleSelections =
+    bulkEditVisibleProductIds.length > 0
+    && pendingTemplateSelectionIds.length === bulkEditVisibleProductIds.length
+    && bulkEditVisibleProductIds.every((id) => pendingTemplateSelectionIds.includes(id));
   const bulkEditVisibleRangeLabel = visibleProducts.length > 0
     ? `${safeBulkEditPage * bulkEditPageSize + 1}-${Math.min(visibleProducts.length, safeBulkEditPage * bulkEditPageSize + bulkEditVisibleProducts.length)} of ${visibleProducts.length}`
     : "0 of 0";
@@ -3941,10 +3951,10 @@ export default function MerchQuantumApp() {
   }
 
   return (
-    <main className="box-border flex min-h-screen w-full flex-col bg-[#0d1117] p-6 font-sans text-white">
+    <main className="box-border flex min-h-screen w-full max-w-full flex-col overflow-x-hidden bg-[#0d1117] p-6 font-sans text-white">
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
       <div className="flex min-w-0 flex-1 flex-col gap-3">
-        <div className="sticky top-0 z-50 space-y-2 bg-[#0d1117]/95 pb-2 backdrop-blur-md">
+        <div className="sticky top-0 z-10 space-y-2 bg-[#0d1117] pb-2">
           {!workspaceMode || isRoutingGridExpanded ? (
           <div className="relative">
             <Box
@@ -4171,8 +4181,10 @@ export default function MerchQuantumApp() {
                 pageSize={bulkEditPageSize}
                 totalPages={bulkEditTotalPages}
                 loading={loadingProducts}
+                isEditMode
                 footerLabel={importStatus || bulkEditVisibleRangeLabel}
                 collapsed={isWorkspaceSelectionCollapsed}
+                selectAllLabel={hasAllBulkEditVisibleSelections ? "Deselect All" : "Select All"}
                 headerAccessory={
                   <button
                     type="button"
@@ -4184,8 +4196,14 @@ export default function MerchQuantumApp() {
                 }
                 onToggleCollapsed={() => setIsWorkspaceSelectionCollapsed((current) => !current)}
                 onSelectAll={() => {
-                  setPendingTemplateSelectionIds(normalizeSelectionIds(visibleProducts.map((product) => product.id)));
-                  setActiveGridProductId(visibleProducts[0]?.id || "");
+                  if (hasAllBulkEditVisibleSelections) {
+                    setPendingTemplateSelectionIds([]);
+                    setActiveGridProductId("");
+                    setLastSelectedIndex(null);
+                    return;
+                  }
+                  setPendingTemplateSelectionIds(normalizeSelectionIds(bulkEditVisibleProductIds));
+                  setActiveGridProductId(bulkEditVisibleProductIds[0] || "");
                   setLastSelectedIndex(null);
                 }}
                 onItemActivate={(product, index, event) => {
@@ -4221,7 +4239,6 @@ export default function MerchQuantumApp() {
                 pageSize={createTemplatePageSize}
                 totalPages={createTemplateTotalPages}
                 loading={loadingProducts}
-                loadingLabel={QUANTUM_TEMPLATE_AWAITING_TEXT}
                 collapsed={isWorkspaceSelectionCollapsed}
                 headerAccessory={
                   <button
@@ -4418,13 +4435,24 @@ export default function MerchQuantumApp() {
                         <div className="flex min-w-0 flex-col space-y-3">
                           <div className="space-y-3">
                             <div className="space-y-1.5">
-                              <div className="flex items-center justify-between gap-3">
+                              <div className="flex w-full items-center justify-between gap-3">
                                 <div className="flex min-h-[20px] min-w-0 flex-1 items-center text-left text-sm font-medium leading-5 tracking-tight text-slate-200">
                                   <span className="inline-flex items-center text-sm font-semibold">
                                     <span className="text-[#7F22FE]">Quantum</span>
                                     <span className="ml-1 text-white">AI Title</span>
                                   </span>
                                 </div>
+                                {canRerollSelectedImage ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => { void rerollSelectedImageField("title"); }}
+                                    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
+                                    aria-label="Re-roll title with Quantum AI"
+                                    title="Re-Roll title"
+                                  >
+                                    <ReRollIcon className="h-3 w-3" />
+                                  </button>
+                                ) : null}
                               </div>
                               <div className="space-y-2">
                                 <div className="rounded-xl">
@@ -4479,23 +4507,8 @@ export default function MerchQuantumApp() {
                                           </span>
                                         </div>
                                       )}
-                                      <div className="absolute inset-y-0 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-100">
+                                      <div className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-100">
                                         <span>{(detailTitle || "").trim().length}/{LISTING_LIMITS.titleMax}</span>
-                                        {canRerollSelectedImage ? (
-                                          <button
-                                            type="button"
-                                            onClick={(event) => {
-                                              event.preventDefault();
-                                              event.stopPropagation();
-                                              void rerollSelectedImageField("title");
-                                            }}
-                                            className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
-                                            aria-label="Re-roll title with Quantum AI"
-                                            title="Re-Roll title"
-                                          >
-                                            <ReRollIcon className="h-3 w-3" />
-                                          </button>
-                                        ) : null}
                                       </div>
                                     </button>
                                   )}
@@ -4544,23 +4557,8 @@ export default function MerchQuantumApp() {
                                                 setInlineSaveFeedback(null);
                                               }
                                             }}
-                                            className={`min-h-[112px] w-full resize-none overflow-hidden bg-transparent px-0 py-0 pb-7 text-left outline-none transition placeholder:text-slate-200 ${DETAIL_DATA_TEXT_CLASSES}`}
+                                            className={`min-h-[112px] w-full resize-none overflow-hidden bg-transparent px-0 py-0 text-left outline-none transition placeholder:text-slate-200 ${DETAIL_DATA_TEXT_CLASSES}`}
                                           />
-                                          <div className="absolute bottom-2 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-100">
-                                            <span className="pointer-events-none">{editableDescriptionDraft.trim().length}/{LISTING_LIMITS.descriptionMax}</span>
-                                            {canRerollSelectedImage ? (
-                                              <button
-                                                type="button"
-                                                onMouseDown={(event) => event.preventDefault()}
-                                                onClick={() => { void rerollSelectedImageField("description"); }}
-                                                className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
-                                                aria-label="Re-roll description with Quantum AI"
-                                                title="Re-Roll description"
-                                              >
-                                                <ReRollIcon className="h-3 w-3" />
-                                              </button>
-                                            ) : null}
-                                          </div>
                                         </div>
                                         {detailTemplateSpecBlock ? (
                                           <>
@@ -4584,7 +4582,7 @@ export default function MerchQuantumApp() {
                                             }
                                           }}
                                           disabled={!canEditDetailDescription}
-                                          className={`group relative flex min-h-[112px] w-full items-start bg-transparent px-0 py-0 pb-7 text-left transition ${DETAIL_DATA_TEXT_CLASSES} ${canEditDetailDescription ? "cursor-text focus-visible:outline-none" : "cursor-default"}`}
+                                          className={`group relative flex min-h-[112px] w-full items-start bg-transparent px-0 py-0 text-left transition ${DETAIL_DATA_TEXT_CLASSES} ${canEditDetailDescription ? "cursor-text focus-visible:outline-none" : "cursor-default"}`}
                                         >
                                           {shouldAwaitQuantumDescription ? (
                                             <div className={`flex w-full items-center justify-start gap-2 text-left ${DETAIL_DATA_TEXT_CLASSES}`}>
@@ -4600,24 +4598,6 @@ export default function MerchQuantumApp() {
                                               </div>
                                             </div>
                                           )}
-                                          <div className="absolute bottom-2 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-100">
-                                            <span className="pointer-events-none">{(detailBuyerDescription || "").trim().length}/{LISTING_LIMITS.descriptionMax}</span>
-                                            {canRerollSelectedImage ? (
-                                              <button
-                                                type="button"
-                                                onClick={(event) => {
-                                                  event.preventDefault();
-                                                  event.stopPropagation();
-                                                  void rerollSelectedImageField("description");
-                                                }}
-                                                className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#7F22FE]/25 text-slate-300 transition hover:border-[#7F22FE]/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7F22FE]/35"
-                                                aria-label="Re-roll description with Quantum AI"
-                                                title="Re-Roll description"
-                                              >
-                                                <ReRollIcon className="h-3 w-3" />
-                                              </button>
-                                            ) : null}
-                                          </div>
                                         </button>
                                         {detailTemplateSpecBlock ? (
                                           <>
@@ -4657,7 +4637,7 @@ export default function MerchQuantumApp() {
                                   type="button"
                                   onClick={triggerDescriptionAction}
                                   disabled={descriptionActionDisabled}
-                                  className={PRIMARY_ACTION_BUTTON_CLASSES}
+                                  className={PRIMARY_ACTION_LINK_CLASSES}
                                 >
                                   {descriptionActionLabel}
                                 </button>
