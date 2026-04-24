@@ -2024,7 +2024,8 @@ export default function MerchQuantumApp() {
   const generationProgressPct = images.length > 0 ? Math.round((completedGenerationCount / images.length) * 100) : 0;
   const isWorkspaceConfigured = isCreateMode ? connected && !!shopId && !!template : hasWorkspaceRoute;
   const canSubmitProviderConnection = Boolean(provider && isLiveProvider && token.trim() && !loadingApi && !connected);
-  const uploadDisabled = !isCreateMode || !isWorkspaceConfigured || draftReadyCount === 0 || isRunningBatch || processingCount > 0;
+  const isQuantumAiGenerating = processingCount > 0;
+  const uploadDisabled = !isCreateMode || !isWorkspaceConfigured || draftReadyCount === 0 || isRunningBatch || isQuantumAiGenerating;
   const canShowDetailWorkspace = hasWorkspaceRoute;
   const canShowWorkspacePreview = isCreateMode
     ? canShowDetailWorkspace && (!!activeGridProduct || hasAnyLoadedImages)
@@ -2189,7 +2190,10 @@ export default function MerchQuantumApp() {
     || approvedImportedItems.length === 0
     || isSyncingImportedListings
     || isPublishingImportedListings
+    || isQuantumAiGenerating
     || (!supportsImportedListingSync && !supportsImportedPublish);
+  const DETAIL_TAG_CHIP_CLASSES = "my-1 mx-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-0.5 text-center align-middle";
+  const DETAIL_TAG_TEXT_CLASSES = "inline-block truncate font-sans text-sm font-normal leading-6";
   const descriptionActionDisabled = isCreateMode ? uploadDisabled : bulkEditPublishDisabled;
   const triggerDescriptionAction = () => {
     if (isCreateMode) {
@@ -4651,9 +4655,9 @@ export default function MerchQuantumApp() {
                                 type="button"
                                 onClick={triggerDescriptionAction}
                                 disabled={descriptionActionDisabled}
-                                className="float-right my-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-0.5 text-center align-middle transition-colors disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-500"
+                                className={`float-right ${DETAIL_TAG_CHIP_CLASSES}`}
                               >
-                                <span className="font-sans text-sm font-normal leading-6 text-[#7F22FE]">
+                                <span className={`${DETAIL_TAG_TEXT_CLASSES} text-[#7F22FE]`}>
                                   Upload
                                 </span>
                               </button>
@@ -4661,7 +4665,7 @@ export default function MerchQuantumApp() {
                                 Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
                                   <div
                                     key={`loading-tag-${index}`}
-                                    className="my-1 mx-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-0.5 text-center align-middle"
+                                    className={DETAIL_TAG_CHIP_CLASSES}
                                   >
                                     <QuantOrbLoader />
                                   </div>
@@ -4671,15 +4675,15 @@ export default function MerchQuantumApp() {
                                   <div
                                     key={`${selectedImage?.id || productId}-tag-${index}`}
                                     title={tag}
-                                    className="my-1 mx-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-0.5 text-center align-middle"
+                                    className={DETAIL_TAG_CHIP_CLASSES}
                                   >
-                                    <span className="inline-block truncate font-sans text-sm font-normal leading-6 text-white">
+                                    <span className={`${DETAIL_TAG_TEXT_CLASSES} text-white`}>
                                       {tag}
                                     </span>
                                   </div>
                                 ))
                               ) : (
-                                <div className="my-1 mx-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-0.5 text-center align-middle font-sans text-sm font-normal leading-6 text-white">
+                                <div className={`${DETAIL_TAG_CHIP_CLASSES} ${DETAIL_TAG_TEXT_CLASSES} text-white`}>
                                   Tags will appear after Quantum AI processing completes.
                                 </div>
                               )}
