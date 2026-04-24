@@ -3961,7 +3961,7 @@ export default function MerchQuantumApp() {
             <div className={`min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
               <Select
                 value={provider}
-                className="h-auto px-3 py-2 pr-9 leading-tight text-sm font-normal text-white"
+                className="h-auto px-3 py-2 pr-8 leading-tight text-sm font-normal text-white"
                 onChange={(e) => {
                   const nextProvider = e.target.value as ProviderChoiceId | "";
                   setProvider(nextProvider);
@@ -4100,7 +4100,7 @@ export default function MerchQuantumApp() {
               <Select
                 value={shopId}
                 disabled={!connected || loadingApi}
-                className="h-auto px-3 py-2 pr-9 leading-tight text-sm font-normal text-white"
+                className="h-auto px-3 py-2 pr-8 leading-tight text-sm font-normal text-white"
                 onChange={(event) => {
                   handleShopSelection(event.target.value);
                 }}
@@ -4120,7 +4120,7 @@ export default function MerchQuantumApp() {
               <Select
                 value={workspaceMode}
                 disabled={!connected || !shopId}
-                className="h-auto px-3 py-2 pr-9 leading-tight text-sm font-normal text-white"
+                className="h-auto px-3 py-2 pr-8 leading-tight text-sm font-normal text-white"
                 onChange={(event) => {
                   handleWorkspaceModeChange(event.target.value as WorkspaceMode);
                 }}
