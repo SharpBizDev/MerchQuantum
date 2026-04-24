@@ -1161,24 +1161,24 @@ function SetupSelect({ className = "", children, ...props }: SelectProps) {
   const enabledSelectClasses = "border-slate-700 bg-[#020616] text-white focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30";
   const disabledSelectClasses = "disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60";
   const selectBaseClasses = `box-border h-9 w-full min-w-0 appearance-none rounded-xl px-3 pr-8 font-sans text-sm font-normal outline-none transition ${disabledSelectClasses}`;
+  const emptyStateShellClasses = props.disabled
+    ? "border-slate-800 bg-[#020616] text-slate-200 opacity-60"
+    : "border-slate-700 bg-[#020616] text-white focus-within:border-[#7F22FE] focus-within:ring-2 focus-within:ring-[#7F22FE]/30";
 
   return (
     <div className={`relative min-w-0 w-full text-sm font-normal text-white ${props.disabled ? "cursor-not-allowed" : ""}`}>
       {isEmptyValue && emptyOptionLabel ? (
-        <>
-          <div
-            aria-hidden="true"
-            className={`pointer-events-none flex h-9 w-full items-center rounded-xl border px-3 pr-8 font-sans text-sm font-normal ${props.disabled ? "border-slate-800 bg-[#020616] text-slate-200 opacity-60" : "border-slate-700 bg-[#020616] text-white"}`}
-          >
+        <div className={`relative flex h-9 w-full items-center rounded-xl border px-3 pr-8 font-sans text-sm font-normal transition ${emptyStateShellClasses}`}>
+          <div aria-hidden="true" className="pointer-events-none flex min-w-0 items-center">
             <span className="min-w-0 truncate">{emptyOptionLabel}</span>
           </div>
           <select
-            className={`absolute inset-0 z-10 ${selectBaseClasses} border-transparent bg-transparent text-transparent focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 ${className}`}
+            className={`absolute inset-0 z-10 h-full w-full appearance-none rounded-xl border-0 bg-transparent px-3 pr-8 font-sans text-sm font-normal text-transparent opacity-0 outline-none ${props.disabled ? "cursor-not-allowed" : "cursor-pointer"} ${className}`}
             {...props}
           >
             {children}
           </select>
-        </>
+        </div>
       ) : (
         <select
           className={`${selectBaseClasses} border ${enabledSelectClasses} ${className}`}
@@ -3485,7 +3485,7 @@ export default function MerchQuantumApp() {
               <MerchQuantumInlineHeading className="max-w-full" />
             </div>
             <div className="grid w-full grid-cols-2 gap-2">
-            <div className={`min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
+            <div className={`relative min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
               <SetupSelect
                 value={provider}
                 onChange={(e) => {
