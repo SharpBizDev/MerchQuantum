@@ -2192,8 +2192,9 @@ export default function MerchQuantumApp() {
     || isPublishingImportedListings
     || isQuantumAiGenerating
     || (!supportsImportedListingSync && !supportsImportedPublish);
-  const DETAIL_TAG_CHIP_CLASSES = "my-1 mx-1 inline-block min-h-[30px] overflow-hidden rounded-xl border border-slate-700 bg-[#020616] px-2 py-0.5 text-center align-middle";
-  const DETAIL_TAG_TEXT_CLASSES = "inline-block truncate font-sans text-sm font-normal leading-6";
+  const DETAIL_TAG_PILL_BLUEPRINT = "inline-flex items-center justify-center px-3 py-1 text-sm leading-tight border rounded-full font-sans font-normal";
+  const DETAIL_AI_TAG_PILL_CLASSES = `my-1 mx-1 ${DETAIL_TAG_PILL_BLUEPRINT} border-slate-700 text-white`;
+  const DETAIL_UPLOAD_TAG_PILL_CLASSES = `float-right my-1 mx-1 ${DETAIL_TAG_PILL_BLUEPRINT} border-[#7F22FE] text-[#7F22FE]`;
   const descriptionActionDisabled = isCreateMode ? uploadDisabled : bulkEditPublishDisabled;
   const triggerDescriptionAction = () => {
     if (isCreateMode) {
@@ -4655,17 +4656,15 @@ export default function MerchQuantumApp() {
                                 type="button"
                                 onClick={triggerDescriptionAction}
                                 disabled={descriptionActionDisabled}
-                                className={`float-right ${DETAIL_TAG_CHIP_CLASSES}`}
+                                className={DETAIL_UPLOAD_TAG_PILL_CLASSES}
                               >
-                                <span className={`${DETAIL_TAG_TEXT_CLASSES} text-[#7F22FE]`}>
-                                  Upload
-                                </span>
+                                Upload
                               </button>
                               {isDetailTagsLoading ? (
                                 Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
                                   <div
                                     key={`loading-tag-${index}`}
-                                    className={DETAIL_TAG_CHIP_CLASSES}
+                                    className={DETAIL_AI_TAG_PILL_CLASSES}
                                   >
                                     <QuantOrbLoader />
                                   </div>
@@ -4675,15 +4674,13 @@ export default function MerchQuantumApp() {
                                   <div
                                     key={`${selectedImage?.id || productId}-tag-${index}`}
                                     title={tag}
-                                    className={DETAIL_TAG_CHIP_CLASSES}
+                                    className={DETAIL_AI_TAG_PILL_CLASSES}
                                   >
-                                    <span className={`${DETAIL_TAG_TEXT_CLASSES} text-white`}>
-                                      {tag}
-                                    </span>
+                                    {tag}
                                   </div>
                                 ))
                               ) : (
-                                <div className={`${DETAIL_TAG_CHIP_CLASSES} ${DETAIL_TAG_TEXT_CLASSES} text-white`}>
+                                <div className={DETAIL_AI_TAG_PILL_CLASSES}>
                                   Tags will appear after Quantum AI processing completes.
                                 </div>
                               )}
