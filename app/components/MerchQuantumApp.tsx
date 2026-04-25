@@ -2134,7 +2134,7 @@ export default function MerchQuantumApp() {
   const loadedStatCount = allImages.length;
   const queuedStatCount = queuedImages.length;
   const hasBulkEditStagedSelections = pendingTemplateSelectionIds.length > 0;
-  const selectionPageSize = 25;
+  const selectionPageSize = isWorkspaceSelectionCollapsed ? 5 : 25;
   const createTemplatePageSize = selectionPageSize;
   const createTemplateTotalPages = Math.max(1, Math.ceil(visibleProducts.length / createTemplatePageSize));
   const safeCreateTemplatePage = Math.min(createTemplateGridPage, createTemplateTotalPages - 1);
@@ -2162,7 +2162,7 @@ export default function MerchQuantumApp() {
     : "0 of 0";
   const workspaceLoadingPlaceholderItems = useMemo<Product[]>(
     () =>
-      Array.from({ length: isWorkspaceSelectionCollapsed ? 5 : selectionPageSize }, (_, index) => ({
+      Array.from({ length: selectionPageSize }, (_, index) => ({
         id: `workspace-loading-placeholder-${workspaceMode || "mode"}-${index}`,
         title: `Loading placeholder ${index + 1}`,
         type: "Template",
