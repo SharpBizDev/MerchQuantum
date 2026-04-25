@@ -3987,7 +3987,7 @@ export default function MerchQuantumApp() {
               <MerchQuantumInlineHeading className="max-w-full" />
             </div>
             <div className="grid w-full grid-cols-2 gap-2">
-            <div className={`min-w-0 ${getRoutingFieldGlowClass("provider")}`}>
+            <div className={`min-w-0 self-start ${getRoutingFieldGlowClass("provider")}`}>
               <SetupSelect
                 value={provider}
                 onChange={(e) => {
@@ -4644,7 +4644,7 @@ export default function MerchQuantumApp() {
                             </div>
                           </div>
                           <div className="pt-0">
-                            <div className="flow-root w-full text-center mt-4">
+                            <div className="flow-root w-full text-center mt-2">
                               <div className="float-left flex items-center h-8">
                                 <span className="text-[#7F22FE] text-sm leading-6 font-normal font-sans">Quantum </span>
                                 <span className="text-white text-sm leading-6 font-normal font-sans">AI Tags</span>
