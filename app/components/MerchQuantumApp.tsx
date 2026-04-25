@@ -1439,7 +1439,7 @@ type SelectProps = React.SelectHTMLAttributes<HTMLSelectElement>;
 function SetupInput({ className = "", ...props }: InputProps) {
   return (
     <input
-      className={`box-border w-full min-w-0 rounded-xl border border-slate-700 bg-[#020616] px-3 py-2 leading-tight font-sans text-sm font-normal text-white outline-none transition placeholder:text-slate-200 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
+      className={`box-border h-9 w-full min-w-0 rounded-xl border border-slate-700 bg-[#020616] px-3 font-sans text-sm font-normal text-white outline-none transition placeholder:text-slate-200 focus:border-[#7F22FE] focus:ring-2 focus:ring-[#7F22FE]/30 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-[#020616] disabled:text-slate-200 disabled:opacity-60 ${className}`}
       {...props}
     />
   );
@@ -4027,7 +4027,7 @@ export default function MerchQuantumApp() {
                 }
               }}
               onPointerDownCapture={nudgeProviderSelectionFromTokenArea}
-              className={`min-w-0 ${getRoutingFieldGlowClass("token")}`}
+              className={`min-w-0 self-start ${getRoutingFieldGlowClass("token")}`}
             >
               <div className="relative flex min-w-0 items-center">
                 <SetupInput
