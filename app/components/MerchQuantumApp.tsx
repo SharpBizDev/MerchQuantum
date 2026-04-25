@@ -1497,8 +1497,8 @@ function CreativeWellspringBrandMark({
     return (
       <div className={`mt-auto py-8 flex flex-col items-center justify-center text-center ${className}`.trim()}>
         <div className="flex items-center space-x-1.5">
-          <span className="text-xl font-bold tracking-tighter text-purple-500">Merch</span>
-          <span className="text-xl font-bold tracking-tighter text-white">Quantum</span>
+          <span className="text-[27px] font-bold tracking-tighter text-purple-500">Merch</span>
+          <span className="text-[27px] font-bold tracking-tighter text-white">Quantum</span>
         </div>
         <span className="block text-xs font-medium tracking-widest text-white uppercase mt-1">
           effortless product creation
