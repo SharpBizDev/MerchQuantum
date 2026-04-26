@@ -4587,30 +4587,32 @@ export default function MerchQuantumApp() {
                               >
                                 Upload
                               </button>
-                              {isDetailTagsLoading ? (
-                                Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
-                                  <div
-                                    key={`loading-tag-${index}`}
-                                    className="inline-block mx-1 my-1 border border-white/20 rounded-full py-1 px-3 bg-transparent text-white text-sm leading-6 font-normal font-sans"
-                                  >
-                                    <QuantOrbLoader />
+                              <div className="flex flex-wrap gap-1.5 overflow-hidden max-h-[52px]">
+                                {isDetailTagsLoading ? (
+                                  Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
+                                    <div
+                                      key={`loading-tag-${index}`}
+                                      className="max-w-full truncate min-h-[24px] flex items-center justify-center border border-gray-600/50 rounded-md px-2 py-0.5 bg-gray-800/80 text-[12px] leading-tight text-gray-300 whitespace-nowrap font-sans"
+                                    >
+                                      <QuantOrbLoader />
+                                    </div>
+                                  ))
+                                ) : detailTags.length > 0 ? (
+                                  detailTags.map((tag, index) => (
+                                    <div
+                                      key={`${selectedImage?.id || productId}-tag-${index}`}
+                                      title={tag}
+                                      className="max-w-full truncate min-h-[24px] flex items-center justify-center border border-gray-600/50 rounded-md px-2 py-0.5 bg-gray-800/80 text-[12px] leading-tight text-gray-300 whitespace-nowrap font-sans"
+                                    >
+                                      {tag}
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="max-w-full truncate min-h-[24px] flex items-center justify-center border border-gray-600/50 rounded-md px-2 py-0.5 bg-gray-800/80 text-[12px] leading-tight text-gray-300 whitespace-nowrap font-sans">
+                                    Tags will appear after Quantum AI processing completes.
                                   </div>
-                                ))
-                              ) : detailTags.length > 0 ? (
-                                detailTags.map((tag, index) => (
-                                  <div
-                                    key={`${selectedImage?.id || productId}-tag-${index}`}
-                                    title={tag}
-                                    className="inline-block mx-1 my-1 border border-white/20 rounded-full py-1 px-3 bg-transparent text-white text-sm leading-6 font-normal font-sans"
-                                  >
-                                    {tag}
-                                  </div>
-                                ))
-                              ) : (
-                                <div className="inline-block mx-1 my-1 border border-white/20 rounded-full py-1 px-3 bg-transparent text-white text-sm leading-6 font-normal font-sans">
-                                  Tags will appear after Quantum AI processing completes.
-                                </div>
-                              )}
+                                )}
+                              </div>
                               </div>
                             </div>
                           </div>
