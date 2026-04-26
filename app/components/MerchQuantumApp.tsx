@@ -1938,7 +1938,6 @@ export default function MerchQuantumApp() {
   const [editableDescriptionDraft, setEditableDescriptionDraft] = useState("");
   const [inlineSaveFeedback, setInlineSaveFeedback] = useState<InlineSaveFeedback | null>(null);
   const {
-    telemetry: aiAssistTelemetry,
     setTelemetry: setAiAssistTelemetry,
     clearTelemetry: clearAiAssistTelemetry,
     activateTelemetry: activateAiAssistTelemetry,
@@ -4677,11 +4676,6 @@ export default function MerchQuantumApp() {
                                 {descriptionFeedback ? (
                                   <p className={`text-xs ${descriptionFeedback.tone === "error" ? "text-[#FF2056]" : descriptionFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-100"}`}>
                                     {descriptionFeedback.message}
-                                  </p>
-                                ) : null}
-                                {aiAssistTelemetry?.message && selectedImage ? (
-                                  <p className="text-xs" style={{ color: aiAssistTelemetry.color }}>
-                                    {aiAssistTelemetry.message}
                                   </p>
                                 ) : null}
                               </div>
