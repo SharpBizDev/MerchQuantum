@@ -1936,6 +1936,7 @@ export default function MerchQuantumApp() {
   const [inlineSaveFeedback, setInlineSaveFeedback] = useState<InlineSaveFeedback | null>(null);
   const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
   const [activeGridProductId, setActiveGridProductId] = useState("");
+  const detailTagsTrackRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -1943,6 +1944,15 @@ export default function MerchQuantumApp() {
       isWorkspaceSelectionCollapsed ? "1" : "0"
     );
   }, [isWorkspaceSelectionCollapsed]);
+
+  const handleDetailTagsScroll = useCallback((direction: "left" | "right") => {
+    const node = detailTagsTrackRef.current;
+    if (!node) return;
+    node.scrollBy({
+      left: direction === "right" ? 200 : -200,
+      behavior: "smooth",
+    });
+  }, []);
 
   const resolvedProviderId = provider === "spreadconnect" ? "spod" : provider;
   const providerTokenStorageKey = getProviderTokenStorageKey(resolvedProviderId);
@@ -4475,13 +4485,21 @@ export default function MerchQuantumApp() {
                             </div>
 
                             <div className="flex flex-col gap-2 w-full">
-                              <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center justify-between w-full">
                                 <div className="flex min-h-[20px] min-w-0 flex-1 items-center text-left text-sm font-medium leading-6 tracking-tight text-slate-200">
                                   <span className="inline-flex min-w-0 items-center text-sm font-semibold leading-6">
                                     <span className="text-[#7F22FE]">Quantum</span>
                                     <span className="ml-1 truncate text-white">AI Description</span>
                                   </span>
                                 </div>
+                                <button
+                                  type="button"
+                                  onClick={triggerDescriptionAction}
+                                  disabled={descriptionActionDisabled}
+                                  className="text-[12px] leading-none px-3 py-1.5 flex items-center justify-center bg-gray-800/80 border border-gray-600/50 rounded-md whitespace-nowrap cursor-pointer hover:bg-gray-700/80 transition-colors text-purple-400 font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  Upload
+                                </button>
                               </div>
                               <div className="space-y-2">
                                 <div className={`rounded-xl border bg-[#020616] px-3 py-2.5 transition ${DETAIL_DATA_TEXT_CLASSES} ${canEditDetailDescription ? "border-slate-700 hover:border-slate-500 focus-within:border-[#7F22FE] focus-within:ring-2 focus-within:ring-[#7F22FE]/30" : "border-slate-700"}`}>
@@ -4564,18 +4582,23 @@ export default function MerchQuantumApp() {
                                     )}
                                   </div>
                                 </div>
-                                {descriptionFeedback ? (
-                                  <p className={`text-xs ${descriptionFeedback.tone === "error" ? "text-[#FF2056]" : descriptionFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-100"}`}>
-                                    {descriptionFeedback.message}
-                                  </p>
-                                ) : null}
                               </div>
                             </div>
                           </div>
                           <div className="pt-0">
                             <div className="rounded-xl border border-slate-700 bg-[#020616] px-3 py-2.5">
+                              {descriptionFeedback ? (
+                                <div className="w-full p-2 mb-2 bg-yellow-900/20 border border-yellow-700/30 rounded-md flex flex-col gap-1">
+                                  <p className="text-[11px] leading-tight text-yellow-500">
+                                    {descriptionFeedback.message}
+                                  </p>
+                                </div>
+                              ) : null}
                               <div className="flex items-center justify-between w-full gap-4">
-                              <div className="flex overflow-x-auto gap-2 flex-1 items-center pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                              <div
+                                ref={detailTagsTrackRef}
+                                className="flex overflow-x-auto gap-2 flex-1 items-center pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                              >
                                 {isDetailTagsLoading ? (
                                   Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
                                     <div
@@ -4601,14 +4624,24 @@ export default function MerchQuantumApp() {
                                   </div>
                                 )}
                               </div>
-                              <button
-                                type="button"
-                                onClick={triggerDescriptionAction}
-                                disabled={descriptionActionDisabled}
-                                className="flex shrink-0 items-center h-8 text-[#7F22FE] text-sm leading-6 font-normal font-sans bg-transparent border-none p-0 cursor-pointer"
-                              >
-                                Upload
-                              </button>
+                              <div className="hidden md:flex items-center gap-1 text-gray-400">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDetailTagsScroll("left")}
+                                  className="hover:text-white cursor-pointer transition-colors"
+                                  aria-label="Scroll tags left"
+                                >
+                                  <ChevronIcon open={false} className="h-4 w-4 rotate-90" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDetailTagsScroll("right")}
+                                  className="hover:text-white cursor-pointer transition-colors"
+                                  aria-label="Scroll tags right"
+                                >
+                                  <ChevronIcon open={false} className="h-4 w-4 -rotate-90" />
+                                </button>
+                              </div>
                               </div>
                             </div>
                           </div>
