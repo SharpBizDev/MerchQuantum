@@ -95,7 +95,7 @@ export const GOLDEN_CORPUS_FIXTURES: GoldenCorpusFixture[] = [
       grade: "green",
       titleMustInclude: ["Mountain Adventure"],
       leadMustInclude: ["Outdoor-focused design"],
-      reasonIncludes: ["OCR/text legibility"],
+      reasonIncludes: ["Image text is unclear"],
       filename: {
         classification: "partial_support",
         shouldIgnore: false,
@@ -144,7 +144,7 @@ export const GOLDEN_CORPUS_FIXTURES: GoldenCorpusFixture[] = [
     expected: {
       grade: "green",
       titleMustInclude: ["Be Kind"],
-      reasonIncludes: ["OCR/text legibility"],
+      reasonIncludes: ["Image text is unclear"],
       filename: {
         classification: "weak_or_generic",
         shouldIgnore: true,

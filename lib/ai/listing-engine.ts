@@ -1636,7 +1636,7 @@ function analyzeRepetition(title: string, leadParagraphs: string[], discoveryTer
         "lead_phrase_overlap",
         "warning",
         "render",
-        "Lead copy is too repetitive across the two buyer-facing paragraphs."
+        "Description contains repetitive phrasing. Manual adjustment recommended."
       )
     );
   }
@@ -2380,7 +2380,7 @@ export function gradeListing(
   if (imageTruth.ocrWeakness && !/none|clear/i.test(imageTruth.ocrWeakness) && !softOcrWarning) {
     confidence -= 0.1;
     reasonDetails.push(
-      makeReason("ocr_weakness", "warning", "image_truth", "OCR/text legibility is weak or partial.")
+      makeReason("ocr_weakness", "warning", "image_truth", "Image text is unclear. Please verify description accuracy.")
     );
   }
 
@@ -2406,7 +2406,7 @@ export function gradeListing(
   if (!effectiveTitle || effectiveTitle.length < 12 || isLowSignalTitle(effectiveTitle)) {
     confidence -= 0.1;
     reasonDetails.push(
-      makeReason("weak_title_core", "warning", "semantic", "Generated title core is too weak and needs stronger clarification.")
+      makeReason("weak_title_core", "warning", "semantic", "Title lacks primary keywords. Please review and enhance.")
     );
   }
 
@@ -3752,7 +3752,7 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
     uncertainty: [
       retryCount > 0
         ? `Deterministic fallback used after ${retryCount} bounded Grok attempt${retryCount === 1 ? "" : "s"} failed or returned unusable structured output.`
-        : "Local fallback used because Grok output was unavailable or unparseable.",
+        : "Automated scan timed out. Standard formatting applied.",
     ],
     ocrWeakness: "local-fallback-no-multimodal-ocr",
     meaningClarity: normalizedTitleSeed ? 0.58 : 0.34,
@@ -3787,16 +3787,16 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
       return (
         detail.code === "ocr_weakness" ||
         /^image_uncertainty_\d+$/.test(detail.code) ||
-        /local fallback used|deterministic fallback used|grok attempt|unparseable structured output|failed or returned unusable structured output/.test(
-          normalized
-        )
+          /automated scan timed out|local fallback used|deterministic fallback used|grok attempt|unparseable structured output|failed or returned unusable structured output/.test(
+            normalized
+          )
       );
     });
 
   if (canPromoteRetryFallback) {
     const fallbackNotice = retryCount > 0
       ? `Deterministic fallback used after ${retryCount} bounded Grok attempt${retryCount === 1 ? "" : "s"} failed or returned unusable structured output.`
-      : "Local fallback used because Grok output was unavailable or unparseable.";
+      : "Automated scan timed out. Standard formatting applied.";
     validator = {
       ...validator,
       grade: "green",

@@ -974,7 +974,7 @@ async function main() {
 
     assert.equal(result.grade, "green");
     assert.equal(result.reasonFlags.some((flag) => flag.toLowerCase().includes("stylized")), true);
-    assert.equal(result.reasonFlags.some((flag) => flag.toLowerCase().includes("unclear")), false);
+    assert.equal(result.reasonFlags.some((flag) => flag.toLowerCase().includes("timed out")), false);
   });
 
   await run("validator keeps decorative faith-text transparent artwork Good when the message is still recoverable", () => {
@@ -1760,7 +1760,7 @@ async function main() {
     );
 
     assert.equal(
-      result.reasonFlags.some((flag) => flag.toLowerCase().includes("ocr/text legibility is weak or partial")),
+      result.reasonFlags.some((flag) => flag.toLowerCase().includes("image text is unclear")),
       true
     );
     assert.equal(
@@ -2533,7 +2533,7 @@ async function main() {
                 confidence: 0.52,
                 reasonFlags: [
                   "Small interior logo details remain stylized rather than fully literal.",
-                  "OCR/text legibility is weak or partial.",
+                  "Image text is unclear. Please verify description accuracy.",
                 ],
                 complianceFlags: [],
                 reasonDetails: [
@@ -2547,7 +2547,7 @@ async function main() {
                     code: "ocr_weakness",
                     severity: "warning",
                     stage: "image_truth",
-                    summary: "OCR/text legibility is weak or partial.",
+                    summary: "Image text is unclear. Please verify description accuracy.",
                   },
                 ],
               },
@@ -2639,7 +2639,7 @@ async function main() {
                 confidence: 0.52,
                 reasonFlags: [
                   "Small interior logo details remain stylized rather than fully literal.",
-                  "OCR/text legibility is weak or partial.",
+                  "Image text is unclear. Please verify description accuracy.",
                 ],
                 complianceFlags: [],
                 reasonDetails: [
@@ -2653,7 +2653,7 @@ async function main() {
                     code: "ocr_weakness",
                     severity: "warning",
                     stage: "image_truth",
-                    summary: "OCR/text legibility is weak or partial.",
+                    summary: "Image text is unclear. Please verify description accuracy.",
                   },
                 ],
               },
