@@ -3,6 +3,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import sharp from "sharp";
+
 import { publishHostedArtwork, readHostedArtwork } from "../../lib/providers/artwork";
 import { createGootenAdapter } from "../../lib/providers/gooten/adapter";
 import { ProviderError, providerErrorFromResponse } from "../../lib/providers/errors";
@@ -17,6 +19,21 @@ import { createSpodAdapter } from "../../lib/providers/spod/adapter";
 
 const SAMPLE_PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9d8AAAAASUVORK5CYII=";
+
+async function createPngDataUrl(width: number, height: number) {
+  const buffer = await sharp({
+    create: {
+      width,
+      height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 1 },
+    },
+  })
+    .png()
+    .toBuffer();
+
+  return `data:image/png;base64,${buffer.toString("base64")}`;
+}
 
 function createResponse(body: unknown, init: ResponseInit = {}) {
   const payload = typeof body === "string" ? body : JSON.stringify(body);
@@ -384,6 +401,100 @@ await run("printful import detail restores file-library artwork when available",
   assert.equal(calls.length, 2);
   assert.match(calls[0]?.input || "", /\/store\/products\/101$/);
   assert.match(calls[1]?.input || "", /\/files\/555$/);
+});
+
+await run("printful draft creation pads artwork to the template placement guide before upload", async () => {
+  const { fetchFn, calls } = createQueuedFetch([
+    createResponse({
+      result: {
+        id: 888,
+        filename: "normalized-upload.png",
+      },
+    }),
+    createResponse({
+      result: {
+        id: 999,
+        sync_product: {
+          id: 999,
+        },
+      },
+    }),
+  ]);
+
+  const adapter = createPrintfulAdapter({ fetch: fetchFn });
+  const sourceImageDataUrl = await createPngDataUrl(600, 400);
+
+  const result = await adapter.createDraftProduct({
+    credentials: { apiKey: "token" },
+    storeId: "store-1",
+    templateId: "template-1",
+    item: {
+      fileName: "source-art.png",
+      title: "Normalized Printful Draft",
+      description: "Draft description",
+      tags: ["alpha", "beta"],
+      imageDataUrl: sourceImageDataUrl,
+    },
+    templateDetail: {
+      id: "template-1",
+      storeId: "store-1",
+      title: "Template",
+      description: "",
+      placementGuide: {
+        position: "front",
+        width: 1800,
+        height: 2400,
+        source: "live",
+      },
+      metadata: {
+        rawTemplate: {
+          sync_product: {
+            id: 123,
+            name: "Template",
+          },
+          sync_variants: [
+            {
+              variant_id: 321,
+              retail_price: "24.99",
+              files: [
+                {
+                  type: "front",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  });
+
+  assert.equal(result.productId, "999");
+  assert.equal(calls.length, 2);
+  assert.match(calls[0]?.input || "", /\/files$/);
+  assert.match(calls[1]?.input || "", /\/store\/products$/);
+
+  const uploadPayload = JSON.parse(String(calls[0]?.init?.body || "{}")) as {
+    data?: string;
+    filename?: string;
+    visible?: boolean;
+  };
+  assert.equal(uploadPayload.filename, "source-art.png");
+  assert.equal(uploadPayload.visible, false);
+  assert.match(uploadPayload.data || "", /^data:image\/png;base64,/);
+
+  const normalizedBase64 = String(uploadPayload.data || "").split(",")[1] || "";
+  const normalizedMetadata = await sharp(Buffer.from(normalizedBase64, "base64")).metadata();
+  assert.equal(normalizedMetadata.width, 1800);
+  assert.equal(normalizedMetadata.height, 2400);
+
+  const createPayload = JSON.parse(String(calls[1]?.init?.body || "{}")) as {
+    sync_variants?: Array<{
+      variant_id?: number;
+      files?: Array<{ id?: string; type?: string }>;
+    }>;
+  };
+  assert.equal(createPayload.sync_variants?.[0]?.variant_id, 321);
+  assert.deepEqual(createPayload.sync_variants?.[0]?.files, [{ id: "888", type: "front" }]);
 });
 
 await run("printful metadata sync is title-only in this pass and rejects unsupported fields", async () => {

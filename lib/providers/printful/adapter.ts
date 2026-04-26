@@ -1,6 +1,9 @@
+import sharp from "sharp";
+
 import type {
   ProviderAdapter,
   ProviderAdapterContext,
+  ProviderArtworkContext,
   ProviderImportDetailContext,
 } from "../contracts";
 import { ProviderError, providerErrorFromResponse, toProviderError } from "../errors";
@@ -31,6 +34,11 @@ type PrintfulAdapterOptions = {
   apiBase?: string;
   timeoutMs?: number;
   userAgent?: string;
+};
+
+type PrintfulArtworkUploadContext = ProviderArtworkContext & {
+  targetWidth?: number;
+  targetHeight?: number;
 };
 
 type PrintfulStore = {
@@ -225,6 +233,74 @@ function buildFallbackPlacementGuide(syncVariants: PrintfulSyncVariant[]) {
   };
 }
 
+function normalizePixelDimension(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  const rounded = Math.round(value);
+  return rounded > 0 ? rounded : null;
+}
+
+async function normalizeArtworkForPrintfulUpload(
+  dataUrl: string,
+  targetWidth?: number,
+  targetHeight?: number
+) {
+  const trimmed = dataUrl.trim();
+  const parts = extractDataUrlParts(trimmed);
+  if (!parts) {
+    throw new ProviderError({
+      providerId: "printful",
+      code: "validation_error",
+      status: 400,
+      message: "Image data is missing or not base64.",
+    });
+  }
+
+  const normalizedTargetWidth = normalizePixelDimension(targetWidth);
+  const normalizedTargetHeight = normalizePixelDimension(targetHeight);
+  if (!normalizedTargetWidth || !normalizedTargetHeight) {
+    return trimmed;
+  }
+
+  const sourceBuffer = Buffer.from(parts.contents, "base64");
+  if (!sourceBuffer.length) {
+    throw new ProviderError({
+      providerId: "printful",
+      code: "validation_error",
+      status: 400,
+      message: "Image data is missing or not base64.",
+    });
+  }
+
+  try {
+    const metadata = await sharp(sourceBuffer).metadata();
+    if (metadata.width === normalizedTargetWidth && metadata.height === normalizedTargetHeight) {
+      return trimmed;
+    }
+
+    const normalizedBuffer = await sharp(sourceBuffer)
+      .resize({
+        width: normalizedTargetWidth,
+        height: normalizedTargetHeight,
+        fit: "contain",
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png()
+      .toBuffer();
+
+    return `data:image/png;base64,${normalizedBuffer.toString("base64")}`;
+  } catch (error) {
+    throw toProviderError(error, {
+      providerId: "printful",
+      code: "validation_error",
+      status: 400,
+      message: "Unable to normalize artwork dimensions for Printful.",
+    });
+  }
+}
+
 function chooseImportedFile(syncVariants: PrintfulSyncVariant[]) {
   for (const variant of syncVariants) {
     const preferred = (variant.files || []).find((file) => String(file.type || "").trim() && String(file.type || "").trim() !== "preview");
@@ -403,6 +479,34 @@ export function createPrintfulAdapter(options: PrintfulAdapterOptions = {}): Pro
     };
   }
 
+  async function uploadArtworkInternal(context: PrintfulArtworkUploadContext) {
+    const data = await normalizeArtworkForPrintfulUpload(
+      context.imageDataUrl,
+      context.targetWidth,
+      context.targetHeight
+    );
+
+    const file = await requestJson<PrintfulFile>(
+      context,
+      "/files",
+      "Unable to upload artwork to the Printful file library.",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          data,
+          filename: context.fileName,
+          visible: false,
+        }),
+      }
+    );
+
+    return {
+      id: String(file.id),
+      fileName: file.filename || context.fileName,
+      providerId: "printful",
+    } satisfies NormalizedArtworkUpload;
+  }
+
   return {
     id: "printful",
     displayName: "Printful",
@@ -552,35 +656,7 @@ export function createPrintfulAdapter(options: PrintfulAdapterOptions = {}): Pro
       } satisfies NormalizedImportedListingDetail;
     },
     async uploadArtwork(context) {
-      const data = context.imageDataUrl.trim();
-      if (!extractDataUrlParts(data)) {
-        throw new ProviderError({
-          providerId: "printful",
-          code: "validation_error",
-          status: 400,
-          message: "Image data is missing or not base64.",
-        });
-      }
-
-      const file = await requestJson<PrintfulFile>(
-        context,
-        "/files",
-        "Unable to upload artwork to the Printful file library.",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            data,
-            filename: context.fileName,
-            visible: false,
-          }),
-        }
-      );
-
-      return {
-        id: String(file.id),
-        fileName: file.filename || context.fileName,
-        providerId: "printful",
-      } satisfies NormalizedArtworkUpload;
+      return uploadArtworkInternal(context);
     },
     async createDraftProduct(context) {
       try {
@@ -604,10 +680,12 @@ export function createPrintfulAdapter(options: PrintfulAdapterOptions = {}): Pro
           });
         }
 
-        const upload = await this.uploadArtwork({
+        const upload = await uploadArtworkInternal({
           credentials: context.credentials,
           fileName: context.item.fileName,
           imageDataUrl: context.item.imageDataUrl,
+          targetWidth: templateDetail.placementGuide.width,
+          targetHeight: templateDetail.placementGuide.height,
         });
 
         const preferredPlacement = String(templateDetail.placementGuide.position || "default").trim() || "default";
