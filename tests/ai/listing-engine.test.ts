@@ -267,6 +267,9 @@ function createGeminiPayload(overrides: Record<string, any> = {}) {
     },
     qc_status: "PASS",
     extracted_text: "FAITH OVER FEAR",
+    primary_niche: "Faith Over Fear Christian message",
+    literal_visual_elements: ["FAITH OVER FEAR slogan", "white lettering", "clean transparent layout"],
+    target_audience_identity: "faith-based buyers",
     generated_title: "Faith Over Fear Christian Tee",
     generated_paragraph_1:
       "Faith-based shoppers will love the bold message and clean spiritual design that makes this shirt feel encouraging, wearable, and giftable.",
@@ -1567,18 +1570,18 @@ async function main() {
     assert.equal(response.source, "gemini");
     assert.equal(/titleSeed: null/i.test(capturedPrompt), true);
     assert.equal(/fileNameSupport: Classic Peace Sign Retro Hippie Shirt/i.test(capturedPrompt), true);
-    assert.equal(/do not let the filename write the title or marketing copy/i.test(capturedPrompt), true);
-    assert.equal(/trust the clearest render over the filename/i.test(capturedPrompt), true);
-    assert.equal(/ACT AS: A Senior E-commerce Metadata Indexer, SEO Strategist, and Print-on-Demand Copywriter\./i.test(capturedPrompt), true);
-    assert.equal(/Digital Asset Management \(DAM\) system performing High-Fidelity Text Logging/i.test(capturedPrompt), true);
-    assert.equal(/Treat iconography, slogans, and exact design text as commercial design assets/i.test(capturedPrompt), true);
-    assert.equal(/You are an e-commerce copywriter, not a content moderator\./i.test(capturedPrompt), true);
-    assert.equal(/VERBATIM EXTRACTION/i.test(capturedPrompt), true);
-    assert.equal(/Treat visible wording as raw searchable database data, not as content to soften, summarize, or neutralize\./i.test(capturedPrompt), true);
-    assert.equal(/do not use placeholder phrases such as "Faith Forward", "Inspirational Graphic", "General Design", or "General Religious Theme"/i.test(capturedPrompt), true);
+    assert.equal(/visible image truth outranks filename text/i.test(capturedPrompt), true);
+    assert.equal(/helper renders as support for transparent or low-contrast artwork/i.test(capturedPrompt), true);
+    assert.equal(/Act as a forensic SEO data extractor/i.test(capturedPrompt), true);
+    assert.equal(/return ONLY hard facts/i.test(capturedPrompt), true);
+    assert.equal(/primary_niche/i.test(capturedPrompt), true);
+    assert.equal(/literal_visual_elements/i.test(capturedPrompt), true);
+    assert.equal(/target_audience_identity/i.test(capturedPrompt), true);
+    assert.equal(/Do not replace exact wording with generic filler/i.test(capturedPrompt), true);
     assert.equal(/message-led piece|faith-based apparel|religious merchandise/i.test(capturedPrompt), true);
-    assert.equal(/threshold-mask OCR/i.test(capturedPrompt), true);
-    assert.equal(/generated_title should lead with the strongest exact visible wording that a shopper would search for/i.test(capturedPrompt), true);
+    assert.equal(/DO NOT generate conversational text/i.test(capturedPrompt), true);
+    assert.equal(/OCR AND IMAGE TRUTH RULES/i.test(capturedPrompt), true);
+    assert.equal(/generated_title must remain literal, keyword-first, and faithful to visible image truth/i.test(capturedPrompt), true);
     assert.equal(capturedTemperature, 0.1);
     assert.equal(capturedStore, false);
   });
@@ -1614,7 +1617,7 @@ async function main() {
 
     assert.equal(response.source, "gemini");
     assert.equal(/USER HINTS/i.test(capturedPrompt), true);
-    assert.equal(/The user has provided the following hints\/context:/i.test(capturedPrompt), true);
+    assert.equal(/Seller hints:/i.test(capturedPrompt), true);
     assert.equal(/Christ on the Cross/i.test(capturedPrompt), true);
     assert.equal(/Christian faith graphic tee/i.test(capturedPrompt), true);
     assert.equal(/Awaiting Quantum AI|Printify/i.test(capturedPrompt), false);
@@ -1652,12 +1655,12 @@ async function main() {
 
     assert.equal(response.source, "gemini");
     assert.equal(/IMPORT MODE LEGACY CONTEXT/i.test(capturedPrompt), true);
-    assert.equal(/legacy description they previously used/i.test(capturedPrompt), true);
+    assert.equal(/Legacy keyword evidence/i.test(capturedPrompt), true);
     assert.equal(/Jesus Saves Christian church tee/i.test(capturedPrompt), true);
     assert.equal(/Awaiting Quantum AI|Printify|\[Store_Name\]/i.test(capturedPrompt), false);
-    assert.equal(/minimum of two rich, engaging paragraphs/i.test(capturedPrompt), true);
+    assert.equal(/supporting keyword evidence only/i.test(capturedSystemInstruction), true);
     assert.equal(/LEGACY UPGRADE RULE/i.test(capturedSystemInstruction), true);
-    assert.equal(/foundational hint for a much stronger modern retail rewrite/i.test(capturedSystemInstruction), true);
+    assert.equal(/actual visible design truth/i.test(capturedSystemInstruction), true);
   });
 
   await run("manual override helper only approves structured buyer copy that meets workspace minimums", () => {
@@ -1901,7 +1904,7 @@ async function main() {
     const requestBody = getGeminiRequestBody(capturedInit);
     const prompt = String(getGeminiRequestParts(capturedInit)[0]?.text || "");
     const systemInstruction = getGeminiSystemInstructionText(capturedInit);
-    assert.equal(systemInstruction.includes("do not sanitize or genericize the output"), true);
+    assert.equal(/do not sanitize or genericize the output/i.test(systemInstruction), true);
     assert.equal(systemInstruction.includes('"Faith Product"'), true);
     assert.equal(systemInstruction.includes("commercial design asset"), true);
     assert.equal(systemInstruction.includes('"message-led piece"'), true);
@@ -2019,7 +2022,8 @@ async function main() {
             assert.equal(inlineData.mimeType, "image/png", `${fixture.name}: image mime type`);
             assert.equal(/qc_status/i.test(prompt), true, `${fixture.name}: prompt should demand qc_status`);
             assert.equal(/extracted_text/i.test(prompt), true, `${fixture.name}: prompt should demand extracted_text`);
-            assert.equal(/generated_paragraph_1/i.test(prompt), true, `${fixture.name}: prompt should demand generated marketing paragraphs`);
+            assert.equal(/primary_niche/i.test(prompt), true, `${fixture.name}: prompt should demand primary niche extraction`);
+            assert.equal(/literal_visual_elements/i.test(prompt), true, `${fixture.name}: prompt should demand literal visual extraction`);
             if (fixture.name === "transparent png weak contrast") {
               assert.equal(imageParts.length >= 4, true, `${fixture.name}: should send multi-render helper bundle`);
               assert.notEqual(inlineData.data, image.base64, `${fixture.name}: should use derived analysis image as primary`);
@@ -2147,7 +2151,7 @@ async function main() {
     assert.equal(/T-Shirt|Tee|Shirt/i.test(response.title), true);
     assert.equal(/crafted for comfort and style/i.test(response.leadParagraphs[1]), false);
     assert.equal(/doing the heavy lifting on comfort and presentation/i.test(response.leadParagraphs[1]), false);
-    assert.equal(/wear|gift|buyer|listing|trust/i.test(response.leadParagraphs[1]), true);
+    assert.equal(/Features/i.test(response.leadParagraphs[1]), true);
   });
 
   await run("Gemini lead shaping returns finished sentences instead of clipped ellipsis endings", async () => {
@@ -2301,19 +2305,16 @@ async function main() {
     assert.equal(/sterileProductType:\s*Unisex Heavy Cotton Tee/i.test(capturedPrompt), true);
     assert.equal(/faith boutique|christian gift|uplifting/i.test(capturedPrompt), false);
     assert.equal(/&mdash;|&rsquo;|&sup2;/i.test(capturedPrompt), false);
-    assert.equal(/150 to 250 words combined/i.test(capturedPrompt), true);
-    assert.equal(/roughly 70 to 125 words per paragraph/i.test(capturedPrompt), true);
-    assert.equal(/no meta-commentary/i.test(capturedPrompt), true);
-    assert.equal(/strong keyword-rich seo hook/i.test(capturedPrompt), true);
-    assert.equal(/literal visible elements in the art/i.test(capturedPrompt), true);
-    assert.equal(/buyer-facing sales copy only/i.test(capturedPrompt), true);
-    assert.equal(/emotional hook, vibe, audience/i.test(capturedPrompt), true);
-    assert.equal(/literal design details, styling suggestions, shopper use cases, and aesthetic fit/i.test(capturedPrompt), true);
-    assert.equal(/Read every word on this design exactly as written/i.test(capturedPrompt), true);
-    assert.equal(/do not judge dpi, metadata, file headers, or upload-constraint validity/i.test(capturedPrompt), true);
-    assert.equal(/merchandise artwork, not as a generic object-detection task/i.test(capturedPrompt), true);
-    assert.equal(/intentional retro pixel art can all PASS/i.test(capturedPrompt), true);
-    assert.equal(/full rectangular poster, photographic scene, or textured background composition/i.test(capturedPrompt), true);
+    assert.equal(/DO NOT generate conversational text/i.test(capturedPrompt), true);
+    assert.equal(/literal_visual_elements/i.test(capturedPrompt), true);
+    assert.equal(/target_audience_identity/i.test(capturedPrompt), true);
+    assert.equal(/generated_paragraph_1/i.test(capturedPrompt), false);
+    assert.equal(/150 to 250 words combined/i.test(capturedPrompt), false);
+    assert.equal(/Read every visible word exactly as written/i.test(capturedPrompt), true);
+    assert.equal(/Visible image truth outranks filename text/i.test(capturedPrompt), true);
+    assert.equal(/Do not hallucinate unsupported claims/i.test(capturedPrompt), true);
+    assert.equal(/If the image is blank, deeply distorted, or truly illegible, set qc_status to FAIL/i.test(capturedPrompt), true);
+    assert.equal(/Ignore artificial helper backgrounds and focus only on the foreground design/i.test(capturedPrompt), true);
     assert.equal(/model should verify dpi|model should verify metadata|check file headers/i.test(capturedPrompt), false);
     assert.equal(/40 to 60 words/i.test(capturedPrompt), false);
   });
@@ -2806,10 +2807,9 @@ async function main() {
     assert.equal(response.publishReady, true);
   });
 
-  await run("Gemini retry ladder succeeds on second structured attempt", async () => {
+  await run("Gemini malformed structured output falls back deterministically on the first attempt", async () => {
     const sequence = createFetchSequence([
       createGeminiTextResponse("not-valid-json"),
-      createGeminiResponse(createGeminiPayload({ canonicalTitle: "Recovered Structured Output Tee" })),
     ]);
 
     const response = await generateListingResponse(
@@ -2822,12 +2822,12 @@ async function main() {
       { apiKey: "test-key", model: "gemini-test", fetchFn: sequence.fetchFn }
     );
 
-    assert.equal(sequence.getCallCount() >= 2, true);
-    assert.equal(response.source, "gemini");
-    assert.equal(response.title.includes("Recovered Structured Output Tee"), true);
+    assert.equal(sequence.getCallCount(), 1);
+    assert.equal(response.source, "fallback");
+    assert.equal(response.reasonFlags.some((flag) => flag.toLowerCase().includes("deterministic fallback used")), true);
   });
 
-  await run("Gemini sanitized placeholder output triggers a stricter OCR retry before reaching the UI", async () => {
+  await run("Gemini sanitized placeholder output falls back deterministically without retry", async () => {
     let callCount = 0;
     const capturedPrompts: string[] = [];
 
@@ -2845,66 +2845,39 @@ async function main() {
           callCount += 1;
           capturedPrompts.push(String(getGeminiRequestParts(init)[0]?.text || ""));
 
-          if (callCount === 1) {
-            return createGeminiResponse(
-              createGeminiPayload({
-                extracted_text: "",
-                generated_title: "Faith Forward Christian Tee",
-                generated_paragraph_1:
-                  "This inspirational graphic offers a religious theme in a clean everyday format for shoppers who want simple uplifting apparel.",
-                generated_paragraph_2:
-                  "The general design stays approachable and versatile while the layout keeps the message broad for many buyers.",
-              })
-            );
-          }
-
           return createGeminiResponse(
             createGeminiPayload({
-              extracted_text: "Life Begins With Jesus",
-              generated_title: "Life Begins With Jesus Christian Faith Shirt",
+              extracted_text: "",
+              generated_title: "Faith Forward Christian Tee",
               generated_paragraph_1:
-                "Life Begins With Jesus takes center stage in this Christian faith shirt, giving believers a clear scripture-inspired message that feels bold, wearable, and easy to recognize at a glance. The diagonal typography keeps the wording visually distinct for church events, everyday witness, devotional routines, and gift shopping focused on Jesus-centered apparel that speaks openly instead of hiding behind vague inspiration.",
-                generated_paragraph_2:
-                  "The clean white lettering and minimalist layout give the design a modern Christian look that pairs naturally with denim, cardigans, jackets, and casual weekend outfits. Because the actual words stay visible, the shirt feels more specific to Christian living, Bible study gifts, and believer identity than a generic religious tee, making it a strong option for shoppers who want straightforward message apparel with real search-friendly wording.",
-              seo_tags: [
-                "life begins with jesus shirt",
-                "christian faith shirt",
-                "jesus message tee",
-                "bible study gift shirt",
-                "church outfit tee",
-                "believer apparel",
-                "scripture message shirt",
-                "christian gift tee",
-                "faith based clothing",
-                "jesus typography shirt",
-                "religious graphic tee",
-                "devotional apparel",
-                "witness wear shirt",
-                "modern christian tee",
-                "minimal faith shirt",
-              ],
+                "This inspirational graphic offers a religious theme in a clean everyday format for shoppers who want simple uplifting apparel.",
+              generated_paragraph_2:
+                "The general design stays approachable and versatile while the layout keeps the message broad for many buyers.",
             })
           );
         },
       }
     );
 
-    assert.equal(callCount, 2);
-    assert.equal(response.source, "gemini");
-    assert.equal(/Jesus/i.test(response.title), true);
+    assert.equal(callCount, 1);
+    assert.equal(response.source, "fallback");
     assert.equal(/faith forward|inspirational graphic|inspirational design|general design|religious theme|general religious theme/i.test(response.description), false);
-    assert.equal(/sanitized placeholder wording/i.test(capturedPrompts[1] || ""), true);
-    assert.equal(/discarded for being too generic/i.test(capturedPrompts[1] || ""), true);
-    assert.equal(/switch to literal mode/i.test(capturedPrompts[1] || ""), true);
-    assert.equal(/High-Fidelity Text Logging/i.test(capturedPrompts[1] || ""), true);
-    assert.equal(/threshold-mask OCR helper/i.test(capturedPrompts[1] || ""), true);
-    assert.equal(/if visible text says jesus, god, scripture references/i.test((capturedPrompts[1] || "").toLowerCase()), true);
+    assert.equal(/literal_visual_elements must contain no more than 4 items/i.test(capturedPrompts[0] || ""), true);
   });
 
-  await run("Gemini retry ladder falls back deterministically after bounded failures", async () => {
+  await run("Gemini overlong literal visual element arrays trigger deterministic fallback", async () => {
     const sequence = createFetchSequence([
-      createGeminiTextResponse("not-valid-json"),
-      new Response("temporary failure", { status: 500, headers: { "content-type": "text/plain" } }),
+      createGeminiResponse(
+        createGeminiPayload({
+          literal_visual_elements: [
+            "FAITH OVER FEAR slogan",
+            "white lettering",
+            "clean transparent layout",
+            "arched text",
+            "extra unsupported fifth element",
+          ],
+        })
+      ),
     ]);
 
     const response = await generateListingResponse(
@@ -2917,16 +2890,69 @@ async function main() {
       { apiKey: "test-key", model: "gemini-test", fetchFn: sequence.fetchFn }
     );
 
-    assert.equal(sequence.getCallCount() >= 2, true);
+    assert.equal(sequence.getCallCount(), 1);
     assert.equal(response.source, "fallback");
     assert.equal(response.reasonFlags.some((flag) => flag.toLowerCase().includes("deterministic fallback used")), true);
   });
 
-  await run("diagnostic callback captures structured-output and exception telemetry", async () => {
+  await run("Gemini omits the feature sentence when literal visual elements are null", async () => {
+    const response = await generateListingResponse(
+      {
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+        title: "",
+        fileName: "featureless_seed.png",
+        productFamily: "t-shirt",
+      },
+      {
+        apiKey: "test-key",
+        model: "gemini-test",
+        fetchFn: async () =>
+          createGeminiResponse(
+            createGeminiPayload({
+              imageTruth: {
+                visibleText: [],
+                visibleFacts: [],
+                inferredMeaning: ["minimalist basketball line art"],
+                dominantTheme: "minimalist basketball line art",
+                likelyAudience: "basketball fans",
+                likelyOccasion: "sportswear",
+                uncertainty: [],
+                ocrWeakness: "none",
+                meaningClarity: 0.91,
+                hasReadableText: false,
+              },
+              semanticRecord: {
+                productNoun: "graphic tee",
+                titleCore: "Minimal Basketball Sports Tee",
+                benefitCore: "Basketball line art graphic for sports buyers.",
+                likelyAudience: "basketball fans",
+                styleOccasion: "basketball line art",
+                visibleKeywords: [],
+                inferredKeywords: ["basketball tee"],
+                forbiddenClaims: [],
+              },
+              primary_niche: "Basketball Line Art Graphic",
+              literal_visual_elements: null,
+              target_audience_identity: "basketball fans",
+              generated_title: "Minimal Basketball Sports Tee",
+              generated_paragraph_1: "",
+              generated_paragraph_2: "",
+              seo_tags: ["basketball tee", "line art sports shirt", "minimal sportswear"],
+            })
+          ),
+      }
+    );
+
+    assert.equal(response.source, "gemini");
+    assert.equal(/Features /i.test(response.description), false);
+    assert.equal(/\s{2,}/.test(response.description), false);
+    assert.equal(/[.]\s*[.]/.test(response.description), false);
+  });
+
+  await run("diagnostic callback captures structured-output telemetry before deterministic fallback", async () => {
     const diagnostics: Array<{ event: string; details: Record<string, unknown> }> = [];
     const sequence = createFetchSequence([
       createGeminiTextResponse("not-valid-json"),
-      new Response("temporary failure", { status: 500, headers: { "content-type": "text/plain" } }),
     ]);
 
     const response = await generateListingResponse(
@@ -2948,11 +2974,11 @@ async function main() {
 
     assert.equal(response.source, "fallback");
     assert.equal(diagnostics.some((entry) => entry.event === "unusable_structured_output"), true);
-    assert.equal(diagnostics.some((entry) => entry.event === "http_error"), true);
-    assert.equal(diagnostics.some((entry) => entry.event === "attempt_exception"), true);
+    assert.equal(diagnostics.some((entry) => entry.event === "http_error"), false);
+    assert.equal(diagnostics.some((entry) => entry.event === "attempt_exception"), false);
   });
 
-  await run("quota exhaustion retries the Grok vision request and can still recover on the next attempt", async () => {
+  await run("quota exhaustion falls back deterministically without retry", async () => {
     const image = await createTransparentSvgDataUrl(`
       <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="520" viewBox="0 0 1600 520">
         <rect width="1600" height="520" fill="transparent"/>
@@ -2964,7 +2990,6 @@ async function main() {
     const requestedUrls: string[] = [];
     const sequence = createFetchSequence([
       new Response("quota exhausted", { status: 429, headers: { "content-type": "text/plain" } }),
-      createGeminiResponse(createGeminiPayload()),
     ]);
 
     const response = await generateListingResponse(
@@ -2988,11 +3013,14 @@ async function main() {
       }
     );
 
-    assert.equal(requestedUrls.length >= 2, true);
+    assert.equal(requestedUrls.length >= 1, true);
     assert.equal(requestedUrls.every((url) => /\/responses/i.test(url)), true);
-    assert.equal(response.source, "gemini");
+    assert.equal(response.source, "fallback");
     assert.equal(response.model, "grok-4-fast-non-reasoning");
+    assert.equal(sequence.getCallCount(), 1);
     assert.equal(Array.isArray(diagnostics), true);
+    assert.equal(diagnostics.some((entry) => entry.event === "http_error"), true);
+    assert.equal(diagnostics.some((entry) => entry.event === "attempt_exception"), true);
   });
 
   await run("repeated sanitized placeholder output can recover to a literal filename-grounded fallback for searchable religious text", async () => {
@@ -3019,7 +3047,7 @@ async function main() {
       { apiKey: "test-key", model: "gemini-test", fetchFn: sequence.fetchFn }
     );
 
-    assert.equal(sequence.getCallCount() >= 2, true);
+    assert.equal(sequence.getCallCount(), 1);
     assert.equal(response.source, "fallback");
     assert.equal(response.qcApproved, true);
     assert.equal(response.publishReady, true);
@@ -3062,7 +3090,8 @@ async function main() {
     assert.equal(response.description.includes("```"), false);
     assert.equal(response.description.toLowerCase().startsWith(response.title.toLowerCase()), false);
     assert.equal(/100% ring-spun cotton|machine wash cold/i.test(response.description), false);
-    assert.equal(response.description.split(/\n\n/).length, 2);
+    const descriptionSentenceCount = (response.description.match(/[.!?](?=\s|$)/g) || []).length;
+    assert.equal(descriptionSentenceCount >= 2 && descriptionSentenceCount <= 3, true);
     assert.equal(Array.isArray(response.tags), true);
     assert.equal(response.tags.length, 15);
     assert.equal(response.tags.some((tag) => tag.includes(",")), false);
@@ -3085,6 +3114,31 @@ async function main() {
             createGeminiPayload({
               qc_status: "PASS",
               extracted_text: "",
+              primary_niche: "Acoustic guitar music graphic",
+              literal_visual_elements: ["cutaway acoustic guitar body", "soundhole", "strings", "frets"],
+              target_audience_identity: "guitar players and songwriters",
+              imageTruth: {
+                visibleText: [],
+                visibleFacts: ["cutaway acoustic guitar body", "soundhole", "strings", "frets"],
+                inferredMeaning: ["acoustic guitar music graphic"],
+                dominantTheme: "acoustic guitar music graphic",
+                likelyAudience: "guitar players and songwriters",
+                likelyOccasion: "music merchandise",
+                uncertainty: [],
+                ocrWeakness: "none",
+                meaningClarity: 0.92,
+                hasReadableText: false,
+              },
+              semanticRecord: {
+                productNoun: "graphic tee",
+                titleCore: "Minimal Acoustic Guitar Graphic Tee",
+                benefitCore: "Literal acoustic guitar search signal.",
+                likelyAudience: "guitar players and songwriters",
+                styleOccasion: "music merchandise",
+                visibleKeywords: ["cutaway acoustic guitar body", "soundhole", "strings", "frets"],
+                inferredKeywords: ["acoustic guitar music graphic", "songwriter shirt"],
+                forbiddenClaims: [],
+              },
               generated_title: "Minimal Acoustic Guitar Graphic Tee",
               generated_paragraph_1:
                 "Channel musician energy with this minimal acoustic guitar graphic tee, where the cutaway body, soundhole, strings, and frets create a clean instrument-driven look that stands out fast. The line art keeps the artwork easy to recognize for guitar players, songwriters, campfire strummers, and unplugged set lovers who want music apparel that feels expressive without getting cluttered. It is an easy pick for anyone who wants melody, rhythm, and creative identity to show up clearly in a wearable everyday graphic.",
@@ -3112,14 +3166,18 @@ async function main() {
       }
     );
 
-    const totalWords = response.description.split(/\s+/).filter(Boolean).length;
-    assert.equal(response.qcApproved, true);
-    assert.equal(response.publishReady, true);
-    assert.equal(totalWords >= 140, true);
-    assert.equal(response.leadParagraphs[0].length > 340, true);
-    assert.equal(/soundhole|strings|frets|cutaway/i.test(response.description), true);
-    assert.equal(/campfire|songwriter|guitar teacher|gig/i.test(response.description), true);
-    assert.equal(/keeps the mood|thought process|the use of the word|conveys/i.test(response.description), false);
+      const totalWords = response.description.split(/\s+/).filter(Boolean).length;
+      assert.equal(response.qcApproved, true);
+      assert.equal(response.publishReady, true);
+      assert.equal(totalWords >= 12, true);
+      assert.equal(totalWords <= 80, true);
+      assert.equal(response.leadParagraphs[0].length < 220, true);
+      assert.equal(/soundhole|strings|frets|cutaway/i.test(response.description), true);
+      assert.equal(/acoustic guitar/i.test(response.description), true);
+      assert.equal(/guitar players and songwriters/i.test(response.description), true);
+      assert.equal(/Features|Material\/Fit data/i.test(response.description), true);
+      assert.equal(/Primary niche|target audience identity/i.test(response.description), false);
+      assert.equal(/keeps the mood|thought process|the use of the word|conveys/i.test(response.description), false);
   });
 
   await run("qc FAIL path blanks structured fields and keeps the item out of the Good publish path", async () => {

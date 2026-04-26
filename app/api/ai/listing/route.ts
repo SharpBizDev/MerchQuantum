@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
+  buildDeterministicFallbackListingResponse,
   generateListingResponse,
   type VisionDiagnosticEvent,
   ListingInputGuardError,
@@ -14,11 +15,17 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const FORCE_RETRY_LIMIT = 2;
 const FORCE_BLACKLISTED_FILLER_PATTERNS = [
   { label: "stunning", pattern: /\bstunning\b/i },
   { label: "must-have", pattern: /\bmust[- ]have\b/i },
   { label: "perfect for", pattern: /\bperfect for\b/i },
+  { label: "casual", pattern: /\bcasual\b/i },
+  { label: "weekend plans", pattern: /\bweekend plans\b/i },
+  { label: "everyday wear", pattern: /\beveryday wear\b/i },
+  { label: "gift-friendly", pattern: /\bgift-friendly\b/i },
+  { label: "fits naturally", pattern: /\bfits naturally\b/i },
+  { label: "keeps the message clear", pattern: /\bkeeps the message clear\b/i },
+  { label: "shopping for", pattern: /\bshopping for\b/i },
 ] as const;
 
 const channelDraftSchema = z.object({
@@ -106,11 +113,6 @@ function formatForceIssue(issue: z.ZodIssue) {
   return `schema validation failed at ${path}`;
 }
 
-function buildForceRetryInstruction(reason: string) {
-  const sanitizedReason = normalizeForceText(reason).replace(/\.+$/, "");
-  return `SYSTEM REJECTION: Payload failed F.O.R.C.E. validation due to ${sanitizedReason}. Regenerate strictly adhering to constraints.`;
-}
-
 function validateForcePayload(payload: ListingUiResponse) {
   const parsed = listingUiResponseSchema.safeParse(payload);
   if (!parsed.success) {
@@ -166,49 +168,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: getUserFacingErrorMessage("imageProcessing") }, { status: 400 });
     }
 
-    let result: ListingUiResponse | null = null;
-    let forceRetryInstruction: string | undefined;
+    const candidate = await generateListingResponse(body, {
+      onDiagnosticEvent: debugRequested
+        ? (event) => {
+            diagnostics.push(event);
+          }
+        : undefined,
+      strictFailureMode: true,
+    });
 
-    for (let attempt = 1; attempt <= FORCE_RETRY_LIMIT; attempt += 1) {
+    const result = (() => {
       try {
-        const candidate = await generateListingResponse(body, {
-          onDiagnosticEvent: debugRequested
-            ? (event) => {
-                diagnostics.push(event);
-              }
-            : undefined,
-          initialRetryInstruction: forceRetryInstruction,
-          maxVisionAttempts: 1,
-          strictFailureMode: true,
-        });
-
-        result = validateForcePayload(candidate);
-        break;
+        return validateForcePayload(candidate);
       } catch (error) {
         if (!(error instanceof ForceValidationError)) {
           throw error;
         }
 
         console.warn(
-          "[api/ai/listing] F.O.R.C.E. validation rejected Grok payload",
+          "[api/ai/listing] F.O.R.C.E. validation rejected Grok payload; returning deterministic fallback",
           JSON.stringify({
             requestId,
-            attempt,
             reason: error.rejectionReason,
           })
         );
 
-        if (attempt >= FORCE_RETRY_LIMIT) {
-          throw new Error("F.O.R.C.E. validation failed after maximum regeneration attempts.");
-        }
-
-        forceRetryInstruction = buildForceRetryInstruction(error.rejectionReason);
+        return buildDeterministicFallbackListingResponse(body, {
+          model: candidate.model,
+          retryCount: 1,
+        });
       }
-    }
-
-    if (!result) {
-      throw new Error("Listing generation returned no validated result.");
-    }
+    })();
 
     if (
       result.source === "fallback" &&

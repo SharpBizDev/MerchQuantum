@@ -91,7 +91,7 @@ async function createRouteRequest(body: string) {
   });
 }
 
-test("aggressively rejects malformed Grok JSON with 502", async () => {
+test("returns deterministic fallback when Grok responds with malformed structured output", async () => {
   await withMockedFetch(async (url) => {
     if (url.endsWith("/files")) {
       return createFileUploadResponse();
@@ -112,10 +112,48 @@ test("aggressively rejects malformed Grok JSON with 502", async () => {
         })
       )
     );
-    const payload = (await response.json()) as { error?: string };
+    const payload = (await response.json()) as { source?: string; reasonFlags?: string[] };
 
-    assert.equal(response.status, 502);
-    assert.equal(payload.error, "An unexpected error occurred. Please try again.");
+    assert.equal(response.status, 200);
+    assert.equal(payload.source, "fallback");
+    assert.equal(Array.isArray(payload.reasonFlags), true);
+  });
+});
+
+test("returns deterministic fallback when route-level F.O.R.C.E. validation rejects the generated payload", async () => {
+  await withMockedFetch(async (url) => {
+    if (url.endsWith("/files")) {
+      return createFileUploadResponse();
+    }
+
+    if (url.endsWith("/responses")) {
+      return createStructuredTextResponse(JSON.stringify({
+        qc_status: "PASS",
+        extracted_text: "",
+        primary_niche: "Everyday wear basketball line art",
+        literal_visual_elements: null,
+        target_audience_identity: "",
+        generated_title: "Minimal Basketball Line Art",
+        seo_tags: ["basketball tee", "line art"],
+      }));
+    }
+
+    throw new Error(`Unexpected fetch target: ${url}`);
+  }, async () => {
+    const response = await POST(
+      await createRouteRequest(
+        JSON.stringify({
+          imageDataUrl: SAMPLE_PNG_DATA_URL,
+          fileName: "basketball-line-art.png",
+          productFamily: "t-shirt",
+        })
+      )
+    );
+    const payload = (await response.json()) as { source?: string; reasonFlags?: string[] };
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.source, "fallback");
+    assert.equal(Array.isArray(payload.reasonFlags), true);
   });
 });
 

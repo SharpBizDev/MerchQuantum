@@ -14,6 +14,7 @@ const BOOT_TAGLINE = "EFFORTLESS PRODUCT CREATION.";
 const ACTIVE_BATCH_FILES = 50;
 const CONNECTED_TOTAL_BATCH_FILES = 50;
 const FIXED_TAG_COUNT = 13;
+const DETAIL_TAG_PREVIEW_LIMIT = 5;
 const BRAND_WORDMARK_TEXT_CLASSES = "text-[3.5rem] sm:text-[4rem]";
 const BRAND_TAGLINE_TEXT_CLASSES = "text-xs";
 const DETAIL_DATA_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-white";
@@ -1944,6 +1945,7 @@ export default function MerchQuantumApp() {
   } = useQuantumRouteTelemetry();
   const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
   const [activeGridProductId, setActiveGridProductId] = useState("");
+  const [isDetailTagsExpanded, setIsDetailTagsExpanded] = useState(false);
 
   const setAiAssistStatus = useCallback((message: string) => {
     if (!message.trim()) {
@@ -2150,6 +2152,10 @@ export default function MerchQuantumApp() {
     () => new Set([...allImages, ...queuedImages].map((img) => img.providerProductId).filter((value): value is string => !!value)),
     [allImages, queuedImages]
   );
+  const visibleDetailTags = isDetailTagsExpanded
+    ? detailTags
+    : detailTags.slice(0, DETAIL_TAG_PREVIEW_LIMIT);
+  const hasHiddenDetailTags = detailTags.length > DETAIL_TAG_PREVIEW_LIMIT;
   const loadedStatCount = allImages.length;
   const queuedStatCount = queuedImages.length;
   const hasBulkEditStagedSelections = pendingTemplateSelectionIds.length > 0;
@@ -2987,6 +2993,10 @@ export default function MerchQuantumApp() {
       )
     );
   }, [templateKey]);
+
+  useEffect(() => {
+    setIsDetailTagsExpanded(false);
+  }, [selectedImage?.id, productId]);
 
   useEffect(() => {
     if (!shopId) {
@@ -4683,43 +4693,77 @@ export default function MerchQuantumApp() {
                           </div>
                           <div className="pt-0">
                             <div className="rounded-xl border border-slate-700 bg-[#020616] px-3 py-2.5">
-                              <div className="flow-root w-full text-center mt-0">
-                              <div className="float-left flex items-center h-8">
-                                <span className="text-[#7F22FE] text-sm leading-6 font-normal font-sans">Quantum </span>
-                                <span className="text-white text-sm leading-6 font-normal font-sans">AI Tags</span>
+                              <div className="flex items-start justify-between gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setIsDetailTagsExpanded((current) => !current)}
+                                  aria-expanded={isDetailTagsExpanded}
+                                  aria-controls="quantum-detail-tags-panel"
+                                  className="inline-flex items-center gap-2 bg-transparent p-0 text-left text-xs font-medium tracking-wide text-white transition hover:text-[#00BC7D]"
+                                >
+                                  <span className="text-[#7F22FE]">Quantum</span>
+                                  <span>AI Tags</span>
+                                  <svg
+                                    viewBox="0 0 16 16"
+                                    aria-hidden="true"
+                                    className={`h-3 w-3 text-slate-400 transition-transform duration-300 ${isDetailTagsExpanded ? "rotate-180" : ""}`}
+                                  >
+                                    <path
+                                      d="M4 6.5 8 10.5 12 6.5"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth="1.5"
+                                    />
+                                  </svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={triggerDescriptionAction}
+                                  disabled={descriptionActionDisabled}
+                                  className="inline-flex min-h-[32px] items-center justify-center rounded-full border border-[#7F22FE] px-3 py-1 text-xs font-medium tracking-wide text-[#7F22FE] transition hover:border-[#00BC7D] hover:text-[#00BC7D] disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  Upload
+                                </button>
                               </div>
-                              <button
-                                type="button"
-                                onClick={triggerDescriptionAction}
-                                disabled={descriptionActionDisabled}
-                                className="float-right flex items-center h-8 text-[#7F22FE] text-sm leading-6 font-normal font-sans bg-transparent border-none p-0 cursor-pointer"
+                              <div
+                                id="quantum-detail-tags-panel"
+                                className={`relative mt-2 overflow-hidden transition-[max-height] duration-300 ease-out ${isDetailTagsExpanded ? "max-h-96" : "max-h-8"}`}
                               >
-                                Upload
-                              </button>
-                              {isDetailTagsLoading ? (
-                                Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
-                                  <div
-                                    key={`loading-tag-${index}`}
-                                    className="inline-block mx-1 my-1 border border-white/20 rounded-full py-1 px-3 bg-transparent text-white text-sm leading-6 font-normal font-sans"
-                                  >
-                                    <QuantOrbLoader />
+                                {!isDetailTagsExpanded && hasHiddenDetailTags ? (
+                                  <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-20 bg-gradient-to-l from-[#020616] via-[#020616]/95 to-transparent" />
+                                ) : null}
+                                {isDetailTagsLoading ? (
+                                  <div className={`relative z-0 ${isDetailTagsExpanded ? "grid grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-2" : "flex flex-nowrap gap-2"}`}>
+                                    {Array.from({ length: isDetailTagsExpanded ? LISTING_LIMITS.tagCount : DETAIL_TAG_PREVIEW_LIMIT }).map((_, index) => (
+                                      <div
+                                        key={`loading-tag-${index}`}
+                                        className="inline-flex min-h-[32px] items-center justify-center rounded-full border border-white/10 px-3 py-1 text-xs font-medium tracking-wide text-white transition-all duration-300"
+                                        style={{ transitionDelay: isDetailTagsExpanded ? `${Math.min(index, 7) * 35}ms` : "0ms" }}
+                                      >
+                                        <QuantOrbLoader />
+                                      </div>
+                                    ))}
                                   </div>
-                                ))
-                              ) : detailTags.length > 0 ? (
-                                detailTags.map((tag, index) => (
-                                  <div
-                                    key={`${selectedImage?.id || productId}-tag-${index}`}
-                                    title={tag}
-                                    className="inline-block mx-1 my-1 border border-white/20 rounded-full py-1 px-3 bg-transparent text-white text-sm leading-6 font-normal font-sans"
-                                  >
-                                    {tag}
+                                ) : detailTags.length > 0 ? (
+                                  <div className={`relative z-0 ${isDetailTagsExpanded ? "grid grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-2" : "flex flex-nowrap gap-2"}`}>
+                                    {visibleDetailTags.map((tag, index) => (
+                                      <div
+                                        key={`${selectedImage?.id || productId}-tag-${index}`}
+                                        title={tag}
+                                        className={`inline-flex min-h-[32px] items-center justify-center rounded-full border border-white/10 px-3 py-1 text-xs font-medium tracking-wide text-white transition-all duration-300 hover:border-[#00BC7D] ${isDetailTagsExpanded ? "translate-y-0 opacity-100" : "translate-y-0 opacity-100"}`}
+                                        style={{ transitionDelay: isDetailTagsExpanded ? `${Math.min(index, 7) * 35}ms` : "0ms" }}
+                                      >
+                                        {tag}
+                                      </div>
+                                    ))}
                                   </div>
-                                ))
-                              ) : (
-                                <div className="inline-block mx-1 my-1 border border-white/20 rounded-full py-1 px-3 bg-transparent text-white text-sm leading-6 font-normal font-sans">
-                                  Tags will appear after Quantum AI processing completes.
-                                </div>
-                              )}
+                                ) : (
+                                  <div className="inline-flex min-h-[32px] items-center justify-center rounded-full border border-white/10 px-3 py-1 text-xs font-medium tracking-wide text-white">
+                                    Tags will appear after Quantum AI processing completes.
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>

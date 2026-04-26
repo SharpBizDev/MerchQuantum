@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { z } from "zod";
 
 export type ListingRequest = {
   imageDataUrl?: string;
@@ -131,8 +132,6 @@ type GenerateOptions = {
   ocrModel?: string;
   locale?: string;
   onDiagnosticEvent?: (event: VisionDiagnosticEvent) => void;
-  initialRetryInstruction?: string;
-  maxVisionAttempts?: number;
   strictFailureMode?: boolean;
 };
 
@@ -191,8 +190,6 @@ const XAI_VISION_MODEL = "grok-4-fast-non-reasoning";
 const MAX_TEMPLATE_CONTEXT = 1400;
 const MAX_TITLE_CHARS = 120;
 const MAX_LEAD_CHARS = 560;
-const MAX_DESCRIPTION_CHARS = 1600;
-const MAX_VISION_ATTEMPTS = 2;
 const FINAL_TAG_COUNT = 15;
 const MAX_VISION_ANALYSIS_BYTES = 15 * 1024 * 1024;
 const MAX_VISION_ANALYSIS_PIXELS = 33_000_000;
@@ -620,16 +617,6 @@ class VisionModelHttpError extends Error {
   }
 }
 
-class VisionModelFatalError extends Error {
-  status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = "VisionModelFatalError";
-    this.status = status;
-  }
-}
-
 function sanitizeTemplateContextForAi(templateContext: string, productFamily?: string) {
   const normalized = cleanSpaces(stripHtmlForAi(templateContext).replace(/[•:]+/g, " "));
   if (normalized) {
@@ -853,11 +840,6 @@ function isAbstractImageTitleSeed(value: string) {
   );
 }
 
-function buildStrictSanitizedRetryInstruction(sanitizedPhrases: string[]) {
-  const phraseList = joinReadableList(sanitizedPhrases.map((phrase) => `"${phrase}"`));
-  return `Previous response was discarded for being too generic and returned sanitized placeholder wording such as ${phraseList}. Switch to Literal Mode and perform High-Fidelity Text Logging like a Digital Asset Management system indexing raw warehouse inventory. Read the strongest high-contrast helper render or threshold-mask OCR helper first, then confirm against the untouched original upload. If visible text says Jesus, God, scripture references, political wording, or other specific design text, reproduce it exactly in extracted_text, generated_title, the buyer-facing paragraphs, and seo_tags. Do not replace literal design wording with generic placeholders. Treat generic placeholder replacement as a system failure because it makes the listing unusable for search engines.`;
-}
-
 const INCOMPLETE_ENDING_WORDS = new Set([
   "and",
   "or",
@@ -1073,85 +1055,46 @@ function normalizeExtractedTextLines(raw: unknown) {
   ).slice(0, 8);
 }
 
-function buildComparableText(value: string) {
-  return cleanSpaces(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+
+
+
+function normalizeStructuredFactValue(raw: unknown, labels: string[] = []) {
+  const stripped = stripMarkdownFences(String(raw || ""));
+  const unlabeled = labels.length > 0 ? removeLeadingLabel(stripped, labels) : stripped;
+  return cleanSpaces(unlabeled.replace(/^[-*â€¢#]+\s*/, ""));
 }
 
-function removeTitleLead(description: string, title: string) {
-  const cleanDescription = cleanSpaces(description);
-  const comparableTitle = buildComparableText(title);
-  if (!cleanDescription || !comparableTitle) return cleanDescription;
-
-  const titlePattern = title
-    .trim()
-    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-    .replace(/\s+/g, "\\s+");
-  const removed = cleanDescription.replace(new RegExp(`^${titlePattern}(?:\\s*[-–—:|,.!?]+\\s*|\\s+)`, "i"), "").trim();
-  const comparableRemoved = buildComparableText(removed);
-
-  if (!comparableRemoved || comparableRemoved === comparableTitle || comparableRemoved.startsWith(comparableTitle)) {
-    return "";
-  }
-
-  return removed;
+function normalizeStructuredPrimaryNiche(raw: unknown) {
+  return normalizeStructuredFactValue(raw, ["primary_niche", "primaryNiche", "niche"]).slice(0, 120).trim();
 }
 
-function normalizeDescriptionParagraphs(rawDescription: unknown, title: string) {
-  const stripped = stripMarkdownFences(String(rawDescription || ""))
-    .replace(/\r\n?/g, "\n")
-    .replace(/^\s*json\s*/i, "")
-    .split(/\n{2,}/)
-    .flatMap((block) => block.split(/\n/))
-    .map((line) => removeLeadingLabel(line, ["finalDescription", "final_description", "description"]))
-    .map((line) => line.replace(/^[-*•]+\s*/, "").replace(/^#+\s*/, ""))
-    .map((line) => cleanSpaces(line))
-    .filter(Boolean);
-
-  if (stripped.length === 0) return [];
-
-  const paragraphs = unique(
-    stripped
-      .map((paragraph, index) => (index === 0 ? removeTitleLead(paragraph, title) : paragraph))
-      .filter(Boolean)
-      .map((paragraph) => trimSentence(normalizeSentenceEnding(paragraph), MAX_LEAD_CHARS))
-      .filter(Boolean)
-  );
-
-  return paragraphs.slice(0, 3);
+function normalizeStructuredAudienceIdentity(raw: unknown) {
+  return normalizeStructuredFactValue(raw, ["target_audience_identity", "targetAudienceIdentity", "audience"]).slice(0, 120).trim();
 }
 
-function assembleMarketingDescription(paragraphs: string[]) {
+function normalizeStructuredLiteralVisualElements(raw: unknown) {
+  const sourceValues = Array.isArray(raw)
+    ? raw.map((value) => String(value || ""))
+    : typeof raw === "string"
+      ? raw.replace(/\r\n?/g, "\n").split(/[\n;|]+/g)
+      : [];
+
   return unique(
-    paragraphs
-      .map((paragraph) => stripMarkdownFences(String(paragraph || "")))
-      .map((paragraph) =>
-        removeLeadingLabel(paragraph, [
-          "seoParagraph1",
-          "seoParagraph2",
-          "seo_paragraph_1",
-          "seo_paragraph_2",
-          "generatedParagraph1",
-          "generatedParagraph2",
-          "paragraph1",
-          "paragraph2",
-          "generated_paragraph_1",
-          "generated_paragraph_2",
-        ])
-      )
-      .map((paragraph) => paragraph.replace(/^[-*•]+\s*/, ""))
-      .map((paragraph) => cleanSpaces(paragraph))
+    sourceValues
+      .flatMap((value) => value.split(/,(?![^()]*\))/g))
+      .map((value) => normalizeStructuredFactValue(value, ["literal_visual_elements", "literalVisualElements", "visual_elements", "visualElements"]))
       .filter(Boolean)
-      .map((paragraph) => trimSentence(normalizeSentenceEnding(paragraph), MAX_LEAD_CHARS))
-      .filter(Boolean)
-  )
-    .slice(0, 2)
-    .join("\n\n")
-    .slice(0, MAX_DESCRIPTION_CHARS)
-    .trim();
+      .filter((value) => !isSanitizedPlaceholderTerm(value))
+      .filter((value) => !hasTemplateSpecLeakage(value))
+  );
 }
+
+const visionExtractionContractSchema = z.object({
+  literal_visual_elements: z.array(z.string()).max(4).nullish(),
+  literalVisualElements: z.array(z.string()).max(4).nullish(),
+  visual_elements: z.array(z.string()).max(4).nullish(),
+  visualElements: z.array(z.string()).max(4).nullish(),
+}).passthrough();
 
 function normalizeTagLabel(tag: string) {
   const words = cleanSpaces(tag)
@@ -1569,16 +1512,6 @@ function tokenizeForVariety(value: string) {
     .filter((token) => token.length > 2 && !STOPWORDS.has(token));
 }
 
-function pickDeterministicVariant(seed: string, options: string[]) {
-  if (!options.length) return "";
-
-  let hash = 0;
-  for (const char of seed) {
-    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  }
-
-  return options[hash % options.length];
-}
 
 function analyzeRepetition(title: string, leadParagraphs: string[], discoveryTerms: string[]) {
   const reasons: ListingReason[] = [];
@@ -2016,86 +1949,216 @@ function looksGenericBuyerLead(paragraph: string, semantic: SemanticRecord, temp
   const signalTokens = getSemanticLeadSignalTokens(semantic, templateSignal);
   const hasSignal = signalTokens.some((token) => comparable.includes(token));
   const genericPattern =
-    /crafted for comfort|perfect for everyday wear|ideal choice|ideal pick|thoughtful gift|versatile addition|pairs well with any outfit|casual wardrobe|share a meaningful statement|anyone seeking inspiration|powerful message|high-quality|loved one|music festivals|casual outings|or simply\b|conversation starter|this design conveys|this design communicates|the use of the word|keeps the mood|reads clearly at a glance|gives buyers a quicker read|heavy lifting|without sounding generic|thought process|writing process|general audience|message-led piece|faith-based apparel|religious merchandise/i;
+    /crafted for comfort|perfect for everyday wear|ideal choice|ideal pick|thoughtful gift|versatile addition|pairs well with any outfit|casual wardrobe|share a meaningful statement|anyone seeking inspiration|powerful message|high-quality|loved one|music festivals|casual outings|or simply\b|conversation starter|this design conveys|this design communicates|the use of the word|keeps the mood|reads clearly at a glance|gives buyers a quicker read|heavy lifting|without sounding generic|thought process|writing process|general audience|message-led piece|faith-based apparel|religious merchandise|weekend plans|gift-friendly|fits naturally|keeps the message clear|shopping for/i;
 
   if (genericPattern.test(clean)) return true;
   if (!hasSignal && tokenizeForVariety(clean).length < 12) return true;
   return false;
 }
 
-function getConsumerFacingLeadPhrases(semantic: SemanticRecord, maxItems = 4) {
-  return unique([
+function normalizeHardDataFragment(value: string, maxChars = 120) {
+  return cleanSpaces(String(value || ""))
+    .replace(/[.!?]["')\]]*$/, "")
+    .replace(/^[-*â€¢#]+\s*/, "")
+    .slice(0, maxChars)
+    .trim();
+}
+
+function getHardDataPrimaryNiche(semantic: SemanticRecord, imageTruth: ImageTruthRecord) {
+  const candidates = unique([
     stripLeadProductWords(semantic.titleCore),
-    getPrimaryDesignAnchor(semantic),
     ...semantic.visibleKeywords,
-    ...semantic.inferredKeywords,
+    ...imageTruth.visibleText,
+    ...imageTruth.inferredMeaning,
+    imageTruth.dominantTheme,
     semantic.styleOccasion,
+  ]);
+
+  for (const candidate of candidates) {
+    const normalized = normalizeHardDataFragment(stripLeadProductWords(candidate), 110);
+    if (!normalized) continue;
+    if (isSanitizedPlaceholderTerm(normalized)) continue;
+    if (hasTemplateSpecLeakage(normalized)) continue;
+
+    const comparable = normalizeComparableText(normalized);
+    if (!comparable) continue;
+    if (
+      /^(graphic|design|artwork|product|style|vibe|message|unknown|general audience|shoppers|merchandise shoppers|design forward|minimal|minimalist|retro inspired|seasonal|conversation starting|pet friendly)$/.test(
+        comparable
+      )
+    ) {
+      continue;
+    }
+    return normalized;
+  }
+
+  const safeTitleFallback = normalizeHardDataFragment(stripLeadProductWords(semantic.titleCore || semantic.productNoun), 110);
+  if (safeTitleFallback && !hasTemplateSpecLeakage(safeTitleFallback)) {
+    return safeTitleFallback;
+  }
+
+  return normalizeHardDataFragment(semantic.productNoun, 110) || semantic.productNoun;
+}
+
+function getHardDataAudienceIdentity(semantic: SemanticRecord, imageTruth: ImageTruthRecord) {
+  const candidates = [semantic.likelyAudience, imageTruth.likelyAudience];
+  for (const candidate of candidates) {
+    const normalized = normalizeHardDataFragment(candidate || "", 100);
+    if (!normalized) continue;
+    if (isGenericAudienceDescriptor(normalized)) continue;
+    if (isSanitizedPlaceholderTerm(normalized)) continue;
+    return normalized;
+  }
+  return "";
+}
+
+function getHardDataLiteralVisualElements(semantic: SemanticRecord, imageTruth: ImageTruthRecord, maxItems = 4) {
+  return unique([
+    ...imageTruth.visibleFacts,
+    ...imageTruth.visibleText,
+    ...semantic.visibleKeywords,
   ])
-    .map((value) => cleanSpaces(value))
+    .map((value) => normalizeHardDataFragment(value, 72))
     .filter(Boolean)
     .filter((value) => !hasTemplateSpecLeakage(value))
     .filter((value) => !isSanitizedPlaceholderTerm(value))
     .filter((value) => {
-      const comparable = normalizeComparableText(stripLeadProductWords(value));
+      const comparable = normalizeComparableText(value);
       if (!comparable) return false;
-      if (
-        /^(graphic|design|artwork|art|style|vibe|message|gift|apparel|merch|shirt|tee|t shirt|product|minimal|modern|retro|unisex|casual|heavy|heavyweight|cotton|ring spun|ring-spun|garment dyed|garment-dyed|relaxed fit|double needle|double-needle|shoulder taping|shoulder tape|twill tape)$/.test(
-          comparable
-        )
-      ) {
+      if (/^(graphic|design|artwork|product|message|slogan|text|lettering|typography|symbol|iconography)$/.test(comparable)) {
         return false;
       }
-      return value.split(/\s+/).length <= 6;
+      return true;
     })
     .slice(0, maxItems);
 }
 
-function buildFallbackSeoParagraphs(
+function extractTemplateMaterialFitFacts(templateContext: string) {
+  const summary = summarizeTemplateContext(templateContext);
+  if (!summary || summary === "No template context supplied.") return [];
+
+  const facts: string[] = [];
+  if (/\b100%\s+ring-spun cotton\b/i.test(summary)) facts.push("100% ring-spun cotton");
+  else if (/\bring-spun cotton\b/i.test(summary)) facts.push("ring-spun cotton");
+  if (/\bheavyweight\b/i.test(summary)) facts.push("heavyweight fabric");
+  if (/\bmidweight\b/i.test(summary)) facts.push("midweight fabric");
+  if (/\bgarment-dyed\b/i.test(summary)) facts.push("garment-dyed fabric");
+  if (/\brelaxed fit\b/i.test(summary)) facts.push("relaxed fit");
+  if (/\bdouble-needle stitching\b/i.test(summary)) facts.push("double-needle stitching");
+  if (/\bshoulder-to-shoulder twill tape\b/i.test(summary)) facts.push("shoulder-to-shoulder twill tape");
+  if (/\bjersey-lined hood\b/i.test(summary)) facts.push("jersey-lined hood");
+  if (/\bpouch pocket\b/i.test(summary)) facts.push("pouch pocket");
+  if (/\btear-away label\b/i.test(summary)) facts.push("tear-away label");
+
+  return unique(facts).slice(0, 4);
+}
+
+function buildHardDataDescriptionSentences(
   semantic: SemanticRecord,
+  imageTruth: ImageTruthRecord,
+  templateContext: string,
+  literalElementsOverride?: string[] | null
+) {
+  const niche = normalizeHardDataFragment(getHardDataPrimaryNiche(semantic, imageTruth), 140)
+    || normalizeHardDataFragment(getPrimaryDesignAnchor(semantic), 140)
+    || semantic.productNoun;
+  const audience = normalizeHardDataFragment(getHardDataAudienceIdentity(semantic, imageTruth), 120);
+  const literalElements = literalElementsOverride === undefined
+    ? getHardDataLiteralVisualElements(semantic, imageTruth)
+    : Array.isArray(literalElementsOverride)
+      ? literalElementsOverride
+      : [];
+  const materialFacts = extractTemplateMaterialFitFacts(templateContext);
+
+  const sentences = [
+    trimSentence(
+      normalizeSentenceEnding(
+        audience
+          ? `${niche} for ${audience}.`
+          : `${niche}.`
+      ),
+      MAX_LEAD_CHARS
+    ),
+    literalElements.length > 0
+      ? trimSentence(
+          normalizeSentenceEnding(`Features ${joinReadableList(literalElements)}.`),
+          MAX_LEAD_CHARS
+        )
+      : "",
+    materialFacts.length > 0
+      ? trimSentence(
+          normalizeSentenceEnding(`Material/Fit data: ${joinReadableList(materialFacts)}.`),
+          MAX_LEAD_CHARS
+        )
+      : "",
+  ].filter(Boolean);
+
+  return unique(sentences).slice(0, 3);
+}
+
+function assembleHardDataDescription(
+  semantic: SemanticRecord,
+  imageTruth: ImageTruthRecord,
+  templateContext: string,
+  literalElementsOverride?: string[] | null
+) {
+  return buildHardDataDescriptionSentences(semantic, imageTruth, templateContext, literalElementsOverride)
+    .join(" ")
+    .trim();
+}
+
+function buildHardDataLeadParagraphs(
+  semantic: SemanticRecord,
+  imageTruth: ImageTruthRecord,
+  templateContext: string,
   templateSignal?: TemplateSignal | null,
   localeProfile: LocaleProfile = getLocaleProfile()
 ) {
-  const audience = cleanSpaces(semantic.likelyAudience || "shoppers");
-  const audienceClause = isGenericAudienceDescriptor(audience) ? "shoppers" : audience;
-  const styleOccasion = cleanSpaces(
-    isSanitizedPlaceholderTerm(semantic.styleOccasion)
-      ? detectTheme(`${semantic.titleCore} ${semantic.visibleKeywords.join(" ")} ${semantic.inferredKeywords.join(" ")}`) || "design-forward"
-      : semantic.styleOccasion || "design-forward"
+  void templateContext;
+  void templateSignal;
+  void localeProfile;
+  const niche = getHardDataPrimaryNiche(semantic, imageTruth);
+  const audience = getHardDataAudienceIdentity(semantic, imageTruth);
+  const literalElements = getHardDataLiteralVisualElements(semantic, imageTruth);
+
+  const firstParagraph = trimSentence(
+    normalizeSentenceEnding(
+      !audience && literalElements.length === 0
+        ? semantic.benefitCore || `${semantic.productNoun}.`
+        : audience
+        ? `${niche} for ${audience}.`
+        : tokenizeForVariety(niche).length >= 2
+          ? `${niche}.`
+          : semantic.benefitCore || `${semantic.productNoun}.`
+    ),
+    MAX_LEAD_CHARS
   );
-  const phrases = getConsumerFacingLeadPhrases(semantic, 5);
-  const primaryPhrase = cleanSpaces(phrases[0] || stripLeadProductWords(semantic.titleCore) || semantic.productNoun);
-  const supportPhrases = phrases
-    .slice(1)
-    .filter((value) => normalizeComparableText(value) !== normalizeComparableText(primaryPhrase))
-    .slice(0, 3);
-  const supportPhraseText = supportPhrases.length
-    ? joinReadableList(supportPhrases.map((value) => cleanSpaces(value.toLowerCase())))
-    : "";
-  const seed = `${semantic.titleCore}|${primaryPhrase}|${styleOccasion}|${audience}|${localeProfile.locale}|${templateSignal?.shortLabel || "default"}`;
-  const useCase = cleanSpaces(templateSignal?.useCase || "casual styling, gift giving, and repeat wear")
-    .toLowerCase()
-    .replace(/\bmerchandising\b/g, "gift shopping");
 
-  const firstParagraph = pickDeterministicVariant(seed, [
-    `Built around ${primaryPhrase.toLowerCase()}, this ${semantic.productNoun} gives ${audienceClause} a direct read on the artwork instead of vague filler. ${supportPhraseText ? `Details like ${supportPhraseText} keep the design literal, specific, and easy to search.` : `The design stays literal and easy to search, helping buyers recognize the exact print they want.`} That specificity makes the piece feel more wearable, giftable, and useful in a real catalog.`,
-    `Designed around ${primaryPhrase.toLowerCase()}, this ${semantic.productNoun} keeps the message clear for ${audienceClause} shopping for a ${styleOccasion} look with real searchable detail. ${supportPhraseText ? `Visual notes like ${supportPhraseText} give the print more concrete identity.` : `The composition stays clean without losing the exact wording or symbol that gives the design its value.`} It reads like the actual product a buyer wants, not a watered-down placeholder.`,
-    `Centered on ${primaryPhrase.toLowerCase()}, this ${semantic.productNoun} brings a ${styleOccasion} angle that still feels literal and product-ready. ${supportPhraseText ? `Features like ${supportPhraseText} help the artwork feel complete and recognizable.` : `The artwork keeps enough visible identity to stay memorable without slipping into generic commentary.`} That makes it easier for shoppers to connect the listing to the print itself.`,
-  ]);
+  const secondParagraph = trimSentence(
+    normalizeSentenceEnding(
+      literalElements.length > 0
+        ? `Features ${joinReadableList(literalElements)}.`
+        : "Features catalog-ready visual indexing only."
+    ),
+    MAX_LEAD_CHARS
+  );
 
-  const secondParagraph = pickDeterministicVariant(`${seed}|buyer`, [
-    `The ${styleOccasion} feel makes this ${semantic.productNoun} easy to wear with denim, jackets, sneakers, and relaxed everyday layers. It works well for ${useCase}, and the artwork keeps enough visible character to feel personal, giftable, and easy to recognize from browse to checkout and well beyond the first scroll.`,
-    `Because the design keeps its literal details visible, this ${semantic.productNoun} fits naturally into casual outfits, weekend plans, and ${useCase}. The print feels polished enough for repeat wear, thoughtful gifting, and easy everyday rotation while still holding onto the exact wording, symbol, or visual cue that makes the item searchable and worth choosing.`,
-    `That mix of ${primaryPhrase.toLowerCase()}, a ${styleOccasion} mood, and a clean silhouette gives this ${semantic.productNoun} solid everyday appeal. Buyers can style it for ${useCase}, and the artwork keeps enough clarity to feel current, giftable, and easy to remember without losing the exact message or symbol that drew them in.`,
-  ]);
-
-  return [
-    firstParagraph,
-    secondParagraph,
-  ];
+  return unique([firstParagraph, secondParagraph]).filter(Boolean).slice(0, 2);
 }
 
 function buildDefaultLead(semantic: SemanticRecord, localeProfile: LocaleProfile) {
-  return buildFallbackSeoParagraphs(semantic, null, localeProfile);
+  return buildHardDataLeadParagraphs(semantic, {
+    visibleText: [],
+    visibleFacts: [],
+    inferredMeaning: [],
+    dominantTheme: semantic.styleOccasion || "",
+    likelyAudience: semantic.likelyAudience,
+    likelyOccasion: semantic.styleOccasion || "",
+    uncertainty: [],
+    ocrWeakness: "",
+    meaningClarity: 0.7,
+    hasReadableText: false,
+  }, "", null, localeProfile);
 }
 
 function hasTemplateSpecLeakage(paragraph: string) {
@@ -2104,16 +2167,6 @@ function hasTemplateSpecLeakage(paragraph: string) {
   );
 }
 
-function sanitizeMarketingLeadParagraphs(
-  paragraphs: string[],
-  semantic: SemanticRecord,
-  localeProfile: LocaleProfile
-) {
-  const defaultLead = buildDefaultLead(semantic, localeProfile);
-  return paragraphs.map((paragraph, index) =>
-    hasTemplateSpecLeakage(paragraph) ? defaultLead[index] || paragraph : paragraph
-  );
-}
 
 export function normalizeLeadParagraphs(
   title: string,
@@ -2527,11 +2580,11 @@ function extractTemplateSignal(templateContext: string, productNoun: string): Te
   const resolvedUseCase =
     useCase?.label ||
     (/hoodie|sweatshirt/i.test(productNoun)
-      ? "cool-weather comfort and easy layering"
-      : "everyday wear and gift-friendly merchandising");
+      ? "layering and cool-weather merchandising"
+      : "general merchandise context");
   const buyerBenefit = highlights.length
-    ? `That template combination gives the ${productNoun} a more believable foundation for buyer-facing copy without turning the opener into a spec sheet.`
-    : `Template details give the ${productNoun} enough factual grounding to avoid placeholder copy.`;
+    ? `Template details confirm factual product context for the ${productNoun}.`
+    : `Template context provides factual grounding for the ${productNoun}.`;
   const keywords = unique([
     ...highlights.map((entry) => entry.keyword),
     useCase?.keyword || "",
@@ -2554,7 +2607,24 @@ function buildTemplateAwareLead(
 ) {
   const templateSignal = extractTemplateSignal(templateContext, semantic.productNoun);
   if (!templateSignal) return buildDefaultLead(semantic, localeProfile);
-  return buildFallbackSeoParagraphs(semantic, templateSignal, localeProfile);
+  return buildHardDataLeadParagraphs(
+    semantic,
+    {
+      visibleText: [],
+      visibleFacts: [],
+      inferredMeaning: [],
+      dominantTheme: semantic.styleOccasion || "",
+      likelyAudience: semantic.likelyAudience,
+      likelyOccasion: semantic.styleOccasion || "",
+      uncertainty: [],
+      ocrWeakness: "",
+      meaningClarity: 0.7,
+      hasReadableText: false,
+    },
+    templateContext,
+    templateSignal,
+    localeProfile
+  );
 }
 
 function resolveApiKey(explicitApiKey?: string) {
@@ -3561,114 +3631,55 @@ function buildMasterPrompt(
   const legacyContext = cleanSpaces(String(input.legacyContext || ""));
 
   return [
-    "ACT AS: A Senior E-commerce Metadata Indexer, SEO Strategist, and Print-on-Demand Copywriter.",
-    "",
-    "You are also an automated Digital Asset Management (DAM) system performing High-Fidelity Text Logging for warehouse inventory.",
-    "",
-    "Your job is to index the visible design for search discovery and commercial metadata, not to explain your thought process or abstractly describe how the design feels.",
-    "Treat iconography, slogans, and exact design text as commercial design assets for a general retail audience.",
-    "You are an e-commerce copywriter, not a content moderator.",
+    "Act as a forensic SEO data extractor. Analyze this design and return ONLY hard facts. Extract: 1. Primary Niche (e.g., Flat Earth, Crypto). 2. Literal Visual Elements (e.g., Azimuthal map, vintage typography). 3. Target Audience Identity.",
+    "CRITICAL RULES: DO NOT generate conversational text. ABSOLUTELY PROHIBIT the following filler phrases: 'casual', 'weekend plans', 'everyday wear', 'gift-friendly', 'fits naturally', 'keeps the message clear', 'shopping for'. If you use these words, the payload will be rejected.",
     "",
     "CONTEXT",
-    "I am providing a multi-image bundle consisting of a primary design render and several auxiliary contrast helpers.",
+    "I am providing a primary design render plus auxiliary contrast helpers for OCR and sparse artwork recovery.",
+    `Product type context: ${sterileProductType}.`,
     "",
-    "CRITICAL MANDATE",
-    "You are responsible for VERBATIM EXTRACTION.",
-    "Treat visible wording as raw searchable database data, not as content to soften, summarize, or neutralize.",
-    "If the design contains religious names, figures, scripture, political wording, slogans, or other exact visible phrases, you MUST preserve those exact terms in extracted_text, generated_title, generated_paragraph_1, generated_paragraph_2, and seo_tags.",
-    "",
-    "STRICT PROHIBITION",
-    'Do not use placeholder phrases such as "Faith Forward", "Inspirational Graphic", "General Design", or "General Religious Theme".',
-    "Replacing exact visible wording with generic descriptors is a system failure because it makes the listing unusable for search engines.",
-    'Do not output generic fallback wording such as "message-led piece", "faith-based apparel", or "religious merchandise" when the design contains specific visible searchable terms.',
-    "",
-    "VISION INSTRUCTION",
-    "This image may be a transparent PNG or isolated vector graphic intended for merchandise printing.",
-    "If the image has been composited on a solid background for visibility, ignore the artificial background and focus only on the foreground typography, artwork, symbols, illustration, linework, and aesthetic.",
-    "If multiple renders are provided, treat them as alternate views of the same design and trust the clearest render over the filename.",
-    "If you receive black-backed, white-backed, cropped, threshold-mask OCR, or helper renders, use them only to understand sparse or transparent artwork while preserving the untouched upload as the source of truth.",
+    "OCR AND IMAGE TRUTH RULES",
+    "- Read every visible word exactly as written.",
+    "- Preserve exact searchable terms from the design.",
+    "- Treat helper renders as support for transparent or low-contrast artwork while preserving the untouched upload as the source of truth.",
+    "- Ignore artificial helper backgrounds and focus only on the foreground design.",
+    "- Visible image truth outranks filename text.",
+    "- If the image is blank, deeply distorted, or truly illegible, set qc_status to FAIL and leave the other fields blank.",
+    "- If the design is commercially usable, set qc_status to PASS.",
     visionPromptHint ? visionPromptHint : "",
+    "",
+    "DATA EXTRACTION RULES",
+    "- extracted_text must contain literal OCR text only.",
+    "- primary_niche must be a compact hard-data niche label derived from the visible design truth.",
+    "- literal_visual_elements must list concrete visible design elements only.",
+    "- literal_visual_elements must contain no more than 4 items.",
+    "- target_audience_identity must identify the likely buyer identity in concise factual terms.",
+    '- Do not replace exact wording with generic filler such as "message-led piece", "faith-based apparel", or "religious merchandise".',
+    "- generated_title must remain literal, keyword-first, and faithful to visible image truth.",
+    "- seo_tags must contain 15 exact or near-exact search terms grounded in the visible design.",
+    "- Do not include provider template specs, care instructions, fit copy, or material claims unless they are visibly present in the artwork itself.",
+    "- Do not hallucinate unsupported claims, official licensing, or hidden details.",
     "",
     userHints.length > 0 ? "USER HINTS" : "",
     userHints.length > 0
-      ? `The user has provided the following hints/context: ${userHints.join(" | ")}. Use this exact context to bypass ambiguity and generate a cohesive title, buyer-facing description, and tags that still stay faithful to the visible artwork.`
+      ? `Seller hints: ${userHints.join(" | ")}. Use these hints only when they align with visible design truth.`
       : "",
     "",
     legacyContext ? "IMPORT MODE LEGACY CONTEXT" : "",
     legacyContext
-      ? `The user is upgrading an existing product. Here is the legacy description they previously used: ${legacyContext}. Analyze the logic, keywords, and intent of this legacy text, and use it as a foundational hint to generate a vastly superior, modernized title and 2-paragraph SEO description without copying the legacy text verbatim or overriding the visible image truth.`
+      ? `Legacy keyword evidence: ${legacyContext}. Use this only as support for hard-data extraction when it aligns with the visible design truth.`
       : "",
     "",
-    "CONTEXT RULE",
-    `You are writing copy for a ${sterileProductType}. Do NOT reference any other themes, religions, or subjects other than what is visibly present in the image scan.`,
-    "",
-    "DEEP SCAN PROTOCOL",
-    "OCR Step: scan all helper renders and transcribe every visible word exactly as written.",
-    "Contextual Intent: identify the exact commercial niche or message category from the visible design truth and be specific.",
-    "Market Alignment: generated_title should lead with the strongest exact visible wording that a shopper would search for.",
-    'Tone: respectful but purely commercial. Prefer buyer-search terms like "Jesus t-shirt" over vague neutral substitutes like "faith-based apparel".',
-    "",
-    "PHASE 1: OCR & Analysis",
-    "Read every word on this design exactly as written across all helper renders. Identify all key visual elements.",
-    "Treat literal text extraction as a hard requirement, not an optional vibe read.",
-    "Include extracted_text as a concise OCR capture of readable wording, or an empty string if no readable text is present.",
-    "",
-    "PHASE 2: Quality Control Gate",
-    "If the image is blank, deeply distorted, or truly illegible, set qc_status to FAIL and leave the other fields blank.",
-    "If the design is legible and commercially usable, set qc_status to PASS.",
-    "Default to PASS for usable POD artwork. Minor ambiguity, stylization, soft OCR uncertainty, or low-contrast transparent edges should not fail the item on their own.",
-    "",
-    "PHASE 3: SEO Generation (If PASS)",
-    "Generate:",
-    "- generated_title: a highly clickable, keyword-optimized title.",
-    "- generated_paragraph_1: the first marketing paragraph.",
-    "- generated_paragraph_2: the second marketing paragraph.",
-    "- seo_tags: an array of exactly 15 high-value SEO tags.",
-    "",
-    "CRITICAL RULES",
-    "- NO META-COMMENTARY: never explain your thought process, never critique the wording, and never describe what the design 'conveys' or how the copy was written. Write buyer-facing sales copy only.",
-    '- Do not start with phrases like "This image features", "I cannot describe this", or any safety disclaimer. Start directly in the requested JSON fields.',
-    "- generated_paragraph_1 and generated_paragraph_2 must be exactly 2 substantial paragraphs totaling 150 to 250 words combined. Aim for roughly 70 to 125 words per paragraph.",
-    "- The SEO Description MUST be a minimum of two rich, engaging paragraphs. Do not provide brief summaries. Expand on the aesthetic, the mood, and the target audience comprehensively.",
-    "- The first sentence of generated_paragraph_1 must be a strong keyword-rich SEO hook that immediately describes the actual item and visible artwork.",
-    "- generated_paragraph_1 focuses on the emotional hook, vibe, audience, and why the artwork is appealing to wear or gift.",
-    "- generated_paragraph_2 focuses on literal design details, styling suggestions, shopper use cases, and aesthetic fit.",
-    "- Identify the literal visible elements in the art and weave them naturally into the copy: objects, typography, symbols, shapes, tools, instruments, linework, or other clear design features visible in the image.",
-    "- Describe who the design is for and the lifestyle or aesthetic it fits so the copy contains real searchable nouns and adjectives instead of abstract commentary.",
-    "- If extracted_text contains a clear visible phrase, generated_title must lead with the strongest exact searchable wording from that phrase.",
-    "- When the design contains visible religious or scripture language, preserve the exact visible names and wording instead of softening them into neutral placeholders.",
-    "- When the design contains a cross, Jesus wording, scripture wording, or other Christian iconography, treat those as high-value commercial SEO terms rather than sensitive topics to neutralize.",
-    "- seo_tags must include the strongest exact visible words plus obvious long-tail buyer search terms that match the actual design text and objects.",
-    "- Do not include generic garment specs, care instructions, fit, cotton weight, or template text.",
-    "- Focus only on the art/design and its customer appeal.",
-    "- Weave the strongest keywords from generated_title naturally into generated_paragraph_1.",
-    "- Do not repeat the full generated_title verbatim at the start of generated_paragraph_1.",
-    "- generated_paragraph_2 must end in a complete sentence.",
-    "- Do not output bullet points, sign-offs, or standalone labels inside the paragraphs.",
-    "- Provider template/spec content is application-owned and must never be rewritten, summarized, or paraphrased.",
-    "",
-    "ANALYSIS RULES",
-    "- Image truth is primary. Visible text outranks filename text.",
-    "- If the image scan and filename hint align, maximize those shared keywords in the title, buyer-facing paragraphs, and seo_tags.",
-    "- Ignore artificial helper backgrounds, including neutral-gray helper canvases, and focus only on the foreground design.",
-    "- Do not judge DPI, metadata, file headers, or upload-constraint validity. Technical checks are handled by application code, not the model.",
-    "- Treat this upload as merchandise artwork, not as a generic object-detection task or lifestyle photo captioning task.",
-    "- Clean isolated slogans, emblem graphics, vector illustrations, silhouette art, character-face graphics, line art, and intentional retro pixel art can all PASS when they remain commercially usable.",
-    "- Do not fail a design only because it is stylized, symbolic, sparse on a transparent canvas, or intentionally pixel-based if the core subject remains readable enough for merchandise copy.",
-    "- If the upload reads like a full rectangular poster, photographic scene, or textured background composition instead of isolated merchandise artwork, FAIL it unless the foreground design itself is clearly isolated and merch-ready.",
-    "- Do not hallucinate unsupported claims, official licensing, or hidden artwork details.",
-    "- Use filename only as support. If the artwork is clear, do not let the filename write the title or marketing copy for you.",
-    "- Strong transparent PNG artwork with clean readable text or simple legible iconography still counts as meaningful visual evidence even when the canvas is sparse.",
-    `- Current local filename assessment hint: ${filenameAssessment.classification} (${filenameAssessment.reason})`,
-    `- Filename trust weight: ${filenameWeight}`,
-    `- Conflict severity hint: ${filenameAssessment.conflictSeverity}; ignore filename: ${filenameAssessment.shouldIgnore ? "yes" : "no"}`,
+    "FILENAME SIGNAL",
+    `Current local filename assessment hint: ${filenameAssessment.classification} (${filenameAssessment.reason})`,
+    `Filename trust weight: ${filenameWeight}`,
+    `Conflict severity hint: ${filenameAssessment.conflictSeverity}; ignore filename: ${filenameAssessment.shouldIgnore ? "yes" : "no"}`,
     "",
     "JSON SCHEMA",
-    '{"qc_status": "PASS" | "FAIL", "extracted_text": string, "generated_title": string, "generated_paragraph_1": string, "generated_paragraph_2": string, "seo_tags": string[]}',
+    '{"qc_status": "PASS" | "FAIL", "extracted_text": string, "primary_niche": string, "literal_visual_elements": string[], "target_audience_identity": string, "generated_title": string, "seo_tags": string[]}',
     "",
     "OUTPUT FORMAT",
     "Return ONLY valid structured JSON.",
-    "No conversational filler.",
     "No markdown fences.",
     "",
     "INPUT CONTEXT",
@@ -3696,18 +3707,16 @@ function buildVisionSystemInstruction(
   const legacyContext = cleanSpaces(String(input.legacyContext || ""));
 
   return [
-    "ROLE: You are an expert SEO copywriter for a print-on-demand brand and a Senior Metadata Indexer for apparel and giftware.",
-    "You are also a Digital Asset Management system performing High-Fidelity Text Logging for commercial catalog indexing.",
-    "Treat the uploaded design as a commercial design asset for retail search discovery, not as a theological subject or moderation problem.",
+    "ROLE: You are the F.O.R.C.E. forensic SEO data extractor for commercial catalog indexing.",
+    "Treat the uploaded design as a commercial design asset and return hard facts only.",
+    "CRITICAL RULES: DO NOT generate conversational text. ABSOLUTELY PROHIBIT the following filler phrases: 'casual', 'weekend plans', 'everyday wear', 'gift-friendly', 'fits naturally', 'keeps the message clear', 'shopping for'. If you use these words, the payload will be rejected.",
     "",
     "COMMERCIAL INTENT CLAUSE",
-    "- This task is commercial metadata extraction, not public-facing safety commentary or religious neutrality analysis.",
-    "- When a design contains positive, non-violent religious wording or iconography such as Jesus, God, Church, Cross, Catholic, Christian, scripture, or Bible verses, do not sanitize or genericize the output.",
-    "- Use the exact visible denominational, theological, and religious terms found in the design when they are present.",
+    "- This task is hard-data extraction for commercial metadata.",
+    "- Preserve exact visible searchable wording when present.",
+    "- Do not sanitize or genericize the output.",
     '- Do not replace specific wording with placeholders such as "Faith Product", "Faith Forward", "Inspirational Graphic", "Religious Graphic", "General Design", or "General Religious Theme".',
-    '- Do not replace specific wording with generic retail filler such as "message-led piece", "faith-based apparel", or "religious merchandise".',
-    "- Placeholder substitution is a system failure because it makes the listing unusable for search discovery.",
-    '- If the design contains visible wording like "Christ is Risen", "Life Begins With Jesus", or a visible cross reference, preserve that exact commercial wording rather than softening it.',
+    '- Do not replace exact wording with generic filler such as "message-led piece", "faith-based apparel", or "religious merchandise".',
     "",
     "FILENAME TRUST RULE",
     `- Filename hint weight: ${filenameWeight}.`,
@@ -3715,13 +3724,13 @@ function buildVisionSystemInstruction(
     "- HIGH means the filename contains enough descriptive words to support literal indexing when the pixels are weak.",
     "- SUPPORT_ONLY means the filename can assist but must remain secondary to visible image truth.",
     "- IGNORE means rely on the image pixels and helper renders only.",
-    "- When the image truth and filename hint align, use those shared keywords aggressively in the commercial copy.",
+    "- When the image truth and filename hint align, use those shared keywords aggressively in the extracted fields.",
     ...(userHints.length > 0
       ? [
           "",
           "HUMAN-IN-THE-LOOP RULE",
           `- The seller supplied these hints to resolve ambiguity: ${userHints.join(" | ")}.`,
-          "- When those hints align with the visible artwork, use them directly instead of softening or ignoring them.",
+          "- Use these hints only when they align with visible artwork.",
         ]
       : []),
     ...(legacyContext
@@ -3729,8 +3738,8 @@ function buildVisionSystemInstruction(
           "",
           "LEGACY UPGRADE RULE",
           `- The seller is upgrading an existing product from this legacy context: ${legacyContext}.`,
-          "- Analyze the logic, keywords, and intent in that legacy text and use it as a foundational hint for a much stronger modern retail rewrite.",
-          "- Do not copy the legacy wording verbatim, and do not let it override the actual visible artwork.",
+          "- Use this as supporting keyword evidence only when it aligns with visible artwork.",
+          "- Do not let legacy wording override actual visible design truth.",
         ]
       : []),
     ...(retryContext?.retryInstruction
@@ -3747,8 +3756,10 @@ function buildVisionSystemInstruction(
     "",
     "OUTPUT DISCIPLINE",
     "- Return only the requested JSON schema.",
+    "- Return no more than 4 literal_visual_elements.",
     "- Do not include meta-commentary about image safety or explain your reasoning process.",
     '- Do not start with "This image features" or any refusal-style preamble.',
+    "- Do not generate conversational text.",
   ].join("\n");
 }
 
@@ -3787,9 +3798,10 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
   const semantic = buildSemanticRecord(input, imageTruth, filenameAssessment);
   const leadParagraphs = normalizeLeadParagraphs(
     semantic.titleCore,
-    buildDefaultLead(semantic, localeProfile),
+    buildHardDataLeadParagraphs(semantic, imageTruth, input.templateContext || "", extractTemplateSignal(input.templateContext || "", semantic.productNoun), localeProfile),
     semantic,
-    localeProfile
+    localeProfile,
+    input.templateContext || ""
   );
   const marketplaceDrafts = buildMarketplaceDrafts(semantic, leadParagraphs, localeProfile);
   let validator = gradeListing(
@@ -3836,12 +3848,14 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
     detectSanitizedOutputPhrases([canonicalTitleSeed]).length > 0 && filenameSupportTitle
       ? filenameSupportTitle
       : canonicalTitleSeed;
-  const canonicalLeadParagraphs = sanitizeMarketingLeadParagraphs(
-    marketplaceDrafts.etsy.leadParagraphs,
+  const canonicalLeadParagraphs = normalizeLeadParagraphs(
+    canonicalTitle,
+    buildHardDataLeadParagraphs(semantic, imageTruth, input.templateContext || "", extractTemplateSignal(input.templateContext || "", semantic.productNoun), localeProfile),
     semantic,
-    localeProfile
+    localeProfile,
+    input.templateContext || ""
   );
-  const canonicalDescription = assembleMarketingDescription(canonicalLeadParagraphs);
+  const canonicalDescription = assembleHardDataDescription(semantic, imageTruth, input.templateContext || "");
   const seoTags = buildFallbackTags(canonicalTitle, canonicalDescription, semantic, marketplaceDrafts);
   const qcApproved = validator.grade !== "red";
 
@@ -4069,6 +4083,20 @@ async function callVisionRecord(
   }
 
   const parsedObj = parsed as Record<string, unknown>;
+  const extractionContract = visionExtractionContractSchema.safeParse(parsedObj);
+  if (!extractionContract.success) {
+    logVisionFailure("structured_schema_violation", {
+      ...requestTelemetry,
+      rawTextPreview: truncateForLog(rawText),
+      schemaIssues: extractionContract.error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message,
+      })),
+      payloadTelemetry: buildVisionResponseTelemetry(completion),
+    }, options.onDiagnosticEvent);
+    return null;
+  }
+  const extractionPayload = extractionContract.data;
   const qcStatusRaw =
     typeof parsedObj.qc_status === "string"
       ? parsedObj.qc_status
@@ -4089,6 +4117,24 @@ async function callVisionRecord(
     ?? parsedObj.extractedText
     ?? parsedObj.ocr_text
     ?? parsedObj.ocrText
+  );
+  const extractedPrimaryNiche = normalizeStructuredPrimaryNiche(
+    parsedObj.primary_niche
+    ?? parsedObj.primaryNiche
+    ?? parsedObj.niche
+  );
+  const rawLiteralVisualElements =
+    extractionPayload.literal_visual_elements
+    ?? extractionPayload.literalVisualElements
+    ?? extractionPayload.visual_elements
+    ?? extractionPayload.visualElements;
+  const extractedLiteralVisualElements = normalizeStructuredLiteralVisualElements(
+    rawLiteralVisualElements
+  );
+  const extractedAudienceIdentity = normalizeStructuredAudienceIdentity(
+    parsedObj.target_audience_identity
+    ?? parsedObj.targetAudienceIdentity
+    ?? parsedObj.audience
   );
 
   const titleSeedCandidate =
@@ -4117,13 +4163,25 @@ async function callVisionRecord(
         meaningClarity: Math.max(baseImageTruth.meaningClarity, 0.78),
       }
     : baseImageTruth;
-  const filenameAssessment = assessFilenameRelevance(input.fileName || "", imageTruth.visibleText);
+  const structuredImageTruth = {
+    ...imageTruth,
+    visibleFacts: unique([...extractedLiteralVisualElements, ...imageTruth.visibleFacts]).slice(0, 20),
+    inferredMeaning: unique([extractedPrimaryNiche, ...imageTruth.inferredMeaning]).filter(Boolean).slice(0, 20),
+    dominantTheme: extractedPrimaryNiche || imageTruth.dominantTheme,
+    likelyAudience: extractedAudienceIdentity || imageTruth.likelyAudience,
+    hasReadableText: imageTruth.hasReadableText || extractedTextLines.length > 0,
+    meaningClarity:
+      extractedPrimaryNiche || extractedLiteralVisualElements.length > 0 || extractedAudienceIdentity
+        ? Math.max(imageTruth.meaningClarity, 0.8)
+        : imageTruth.meaningClarity,
+  } satisfies ImageTruthRecord;
+  const filenameAssessment = assessFilenameRelevance(input.fileName || "", structuredImageTruth.visibleText);
   const semanticFallback = buildSemanticRecord(
     {
       ...input,
       title: provisionalTitle || input.title,
     },
-    imageTruth,
+    structuredImageTruth,
     filenameAssessment
   );
   const generatedTitleTokens = tokenizeForVariety(provisionalTitle || "");
@@ -4152,15 +4210,22 @@ async function callVisionRecord(
           )
         ),
       };
+  const structuredSemantic = {
+    ...semantic,
+    titleCore: provisionalTitle || extractedPrimaryNiche || semantic.titleCore,
+    likelyAudience: extractedAudienceIdentity || semantic.likelyAudience,
+    visibleKeywords: unique([...extractedLiteralVisualElements, ...semantic.visibleKeywords]).slice(0, 18),
+    inferredKeywords: unique([extractedPrimaryNiche, ...semantic.inferredKeywords]).filter(Boolean).slice(0, 20),
+  } satisfies SemanticRecord;
 
   if (!qcApproved) {
     return {
       source: "gemini",
       qcApproved: false,
       templateContext: input.templateContext || "",
-      imageTruth,
+      imageTruth: structuredImageTruth,
       filenameAssessment,
-      semanticRecord: semantic,
+      semanticRecord: structuredSemantic,
       marketplaceDrafts: buildEmptyMarketplaceDrafts(),
       validator: buildQcRejectedValidator(),
       canonicalTitle: "",
@@ -4179,75 +4244,38 @@ async function callVisionRecord(
     || parsedObj.final_title
     || parsedObj.canonicalTitle
     || parsedObj.title
-    || semantic.titleCore
+    || structuredSemantic.titleCore
     || explicitTitleSeed;
 
   const canonicalTitle = normalizeTitle(
     String(finalTitleCandidate),
     input.fileName || explicitTitleSeed
   );
-
-  const suppliedLeadCandidates = [
-    parsedObj.generated_paragraph_1,
-    parsedObj.generatedParagraph1,
-    parsedObj.generated_paragraph_2,
-    parsedObj.generatedParagraph2,
-    parsedObj.seo_paragraph_1,
-    parsedObj.seoParagraph1,
-    parsedObj.seo_paragraph_2,
-    parsedObj.seoParagraph2,
-    ...normalizeArray(parsedObj.canonicalLeadParagraphs || parsedObj.leadParagraphs),
-    ...normalizeDescriptionParagraphs(
-      parsedObj.finalDescription || parsedObj.final_description || parsedObj.description,
-      canonicalTitle
-    ),
-  ]
-    .map((value) => stripMarkdownFences(String(value || "")))
-    .map((value) =>
-      removeLeadingLabel(value, [
-        "seoParagraph1",
-        "seoParagraph2",
-        "seo_paragraph_1",
-        "seo_paragraph_2",
-        "generatedParagraph1",
-        "generatedParagraph2",
-        "generated_paragraph_1",
-        "generated_paragraph_2",
-        "paragraph1",
-        "paragraph2",
-      ])
-    )
-    .map((value) => value.replace(/^[-*•]+\s*/, "").trim())
-    .filter(Boolean)
-    .filter((value, index, values) => {
-      const comparable = normalizeComparableText(value);
-      return values.findIndex((candidate) => normalizeComparableText(candidate) === comparable) === index;
-    });
-
-  const canonicalLeads = sanitizeMarketingLeadParagraphs(
-    normalizeLeadParagraphs(
-      canonicalTitle,
-      suppliedLeadCandidates.length
-        ? suppliedLeadCandidates
-        : buildDefaultLead(semantic, options.localeProfile),
-      semantic,
+  const canonicalLeads = normalizeLeadParagraphs(
+    canonicalTitle,
+    buildHardDataLeadParagraphs(
+      structuredSemantic,
+      structuredImageTruth,
+      input.templateContext || "",
+      extractTemplateSignal(input.templateContext || "", structuredSemantic.productNoun),
       options.localeProfile
     ),
-    semantic,
-    options.localeProfile
+    structuredSemantic,
+    options.localeProfile,
+    input.templateContext || ""
   );
 
   const marketplaceDrafts = parsedObj.marketplaceDrafts
     ? normalizeMarketplaceDrafts(
         parsedObj.marketplaceDrafts,
-        semantic,
+        structuredSemantic,
         canonicalLeads,
         options.localeProfile
       )
-    : buildMarketplaceDrafts(semantic, canonicalLeads, options.localeProfile);
+    : buildMarketplaceDrafts(structuredSemantic, canonicalLeads, options.localeProfile);
   const gradedFallback = gradeListing(
-    imageTruth,
-    semantic,
+    structuredImageTruth,
+    structuredSemantic,
     filenameAssessment,
     canonicalTitle,
     canonicalLeads,
@@ -4256,14 +4284,19 @@ async function callVisionRecord(
   const validator = normalizeValidator(parsedObj.validator, gradedFallback, {
     title: canonicalTitle,
     leadParagraphs: canonicalLeads,
-    imageTruth,
+    imageTruth: structuredImageTruth,
   });
-  const canonicalDescription = assembleMarketingDescription(canonicalLeads);
+  const canonicalDescription = assembleHardDataDescription(
+    structuredSemantic,
+    structuredImageTruth,
+    input.templateContext || "",
+    rawLiteralVisualElements == null ? null : extractedLiteralVisualElements
+  );
   const seoTags = normalizeTagsOutput(
     parsedObj.seo_tags ?? parsedObj.seoTags ?? parsedObj.tags,
     canonicalTitle,
     canonicalDescription,
-    semantic,
+    structuredSemantic,
     marketplaceDrafts
   );
   const reasonFlags = validator.reasonFlags.length
@@ -4274,15 +4307,15 @@ async function callVisionRecord(
     source: "gemini",
     qcApproved: true,
     templateContext: input.templateContext || "",
-    imageTruth,
+    imageTruth: structuredImageTruth,
     filenameAssessment,
-    semanticRecord: semantic,
+    semanticRecord: structuredSemantic,
     marketplaceDrafts,
     validator: {
       ...validator,
       reasonFlags,
     },
-    canonicalTitle: canonicalTitle || marketplaceDrafts.etsy.title || semantic.titleCore || explicitTitleSeed || "Product",
+    canonicalTitle: canonicalTitle || marketplaceDrafts.etsy.title || structuredSemantic.titleCore || explicitTitleSeed || "Product",
     canonicalDescription,
     seoTags,
     canonicalLeadParagraphs: canonicalLeads,
@@ -4334,17 +4367,23 @@ function mapRecordToUiResponse(record: EngineRecord, model: string, localeProfil
   };
 }
 
+export function buildDeterministicFallbackListingResponse(
+  input: ListingRequest,
+  options: { locale?: string; model?: string; retryCount?: number } = {}
+) {
+  const localeProfile = getLocaleProfile(options.locale);
+  return mapRecordToUiResponse(
+    buildFallbackRecord(input, localeProfile, options.retryCount || 0),
+    options.model || XAI_VISION_MODEL,
+    localeProfile
+  );
+}
+
 export async function generateListingResponse(input: ListingRequest, options: GenerateOptions = {}): Promise<ListingUiResponse> {
   const fetchFn = options.fetchFn || fetch;
   const apiKey = resolveApiKey(options.apiKey);
   const localeProfile = getLocaleProfile(options.locale);
   const strictFailureMode = options.strictFailureMode === true;
-  const requestedVisionAttempts =
-    typeof options.maxVisionAttempts === "number" && Number.isFinite(options.maxVisionAttempts)
-      ? Math.trunc(options.maxVisionAttempts)
-      : MAX_VISION_ATTEMPTS;
-  const maxVisionAttempts = clamp(requestedVisionAttempts, 1, MAX_VISION_ATTEMPTS);
-  let retryInstructionOverride = cleanSpaces(options.initialRetryInstruction || "");
   let lastVisionFailure: unknown = null;
 
   if (!input?.imageDataUrl) {
@@ -4365,107 +4404,65 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
   }
 
   if (apiKey && preparedVisionInputs) {
-    for (let attempt = 1; attempt <= maxVisionAttempts; attempt += 1) {
-      try {
-        const visionRecord = await callVisionRecord(normalizedInput, {
-          fetchFn,
-          apiKey,
-          model: activeModel,
-          localeProfile,
-          visionInputs: preparedVisionInputs,
-          onDiagnosticEvent: options.onDiagnosticEvent,
-          retryContext: {
-            attempt,
-            retryInstruction:
-              retryInstructionOverride
-              || (attempt > 1
-                ? "Previous attempt failed schema validation or parsing. Return strict JSON only, with all required fields populated."
-                : undefined),
-          },
-        });
-        if (visionRecord) {
-          const sanitizedPhrases = detectSanitizedOutputPhrases([
-            visionRecord.canonicalTitle,
-            visionRecord.canonicalDescription,
-            ...visionRecord.canonicalLeadParagraphs,
-          ]);
-          if (sanitizedPhrases.length > 0) {
-            if (attempt < maxVisionAttempts) {
-              retryInstructionOverride = buildStrictSanitizedRetryInstruction(sanitizedPhrases);
-              continue;
-            }
-
-            const filenameSupportTitle = buildFilenameSupportTitle(
-              normalizedInput,
-              assessFilenameRelevance(normalizedInput.fileName || "", [])
-            );
-            if (filenameSupportTitle) {
-              const fallbackRecord = buildFallbackRecord(
-                {
-                  ...normalizedInput,
-                  title: filenameSupportTitle,
-                },
-                localeProfile,
-                attempt
-              );
-              const fallbackResponse = mapRecordToUiResponse(fallbackRecord, activeModel, localeProfile);
-              const fallbackSanitizedPhrases = detectSanitizedOutputPhrases([
-                fallbackResponse.title,
-                fallbackResponse.description,
-                ...fallbackResponse.leadParagraphs,
-              ]);
-              if (fallbackSanitizedPhrases.length === 0) {
-                return fallbackResponse;
-              }
-            }
-
-            return mapRecordToUiResponse(
-              buildTechnicalQcRejectedRecord(
-                normalizedInput,
-                makeReason(
-                  "qc_rejected_sanitized_placeholder_output",
-                  "critical",
-                  "validator",
-                  "Quantum AI returned generic sanitized placeholder language instead of literal searchable design text. Re-run this artwork with a stricter OCR pass."
-                )
-              ),
-              activeModel,
-              localeProfile
-            );
-          }
-
-          const visionResponse = mapRecordToUiResponse(visionRecord, activeModel, localeProfile);
-          if (!visionResponse.publishReady && shouldAttemptFilenameSupportedRescue(normalizedInput, visionRecord)) {
-            const fallbackRecord = buildFallbackRecord(normalizedInput, localeProfile, attempt);
-            const fallbackResponse = mapRecordToUiResponse(fallbackRecord, activeModel, localeProfile);
-            if (fallbackResponse.publishReady) {
-              return fallbackResponse;
-            }
-          }
-
-          return visionResponse;
+    try {
+      const visionRecord = await callVisionRecord(normalizedInput, {
+        fetchFn,
+        apiKey,
+        model: activeModel,
+        localeProfile,
+        visionInputs: preparedVisionInputs,
+        onDiagnosticEvent: options.onDiagnosticEvent,
+        retryContext: {
+          attempt: 1,
+        },
+      });
+      if (visionRecord) {
+        const sanitizedPhrases = detectSanitizedOutputPhrases([
+          visionRecord.canonicalTitle,
+          visionRecord.canonicalDescription,
+          ...visionRecord.canonicalLeadParagraphs,
+        ]);
+        if (sanitizedPhrases.length > 0) {
+          return buildDeterministicFallbackListingResponse(normalizedInput, {
+            locale: options.locale,
+            model: activeModel,
+            retryCount: 1,
+          });
         }
 
-        lastVisionFailure = new VisionModelFatalError(
-          502,
-          "Grok returned malformed structured output."
-        );
-      } catch (error) {
-        if (error instanceof ListingInputGuardError) {
-          throw error;
+        const visionResponse = mapRecordToUiResponse(visionRecord, activeModel, localeProfile);
+        if (!visionResponse.publishReady && shouldAttemptFilenameSupportedRescue(normalizedInput, visionRecord)) {
+          const fallbackResponse = buildDeterministicFallbackListingResponse(normalizedInput, {
+            locale: options.locale,
+            model: activeModel,
+            retryCount: 1,
+          });
+          if (fallbackResponse.publishReady) {
+            return fallbackResponse;
+          }
         }
 
-        lastVisionFailure = error;
-
-        logVisionFailure("attempt_exception", {
-          model: activeModel,
-          fileName: normalizedInput.fileName || null,
-          retryAttempt: attempt,
-          error: error instanceof Error ? error.message : String(error),
-        }, options.onDiagnosticEvent);
-
-        if (attempt >= maxVisionAttempts) break;
+        return visionResponse;
       }
+
+      return buildDeterministicFallbackListingResponse(normalizedInput, {
+        locale: options.locale,
+        model: activeModel,
+        retryCount: 1,
+      });
+    } catch (error) {
+      if (error instanceof ListingInputGuardError) {
+        throw error;
+      }
+
+      lastVisionFailure = error;
+
+      logVisionFailure("attempt_exception", {
+        model: activeModel,
+        fileName: normalizedInput.fileName || null,
+        retryAttempt: 1,
+        error: error instanceof Error ? error.message : String(error),
+      }, options.onDiagnosticEvent);
     }
   }
 
@@ -4473,9 +4470,9 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
     throw lastVisionFailure;
   }
 
-  return mapRecordToUiResponse(
-    buildFallbackRecord(normalizedInput, localeProfile, apiKey ? maxVisionAttempts : 0),
-    activeModel,
-    localeProfile
-  );
+  return buildDeterministicFallbackListingResponse(normalizedInput, {
+    locale: options.locale,
+    model: activeModel,
+    retryCount: apiKey ? 1 : 0,
+  });
 }
