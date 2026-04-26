@@ -1373,6 +1373,7 @@ async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, ti
 }
 
 function formatApiError(kind: UserFacingErrorKind, error: unknown, context: string) {
+  console.error(error);
   logErrorToConsole(context, error);
   return getUserFacingErrorMessage(kind);
 }
@@ -1931,7 +1932,6 @@ export default function MerchQuantumApp() {
   const [editableTitleDraft, setEditableTitleDraft] = useState("");
   const [editableDescriptionDraft, setEditableDescriptionDraft] = useState("");
   const [inlineSaveFeedback, setInlineSaveFeedback] = useState<InlineSaveFeedback | null>(null);
-  const [aiAssistStatus, setAiAssistStatus] = useState("");
   const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
   const [activeGridProductId, setActiveGridProductId] = useState("");
 
@@ -2113,7 +2113,6 @@ export default function MerchQuantumApp() {
   const canEditDetailTitle = canEditImportedListing || canEditSelectedImageCopy;
   const canEditDetailDescription = canEditImportedListing || canEditSelectedImageCopy;
   const titleFeedback = inlineSaveFeedback?.field === "title" ? inlineSaveFeedback : null;
-  const descriptionFeedback = inlineSaveFeedback?.field === "description" ? inlineSaveFeedback : null;
   const selectedImageStatus = selectedImage ? getResolvedItemStatus(selectedImage) : null;
   const canManualRescueSelectedImage =
     !!selectedImage
@@ -2359,13 +2358,12 @@ export default function MerchQuantumApp() {
 
   async function runAiListingForImage(
     nextImage: Img,
-    options: {
+      options: {
       userHints?: string[];
       legacyContext?: string;
       titleSeed?: string;
       pendingReason?: string;
       preserveVisibleCopyOnFailure?: boolean;
-      successMessage?: string;
       targetField?: "title" | "description" | "full";
     } = {}
   ) {
@@ -2469,7 +2467,6 @@ export default function MerchQuantumApp() {
             };
           })
         );
-        setAiAssistStatus(message);
         return;
       }
 
@@ -2617,9 +2614,9 @@ export default function MerchQuantumApp() {
             : img
         )
       );
-      setAiAssistStatus(options.successMessage || "");
     } catch (error) {
       if (requestUsesGlobalTemplate && activeTemplateKeyRef.current !== requestTemplateKey) return;
+      console.error(error);
       const message = formatApiError("listingGeneration", error, "[MerchQuantum] AI listing failed");
       setImages((current) =>
         current.map((img) => {
@@ -2662,7 +2659,6 @@ export default function MerchQuantumApp() {
           };
         })
       );
-      setAiAssistStatus(message);
     } finally {
       if (aiLoopBusyRef.current === requestOwner) {
         aiLoopBusyRef.current = null;
@@ -2680,7 +2676,6 @@ export default function MerchQuantumApp() {
     }
 
     setInlineSaveFeedback(null);
-    setAiAssistStatus("");
     setEditingField(field);
   }
 
@@ -2864,12 +2859,6 @@ export default function MerchQuantumApp() {
     );
 
     setInlineSaveFeedback(null);
-    setAiAssistStatus(
-      field === "title"
-        ? "Quantum AI is refreshing the title."
-        : "Quantum AI is refreshing the description."
-    );
-
     await runAiListingForImage(selectedImage, {
       targetField: field,
       userHints,
@@ -2880,10 +2869,6 @@ export default function MerchQuantumApp() {
           ? "Quantum AI is refreshing the title."
           : "Quantum AI is refreshing the description.",
       preserveVisibleCopyOnFailure: true,
-      successMessage:
-        field === "title"
-          ? "Quantum AI refreshed the title using the current listing hints."
-          : "Quantum AI refreshed the description using the current listing hints.",
     });
   }
 
@@ -3029,7 +3014,6 @@ export default function MerchQuantumApp() {
   useEffect(() => {
     setEditingField(null);
     setInlineSaveFeedback(null);
-    setAiAssistStatus("");
   }, [selectedId, template?.reference]);
 
   useEffect(() => {
@@ -3094,7 +3078,6 @@ export default function MerchQuantumApp() {
     setRunStatus("");
     setEditingField(null);
     setInlineSaveFeedback(null);
-    setAiAssistStatus("");
     setSelectedImportIds([]);
     setImportStatus("");
     setIsImportingListings(false);
@@ -3116,7 +3099,6 @@ export default function MerchQuantumApp() {
     setBatchResults([]);
     setRunStatus("");
     setImportStatus("");
-    setAiAssistStatus("");
     setManualPrebufferOverride(false);
   }
 
@@ -4630,21 +4612,11 @@ export default function MerchQuantumApp() {
                                     )}
                                   </div>
                                 </div>
-                                {descriptionFeedback ? (
-                                  <p className={`text-xs ${descriptionFeedback.tone === "error" ? "text-[#FF8AA5]" : descriptionFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-100"}`}>
-                                    {descriptionFeedback.message}
-                                  </p>
-                                ) : null}
-                                {aiAssistStatus && selectedImage ? (
-                                  <p className={`text-xs ${canManualRescueSelectedImage ? "text-slate-100" : "text-slate-100"}`}>
-                                    {aiAssistStatus}
-                                  </p>
-                                ) : null}
                               </div>
                             </div>
                           </div>
                           <div className="pt-0">
-                            <div className="flow-root w-full text-center mt-4">
+                            <div className="flow-root w-full text-center">
                               <div className="float-left flex items-center h-8">
                                 <span className="text-[#7F22FE] text-sm leading-6 font-normal font-sans">Quantum </span>
                                 <span className="text-white text-sm leading-6 font-normal font-sans">AI Tags</span>
