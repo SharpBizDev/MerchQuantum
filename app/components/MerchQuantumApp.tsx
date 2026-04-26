@@ -15,7 +15,7 @@ const ACTIVE_BATCH_FILES = 50;
 const CONNECTED_TOTAL_BATCH_FILES = 50;
 const FIXED_TAG_COUNT = 13;
 const BRAND_WORDMARK_TEXT_CLASSES = "text-[3.5rem] sm:text-[4rem]";
-const BRAND_TAGLINE_TEXT_CLASSES = "text-[11px] sm:text-xs";
+const BRAND_TAGLINE_TEXT_CLASSES = "text-xs";
 const DETAIL_DATA_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-white";
 const WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY = "mq-workspace-selection-condensed";
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
@@ -1477,7 +1477,7 @@ type BoxProps = {
 function Box({ title, children, className = "", headerClassName = "" }: BoxProps) {
   return (
     <section className={`rounded-[28px] border border-slate-800 bg-[#020616] p-4 text-white shadow-[0_18px_60px_-38px_rgba(2,6,22,0.9)] backdrop-blur-sm ${className}`}>
-      {title ? <div className={`mb-4 text-base font-semibold tracking-tight ${headerClassName}`}>{title}</div> : null}
+      {title ? <div className={`mb-4 text-sm font-semibold leading-6 tracking-tight ${headerClassName}`}>{title}</div> : null}
       {children}
     </section>
   );
@@ -1485,7 +1485,7 @@ function Box({ title, children, className = "", headerClassName = "" }: BoxProps
 
 function MerchQuantumInlineHeading({ className = "" }: { className?: string }) {
   return (
-    <span className={`min-w-0 text-sm font-semibold leading-tight tracking-tight text-white ${className}`}>
+    <span className={`min-w-0 text-sm font-semibold leading-6 tracking-tight text-white ${className}`}>
       <span className="text-[#7F22FE]">Merch</span>{" "}
       <span className="text-white">Quantum AI bulk auto listings</span>
     </span>
@@ -1501,12 +1501,12 @@ function CreativeWellspringBrandMark({
 }) {
   if (docked) {
     return (
-      <div className={`mt-auto py-8 flex flex-col items-center justify-center text-center ${className}`.trim()}>
-        <div className="flex items-center space-x-1.5">
-          <span className="text-[27px] font-bold tracking-tighter text-purple-500">Merch</span>
-          <span className="text-[27px] font-bold tracking-tighter text-white">Quantum</span>
+      <div className={`mt-auto py-8 flex flex-col items-center justify-center gap-2 text-center ${className}`.trim()}>
+        <div className={`flex items-center gap-x-2 ${BRAND_WORDMARK_TEXT_CLASSES}`}>
+          <span className="font-bold tracking-tighter text-[#7F22FE]">Merch</span>
+          <span className="font-bold tracking-tighter text-white">Quantum</span>
         </div>
-        <span className="block text-xs font-medium tracking-widest text-white uppercase mt-1">
+        <span className={`block font-medium tracking-widest text-white uppercase ${BRAND_TAGLINE_TEXT_CLASSES}`}>
           effortless product creation
         </span>
       </div>
@@ -1635,7 +1635,7 @@ function ProductGrid({
     <div className={`mx-auto flex w-full max-w-6xl flex-col gap-2 ${highlighted ? "drop-shadow-[0_10px_24px_rgba(127,34,254,0.18)]" : ""}`}>
       <div className="flex w-full min-w-0 items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-white">{heading}</span>
-        <div className="ml-auto flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 text-[11px]">
+        <div className="ml-auto flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 text-xs">
           {onSelectAll ? (
             <button
               type="button"
@@ -1706,14 +1706,14 @@ function ProductGrid({
           </div>
         ) : loading ? (
           <div className="flex w-full min-h-[16rem] items-center justify-center">
-            <div className="flex flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="flex flex-col items-center justify-center gap-2 px-6 text-center">
               <QuantOrbLoader />
               <span className="font-sans text-sm font-normal text-white">Awaiting Quantum AI...</span>
             </div>
           </div>
         ) : null}
 
-      <div className="flex w-full items-center justify-between gap-2 pt-1 text-[11px]">
+      <div className="flex w-full items-center justify-between gap-2 pt-1 text-xs">
         <div className="min-w-0 flex-1 truncate text-slate-100">
           {displayedRangeLabel}
         </div>
@@ -1770,7 +1770,7 @@ function QuantOrbLoader({ className = "" }: { className?: string }) {
 function WorkspaceModeLoadingOverlay({ label }: { label: string }) {
   return (
     <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-      <div className="flex flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="flex flex-col items-center justify-center gap-2 px-6 text-center">
         <QuantOrbLoader />
         <span className="font-sans text-sm font-normal text-white">{label}</span>
       </div>
@@ -4014,7 +4014,7 @@ export default function MerchQuantumApp() {
   return (
     <main className="box-border flex h-[100dvh] w-full max-w-full flex-col overflow-y-auto overflow-x-hidden bg-[#0d1117] p-6 font-sans text-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
         <div className="sticky top-0 z-10 bg-[#0d1117] pb-2 space-y-2">
           {!workspaceMode || isRoutingGridExpanded ? (
           <div className="relative">
@@ -4133,7 +4133,7 @@ export default function MerchQuantumApp() {
                       <button
                         type="button"
                         onClick={() => { void disconnectProvider(); }}
-                        className="inline-flex h-8 items-center rounded-lg border border-[#FF2056]/40 bg-[#FF2056]/12 px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#FF8CA8] transition hover:bg-[#FF2056]/18"
+                        className="inline-flex h-8 items-center rounded-lg border border-[#FF2056]/40 bg-[#FF2056]/12 px-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#FF2056] transition hover:bg-[#FF2056]/18"
                       >
                         Off
                       </button>
@@ -4202,7 +4202,7 @@ export default function MerchQuantumApp() {
             </div>
             </div>
 
-            {apiStatus ? <p className="mt-3 text-sm text-[#FE9A00]">{apiStatus}</p> : null}
+            {apiStatus ? <p className="mt-3 text-sm text-[#FF2056]">{apiStatus}</p> : null}
           </Box>
           </div>
           ) : null}
@@ -4327,8 +4327,8 @@ export default function MerchQuantumApp() {
                 <div className="mt-3">
                   <div className="space-y-3" onPointerDownCapture={() => nudgeWorkflow(true)}>
                       <div className="relative rounded-[24px] transition-all">
-                      <div className="grid grid-cols-1 items-stretch gap-3">
-                        <div className="flex h-full min-w-0 w-full flex-col gap-3">
+                      <div className="grid grid-cols-1 items-stretch gap-2">
+                        <div className="flex h-full min-w-0 w-full flex-col gap-2">
                           {isCreateMode ? (
                             <div
                               role={isWorkspaceConfigured ? "button" : undefined}
@@ -4356,18 +4356,18 @@ export default function MerchQuantumApp() {
                                 void addFiles(e.dataTransfer.files);
                               }}
                             >
-                              <div className="flex min-h-[44px] flex-col justify-between gap-0.5">
+                              <div className="flex min-h-[44px] flex-col justify-between gap-2">
                                 <div className="flex items-center justify-center">
-                                  <div className="flex flex-col items-center gap-0.5 text-center">
-                                    <p className="text-[11px] font-medium leading-4 text-white sm:text-xs">
+                                  <div className="flex flex-col items-center gap-2 text-center">
+                                    <p className="text-sm font-medium leading-6 text-white">
                                       Drop Images Here
                                     </p>
-                                    <p className="text-[10px] font-medium leading-4 text-slate-100 sm:text-[11px]">
+                                    <p className="text-xs font-medium text-slate-100">
                                       50 per batch • 500 max queue
                                     </p>
                                   </div>
                                 </div>
-                                <div className="flex w-full items-center justify-between text-[10px] font-medium text-slate-100 sm:text-[11px]">
+                                <div className="flex w-full items-center justify-between text-xs font-medium text-slate-100">
                                   <span>{`Loaded: ${loadedStatCount} | Queue: ${queuedStatCount}`}</span>
                                   <button
                                     type="button"
@@ -4378,7 +4378,7 @@ export default function MerchQuantumApp() {
                                       if (!hasAnyLoadedImages) return;
                                       clearPreviewWorkspace();
                                     }}
-                                    className="text-[10px] font-medium text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200 sm:text-[11px]"
+                                    className="text-xs font-medium text-slate-100 transition hover:text-white disabled:cursor-not-allowed disabled:text-slate-200"
                                   >
                                     Clear
                                   </button>
@@ -4443,7 +4443,7 @@ export default function MerchQuantumApp() {
                                             e.stopPropagation();
                                             removePreviewItem(img.id);
                                           }}
-                                          className="absolute right-1 top-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#020616]/92 p-0 text-[8px] font-normal leading-none text-slate-300 shadow-sm transition-colors hover:text-[#FF2056]"
+                                          className="absolute right-1 top-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#020616]/92 p-0 text-xs font-normal text-slate-300 shadow-sm transition-colors hover:text-[#FF2056]"
                                         >
                                           x
                                         </button>
@@ -4452,7 +4452,7 @@ export default function MerchQuantumApp() {
                                   );
                                 })}
                               </div>
-                              <div className="flex items-center justify-between gap-2 pt-1 text-[11px]">
+                              <div className="flex items-center justify-between gap-2 pt-1 text-xs">
                                   <span className="min-w-0 flex-1 truncate text-slate-100">{createThumbVisibleRangeLabel}</span>
                                   <div className="flex items-center justify-end gap-2">
                                   {createThumbTotalPages > 1 ? (
@@ -4496,11 +4496,11 @@ export default function MerchQuantumApp() {
                         </div>
                         {canShowDetailPanel ? (
                         <div className="flex min-w-0 flex-col space-y-0">
-                          <div className="flex flex-col gap-4 w-full">
+                          <div className="flex flex-col gap-2 w-full">
                             <div className="flex flex-col gap-2 w-full">
                               <div className="flex justify-between items-center w-full">
-                                <div className="flex min-h-[20px] min-w-0 flex-1 items-center text-left text-sm font-medium leading-5 tracking-tight text-slate-200">
-                                  <span className="inline-flex items-center text-sm font-semibold">
+                                <div className="flex min-h-[20px] min-w-0 flex-1 items-center text-left text-sm font-medium leading-6 tracking-tight text-slate-200">
+                                  <span className="inline-flex items-center text-sm font-semibold leading-6">
                                     <span className="text-[#7F22FE]">Quantum</span>
                                     <span className="ml-1 text-white">AI Title</span>
                                   </span>
@@ -4540,7 +4540,7 @@ export default function MerchQuantumApp() {
                                         }}
                                         className="h-9 px-3 py-1 pr-20 font-sans text-sm font-normal text-white"
                                       />
-                                      <div className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-100">
+                                      <div className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center gap-2 text-xs font-medium text-slate-100">
                                         <span>{editableTitleDraft.trim().length}/{LISTING_LIMITS.titleMax}</span>
                                       </div>
                                     </div>
@@ -4564,20 +4564,20 @@ export default function MerchQuantumApp() {
                                           <span>{QUANTUM_TITLE_AWAITING_TEXT}</span>
                                         </div>
                                       ) : (
-                                        <div className="flex w-full min-w-0 items-center justify-between gap-3">
+                                        <div className="flex w-full min-w-0 items-center justify-between gap-2">
                                           <span className="min-w-0 flex-1 truncate font-sans text-sm font-normal text-white">
                                             {detailTitle || <span className="font-sans text-sm font-normal text-white">Click to add a final title.</span>}
                                           </span>
                                         </div>
                                       )}
-                                      <div className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center gap-2 text-[10px] font-medium text-slate-100">
+                                      <div className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center gap-2 text-xs font-medium text-slate-100">
                                         <span>{(detailTitle || "").trim().length}/{LISTING_LIMITS.titleMax}</span>
                                       </div>
                                     </button>
                                   )}
                                 </div>
                                 {titleFeedback ? (
-                                  <p className={`text-xs ${titleFeedback.tone === "error" ? "text-[#FF8AA5]" : titleFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-100"}`}>
+                                  <p className={`text-xs ${titleFeedback.tone === "error" ? "text-[#FF2056]" : titleFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-100"}`}>
                                     {titleFeedback.message}
                                   </p>
                                 ) : null}
@@ -4585,9 +4585,9 @@ export default function MerchQuantumApp() {
                             </div>
 
                             <div className="flex flex-col gap-2 w-full">
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="flex min-h-[20px] min-w-0 flex-1 items-center text-left text-sm font-medium leading-5 tracking-tight text-slate-200">
-                                  <span className="inline-flex min-w-0 items-center text-sm font-semibold">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex min-h-[20px] min-w-0 flex-1 items-center text-left text-sm font-medium leading-6 tracking-tight text-slate-200">
+                                  <span className="inline-flex min-w-0 items-center text-sm font-semibold leading-6">
                                     <span className="text-[#7F22FE]">Quantum</span>
                                     <span className="ml-1 truncate text-white">AI Description</span>
                                   </span>
@@ -4597,7 +4597,7 @@ export default function MerchQuantumApp() {
                                 <div className={`rounded-xl border bg-[#020616] px-3 py-2.5 transition ${DETAIL_DATA_TEXT_CLASSES} ${canEditDetailDescription ? "border-slate-700 hover:border-slate-500 focus-within:border-[#7F22FE] focus-within:ring-2 focus-within:ring-[#7F22FE]/30" : "border-slate-700"}`}>
                                   <div className="flex">
                                     {editingField === "description" ? (
-                                      <div className="flex w-full flex-col gap-3">
+                                      <div className="flex w-full flex-col gap-2">
                                         <div className="relative">
                                           <textarea
                                             autoFocus
@@ -4633,7 +4633,7 @@ export default function MerchQuantumApp() {
                                         ) : null}
                                       </div>
                                     ) : (
-                                      <div className="flex w-full flex-col gap-3">
+                                      <div className="flex w-full flex-col gap-2">
                                         <button
                                           type="button"
                                           onClick={() => beginInlineEdit("description")}
@@ -4653,7 +4653,7 @@ export default function MerchQuantumApp() {
                                               <span>{QUANTUM_DESCRIPTION_AWAITING_TEXT}</span>
                                             </div>
                                           ) : (
-                                            <div className="flex w-full min-w-0 items-start justify-between gap-3">
+                                            <div className="flex w-full min-w-0 items-start justify-between gap-2">
                                               <div className="min-w-0 flex-1 whitespace-pre-wrap text-left">
                                                 {detailBuyerDescription || (
                                                   <span className={DETAIL_DATA_TEXT_CLASSES}>Select or add artwork to generate image-based listing copy.</span>
@@ -4675,7 +4675,7 @@ export default function MerchQuantumApp() {
                                   </div>
                                 </div>
                                 {descriptionFeedback ? (
-                                  <p className={`text-xs ${descriptionFeedback.tone === "error" ? "text-[#FF8AA5]" : descriptionFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-100"}`}>
+                                  <p className={`text-xs ${descriptionFeedback.tone === "error" ? "text-[#FF2056]" : descriptionFeedback.tone === "saved" ? "text-[#00BC7D]" : "text-slate-100"}`}>
                                     {descriptionFeedback.message}
                                   </p>
                                 ) : null}
