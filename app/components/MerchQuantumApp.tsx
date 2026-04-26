@@ -4574,25 +4574,13 @@ export default function MerchQuantumApp() {
                           </div>
                           <div className="pt-0">
                             <div className="rounded-xl border border-slate-700 bg-[#020616] px-3 py-2.5">
-                              <div className="flow-root w-full text-center mt-0">
-                              <div className="float-left flex items-center h-8">
-                                <span className="text-[#7F22FE] text-sm leading-6 font-normal font-sans">Quantum </span>
-                                <span className="text-white text-sm leading-6 font-normal font-sans">AI Tags</span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={triggerDescriptionAction}
-                                disabled={descriptionActionDisabled}
-                                className="float-right flex items-center h-8 text-[#7F22FE] text-sm leading-6 font-normal font-sans bg-transparent border-none p-0 cursor-pointer"
-                              >
-                                Upload
-                              </button>
-                              <div className="flex flex-wrap gap-1.5 overflow-hidden max-h-[52px]">
+                              <div className="flex items-center justify-between w-full gap-4">
+                              <div className="flex overflow-x-auto gap-2 flex-1 items-center pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                                 {isDetailTagsLoading ? (
                                   Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
                                     <div
                                       key={`loading-tag-${index}`}
-                                      className="max-w-full truncate min-h-[24px] flex items-center justify-center border border-gray-600/50 rounded-md px-2 py-0.5 bg-gray-800/80 text-[12px] leading-tight text-gray-300 whitespace-nowrap font-sans"
+                                      className="text-[12px] leading-none px-2.5 py-1.5 flex items-center justify-center text-gray-300 bg-gray-800/80 border border-gray-600/50 rounded-md whitespace-nowrap shrink-0 font-sans"
                                     >
                                       <QuantOrbLoader />
                                     </div>
@@ -4602,17 +4590,25 @@ export default function MerchQuantumApp() {
                                     <div
                                       key={`${selectedImage?.id || productId}-tag-${index}`}
                                       title={tag}
-                                      className="max-w-full truncate min-h-[24px] flex items-center justify-center border border-gray-600/50 rounded-md px-2 py-0.5 bg-gray-800/80 text-[12px] leading-tight text-gray-300 whitespace-nowrap font-sans"
+                                      className="text-[12px] leading-none px-2.5 py-1.5 flex items-center justify-center text-gray-300 bg-gray-800/80 border border-gray-600/50 rounded-md whitespace-nowrap shrink-0 font-sans"
                                     >
                                       {tag}
                                     </div>
                                   ))
                                 ) : (
-                                  <div className="max-w-full truncate min-h-[24px] flex items-center justify-center border border-gray-600/50 rounded-md px-2 py-0.5 bg-gray-800/80 text-[12px] leading-tight text-gray-300 whitespace-nowrap font-sans">
+                                  <div className="text-[12px] leading-none px-2.5 py-1.5 flex items-center justify-center text-gray-300 bg-gray-800/80 border border-gray-600/50 rounded-md whitespace-nowrap shrink-0 font-sans">
                                     Tags will appear after Quantum AI processing completes.
                                   </div>
                                 )}
                               </div>
+                              <button
+                                type="button"
+                                onClick={triggerDescriptionAction}
+                                disabled={descriptionActionDisabled}
+                                className="flex shrink-0 items-center h-8 text-[#7F22FE] text-sm leading-6 font-normal font-sans bg-transparent border-none p-0 cursor-pointer"
+                              >
+                                Upload
+                              </button>
                               </div>
                             </div>
                           </div>
