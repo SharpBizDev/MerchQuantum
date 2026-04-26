@@ -2362,7 +2362,6 @@ export default function MerchQuantumApp() {
       userHints?: string[];
       legacyContext?: string;
       titleSeed?: string;
-      pendingReason?: string;
       preserveVisibleCopyOnFailure?: boolean;
       targetField?: "title" | "description" | "full";
     } = {}
@@ -2382,7 +2381,7 @@ export default function MerchQuantumApp() {
               aiProcessing: true,
               aiFieldStates: createAiFieldStates("loading"),
               status: "pending",
-              statusReason: options.pendingReason || "Quantum AI is analyzing artwork.",
+              statusReason: "",
             }
           : img
       )
@@ -2417,13 +2416,6 @@ export default function MerchQuantumApp() {
 
       const qcApproved = data?.qcApproved !== false;
       if (!qcApproved) {
-        const qcFlags = Array.isArray(data?.reasonFlags)
-          ? data.reasonFlags.filter((flag: unknown): flag is string => typeof flag === "string")
-          : [];
-        const message = qcFlags.length
-          ? qcFlags.join(" • ")
-          : "Quantum AI rejected this artwork because the design appears blank, illegible, or too distorted for safe listing generation.";
-
         setImages((current) =>
           current.map((img) => {
             if (img.id !== nextImage.id) return img;
@@ -2441,7 +2433,7 @@ export default function MerchQuantumApp() {
                   tags: "error",
                 },
                 status: "error",
-                statusReason: message,
+                statusReason: "",
                 processedTemplateKey: requestTemplateKey,
                 aiDraft: undefined,
               };
@@ -2462,7 +2454,7 @@ export default function MerchQuantumApp() {
                 tags: img.tags.some((tag) => String(tag || "").trim()) ? "ready" : "error",
               },
               status: "error",
-              statusReason: message,
+              statusReason: "",
               processedTemplateKey: requestTemplateKey,
             };
           })
@@ -2523,15 +2515,6 @@ export default function MerchQuantumApp() {
         publishReady
           ? "ready"
           : "error";
-      const statusReason = reasonFlags.length
-        ? reasonFlags.join(" • ")
-        : status === "ready"
-          ? source === "fallback"
-            ? "Quantum AI produced a publish-ready fallback draft."
-            : "AI draft passed publish checks."
-          : source === "fallback"
-            ? "Quantum AI completed a fallback draft, but it did not pass publish checks."
-            : "Quantum AI could not generate a publish-ready draft for this image.";
       const targetField = options.targetField || "full";
       const currentVisibleTitle = safeTitle(nextImage.final, nextImage.originalListingTitle || nextImage.cleaned);
       const currentBuyerDescription = splitDetailDescriptionForDisplay(
@@ -2551,16 +2534,6 @@ export default function MerchQuantumApp() {
             && !!(targetField === "description" ? finalDescription : currentVisibleDescription)
             && currentVisibleTags.length > 0;
       const nextStatus: ItemStatus = targetedPublishReady ? "ready" : "error";
-      const nextStatusReason =
-        targetField === "full"
-          ? statusReason
-          : targetedPublishReady
-            ? targetField === "title"
-              ? "Quantum AI refreshed the title."
-              : "Quantum AI refreshed the description."
-            : reasonFlags.length > 0
-              ? reasonFlags.join(" • ")
-              : `Quantum AI refreshed the ${targetField}, but this draft still needs the remaining listing fields.`;
       const visibleTitle =
         targetField === "description"
           ? currentVisibleTitle
@@ -2596,7 +2569,7 @@ export default function MerchQuantumApp() {
                         }
                       : nextFieldStates,
                 status: targetField === "full" ? status : nextStatus,
-                statusReason: nextStatusReason,
+                statusReason: "",
                 processedTemplateKey: requestTemplateKey,
                 aiDraft: {
                   title: targetField === "description" ? (img.aiDraft?.title || currentVisibleTitle) : finalTitle,
@@ -2617,7 +2590,7 @@ export default function MerchQuantumApp() {
     } catch (error) {
       if (requestUsesGlobalTemplate && activeTemplateKeyRef.current !== requestTemplateKey) return;
       console.error(error);
-      const message = formatApiError("listingGeneration", error, "[MerchQuantum] AI listing failed");
+      formatApiError("listingGeneration", error, "[MerchQuantum] AI listing failed");
       setImages((current) =>
         current.map((img) => {
           if (img.id !== nextImage.id) return img;
@@ -2632,7 +2605,7 @@ export default function MerchQuantumApp() {
                 tags: "error",
               },
               status: "error",
-              statusReason: message,
+              statusReason: "",
               processedTemplateKey: requestTemplateKey,
               aiDraft: undefined,
             };
@@ -2654,7 +2627,7 @@ export default function MerchQuantumApp() {
             aiProcessing: false,
             aiFieldStates: preservedFieldStates,
             status: "error",
-            statusReason: message,
+            statusReason: "",
             processedTemplateKey: requestTemplateKey,
           };
         })
@@ -2744,9 +2717,7 @@ export default function MerchQuantumApp() {
                   [field]: "ready",
                 },
             status: readyAfterManualOverride ? "ready" : "error",
-            statusReason: readyAfterManualOverride
-              ? "Manual override approved this draft for upload."
-              : img.statusReason,
+            statusReason: "",
             aiDraft: {
               title: nextTitle,
               leadParagraphs: nextLeadParagraphs,
@@ -2864,10 +2835,6 @@ export default function MerchQuantumApp() {
       userHints,
       legacyContext: buildLegacyContextForImage(selectedImage),
       titleSeed: titleSeed || undefined,
-      pendingReason:
-        field === "title"
-          ? "Quantum AI is refreshing the title."
-          : "Quantum AI is refreshing the description.",
       preserveVisibleCopyOnFailure: true,
     });
   }
@@ -2909,7 +2876,7 @@ export default function MerchQuantumApp() {
               aiProcessing: false,
               aiFieldStates: createAiFieldStates("idle"),
               status: "pending",
-              statusReason: "Quantum AI is preparing listing copy.",
+              statusReason: "",
             }
       )
     );
@@ -2924,7 +2891,7 @@ export default function MerchQuantumApp() {
               aiProcessing: false,
               aiFieldStates: createAiFieldStates("idle"),
               status: "pending",
-              statusReason: "Quantum AI is preparing listing copy.",
+              statusReason: "",
             }
       )
     );
@@ -3190,7 +3157,7 @@ export default function MerchQuantumApp() {
         finalDescription: "",
         tags: [],
         status: "pending" as ItemStatus,
-        statusReason: "Quantum AI is preparing listing copy.",
+        statusReason: "",
         aiFieldStates: createAiFieldStates("idle"),
       } satisfies Img;
     }));
@@ -3474,7 +3441,7 @@ export default function MerchQuantumApp() {
       finalDescription: "",
       tags: [],
       status: "pending",
-      statusReason: "Quantum AI is preparing listing copy.",
+      statusReason: "",
       aiFieldStates: createAiFieldStates("idle"),
       artworkBounds,
       sourceType: "imported",
