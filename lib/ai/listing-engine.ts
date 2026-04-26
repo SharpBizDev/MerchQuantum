@@ -131,6 +131,9 @@ type GenerateOptions = {
   ocrModel?: string;
   locale?: string;
   onDiagnosticEvent?: (event: VisionDiagnosticEvent) => void;
+  initialRetryInstruction?: string;
+  maxVisionAttempts?: number;
+  strictFailureMode?: boolean;
 };
 
 type RetryContext = {
@@ -230,6 +233,100 @@ const FAINT_TRANSPARENT_INK_RATIO_THRESHOLD = 0.01;
 const POSTER_LIKE_CANVAS_COVERAGE_THRESHOLD = 0.82;
 const POSTER_LIKE_MIN_EDGE = 900;
 const PIXEL_ART_GUIDANCE_MAX_EDGE = 420;
+
+type VisionResponseTextValue = {
+  value?: string;
+};
+
+type VisionResponseContentPart =
+  | string
+  | {
+      text?: string | VisionResponseTextValue;
+      value?: string;
+      output_text?: string;
+    };
+
+type VisionResponseOutputItem = {
+  type?: unknown;
+  status?: unknown;
+  content?: string | VisionResponseContentPart[];
+};
+
+type VisionResponseEnvelope = {
+  id?: unknown;
+  model?: unknown;
+  status?: unknown;
+  output_text?: string;
+  output?: VisionResponseOutputItem[];
+};
+
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function normalizeVisionContentPart(value: unknown): VisionResponseContentPart | null {
+  if (typeof value === "string") return value;
+
+  const record = asObjectRecord(value);
+  if (!record) return null;
+
+  const normalized: Exclude<VisionResponseContentPart, string> = {};
+  if (typeof record.text === "string") {
+    normalized.text = record.text;
+  } else {
+    const textRecord = asObjectRecord(record.text);
+    if (textRecord && typeof textRecord.value === "string") {
+      normalized.text = {
+        value: textRecord.value,
+      };
+    }
+  }
+
+  if (typeof record.value === "string") {
+    normalized.value = record.value;
+  }
+
+  if (typeof record.output_text === "string") {
+    normalized.output_text = record.output_text;
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+function normalizeVisionContent(value: unknown): string | VisionResponseContentPart[] | undefined {
+  if (typeof value === "string") return value;
+  if (!Array.isArray(value)) return undefined;
+
+  const normalized = value
+    .map((entry) => normalizeVisionContentPart(entry))
+    .filter((entry): entry is VisionResponseContentPart => entry !== null);
+
+  return normalized;
+}
+
+function normalizeVisionOutputItem(value: unknown): VisionResponseOutputItem {
+  const record = asObjectRecord(value);
+  if (!record) return {};
+
+  return {
+    type: record.type,
+    status: record.status,
+    content: normalizeVisionContent(record.content),
+  };
+}
+
+function normalizeVisionResponse(value: unknown): VisionResponseEnvelope {
+  const record = asObjectRecord(value);
+  if (!record) return {};
+
+  return {
+    id: record.id,
+    model: record.model,
+    status: record.status,
+    output_text: typeof record.output_text === "string" ? record.output_text : undefined,
+    output: Array.isArray(record.output) ? record.output.map((entry) => normalizeVisionOutputItem(entry)) : undefined,
+  };
+}
 const WEAK_FILENAME_TOKENS = new Set([
   "img",
   "image",
@@ -520,6 +617,16 @@ class VisionModelHttpError extends Error {
     this.name = "VisionModelHttpError";
     this.status = status;
     this.responseBodyPreview = responseBodyPreview;
+  }
+}
+
+class VisionModelFatalError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "VisionModelFatalError";
+    this.status = status;
   }
 }
 
@@ -3133,14 +3240,14 @@ async function prepareVisionInputs(imageDataUrl: string): Promise<VisionInputSet
   }
 }
 
-function extractVisionResponseText(response: any) {
+function extractVisionResponseText(response: VisionResponseEnvelope) {
   if (typeof response?.output_text === "string") return response.output_text.trim();
 
   const output = Array.isArray(response?.output) ? response.output : [];
-  const parts = output.flatMap((item: any) => {
+  const parts = output.flatMap((item) => {
     if (typeof item?.content === "string") return [item.content];
     const content = Array.isArray(item?.content) ? item.content : [];
-    return content.map((part: any) => {
+    return content.map((part) => {
       if (typeof part === "string") return part;
       if (typeof part?.text === "string") return part.text;
       if (typeof part?.text?.value === "string") return part.text.value;
@@ -3153,14 +3260,14 @@ function extractVisionResponseText(response: any) {
   return parts.filter(Boolean).join("\n").trim();
 }
 
-function parseJsonLoose(raw: string) {
+function parseJsonLoose(raw: string): unknown | null {
   try {
-    return JSON.parse(raw);
+    return JSON.parse(raw) as unknown;
   } catch {
     const match = raw.match(/\{[\s\S]*\}/);
     if (!match) return null;
     try {
-      return JSON.parse(match[0]);
+      return JSON.parse(match[0]) as unknown;
     } catch {
       return null;
     }
@@ -3173,9 +3280,9 @@ function truncateForLog(value: string, maxLength = 1800) {
   return `${normalized.slice(0, maxLength)}… [truncated ${normalized.length - maxLength} chars]`;
 }
 
-function buildVisionResponseTelemetry(response: any) {
+function buildVisionResponseTelemetry(response: VisionResponseEnvelope) {
   const outputs = Array.isArray(response?.output)
-    ? response.output.slice(0, 2).map((item: any, index: number) => ({
+    ? response.output.slice(0, 2).map((item, index: number) => ({
         index,
         type: item?.type ?? null,
         status: item?.status ?? null,
@@ -3575,7 +3682,11 @@ function buildMasterPrompt(
   ].join("\n");
 }
 
-function buildVisionSystemInstruction(input: ListingRequest, filenameAssessment: FilenameAssessment) {
+function buildVisionSystemInstruction(
+  input: ListingRequest,
+  filenameAssessment: FilenameAssessment,
+  retryContext?: RetryContext
+) {
   const sterileProductType = cleanSpaces(input.templateContext || getFallbackSterileProductType(input.productFamily));
   const sanitizedFileNameHint = getSanitizedFilenameHint(input.fileName || "");
   const filenameWeight = getFilenamePromptWeight(input.fileName || "", filenameAssessment);
@@ -3620,6 +3731,13 @@ function buildVisionSystemInstruction(input: ListingRequest, filenameAssessment:
           `- The seller is upgrading an existing product from this legacy context: ${legacyContext}.`,
           "- Analyze the logic, keywords, and intent in that legacy text and use it as a foundational hint for a much stronger modern retail rewrite.",
           "- Do not copy the legacy wording verbatim, and do not let it override the actual visible artwork.",
+        ]
+      : []),
+    ...(retryContext?.retryInstruction
+      ? [
+          "",
+          "SYSTEM REJECTION PENALTY",
+          retryContext.retryInstruction,
         ]
       : []),
     "",
@@ -3797,7 +3915,7 @@ async function callVisionRecord(
 ) {
   const explicitTitleSeed = cleanSpaces(input.title || "") ? normalizeTitle(input.title || "", "") : "";
   const filenameAssessmentSeed = assessFilenameRelevance(input.fileName || "", []);
-  const systemInstruction = buildVisionSystemInstruction(input, filenameAssessmentSeed);
+  const systemInstruction = buildVisionSystemInstruction(input, filenameAssessmentSeed, options.retryContext);
   const prompt = buildMasterPrompt(
     input,
     filenameAssessmentSeed,
@@ -3879,7 +3997,7 @@ async function callVisionRecord(
     );
   }
 
-  let completion: any;
+  let completion: VisionResponseEnvelope = {};
   let responseText = "";
   try {
     const response = await options.fetchFn(XAI_RESPONSES_URL, {
@@ -3910,9 +4028,13 @@ async function callVisionRecord(
       );
     }
 
-    completion = JSON.parse(responseText);
+    completion = normalizeVisionResponse(JSON.parse(responseText) as unknown);
   } catch (error) {
     if (error instanceof VisionModelHttpError) {
+      throw error;
+    }
+
+    if (error instanceof DOMException && error.name === "AbortError") {
       throw error;
     }
 
@@ -4216,7 +4338,14 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
   const fetchFn = options.fetchFn || fetch;
   const apiKey = resolveApiKey(options.apiKey);
   const localeProfile = getLocaleProfile(options.locale);
-  let retryInstructionOverride = "";
+  const strictFailureMode = options.strictFailureMode === true;
+  const requestedVisionAttempts =
+    typeof options.maxVisionAttempts === "number" && Number.isFinite(options.maxVisionAttempts)
+      ? Math.trunc(options.maxVisionAttempts)
+      : MAX_VISION_ATTEMPTS;
+  const maxVisionAttempts = clamp(requestedVisionAttempts, 1, MAX_VISION_ATTEMPTS);
+  let retryInstructionOverride = cleanSpaces(options.initialRetryInstruction || "");
+  let lastVisionFailure: unknown = null;
 
   if (!input?.imageDataUrl) {
     throw new Error("Image data is required.");
@@ -4236,7 +4365,7 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
   }
 
   if (apiKey && preparedVisionInputs) {
-    for (let attempt = 1; attempt <= MAX_VISION_ATTEMPTS; attempt += 1) {
+    for (let attempt = 1; attempt <= maxVisionAttempts; attempt += 1) {
       try {
         const visionRecord = await callVisionRecord(normalizedInput, {
           fetchFn,
@@ -4261,7 +4390,7 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
             ...visionRecord.canonicalLeadParagraphs,
           ]);
           if (sanitizedPhrases.length > 0) {
-            if (attempt < MAX_VISION_ATTEMPTS) {
+            if (attempt < maxVisionAttempts) {
               retryInstructionOverride = buildStrictSanitizedRetryInstruction(sanitizedPhrases);
               continue;
             }
@@ -4316,10 +4445,17 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
 
           return visionResponse;
         }
+
+        lastVisionFailure = new VisionModelFatalError(
+          502,
+          "Grok returned malformed structured output."
+        );
       } catch (error) {
         if (error instanceof ListingInputGuardError) {
           throw error;
         }
+
+        lastVisionFailure = error;
 
         logVisionFailure("attempt_exception", {
           model: activeModel,
@@ -4328,13 +4464,17 @@ export async function generateListingResponse(input: ListingRequest, options: Ge
           error: error instanceof Error ? error.message : String(error),
         }, options.onDiagnosticEvent);
 
-        if (attempt >= MAX_VISION_ATTEMPTS) break;
+        if (attempt >= maxVisionAttempts) break;
       }
     }
   }
 
+  if (strictFailureMode && lastVisionFailure) {
+    throw lastVisionFailure;
+  }
+
   return mapRecordToUiResponse(
-    buildFallbackRecord(normalizedInput, localeProfile, apiKey ? MAX_VISION_ATTEMPTS : 0),
+    buildFallbackRecord(normalizedInput, localeProfile, apiKey ? maxVisionAttempts : 0),
     activeModel,
     localeProfile
   );
