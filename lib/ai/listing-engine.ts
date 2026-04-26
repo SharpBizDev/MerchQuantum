@@ -404,6 +404,30 @@ const LOW_SIGNAL_TITLE_TOKENS = new Set([
   "item",
 ]);
 
+const DESCRIPTION_META_PATTERNS = [
+  /\bshoppers?\b/i,
+  /\bsearchable\b/i,
+  /\bsearching for\b/i,
+  /\baesthetic\b/i,
+  /\bperfect for\b/i,
+  /\bweekend plans?\b/i,
+  /\beveryday wear\b/i,
+  /\bgift-friendly\b/i,
+  /\bfits naturally\b/i,
+  /\bkeeps the message clear\b/i,
+  /\bshopping for\b/i,
+  /\bwall art\b/i,
+  /\bposter\b/i,
+  /\bcanvas\b/i,
+  /\bmerchandise\b/i,
+] as const;
+
+const NON_ATMOSPHERIC_TAG_PATTERN =
+  /^(?:outline|graphic|graphics|design|art|artwork|line|print|front|back|upload|product|products|shirt|tee|t shirt|hoodie|sweatshirt|tank top|tank|top|unisex|cotton|ring spun|ring-spun|heavyweight|midweight|garment dyed|garment-dyed|feature|features|material|materials|fit|fits|spec|specs|template|templates|provider|providers|pod|print on demand|print-on-demand)$/i;
+
+const ATMOSPHERIC_TAG_STOPWORDS =
+  /\b(?:apparel|outfit|outfits|wear|style|graphic|graphics|design|art|artwork|gift|gifts|message|messages|look|looks|identity|identities|product|products|print|prints|tee|tees|shirt|shirts|hoodie|hoodies|sweatshirt|sweatshirts|tank|top|tops|unisex|friendly|ready|item|items)\b/gi;
+
 const LOCALE_PROFILES: Record<string, LocaleProfile> = {
   "en-us": {
     locale: "en-US",
@@ -977,6 +1001,9 @@ function looksClippedLeadParagraph(value: string) {
 
   const withoutEnding = clean.replace(/[.!?]["')\]]*$/, "").trim();
   if (/\b(?:them|it|you|me|us|him|her)\s+in$/i.test(withoutEnding)) return false;
+  if (/\b(?:go|goes|going|went|put|puts|pull|pulls|slip|slips|wear|wears|sit|sits|land|lands|fall|falls)\s+(?:on|in)$/i.test(withoutEnding)) {
+    return false;
+  }
   if (/\b(?:or|and)\s+(?:simply|just|even)\s*$/i.test(withoutEnding)) return true;
   const trailingWord = withoutEnding.split(/\s+/).pop()?.toLowerCase() || "";
   return INCOMPLETE_ENDING_WORDS.has(trailingWord);
@@ -1149,6 +1176,134 @@ function assembleMarketingDescription(paragraphs: string[]) {
   )
     .slice(0, 2)
     .join("\n\n")
+    .slice(0, MAX_DESCRIPTION_CHARS)
+    .trim();
+}
+
+function containsDescriptionMeta(value: string) {
+  const clean = cleanSpaces(value);
+  return DESCRIPTION_META_PATTERNS.some((pattern) => pattern.test(clean));
+}
+
+function containsTitleCannibalization(value: string, title: string) {
+  const comparableValue = normalizeComparableText(value);
+  const comparableTitle = normalizeComparableText(title);
+  if (!comparableValue || !comparableTitle) return false;
+  return comparableValue.includes(comparableTitle);
+}
+
+function normalizeAtmosphericDescriptor(value: string) {
+  const stripped = cleanSpaces(
+    stripLeadProductWords(value)
+      .replace(ATMOSPHERIC_TAG_STOPWORDS, " ")
+      .replace(/[_|/]+/g, " ")
+      .replace(/[^A-Za-z0-9&+' -]+/g, " ")
+  );
+  if (!stripped) return "";
+
+  const comparable = normalizeComparableText(stripped);
+  if (!comparable || NON_ATMOSPHERIC_TAG_PATTERN.test(comparable)) return "";
+  if (stripped.split(/\s+/).length > 4) return "";
+  return stripped;
+}
+
+function selectAtmosphericTagDescriptors(title: string, tags: string[], semantic: SemanticRecord, maxItems = 2) {
+  const titleComparable = normalizeComparableText(stripLeadProductWords(title));
+  const tagDescriptors = unique(tags.map((tag) => normalizeAtmosphericDescriptor(tag)).filter(Boolean));
+  const semanticDescriptors = unique([
+    normalizeAtmosphericDescriptor(semantic.styleOccasion),
+    ...semantic.inferredKeywords.map((keyword) => normalizeAtmosphericDescriptor(keyword)),
+  ].filter(Boolean));
+  const candidates = unique([...tagDescriptors, ...semanticDescriptors]).filter((descriptor) => !containsDescriptionMeta(descriptor));
+  const nonTitle = candidates.filter((descriptor) => {
+    const comparable = normalizeComparableText(descriptor);
+    return comparable && (!titleComparable || !titleComparable.includes(comparable));
+  });
+
+  return (nonTitle.length > 0 ? nonTitle : candidates).slice(0, maxItems);
+}
+
+function buildDescriptionStyleSentence(productLabel: string, descriptors: string[]) {
+  const mood = normalizeComparableText(descriptors.join(" "));
+
+  if (/\b(?:music|acoustic|songwriter|guitar|band|concert|gig|folk)\b/.test(mood)) {
+    return `It wears especially well with worn denim, flannels, and stage-to-street layers that let the ${productLabel} keep its own presence.`;
+  }
+
+  if (/\b(?:retro|vintage|arcade|gamer|gaming)\b/.test(mood)) {
+    return `It sits best with faded denim, older sneakers, and sun-washed layers that keep the ${productLabel} feeling lived-in rather than costume-heavy.`;
+  }
+
+  if (/\b(?:faith|christian|jesus|church|devotional|gospel|scripture)\b/.test(mood)) {
+    return `It works cleanly with denim, cardigans, and lighter outer layers when you want the ${productLabel} to stay front and center.`;
+  }
+
+  if (/\b(?:basketball|sports|sport|athletic|game)\b/.test(mood)) {
+    return `It pairs easily with sweats, mesh shorts, and old-school sneakers while keeping the ${productLabel} looking pulled together.`;
+  }
+
+  if (/\b(?:mountain|outdoor|hiking|nature|trail|western)\b/.test(mood)) {
+    return `It lands naturally with broken-in denim, utility layers, and older outerwear that give the ${productLabel} a grounded finish.`;
+  }
+
+  if (/\b(?:minimal|minimalist|modern|clean|line art)\b/.test(mood)) {
+    return `It wears best with dark denim, clean layers, and low-profile sneakers that keep the ${productLabel} looking sharp.`;
+  }
+
+  return `It wears easily with denim, knit layers, and broken-in jackets, giving the ${productLabel} a premium presence from first look to repeat wear.`;
+}
+
+function buildDeterministicDescriptionSentences(title: string, semantic: SemanticRecord, tags: string[]) {
+  const productLabel = cleanSpaces(semantic.productNoun || "product");
+  const descriptors = selectAtmosphericTagDescriptors(title, tags, semantic, 2);
+  const moodText = descriptors.length > 0
+    ? joinReadableList(descriptors.map((descriptor) => descriptor.toLowerCase()))
+    : "clean, premium";
+  const opening = trimSentence(
+    `A ${productLabel} with a ${moodText} point of view and a front that feels polished instead of overworked.`,
+    MAX_LEAD_CHARS
+  );
+  const styleSentence = trimSentence(buildDescriptionStyleSentence(productLabel, descriptors), MAX_LEAD_CHARS);
+  const closing = trimSentence(
+    `The overall finish gives the ${productLabel} a physical presence that feels intentional the moment it goes on.`,
+    MAX_LEAD_CHARS
+  );
+
+  return unique([opening, styleSentence, closing]).filter((sentence) => !containsDescriptionMeta(sentence)).slice(0, 3);
+}
+
+function buildStrictProductDescription(
+  title: string,
+  semantic: SemanticRecord,
+  tags: string[],
+  candidateParagraphs: string[]
+) {
+  const candidateSentences = unique(
+    candidateParagraphs
+      .flatMap((paragraph) => splitIntoSentences(stripMarkdownFences(String(paragraph || ""))))
+      .map((sentence) => removeTitleLead(sentence, title))
+      .map((sentence) => trimSentence(normalizeSentenceEnding(sentence), MAX_LEAD_CHARS))
+      .filter(Boolean)
+      .filter((sentence) => !containsDescriptionMeta(sentence))
+      .filter((sentence) => !containsTitleCannibalization(sentence, title))
+      .filter((sentence) => tokenizeForVariety(sentence).length >= 6)
+  ).slice(0, 3);
+
+  const deterministicSentences = buildDeterministicDescriptionSentences(title, semantic, tags);
+  const finalSentences = unique([...candidateSentences, ...deterministicSentences])
+    .filter((sentence) => !containsDescriptionMeta(sentence))
+    .filter((sentence) => !containsTitleCannibalization(sentence, title))
+    .slice(0, candidateSentences.length >= 3 ? 3 : 3);
+
+  const resolvedSentences =
+    finalSentences.length >= 2
+      ? finalSentences.slice(0, finalSentences.length >= 3 ? 3 : 2)
+      : deterministicSentences.slice(0, deterministicSentences.length >= 3 ? 3 : 2);
+
+  return resolvedSentences
+    .map((sentence) => trimSentence(sentence, MAX_LEAD_CHARS))
+    .filter(Boolean)
+    .join(" ")
     .slice(0, MAX_DESCRIPTION_CHARS)
     .trim();
 }
@@ -1567,17 +1722,6 @@ function tokenizeForVariety(value: string) {
   return normalizeComparableText(value)
     .split(/\s+/)
     .filter((token) => token.length > 2 && !STOPWORDS.has(token));
-}
-
-function pickDeterministicVariant(seed: string, options: string[]) {
-  if (!options.length) return "";
-
-  let hash = 0;
-  for (const char of seed) {
-    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  }
-
-  return options[hash % options.length];
 }
 
 function analyzeRepetition(title: string, leadParagraphs: string[], discoveryTerms: string[]) {
@@ -2016,38 +2160,11 @@ function looksGenericBuyerLead(paragraph: string, semantic: SemanticRecord, temp
   const signalTokens = getSemanticLeadSignalTokens(semantic, templateSignal);
   const hasSignal = signalTokens.some((token) => comparable.includes(token));
   const genericPattern =
-    /crafted for comfort|perfect for everyday wear|ideal choice|ideal pick|thoughtful gift|versatile addition|pairs well with any outfit|casual wardrobe|share a meaningful statement|anyone seeking inspiration|powerful message|high-quality|loved one|music festivals|casual outings|or simply\b|conversation starter|this design conveys|this design communicates|the use of the word|keeps the mood|reads clearly at a glance|gives buyers a quicker read|heavy lifting|without sounding generic|thought process|writing process|general audience|message-led piece|faith-based apparel|religious merchandise/i;
+    /crafted for comfort|perfect for everyday wear|ideal choice|ideal pick|thoughtful gift|versatile addition|pairs well with any outfit|casual wardrobe|share a meaningful statement|anyone seeking inspiration|powerful message|high-quality|loved one|music festivals|casual outings|or simply\b|conversation starter|this design conveys|this design communicates|the use of the word|keeps the mood|reads clearly at a glance|gives buyers a quicker read|heavy lifting|without sounding generic|thought process|writing process|general audience|message-led piece|faith-based apparel|religious merchandise|shoppers?|searchable|searching for|aesthetic|perfect for|weekend plans|gift-friendly|fits naturally|keeps the message clear|shopping for/i;
 
   if (genericPattern.test(clean)) return true;
   if (!hasSignal && tokenizeForVariety(clean).length < 12) return true;
   return false;
-}
-
-function getConsumerFacingLeadPhrases(semantic: SemanticRecord, maxItems = 4) {
-  return unique([
-    stripLeadProductWords(semantic.titleCore),
-    getPrimaryDesignAnchor(semantic),
-    ...semantic.visibleKeywords,
-    ...semantic.inferredKeywords,
-    semantic.styleOccasion,
-  ])
-    .map((value) => cleanSpaces(value))
-    .filter(Boolean)
-    .filter((value) => !hasTemplateSpecLeakage(value))
-    .filter((value) => !isSanitizedPlaceholderTerm(value))
-    .filter((value) => {
-      const comparable = normalizeComparableText(stripLeadProductWords(value));
-      if (!comparable) return false;
-      if (
-        /^(graphic|design|artwork|art|style|vibe|message|gift|apparel|merch|shirt|tee|t shirt|product|minimal|modern|retro|unisex|casual|heavy|heavyweight|cotton|ring spun|ring-spun|garment dyed|garment-dyed|relaxed fit|double needle|double-needle|shoulder taping|shoulder tape|twill tape)$/.test(
-          comparable
-        )
-      ) {
-        return false;
-      }
-      return value.split(/\s+/).length <= 6;
-    })
-    .slice(0, maxItems);
 }
 
 function buildFallbackSeoParagraphs(
@@ -2055,43 +2172,18 @@ function buildFallbackSeoParagraphs(
   templateSignal?: TemplateSignal | null,
   localeProfile: LocaleProfile = getLocaleProfile()
 ) {
-  const audience = cleanSpaces(semantic.likelyAudience || "shoppers");
-  const audienceClause = isGenericAudienceDescriptor(audience) ? "shoppers" : audience;
-  const styleOccasion = cleanSpaces(
-    isSanitizedPlaceholderTerm(semantic.styleOccasion)
-      ? detectTheme(`${semantic.titleCore} ${semantic.visibleKeywords.join(" ")} ${semantic.inferredKeywords.join(" ")}`) || "design-forward"
-      : semantic.styleOccasion || "design-forward"
+  void localeProfile;
+  const fallbackTags = buildDiscoveryTerms(semantic, 8).map((term) => normalizeTagLabel(term));
+  const sentences = buildDeterministicDescriptionSentences(
+    templateSignal?.shortLabel || semantic.titleCore || semantic.productNoun,
+    semantic,
+    fallbackTags
   );
-  const phrases = getConsumerFacingLeadPhrases(semantic, 5);
-  const primaryPhrase = cleanSpaces(phrases[0] || stripLeadProductWords(semantic.titleCore) || semantic.productNoun);
-  const supportPhrases = phrases
-    .slice(1)
-    .filter((value) => normalizeComparableText(value) !== normalizeComparableText(primaryPhrase))
-    .slice(0, 3);
-  const supportPhraseText = supportPhrases.length
-    ? joinReadableList(supportPhrases.map((value) => cleanSpaces(value.toLowerCase())))
-    : "";
-  const seed = `${semantic.titleCore}|${primaryPhrase}|${styleOccasion}|${audience}|${localeProfile.locale}|${templateSignal?.shortLabel || "default"}`;
-  const useCase = cleanSpaces(templateSignal?.useCase || "casual styling, gift giving, and repeat wear")
-    .toLowerCase()
-    .replace(/\bmerchandising\b/g, "gift shopping");
-
-  const firstParagraph = pickDeterministicVariant(seed, [
-    `Built around ${primaryPhrase.toLowerCase()}, this ${semantic.productNoun} gives ${audienceClause} a direct read on the artwork instead of vague filler. ${supportPhraseText ? `Details like ${supportPhraseText} keep the design literal, specific, and easy to search.` : `The design stays literal and easy to search, helping buyers recognize the exact print they want.`} That specificity makes the piece feel more wearable, giftable, and useful in a real catalog.`,
-    `Designed around ${primaryPhrase.toLowerCase()}, this ${semantic.productNoun} keeps the message clear for ${audienceClause} shopping for a ${styleOccasion} look with real searchable detail. ${supportPhraseText ? `Visual notes like ${supportPhraseText} give the print more concrete identity.` : `The composition stays clean without losing the exact wording or symbol that gives the design its value.`} It reads like the actual product a buyer wants, not a watered-down placeholder.`,
-    `Centered on ${primaryPhrase.toLowerCase()}, this ${semantic.productNoun} brings a ${styleOccasion} angle that still feels literal and product-ready. ${supportPhraseText ? `Features like ${supportPhraseText} help the artwork feel complete and recognizable.` : `The artwork keeps enough visible identity to stay memorable without slipping into generic commentary.`} That makes it easier for shoppers to connect the listing to the print itself.`,
-  ]);
-
-  const secondParagraph = pickDeterministicVariant(`${seed}|buyer`, [
-    `The ${styleOccasion} feel makes this ${semantic.productNoun} easy to wear with denim, jackets, sneakers, and relaxed everyday layers. It works well for ${useCase}, and the artwork keeps enough visible character to feel personal, giftable, and easy to recognize from browse to checkout and well beyond the first scroll.`,
-    `Because the design keeps its literal details visible, this ${semantic.productNoun} fits naturally into casual outfits, weekend plans, and ${useCase}. The print feels polished enough for repeat wear, thoughtful gifting, and easy everyday rotation while still holding onto the exact wording, symbol, or visual cue that makes the item searchable and worth choosing.`,
-    `That mix of ${primaryPhrase.toLowerCase()}, a ${styleOccasion} mood, and a clean silhouette gives this ${semantic.productNoun} solid everyday appeal. Buyers can style it for ${useCase}, and the artwork keeps enough clarity to feel current, giftable, and easy to remember without losing the exact message or symbol that drew them in.`,
-  ]);
 
   return [
-    firstParagraph,
-    secondParagraph,
-  ];
+    sentences.slice(0, 2).join(" "),
+    sentences.slice(2).join(" ") || sentences[1] || "",
+  ].filter(Boolean);
 }
 
 function buildDefaultLead(semantic: SemanticRecord, localeProfile: LocaleProfile) {
@@ -3561,12 +3653,12 @@ function buildMasterPrompt(
   const legacyContext = cleanSpaces(String(input.legacyContext || ""));
 
   return [
-    "ACT AS: A Senior E-commerce Metadata Indexer, SEO Strategist, and Print-on-Demand Copywriter.",
+    "ACT AS: A senior eCommerce copywriter for a premium apparel brand.",
     "",
     "You are also an automated Digital Asset Management (DAM) system performing High-Fidelity Text Logging for warehouse inventory.",
     "",
-    "Your job is to index the visible design for search discovery and commercial metadata, not to explain your thought process or abstractly describe how the design feels.",
-    "Treat iconography, slogans, and exact design text as commercial design assets for a general retail audience.",
+    "Write lifestyle-driven product copy for the end consumer while preserving visible design truth.",
+    "Treat iconography, slogans, and exact design text as commercial design assets for a retail audience.",
     "You are an e-commerce copywriter, not a content moderator.",
     "",
     "CONTEXT",
@@ -3591,16 +3683,17 @@ function buildMasterPrompt(
     "",
     userHints.length > 0 ? "USER HINTS" : "",
     userHints.length > 0
-      ? `The user has provided the following hints/context: ${userHints.join(" | ")}. Use this exact context to bypass ambiguity and generate a cohesive title, buyer-facing description, and tags that still stay faithful to the visible artwork.`
+      ? `The user has provided the following hints/context: ${userHints.join(" | ")}. Use this context to resolve ambiguity while keeping the title, product copy, and tags faithful to the visible artwork.`
       : "",
     "",
     legacyContext ? "IMPORT MODE LEGACY CONTEXT" : "",
     legacyContext
-      ? `The user is upgrading an existing product. Here is the legacy description they previously used: ${legacyContext}. Analyze the logic, keywords, and intent of this legacy text, and use it as a foundational hint to generate a vastly superior, modernized title and 2-paragraph SEO description without copying the legacy text verbatim or overriding the visible image truth.`
+      ? `The user is upgrading an existing product. Here is the legacy description they previously used: ${legacyContext}. Use its intent only as a secondary hint while keeping the new title, product copy, and tags anchored to visible image truth.`
       : "",
     "",
     "CONTEXT RULE",
     `You are writing copy for a ${sterileProductType}. Do NOT reference any other themes, religions, or subjects other than what is visibly present in the image scan.`,
+    `The physical item is strictly a ${sterileProductType}. It is never wall art, a poster, or a canvas.`,
     "",
     "DEEP SCAN PROTOCOL",
     "OCR Step: scan all helper renders and transcribe every visible word exactly as written.",
@@ -3621,28 +3714,27 @@ function buildMasterPrompt(
     "PHASE 3: SEO Generation (If PASS)",
     "Generate:",
     "- generated_title: a highly clickable, keyword-optimized title.",
-    "- generated_paragraph_1: the first marketing paragraph.",
-    "- generated_paragraph_2: the second marketing paragraph.",
+    "- generated_paragraph_1: the opening consumer-facing copy block.",
+    "- generated_paragraph_2: the closing consumer-facing copy block.",
     "- seo_tags: an array of exactly 15 high-value SEO tags.",
     "",
     "CRITICAL RULES",
     "- NO META-COMMENTARY: never explain your thought process, never critique the wording, and never describe what the design 'conveys' or how the copy was written. Write buyer-facing sales copy only.",
     '- Do not start with phrases like "This image features", "I cannot describe this", or any safety disclaimer. Start directly in the requested JSON fields.',
-    "- generated_paragraph_1 and generated_paragraph_2 must be exactly 2 substantial paragraphs totaling 150 to 250 words combined. Aim for roughly 70 to 125 words per paragraph.",
-    "- The SEO Description MUST be a minimum of two rich, engaging paragraphs. Do not provide brief summaries. Expand on the aesthetic, the mood, and the target audience comprehensively.",
-    "- The first sentence of generated_paragraph_1 must be a strong keyword-rich SEO hook that immediately describes the actual item and visible artwork.",
-    "- generated_paragraph_1 focuses on the emotional hook, vibe, audience, and why the artwork is appealing to wear or gift.",
-    "- generated_paragraph_2 focuses on literal design details, styling suggestions, shopper use cases, and aesthetic fit.",
-    "- Identify the literal visible elements in the art and weave them naturally into the copy: objects, typography, symbols, shapes, tools, instruments, linework, or other clear design features visible in the image.",
-    "- Describe who the design is for and the lifestyle or aesthetic it fits so the copy contains real searchable nouns and adjectives instead of abstract commentary.",
+    "- generated_paragraph_1 and generated_paragraph_2 together should form a tight 2 to 3 sentence premium product description rather than long SEO filler.",
+    "- NO CANNIBALIZATION: do not repeat or rephrase the generated_title inside the consumer copy. The buyer has already read it.",
+    "- SELECTIVE SYNTHESIS: after generating seo_tags, let only 1 to 2 atmospheric or lifestyle tags guide the mood of the copy. Ignore mechanical or literal tags in the prose.",
+    "- ZERO META-TEXT: never use words or phrases such as shoppers, searchable, aesthetic, perfect for, weekend plans, everyday wear, gift-friendly, fits naturally, keeps the message clear, or shopping for.",
+    "- Keep the copy grounded in the physical garment and the real-world styling moment.",
+    "- generated_paragraph_1 should establish the premium mood of the physical item.",
+    "- generated_paragraph_2 should reinforce styling, presence, or finish without drifting into template specs or search-engine commentary.",
+    "- Identify the literal visible elements in the art for title and tags, but keep the description itself selective, physical, and lifestyle-driven.",
     "- If extracted_text contains a clear visible phrase, generated_title must lead with the strongest exact searchable wording from that phrase.",
     "- When the design contains visible religious or scripture language, preserve the exact visible names and wording instead of softening them into neutral placeholders.",
     "- When the design contains a cross, Jesus wording, scripture wording, or other Christian iconography, treat those as high-value commercial SEO terms rather than sensitive topics to neutralize.",
     "- seo_tags must include the strongest exact visible words plus obvious long-tail buyer search terms that match the actual design text and objects.",
     "- Do not include generic garment specs, care instructions, fit, cotton weight, or template text.",
-    "- Focus only on the art/design and its customer appeal.",
-    "- Weave the strongest keywords from generated_title naturally into generated_paragraph_1.",
-    "- Do not repeat the full generated_title verbatim at the start of generated_paragraph_1.",
+    "- Focus only on the art/design and the lived-in presence of the item.",
     "- generated_paragraph_2 must end in a complete sentence.",
     "- Do not output bullet points, sign-offs, or standalone labels inside the paragraphs.",
     "- Provider template/spec content is application-owned and must never be rewritten, summarized, or paraphrased.",
@@ -3696,12 +3788,12 @@ function buildVisionSystemInstruction(
   const legacyContext = cleanSpaces(String(input.legacyContext || ""));
 
   return [
-    "ROLE: You are an expert SEO copywriter for a print-on-demand brand and a Senior Metadata Indexer for apparel and giftware.",
+    "ROLE: You are a senior eCommerce copywriter for a premium apparel brand and a Senior Metadata Indexer for catalog truth.",
     "You are also a Digital Asset Management system performing High-Fidelity Text Logging for commercial catalog indexing.",
-    "Treat the uploaded design as a commercial design asset for retail search discovery, not as a theological subject or moderation problem.",
+    "Treat the uploaded design as a commercial design asset for retail discovery and end-consumer copy.",
     "",
     "COMMERCIAL INTENT CLAUSE",
-    "- This task is commercial metadata extraction, not public-facing safety commentary or religious neutrality analysis.",
+    "- This task is commercial metadata extraction and premium product copy, not public-facing safety commentary or religious neutrality analysis.",
     "- When a design contains positive, non-violent religious wording or iconography such as Jesus, God, Church, Cross, Catholic, Christian, scripture, or Bible verses, do not sanitize or genericize the output.",
     "- Use the exact visible denominational, theological, and religious terms found in the design when they are present.",
     '- Do not replace specific wording with placeholders such as "Faith Product", "Faith Forward", "Inspirational Graphic", "Religious Graphic", "General Design", or "General Religious Theme".',
@@ -3715,7 +3807,7 @@ function buildVisionSystemInstruction(
     "- HIGH means the filename contains enough descriptive words to support literal indexing when the pixels are weak.",
     "- SUPPORT_ONLY means the filename can assist but must remain secondary to visible image truth.",
     "- IGNORE means rely on the image pixels and helper renders only.",
-    "- When the image truth and filename hint align, use those shared keywords aggressively in the commercial copy.",
+    "- When the image truth and filename hint align, use those shared keywords aggressively in the title and tags, but keep the garment copy selective and consumer-facing.",
     ...(userHints.length > 0
       ? [
           "",
@@ -3744,11 +3836,15 @@ function buildVisionSystemInstruction(
     "SANITIZATION RULE",
     '- Treat strings such as "Awaiting Quantum AI", "Printify", and "[Store_Name]" as null system noise rather than real design metadata.',
     `- Product type context: ${sterileProductType}.`,
+    `- The physical item is strictly a ${sterileProductType}. It is never wall art, a poster, or a canvas.`,
     "",
     "OUTPUT DISCIPLINE",
     "- Return only the requested JSON schema.",
     "- Do not include meta-commentary about image safety or explain your reasoning process.",
     '- Do not start with "This image features" or any refusal-style preamble.',
+    "- Do not repeat or rephrase the title in the buyer-facing copy.",
+    "- Let only 1 to 2 atmospheric or lifestyle tags guide the mood of the buyer-facing copy.",
+    "- Never use shoppers, searchable, aesthetic, perfect for, weekend plans, everyday wear, gift-friendly, fits naturally, keeps the message clear, or shopping for.",
   ].join("\n");
 }
 
@@ -3841,8 +3937,14 @@ function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile
     semantic,
     localeProfile
   );
-  const canonicalDescription = assembleMarketingDescription(canonicalLeadParagraphs);
-  const seoTags = buildFallbackTags(canonicalTitle, canonicalDescription, semantic, marketplaceDrafts);
+  const seedDescription = assembleMarketingDescription(canonicalLeadParagraphs);
+  const seoTags = buildFallbackTags(canonicalTitle, seedDescription, semantic, marketplaceDrafts);
+  const canonicalDescription = buildStrictProductDescription(
+    canonicalTitle,
+    semantic,
+    seoTags,
+    canonicalLeadParagraphs
+  );
   const qcApproved = validator.grade !== "red";
 
   return {
@@ -4258,13 +4360,19 @@ async function callVisionRecord(
     leadParagraphs: canonicalLeads,
     imageTruth,
   });
-  const canonicalDescription = assembleMarketingDescription(canonicalLeads);
+  const seedDescription = assembleMarketingDescription(canonicalLeads);
   const seoTags = normalizeTagsOutput(
     parsedObj.seo_tags ?? parsedObj.seoTags ?? parsedObj.tags,
     canonicalTitle,
-    canonicalDescription,
+    seedDescription,
     semantic,
     marketplaceDrafts
+  );
+  const canonicalDescription = buildStrictProductDescription(
+    canonicalTitle,
+    semantic,
+    seoTags,
+    suppliedLeadCandidates
   );
   const reasonFlags = validator.reasonFlags.length
     ? validator.reasonFlags

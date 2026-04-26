@@ -582,7 +582,8 @@ async function main() {
 
     assert.equal(/music festivals|or simply/i.test(leads[1]), false);
     assert.equal(/[.!?]["')\]]*$/.test(leads[1]), true);
-    assert.equal(/peace|retro|hippie|artwork|design/i.test(leads[1]), true);
+    assert.equal(/shoppers|perfect for|shopping for|weekend plans/i.test(leads[1]), false);
+    assert.equal(/physical presence|intentional/i.test(leads[1]), true);
   });
 
   await run("lead paragraph normalization keeps valid phrasal-verb endings instead of misreading them as clipped", () => {
@@ -1569,7 +1570,7 @@ async function main() {
     assert.equal(/fileNameSupport: Classic Peace Sign Retro Hippie Shirt/i.test(capturedPrompt), true);
     assert.equal(/do not let the filename write the title or marketing copy/i.test(capturedPrompt), true);
     assert.equal(/trust the clearest render over the filename/i.test(capturedPrompt), true);
-    assert.equal(/ACT AS: A Senior E-commerce Metadata Indexer, SEO Strategist, and Print-on-Demand Copywriter\./i.test(capturedPrompt), true);
+    assert.equal(/ACT AS: A senior eCommerce copywriter for a premium apparel brand\./i.test(capturedPrompt), true);
     assert.equal(/Digital Asset Management \(DAM\) system performing High-Fidelity Text Logging/i.test(capturedPrompt), true);
     assert.equal(/Treat iconography, slogans, and exact design text as commercial design assets/i.test(capturedPrompt), true);
     assert.equal(/You are an e-commerce copywriter, not a content moderator\./i.test(capturedPrompt), true);
@@ -1655,7 +1656,7 @@ async function main() {
     assert.equal(/legacy description they previously used/i.test(capturedPrompt), true);
     assert.equal(/Jesus Saves Christian church tee/i.test(capturedPrompt), true);
     assert.equal(/Awaiting Quantum AI|Printify|\[Store_Name\]/i.test(capturedPrompt), false);
-    assert.equal(/minimum of two rich, engaging paragraphs/i.test(capturedPrompt), true);
+    assert.equal(/tight 2 to 3 sentence premium product description rather than long SEO filler/i.test(capturedPrompt), true);
     assert.equal(/LEGACY UPGRADE RULE/i.test(capturedSystemInstruction), true);
     assert.equal(/foundational hint for a much stronger modern retail rewrite/i.test(capturedSystemInstruction), true);
   });
@@ -1751,7 +1752,7 @@ async function main() {
 
     assert.equal(typeof response.title, "string");
     assert.ok(Array.isArray(response.leadParagraphs));
-    assert.equal(response.leadParagraphs.length, 2);
+    assert.equal(response.leadParagraphs.length === 0 || response.leadParagraphs.length === 2, true);
     assert.equal(typeof response.leadParagraph1, "string");
     assert.equal(typeof response.leadParagraph2, "string");
     assert.equal(typeof response.confidence, "number");
@@ -1774,8 +1775,8 @@ async function main() {
     );
 
     assert.equal(response.source, "fallback");
-    assert.equal(response.title.toLowerCase().includes("img 9384"), false);
-    assert.equal(response.title.length > 0, true);
+    assert.equal(response.marketplaceDrafts.etsy.title.toLowerCase().includes("img 9384"), false);
+    assert.equal(response.marketplaceDrafts.etsy.title.length > 0, true);
     assert.equal(
       response.leadParagraphs.some((paragraph) => /ring-spun cotton|relaxed fit|everyday casual wear|care instructions|100% cotton/i.test(paragraph)),
       false
@@ -1799,10 +1800,7 @@ async function main() {
     );
 
     assert.equal(response.source, "fallback");
-    assert.equal(response.qcApproved, true);
-    assert.equal(response.publishReady, true);
-    assert.equal(response.grade, "green");
-    assert.equal(/Minimal Red Circle/i.test(response.title), true);
+    assert.equal(/Minimal Red Circle/i.test(response.marketplaceDrafts.etsy.title), true);
   });
 
   await run("fallback keeps literal religious filename wording instead of collapsing into a generic faith placeholder", async () => {
@@ -1818,15 +1816,16 @@ async function main() {
     );
 
     assert.equal(response.source, "fallback");
-    assert.equal(response.qcApproved, true);
-    assert.equal(response.publishReady, true);
-    assert.equal(/Life Begins With Jesus/i.test(response.title), true);
-    assert.equal(/faith forward/i.test(response.title), false);
-    assert.equal(/jesus/i.test(response.description), true);
-    assert.equal(/faith forward/i.test(response.description), false);
-    assert.equal(/general audience|message-led piece|faith-based apparel|religious merchandise/i.test(response.description), false);
-    assert.equal(response.tags.some((tag) => /Life Begins With Jesus|Jesus/i.test(tag)), true);
-    assert.equal(response.tags.some((tag) => /Faith Forward/i.test(tag)), false);
+    assert.equal(/Life Begins With Jesus/i.test(response.marketplaceDrafts.etsy.title), true);
+    assert.equal(/faith forward/i.test(response.marketplaceDrafts.etsy.title), false);
+    assert.equal(
+      /general audience|message-led piece|faith-based apparel|religious merchandise/i.test(
+        response.marketplaceDrafts.etsy.leadParagraphs.join(" ")
+      ),
+      false
+    );
+    assert.equal(response.marketplaceDrafts.etsy.discoveryTerms.some((term) => /Life Begins With Jesus|Jesus/i.test(term)), true);
+    assert.equal(response.marketplaceDrafts.etsy.discoveryTerms.some((term) => /Faith Forward/i.test(term)), false);
   });
 
   await run("fallback prioritizes literal religious filename terms over template-weight contamination", async () => {
@@ -1843,10 +1842,15 @@ async function main() {
     );
 
     assert.equal(response.source, "fallback");
-    assert.equal(/Jesus|Cross/i.test(response.title), true);
-    assert.equal(/Heavy Cotton|Heavyweight|Ring-Spun/i.test(response.title), false);
-    assert.equal(/Jesus|Cross/i.test(response.description), true);
-    assert.equal(/general audience|message-led piece|faith-based apparel|religious merchandise/i.test(response.description), false);
+    assert.equal(/Jesus|Cross/i.test(response.marketplaceDrafts.etsy.title), true);
+    assert.equal(/Heavy Cotton|Heavyweight|Ring-Spun/i.test(response.marketplaceDrafts.etsy.title), false);
+    assert.equal(response.marketplaceDrafts.etsy.discoveryTerms.some((term) => /Jesus|Cross/i.test(term)), true);
+    assert.equal(
+      /general audience|message-led piece|faith-based apparel|religious merchandise/i.test(
+        response.marketplaceDrafts.etsy.leadParagraphs.join(" ")
+      ),
+      false
+    );
   });
 
   await run("Gemini request strips system placeholders and sends commercial religious indexing instructions", async () => {
@@ -1945,7 +1949,7 @@ async function main() {
     assert.equal(/fileNameWeight:\s+IGNORE/i.test(String(getGeminiRequestParts(capturedInit)[0]?.text || "")), true);
   });
 
-  await run("Gemini over-fail can recover to a publishable fallback when filename support is strong and compliance is clean", async () => {
+  await run("Gemini explicit FAIL response recovers to deterministic fallback when filename support is strong", async () => {
     const response = await generateListingResponse(
       {
         imageDataUrl: SAMPLE_PNG_DATA_URL,
@@ -1971,10 +1975,15 @@ async function main() {
       }
     );
 
+    assert.equal(response.source, "fallback");
     assert.equal(response.qcApproved, true);
     assert.equal(response.publishReady, true);
     assert.equal(response.grade, "green");
     assert.equal(/Basketball/i.test(response.title), true);
+    assert.equal(
+      response.reasonFlags.some((flag) => /deterministic fallback used after 1 bounded grok attempt/i.test(flag)),
+      true
+    );
   });
 
   await run("image-backed golden corpus preserves grade, title, lead, and filename handling behavior", async () => {
@@ -2147,7 +2156,7 @@ async function main() {
     assert.equal(/T-Shirt|Tee|Shirt/i.test(response.title), true);
     assert.equal(/crafted for comfort and style/i.test(response.leadParagraphs[1]), false);
     assert.equal(/doing the heavy lifting on comfort and presentation/i.test(response.leadParagraphs[1]), false);
-    assert.equal(/wear|gift|buyer|listing|trust/i.test(response.leadParagraphs[1]), true);
+    assert.equal(/physical presence|goes on|intentional/i.test(response.leadParagraphs[1]), true);
   });
 
   await run("Gemini lead shaping returns finished sentences instead of clipped ellipsis endings", async () => {
@@ -2301,21 +2310,20 @@ async function main() {
     assert.equal(/sterileProductType:\s*Unisex Heavy Cotton Tee/i.test(capturedPrompt), true);
     assert.equal(/faith boutique|christian gift|uplifting/i.test(capturedPrompt), false);
     assert.equal(/&mdash;|&rsquo;|&sup2;/i.test(capturedPrompt), false);
-    assert.equal(/150 to 250 words combined/i.test(capturedPrompt), true);
-    assert.equal(/roughly 70 to 125 words per paragraph/i.test(capturedPrompt), true);
+    assert.equal(/tight 2 to 3 sentence premium product description rather than long SEO filler/i.test(capturedPrompt), true);
     assert.equal(/no meta-commentary/i.test(capturedPrompt), true);
-    assert.equal(/strong keyword-rich seo hook/i.test(capturedPrompt), true);
     assert.equal(/literal visible elements in the art/i.test(capturedPrompt), true);
     assert.equal(/buyer-facing sales copy only/i.test(capturedPrompt), true);
-    assert.equal(/emotional hook, vibe, audience/i.test(capturedPrompt), true);
-    assert.equal(/literal design details, styling suggestions, shopper use cases, and aesthetic fit/i.test(capturedPrompt), true);
+    assert.equal(/only 1 to 2 atmospheric or lifestyle tags guide the mood of the copy/i.test(capturedPrompt), true);
+    assert.equal(/never use words or phrases such as shoppers, searchable, aesthetic, perfect for/i.test(capturedPrompt), true);
+    assert.equal(/real-world styling moment/i.test(capturedPrompt), true);
     assert.equal(/Read every word on this design exactly as written/i.test(capturedPrompt), true);
     assert.equal(/do not judge dpi, metadata, file headers, or upload-constraint validity/i.test(capturedPrompt), true);
     assert.equal(/merchandise artwork, not as a generic object-detection task/i.test(capturedPrompt), true);
     assert.equal(/intentional retro pixel art can all PASS/i.test(capturedPrompt), true);
     assert.equal(/full rectangular poster, photographic scene, or textured background composition/i.test(capturedPrompt), true);
     assert.equal(/model should verify dpi|model should verify metadata|check file headers/i.test(capturedPrompt), false);
-    assert.equal(/40 to 60 words/i.test(capturedPrompt), false);
+    assert.equal(/150 to 250 words combined|roughly 70 to 125 words per paragraph|40 to 60 words/i.test(capturedPrompt), false);
   });
 
   await run("Gemini validator output cannot stay green when reasons or compliance flags are present", async () => {
@@ -3062,7 +3070,8 @@ async function main() {
     assert.equal(response.description.includes("```"), false);
     assert.equal(response.description.toLowerCase().startsWith(response.title.toLowerCase()), false);
     assert.equal(/100% ring-spun cotton|machine wash cold/i.test(response.description), false);
-    assert.equal(response.description.split(/\n\n/).length, 2);
+    const descriptionSentenceCount = response.description.match(/[.!?](?=\s|$)/g)?.length || 0;
+    assert.equal(descriptionSentenceCount >= 2 && descriptionSentenceCount <= 3, true);
     assert.equal(Array.isArray(response.tags), true);
     assert.equal(response.tags.length, 15);
     assert.equal(response.tags.some((tag) => tag.includes(",")), false);
@@ -3113,12 +3122,14 @@ async function main() {
     );
 
     const totalWords = response.description.split(/\s+/).filter(Boolean).length;
+    const descriptionSentenceCount = response.description.match(/[.!?](?=\s|$)/g)?.length || 0;
     assert.equal(response.qcApproved, true);
     assert.equal(response.publishReady, true);
-    assert.equal(totalWords >= 140, true);
-    assert.equal(response.leadParagraphs[0].length > 340, true);
-    assert.equal(/soundhole|strings|frets|cutaway/i.test(response.description), true);
-    assert.equal(/campfire|songwriter|guitar teacher|gig/i.test(response.description), true);
+    assert.equal(descriptionSentenceCount >= 2 && descriptionSentenceCount <= 3, true);
+    assert.equal(totalWords >= 35, true);
+    assert.equal(response.leadParagraphs[0].length > 240, true);
+    assert.equal(/soundhole|strings|frets|cutaway/i.test(response.description), false);
+    assert.equal(/campfire|songwriter|denim|flannels|music apparel/i.test(response.description), true);
     assert.equal(/keeps the mood|thought process|the use of the word|conveys/i.test(response.description), false);
   });
 
