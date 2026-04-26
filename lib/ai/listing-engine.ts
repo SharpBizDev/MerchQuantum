@@ -136,6 +136,32 @@ type GenerateOptions = {
   strictFailureMode?: boolean;
 };
 
+type GrokDescriptionMatrix = {
+  visual_anatomy: string;
+  aesthetic_and_texture: string;
+  thematic_niche: string;
+};
+
+const XAI_DESCRIPTION_MATRIX_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    visual_anatomy: {
+      type: "string",
+      description: "Describe the literal subjects, geometry, and layout without echoing the title.",
+    },
+    aesthetic_and_texture: {
+      type: "string",
+      description: "Describe the artistic medium, line weight, color palette, and digital texture.",
+    },
+    thematic_niche: {
+      type: "string",
+      description: "Identify the specific subculture, scientific discipline, or conceptual theme in clinical terms.",
+    },
+  },
+  required: ["visual_anatomy", "aesthetic_and_texture", "thematic_niche"],
+} as const;
+
 type RetryContext = {
   attempt: number;
   retryInstruction?: string;
@@ -855,7 +881,7 @@ function isAbstractImageTitleSeed(value: string) {
 
 function buildStrictSanitizedRetryInstruction(sanitizedPhrases: string[]) {
   const phraseList = joinReadableList(sanitizedPhrases.map((phrase) => `"${phrase}"`));
-  return `Previous response was discarded for being too generic and returned sanitized placeholder wording such as ${phraseList}. Switch to Literal Mode and perform High-Fidelity Text Logging like a Digital Asset Management system indexing raw warehouse inventory. Read the strongest high-contrast helper render or threshold-mask OCR helper first, then confirm against the untouched original upload. If visible text says Jesus, God, scripture references, political wording, or other specific design text, reproduce it exactly in extracted_text, generated_title, the buyer-facing paragraphs, and seo_tags. Do not replace literal design wording with generic placeholders. Treat generic placeholder replacement as a system failure because it makes the listing unusable for search engines.`;
+  return `Previous response was discarded for being too generic and returned sanitized placeholder wording such as ${phraseList}. Switch to Literal Mode and perform High-Fidelity Text Logging like a Digital Asset Management system indexing raw warehouse inventory. Read the strongest high-contrast helper render or threshold-mask OCR helper first, then confirm against the untouched original upload. If visible text says Jesus, God, scripture references, political wording, or other specific design text, reproduce it exactly inside visual_anatomy, aesthetic_and_texture, and thematic_niche whenever relevant. Do not replace literal design wording with generic placeholders. Treat generic placeholder replacement as a system failure because it makes the listing unusable for search engines.`;
 }
 
 const INCOMPLETE_ENDING_WORDS = new Set([
@@ -2113,6 +2139,63 @@ function sanitizeMarketingLeadParagraphs(
   return paragraphs.map((paragraph, index) =>
     hasTemplateSpecLeakage(paragraph) ? defaultLead[index] || paragraph : paragraph
   );
+}
+
+function stripTrailingTerminalPunctuation(value: string) {
+  return cleanSpaces(value).replace(/[.!?]+$/g, "").trim();
+}
+
+function normalizeStructuredMatrixField(value: unknown) {
+  return cleanSpaces(
+    stripMarkdownFences(
+      removeLeadingLabel(String(value || ""), [
+        "visual_anatomy",
+        "visualAnatomy",
+        "aesthetic_and_texture",
+        "aestheticAndTexture",
+        "thematic_niche",
+        "thematicNiche",
+      ])
+    )
+  );
+}
+
+function buildStructuredDescriptionMatrix(parsedObj: Record<string, unknown>): GrokDescriptionMatrix {
+  return {
+    visual_anatomy: normalizeStructuredMatrixField(
+      parsedObj.visual_anatomy ?? parsedObj.visualAnatomy
+    ),
+    aesthetic_and_texture: normalizeStructuredMatrixField(
+      parsedObj.aesthetic_and_texture ?? parsedObj.aestheticAndTexture
+    ),
+    thematic_niche: normalizeStructuredMatrixField(
+      parsedObj.thematic_niche ?? parsedObj.thematicNiche
+    ),
+  };
+}
+
+function buildStructuredMatrixLeadParagraphs(matrix: GrokDescriptionMatrix) {
+  const firstParagraph = matrix.visual_anatomy
+    ? trimSentence(
+        normalizeSentenceEnding(`Visual anatomy: ${stripTrailingTerminalPunctuation(matrix.visual_anatomy)}.`),
+        MAX_LEAD_CHARS
+      )
+    : "";
+
+  const secondSegments = [
+    matrix.aesthetic_and_texture
+      ? `Aesthetic and texture: ${stripTrailingTerminalPunctuation(matrix.aesthetic_and_texture)}.`
+      : "",
+    matrix.thematic_niche
+      ? `Thematic niche: ${stripTrailingTerminalPunctuation(matrix.thematic_niche)}.`
+      : "",
+  ].filter(Boolean);
+
+  const secondParagraph = secondSegments.length > 0
+    ? trimSentence(normalizeSentenceEnding(secondSegments.join(" ")), MAX_LEAD_CHARS)
+    : "";
+
+  return [firstParagraph, secondParagraph].filter(Boolean);
 }
 
 export function normalizeLeadParagraphs(
@@ -3561,115 +3644,54 @@ function buildMasterPrompt(
   const legacyContext = cleanSpaces(String(input.legacyContext || ""));
 
   return [
-    "ACT AS: A Senior E-commerce Metadata Indexer, SEO Strategist, and Print-on-Demand Copywriter.",
+    "Return a strict JSON object only.",
+    "Required schema keys: {\"visual_anatomy\":\"\",\"aesthetic_and_texture\":\"\",\"thematic_niche\":\"\"}.",
     "",
-    "You are also an automated Digital Asset Management (DAM) system performing High-Fidelity Text Logging for warehouse inventory.",
-    "",
-    "Your job is to index the visible design for search discovery and commercial metadata, not to explain your thought process or abstractly describe how the design feels.",
-    "Treat iconography, slogans, and exact design text as commercial design assets for a general retail audience.",
-    "You are an e-commerce copywriter, not a content moderator.",
-    "",
-    "CONTEXT",
+    "IMAGE ANALYSIS CONTEXT",
     "I am providing a multi-image bundle consisting of a primary design render and several auxiliary contrast helpers.",
-    "",
-    "CRITICAL MANDATE",
-    "You are responsible for VERBATIM EXTRACTION.",
-    "Treat visible wording as raw searchable database data, not as content to soften, summarize, or neutralize.",
-    "If the design contains religious names, figures, scripture, political wording, slogans, or other exact visible phrases, you MUST preserve those exact terms in extracted_text, generated_title, generated_paragraph_1, generated_paragraph_2, and seo_tags.",
-    "",
-    "STRICT PROHIBITION",
-    'Do not use placeholder phrases such as "Faith Forward", "Inspirational Graphic", "General Design", or "General Religious Theme".',
-    "Replacing exact visible wording with generic descriptors is a system failure because it makes the listing unusable for search engines.",
-    'Do not output generic fallback wording such as "message-led piece", "faith-based apparel", or "religious merchandise" when the design contains specific visible searchable terms.',
-    "",
-    "VISION INSTRUCTION",
-    "This image may be a transparent PNG or isolated vector graphic intended for merchandise printing.",
-    "If the image has been composited on a solid background for visibility, ignore the artificial background and focus only on the foreground typography, artwork, symbols, illustration, linework, and aesthetic.",
-    "If multiple renders are provided, treat them as alternate views of the same design and trust the clearest render over the filename.",
-    "If you receive black-backed, white-backed, cropped, threshold-mask OCR, or helper renders, use them only to understand sparse or transparent artwork while preserving the untouched upload as the source of truth.",
+    "Analyze the foreground design only.",
+    "Treat helper renders as alternate views of the same artwork and trust the clearest render over the filename.",
+    "If you receive black-backed, white-backed, cropped, threshold-mask OCR, or helper renders, use them only to understand sparse or transparent artwork while preserving the untouched original upload as the source of truth.",
     visionPromptHint ? visionPromptHint : "",
     "",
     userHints.length > 0 ? "USER HINTS" : "",
     userHints.length > 0
-      ? `The user has provided the following hints/context: ${userHints.join(" | ")}. Use this exact context to bypass ambiguity and generate a cohesive title, buyer-facing description, and tags that still stay faithful to the visible artwork.`
+      ? `The user has provided the following hints/context: ${userHints.join(" | ")}. Use these hints only when they align with the visible artwork.`
       : "",
     "",
     legacyContext ? "IMPORT MODE LEGACY CONTEXT" : "",
     legacyContext
-      ? `The user is upgrading an existing product. Here is the legacy description they previously used: ${legacyContext}. Analyze the logic, keywords, and intent of this legacy text, and use it as a foundational hint to generate a vastly superior, modernized title and 2-paragraph SEO description without copying the legacy text verbatim or overriding the visible image truth.`
+      ? `Legacy context: ${legacyContext}. Use this only as supporting signal when it aligns with the visible artwork.`
       : "",
     "",
-    "CONTEXT RULE",
-    `You are writing copy for a ${sterileProductType}. Do NOT reference any other themes, religions, or subjects other than what is visibly present in the image scan.`,
+    "PRODUCT CONTEXT",
+    `Product type context: ${sterileProductType}.`,
     "",
-    "DEEP SCAN PROTOCOL",
-    "OCR Step: scan all helper renders and transcribe every visible word exactly as written.",
-    "Contextual Intent: identify the exact commercial niche or message category from the visible design truth and be specific.",
-    "Market Alignment: generated_title should lead with the strongest exact visible wording that a shopper would search for.",
-    'Tone: respectful but purely commercial. Prefer buyer-search terms like "Jesus t-shirt" over vague neutral substitutes like "faith-based apparel".',
-    "",
-    "PHASE 1: OCR & Analysis",
-    "Read every word on this design exactly as written across all helper renders. Identify all key visual elements.",
-    "Treat literal text extraction as a hard requirement, not an optional vibe read.",
-    "Include extracted_text as a concise OCR capture of readable wording, or an empty string if no readable text is present.",
-    "",
-    "PHASE 2: Quality Control Gate",
-    "If the image is blank, deeply distorted, or truly illegible, set qc_status to FAIL and leave the other fields blank.",
-    "If the design is legible and commercially usable, set qc_status to PASS.",
-    "Default to PASS for usable POD artwork. Minor ambiguity, stylization, soft OCR uncertainty, or low-contrast transparent edges should not fail the item on their own.",
-    "",
-    "PHASE 3: SEO Generation (If PASS)",
-    "Generate:",
-    "- generated_title: a highly clickable, keyword-optimized title.",
-    "- generated_paragraph_1: the first marketing paragraph.",
-    "- generated_paragraph_2: the second marketing paragraph.",
-    "- seo_tags: an array of exactly 15 high-value SEO tags.",
+    "POPULATION RULES",
+    "- visual_anatomy: describe the literal subjects, geometry, and layout without echoing the provided title.",
+    "- aesthetic_and_texture: describe the artistic medium, line weight, color palette, and digital texture.",
+    "- thematic_niche: identify the specific subculture, scientific discipline, or conceptual theme in clinical terms.",
     "",
     "CRITICAL RULES",
-    "- NO META-COMMENTARY: never explain your thought process, never critique the wording, and never describe what the design 'conveys' or how the copy was written. Write buyer-facing sales copy only.",
-    '- Do not start with phrases like "This image features", "I cannot describe this", or any safety disclaimer. Start directly in the requested JSON fields.',
-    "- generated_paragraph_1 and generated_paragraph_2 must be exactly 2 substantial paragraphs totaling 150 to 250 words combined. Aim for roughly 70 to 125 words per paragraph.",
-    "- The SEO Description MUST be a minimum of two rich, engaging paragraphs. Do not provide brief summaries. Expand on the aesthetic, the mood, and the target audience comprehensively.",
-    "- The first sentence of generated_paragraph_1 must be a strong keyword-rich SEO hook that immediately describes the actual item and visible artwork.",
-    "- generated_paragraph_1 focuses on the emotional hook, vibe, audience, and why the artwork is appealing to wear or gift.",
-    "- generated_paragraph_2 focuses on literal design details, styling suggestions, shopper use cases, and aesthetic fit.",
-    "- Identify the literal visible elements in the art and weave them naturally into the copy: objects, typography, symbols, shapes, tools, instruments, linework, or other clear design features visible in the image.",
-    "- Describe who the design is for and the lifestyle or aesthetic it fits so the copy contains real searchable nouns and adjectives instead of abstract commentary.",
-    "- If extracted_text contains a clear visible phrase, generated_title must lead with the strongest exact searchable wording from that phrase.",
-    "- When the design contains visible religious or scripture language, preserve the exact visible names and wording instead of softening them into neutral placeholders.",
-    "- When the design contains a cross, Jesus wording, scripture wording, or other Christian iconography, treat those as high-value commercial SEO terms rather than sensitive topics to neutralize.",
-    "- seo_tags must include the strongest exact visible words plus obvious long-tail buyer search terms that match the actual design text and objects.",
-    "- Do not include generic garment specs, care instructions, fit, cotton weight, or template text.",
-    "- Focus only on the art/design and its customer appeal.",
-    "- Weave the strongest keywords from generated_title naturally into generated_paragraph_1.",
-    "- Do not repeat the full generated_title verbatim at the start of generated_paragraph_1.",
-    "- generated_paragraph_2 must end in a complete sentence.",
-    "- Do not output bullet points, sign-offs, or standalone labels inside the paragraphs.",
-    "- Provider template/spec content is application-owned and must never be rewritten, summarized, or paraphrased.",
+    "- Read visible wording exactly as written when it materially affects the visual reality of the design.",
+    '- Do not use subjective adjectives such as "stunning", "beautiful", or "perfect".',
+    '- Do not propose use-cases such as "great for gifts" or "wear it anywhere".',
+    '- Do not output marketing copy, title suggestions, tags, buyer-facing paragraphs, markdown fences, or commentary outside the JSON object.',
     "",
     "ANALYSIS RULES",
     "- Image truth is primary. Visible text outranks filename text.",
-    "- If the image scan and filename hint align, maximize those shared keywords in the title, buyer-facing paragraphs, and seo_tags.",
     "- Ignore artificial helper backgrounds, including neutral-gray helper canvases, and focus only on the foreground design.",
-    "- Do not judge DPI, metadata, file headers, or upload-constraint validity. Technical checks are handled by application code, not the model.",
-    "- Treat this upload as merchandise artwork, not as a generic object-detection task or lifestyle photo captioning task.",
-    "- Clean isolated slogans, emblem graphics, vector illustrations, silhouette art, character-face graphics, line art, and intentional retro pixel art can all PASS when they remain commercially usable.",
-    "- Do not fail a design only because it is stylized, symbolic, sparse on a transparent canvas, or intentionally pixel-based if the core subject remains readable enough for merchandise copy.",
-    "- If the upload reads like a full rectangular poster, photographic scene, or textured background composition instead of isolated merchandise artwork, FAIL it unless the foreground design itself is clearly isolated and merch-ready.",
-    "- Do not hallucinate unsupported claims, official licensing, or hidden artwork details.",
-    "- Use filename only as support. If the artwork is clear, do not let the filename write the title or marketing copy for you.",
-    "- Strong transparent PNG artwork with clean readable text or simple legible iconography still counts as meaningful visual evidence even when the canvas is sparse.",
+    "- Use filename only as support when the artwork is weak or ambiguous.",
+    "- Do not hallucinate unsupported claims or hidden artwork details.",
     `- Current local filename assessment hint: ${filenameAssessment.classification} (${filenameAssessment.reason})`,
     `- Filename trust weight: ${filenameWeight}`,
     `- Conflict severity hint: ${filenameAssessment.conflictSeverity}; ignore filename: ${filenameAssessment.shouldIgnore ? "yes" : "no"}`,
     "",
     "JSON SCHEMA",
-    '{"qc_status": "PASS" | "FAIL", "extracted_text": string, "generated_title": string, "generated_paragraph_1": string, "generated_paragraph_2": string, "seo_tags": string[]}',
+    '{"visual_anatomy": "", "aesthetic_and_texture": "", "thematic_niche": ""}',
     "",
     "OUTPUT FORMAT",
-    "Return ONLY valid structured JSON.",
-    "No conversational filler.",
-    "No markdown fences.",
+    "Return ONLY the raw JSON object.",
     "",
     "INPUT CONTEXT",
     `sterileProductType: ${sterileProductType}`,
@@ -3681,77 +3703,30 @@ function buildMasterPrompt(
     retryContext.retryInstruction ? `retryInstruction: ${retryContext.retryInstruction}` : "",
   ].join("\n");
 }
-
 function buildVisionSystemInstruction(
   input: ListingRequest,
   filenameAssessment: FilenameAssessment,
   retryContext?: RetryContext
 ) {
-  const sterileProductType = cleanSpaces(input.templateContext || getFallbackSterileProductType(input.productFamily));
-  const sanitizedFileNameHint = getSanitizedFilenameHint(input.fileName || "");
-  const filenameWeight = getFilenamePromptWeight(input.fileName || "", filenameAssessment);
-  const userHints = Array.isArray(input.userHints)
-    ? input.userHints.map((hint) => cleanSpaces(String(hint || ""))).filter(Boolean)
-    : [];
-  const legacyContext = cleanSpaces(String(input.legacyContext || ""));
+  void input;
+  void filenameAssessment;
 
-  return [
-    "ROLE: You are an expert SEO copywriter for a print-on-demand brand and a Senior Metadata Indexer for apparel and giftware.",
-    "You are also a Digital Asset Management system performing High-Fidelity Text Logging for commercial catalog indexing.",
-    "Treat the uploaded design as a commercial design asset for retail search discovery, not as a theological subject or moderation problem.",
+  const basePrompt = [
+    "CRITICAL OVERRIDE: You are a clinical visual data structurer. You are forbidden from acting as a marketer or copywriter. Your ONLY function is to analyze the provided image scan data and output a strict JSON object mapping the visual reality of the graphic.",
     "",
-    "COMMERCIAL INTENT CLAUSE",
-    "- This task is commercial metadata extraction, not public-facing safety commentary or religious neutrality analysis.",
-    "- When a design contains positive, non-violent religious wording or iconography such as Jesus, God, Church, Cross, Catholic, Christian, scripture, or Bible verses, do not sanitize or genericize the output.",
-    "- Use the exact visible denominational, theological, and religious terms found in the design when they are present.",
-    '- Do not replace specific wording with placeholders such as "Faith Product", "Faith Forward", "Inspirational Graphic", "Religious Graphic", "General Design", or "General Religious Theme".',
-    '- Do not replace specific wording with generic retail filler such as "message-led piece", "faith-based apparel", or "religious merchandise".',
-    "- Placeholder substitution is a system failure because it makes the listing unusable for search discovery.",
-    '- If the design contains visible wording like "Christ is Risen", "Life Begins With Jesus", or a visible cross reference, preserve that exact commercial wording rather than softening it.',
+    "MANDATORY JSON POPULATION RULES:",
+    '1. "visual_anatomy": Describe the literal subjects, geometry, and layout. (e.g., "Central focal point features a coiled snake over bold, serif typography.") Do NOT echo the provided title.',
+    '2. "aesthetic_and_texture": Describe the artistic medium, line weight, color palette, and digital texture. (e.g., "Distressed vector art, monochromatic line-work, high-contrast grunge overlay.")',
+    '3. "thematic_niche": Identify the specific subculture, scientific discipline, or conceptual theme of the artwork in clinical terms. (e.g., "Quantum physics STEM diagram", "Libertarian historical iconography").',
     "",
-    "FILENAME TRUST RULE",
-    `- Filename hint weight: ${filenameWeight}.`,
-    `- Filename hint: ${sanitizedFileNameHint || "null"}.`,
-    "- HIGH means the filename contains enough descriptive words to support literal indexing when the pixels are weak.",
-    "- SUPPORT_ONLY means the filename can assist but must remain secondary to visible image truth.",
-    "- IGNORE means rely on the image pixels and helper renders only.",
-    "- When the image truth and filename hint align, use those shared keywords aggressively in the commercial copy.",
-    ...(userHints.length > 0
-      ? [
-          "",
-          "HUMAN-IN-THE-LOOP RULE",
-          `- The seller supplied these hints to resolve ambiguity: ${userHints.join(" | ")}.`,
-          "- When those hints align with the visible artwork, use them directly instead of softening or ignoring them.",
-        ]
-      : []),
-    ...(legacyContext
-      ? [
-          "",
-          "LEGACY UPGRADE RULE",
-          `- The seller is upgrading an existing product from this legacy context: ${legacyContext}.`,
-          "- Analyze the logic, keywords, and intent in that legacy text and use it as a foundational hint for a much stronger modern retail rewrite.",
-          "- Do not copy the legacy wording verbatim, and do not let it override the actual visible artwork.",
-        ]
-      : []),
-    ...(retryContext?.retryInstruction
-      ? [
-          "",
-          "SYSTEM REJECTION PENALTY",
-          retryContext.retryInstruction,
-        ]
-      : []),
-    "",
-    "SANITIZATION RULE",
-    '- Treat strings such as "Awaiting Quantum AI", "Printify", and "[Store_Name]" as null system noise rather than real design metadata.',
-    `- Product type context: ${sterileProductType}.`,
-    "",
-    "OUTPUT DISCIPLINE",
-    "- Return only the requested JSON schema.",
-    "- Do not include meta-commentary about image safety or explain your reasoning process.",
-    '- Do not start with "This image features" or any refusal-style preamble.',
+    "RESTRICTIONS:",
+    "You must NOT use subjective adjectives (stunning, beautiful, perfect). You must NOT propose use-cases (great for gifts, wear it anywhere). Return ONLY the raw JSON object.",
   ].join("\n");
-}
 
+  return retryContext?.retryInstruction
+    ? `${basePrompt}\n\nSYSTEM REJECTION: ${retryContext.retryInstruction}`
+    : basePrompt;
+}
 function buildFallbackRecord(input: ListingRequest, localeProfile: LocaleProfile, retryCount = 0) {
   const emptyImageTruth: ImageTruthRecord = {
     visibleText: [],
@@ -3937,8 +3912,16 @@ async function callVisionRecord(
   const responseRequestBody: Record<string, unknown> = {
     model: options.model,
     store: false,
-    temperature: 0.1,
+    temperature: 0,
     instructions: systemInstruction,
+    text: {
+      format: {
+        type: "json_schema",
+        name: "grok_description_constraint_matrix",
+        schema: XAI_DESCRIPTION_MATRIX_SCHEMA,
+        strict: true,
+      },
+    },
   };
 
   try {
@@ -4090,17 +4073,17 @@ async function callVisionRecord(
     ?? parsedObj.ocr_text
     ?? parsedObj.ocrText
   );
+  const descriptionMatrix = buildStructuredDescriptionMatrix(parsedObj);
+  const structuredLeadCandidates = buildStructuredMatrixLeadParagraphs(descriptionMatrix);
 
   const titleSeedCandidate =
-    parsedObj.generated_title
-    || parsedObj.generatedTitle
-    || parsedObj.seo_title
-    || parsedObj.seoTitle
-    || parsedObj.finalTitle
-    || parsedObj.final_title
+    explicitTitleSeed
     || parsedObj.canonicalTitle
     || parsedObj.title
-    || explicitTitleSeed
+    || parsedObj.generated_title
+    || parsedObj.generatedTitle
+    || parsedObj.finalTitle
+    || parsedObj.final_title
     || input.fileName
     || "Product";
 
@@ -4144,10 +4127,11 @@ async function callVisionRecord(
         titleCore: provisionalTitle || semanticFallback.titleCore,
         benefitCore: cleanSpaces(
           String(
-            parsedObj.generated_paragraph_1
+            descriptionMatrix.thematic_niche
+            || descriptionMatrix.visual_anatomy
+            || descriptionMatrix.aesthetic_and_texture
+            || parsedObj.generated_paragraph_1
             || parsedObj.generatedParagraph1
-            || parsedObj.seo_paragraph_1
-            || parsedObj.seoParagraph1
             || semanticFallback.benefitCore
           )
         ),
@@ -4171,16 +4155,14 @@ async function callVisionRecord(
   }
 
   const finalTitleCandidate =
-    parsedObj.generated_title
-    || parsedObj.generatedTitle
-    || parsedObj.seo_title
-    || parsedObj.seoTitle
-    || parsedObj.finalTitle
-    || parsedObj.final_title
+    explicitTitleSeed
     || parsedObj.canonicalTitle
     || parsedObj.title
-    || semantic.titleCore
-    || explicitTitleSeed;
+    || parsedObj.generated_title
+    || parsedObj.generatedTitle
+    || parsedObj.finalTitle
+    || parsedObj.final_title
+    || semantic.titleCore;
 
   const canonicalTitle = normalizeTitle(
     String(finalTitleCandidate),
@@ -4188,14 +4170,7 @@ async function callVisionRecord(
   );
 
   const suppliedLeadCandidates = [
-    parsedObj.generated_paragraph_1,
-    parsedObj.generatedParagraph1,
-    parsedObj.generated_paragraph_2,
-    parsedObj.generatedParagraph2,
-    parsedObj.seo_paragraph_1,
-    parsedObj.seoParagraph1,
-    parsedObj.seo_paragraph_2,
-    parsedObj.seoParagraph2,
+    ...structuredLeadCandidates,
     ...normalizeArray(parsedObj.canonicalLeadParagraphs || parsedObj.leadParagraphs),
     ...normalizeDescriptionParagraphs(
       parsedObj.finalDescription || parsedObj.final_description || parsedObj.description,
@@ -4209,10 +4184,12 @@ async function callVisionRecord(
         "seoParagraph2",
         "seo_paragraph_1",
         "seo_paragraph_2",
-        "generatedParagraph1",
-        "generatedParagraph2",
-        "generated_paragraph_1",
-        "generated_paragraph_2",
+        "visual_anatomy",
+        "visualAnatomy",
+        "aesthetic_and_texture",
+        "aestheticAndTexture",
+        "thematic_niche",
+        "thematicNiche",
         "paragraph1",
         "paragraph2",
       ])
@@ -4258,7 +4235,9 @@ async function callVisionRecord(
     leadParagraphs: canonicalLeads,
     imageTruth,
   });
-  const canonicalDescription = assembleMarketingDescription(canonicalLeads);
+  const canonicalDescription = structuredLeadCandidates.length > 0
+    ? assembleMarketingDescription(structuredLeadCandidates)
+    : assembleMarketingDescription(canonicalLeads);
   const seoTags = normalizeTagsOutput(
     parsedObj.seo_tags ?? parsedObj.seoTags ?? parsedObj.tags,
     canonicalTitle,
