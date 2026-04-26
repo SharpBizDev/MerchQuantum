@@ -3,6 +3,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PROVIDER_OPTIONS, type ProviderChoiceId } from "../../lib/providers/client-options";
 import { getUserFacingErrorMessage, logErrorToConsole, type UserFacingErrorKind } from "../../lib/user-facing-errors";
+import {
+  QuantumRouteError,
+  createQuantumRouteTelemetry,
+  requestAiListing,
+  useQuantumRouteTelemetry,
+} from "../../lib/client/quantum-routes";
 
 const BOOT_TAGLINE = "EFFORTLESS PRODUCT CREATION.";
 const ACTIVE_BATCH_FILES = 50;
@@ -1931,9 +1937,23 @@ export default function MerchQuantumApp() {
   const [editableTitleDraft, setEditableTitleDraft] = useState("");
   const [editableDescriptionDraft, setEditableDescriptionDraft] = useState("");
   const [inlineSaveFeedback, setInlineSaveFeedback] = useState<InlineSaveFeedback | null>(null);
-  const [aiAssistStatus, setAiAssistStatus] = useState("");
+  const {
+    telemetry: aiAssistTelemetry,
+    setTelemetry: setAiAssistTelemetry,
+    clearTelemetry: clearAiAssistTelemetry,
+    activateTelemetry: activateAiAssistTelemetry,
+  } = useQuantumRouteTelemetry();
   const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
   const [activeGridProductId, setActiveGridProductId] = useState("");
+
+  const setAiAssistStatus = useCallback((message: string) => {
+    if (!message.trim()) {
+      clearAiAssistTelemetry();
+      return;
+    }
+
+    activateAiAssistTelemetry("listing", message);
+  }, [activateAiAssistTelemetry, clearAiAssistTelemetry]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -2389,39 +2409,34 @@ export default function MerchQuantumApp() {
           : img
       )
     );
+    setAiAssistTelemetry(
+      createQuantumRouteTelemetry(
+        "listing",
+        "active",
+        options.pendingReason || "Quantum AI is analyzing artwork.",
+        null
+      )
+    );
 
     try {
       const imageDataUrl = await readDataUrl(nextImage.file);
       const requestProductFamily = nextImage.productFamilyOverride || resolveProductFamily(nextImage.cleaned, requestTemplateDescription);
       const sterileTemplateContext = buildTemplateContext(requestTemplateDescription, requestProductFamily);
       const legacyContext = options.legacyContext || buildLegacyContextForImage(nextImage);
-      const response = await fetchWithTimeout(
-        "/api/ai/listing",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            imageDataUrl,
-            title: options.titleSeed || nextImage.originalListingTitle || undefined,
-            fileName: nextImage.name,
-            templateContext: sterileTemplateContext,
-            productFamily: requestProductFamily,
-            userHints: options.userHints?.length ? options.userHints : undefined,
-            legacyContext,
-          }),
-        },
-        60000
-      );
-
-      const data = await parseResponsePayload(response);
-      if (!response.ok) throw new Error(data?.error || `AI request failed with status ${response.status}.`);
+      const data = await requestAiListing({
+        imageDataUrl,
+        title: options.titleSeed || nextImage.originalListingTitle || undefined,
+        fileName: nextImage.name,
+        templateContext: sterileTemplateContext,
+        productFamily: requestProductFamily,
+        userHints: options.userHints?.length ? options.userHints : undefined,
+        legacyContext,
+      });
       if (requestUsesGlobalTemplate && activeTemplateKeyRef.current !== requestTemplateKey) return;
 
-      const qcApproved = data?.qcApproved !== false;
+      const qcApproved = data.qcApproved;
       if (!qcApproved) {
-        const qcFlags = Array.isArray(data?.reasonFlags)
-          ? data.reasonFlags.filter((flag: unknown): flag is string => typeof flag === "string")
-          : [];
+        const qcFlags = data.reasonFlags;
         const message = qcFlags.length
           ? qcFlags.join(" • ")
           : "Quantum AI rejected this artwork because the design appears blank, illegible, or too distorted for safe listing generation.";
@@ -2469,16 +2484,16 @@ export default function MerchQuantumApp() {
             };
           })
         );
-        setAiAssistStatus(message);
+        setAiAssistTelemetry(createQuantumRouteTelemetry("listing", "fatal", message, null));
         return;
       }
 
       const fallbackTitle = clampTitleForListing(safeTitle(nextImage.final, nextImage.cleaned));
-      const titleFromApi = typeof data?.title === "string" ? data.title : "";
+      const titleFromApi = data.title;
       const finalTitle = clampTitleForListing(safeTitle(titleFromApi, fallbackTitle));
-      const descriptionText = clampDescriptionForListing(normalizeDescriptionText(data?.description));
+      const descriptionText = clampDescriptionForListing(normalizeDescriptionText(data.description));
       const descriptionParagraphs = normalizeAiLeadParagraphs(
-        Array.isArray(data?.leadParagraphs)
+        data.leadParagraphs.length
           ? data.leadParagraphs
           : descriptionTextToParagraphs(descriptionText)
       );
@@ -2487,29 +2502,28 @@ export default function MerchQuantumApp() {
           requestTemplateDescription.trim()
             ? formatProductDescriptionWithSections(descriptionParagraphs, requestTemplateDescription)
             : buildLeadOnlyDescription(descriptionParagraphs)
-        )
+      )
         : "";
-      const tags = normalizeTagsFromPayload(data?.tags).slice(0, LISTING_LIMITS.tagCount);
+      const tags = normalizeTagsFromPayload(data.tags).slice(0, LISTING_LIMITS.tagCount);
       const finalLead = descriptionParagraphs;
-      const confidence = Number.isFinite(data?.confidence) ? clamp(Number(data.confidence), 0, 1) : 0;
-      const reasonFlags = Array.isArray(data?.reasonFlags)
-        ? data.reasonFlags.filter((flag: unknown) => typeof flag === "string")
-        : [];
-      const grade = data?.grade === "green" || data?.grade === "red"
-        ? data.grade
-        : data?.publishReady === true
-          ? "green"
-          : "red";
-      const source = data?.source === "gemini" || data?.source === "fallback"
-        ? data.source
-        : "fallback";
-      const publishReady =
-        typeof data?.publishReady === "boolean"
-          ? data.publishReady
-          : qcApproved && grade === "green";
+      const confidence = clamp(Number(data.confidence), 0, 1);
+      const reasonFlags = data.reasonFlags;
+      const grade = data.grade;
+      const source = data.source;
+      const publishReady = data.publishReady;
       const hasCompleteStructuredOutput = !!finalTitle && !!finalDescription && tags.length > 0;
       if (!hasCompleteStructuredOutput) {
-        throw new Error("Quantum AI returned incomplete structured output.");
+        throw new QuantumRouteError(
+          "listing",
+          502,
+          "HTTP 502: Quantum AI returned incomplete structured output.",
+          createQuantumRouteTelemetry(
+            "listing",
+            "fatal",
+            "HTTP 502: Quantum AI returned incomplete structured output.",
+            502
+          )
+        );
       }
       const nextFieldStates: AiFieldStates = publishReady
         ? {
@@ -2604,7 +2618,7 @@ export default function MerchQuantumApp() {
                 aiDraft: {
                   title: targetField === "description" ? (img.aiDraft?.title || currentVisibleTitle) : finalTitle,
                   leadParagraphs: targetField === "title" ? (img.aiDraft?.leadParagraphs || finalLead) : finalLead,
-                  model: typeof data?.model === "string" ? data.model : AI_MODEL_LABEL,
+                  model: data.model || AI_MODEL_LABEL,
                   confidence,
                   templateReference: requestTemplateReference,
                   reasonFlags,
@@ -2617,10 +2631,36 @@ export default function MerchQuantumApp() {
             : img
         )
       );
-      setAiAssistStatus(options.successMessage || "");
+      const successMessage =
+        options.successMessage
+        || (
+          targetField === "title"
+            ? "Quantum AI refreshed the title."
+            : targetField === "description"
+              ? "Quantum AI refreshed the description."
+              : publishReady
+                ? source === "fallback"
+                  ? "Quantum AI produced a publish-ready fallback draft."
+                  : "Quantum AI returned a publish-ready draft."
+                : nextStatusReason
+        );
+      const successTone = options.successMessage || targetField !== "full" || publishReady ? "success" : "fatal";
+      setAiAssistTelemetry(
+        createQuantumRouteTelemetry(
+          "listing",
+          successTone,
+          successMessage,
+          successTone === "success" ? 200 : null
+        )
+      );
     } catch (error) {
       if (requestUsesGlobalTemplate && activeTemplateKeyRef.current !== requestTemplateKey) return;
-      const message = formatApiError("listingGeneration", error, "[MerchQuantum] AI listing failed");
+      const message =
+        error instanceof QuantumRouteError
+          ? error.telemetry.message
+          : error instanceof Error
+            ? error.message
+            : "HTTP 500: Client routing failure.";
       setImages((current) =>
         current.map((img) => {
           if (img.id !== nextImage.id) return img;
@@ -2662,7 +2702,11 @@ export default function MerchQuantumApp() {
           };
         })
       );
-      setAiAssistStatus(message);
+      setAiAssistTelemetry(
+        error instanceof QuantumRouteError
+          ? error.telemetry
+          : createQuantumRouteTelemetry("listing", "fatal", message, 500)
+      );
     } finally {
       if (aiLoopBusyRef.current === requestOwner) {
         aiLoopBusyRef.current = null;
@@ -3029,7 +3073,7 @@ export default function MerchQuantumApp() {
   useEffect(() => {
     setEditingField(null);
     setInlineSaveFeedback(null);
-    setAiAssistStatus("");
+    clearAiAssistTelemetry();
   }, [selectedId, template?.reference]);
 
   useEffect(() => {
@@ -3094,7 +3138,7 @@ export default function MerchQuantumApp() {
     setRunStatus("");
     setEditingField(null);
     setInlineSaveFeedback(null);
-    setAiAssistStatus("");
+    clearAiAssistTelemetry();
     setSelectedImportIds([]);
     setImportStatus("");
     setIsImportingListings(false);
@@ -3116,7 +3160,7 @@ export default function MerchQuantumApp() {
     setBatchResults([]);
     setRunStatus("");
     setImportStatus("");
-    setAiAssistStatus("");
+    clearAiAssistTelemetry();
     setManualPrebufferOverride(false);
   }
 
@@ -4635,9 +4679,9 @@ export default function MerchQuantumApp() {
                                     {descriptionFeedback.message}
                                   </p>
                                 ) : null}
-                                {aiAssistStatus && selectedImage ? (
-                                  <p className={`text-xs ${canManualRescueSelectedImage ? "text-slate-100" : "text-slate-100"}`}>
-                                    {aiAssistStatus}
+                                {aiAssistTelemetry?.message && selectedImage ? (
+                                  <p className="text-xs" style={{ color: aiAssistTelemetry.color }}>
+                                    {aiAssistTelemetry.message}
                                   </p>
                                 ) : null}
                               </div>
