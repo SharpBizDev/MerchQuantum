@@ -4485,7 +4485,7 @@ export default function MerchQuantumApp() {
                                   type="button"
                                   onClick={triggerDescriptionAction}
                                   disabled={descriptionActionDisabled}
-                                  className={`text-[10px] leading-none font-sans font-normal px-2 py-1 flex items-center justify-center whitespace-nowrap shrink-0 border border-gray-600/50 rounded text-gray-300 transition-colors duration-200 ${
+                                  className={`text-[8px] leading-none font-sans font-normal px-1.5 py-0.5 flex items-center justify-center whitespace-nowrap shrink-0 border border-gray-600/50 rounded-sm text-gray-300 transition-colors duration-200 ${
                                     descriptionActionReady
                                       ? "bg-purple-600 cursor-pointer hover:bg-purple-500"
                                       : "bg-gray-800/80 cursor-wait"
