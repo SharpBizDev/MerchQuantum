@@ -4485,10 +4485,10 @@ export default function MerchQuantumApp() {
                                   type="button"
                                   onClick={triggerDescriptionAction}
                                   disabled={descriptionActionDisabled}
-                                  className={`text-[12px] leading-none font-sans font-normal px-2.5 py-1.5 flex items-center justify-center whitespace-nowrap shrink-0 border rounded-md transition-colors duration-200 ${
+                                  className={`text-[12px] leading-none font-sans font-normal px-2.5 py-1.5 flex items-center justify-center whitespace-nowrap shrink-0 border border-gray-600/50 rounded-md text-gray-300 transition-colors duration-200 ${
                                     descriptionActionReady
-                                      ? "bg-purple-600 border-purple-500 text-white cursor-pointer hover:bg-purple-500"
-                                      : "bg-gray-800/80 border-gray-600/50 text-gray-300 cursor-wait opacity-80"
+                                      ? "bg-purple-600 cursor-pointer hover:bg-purple-500"
+                                      : "bg-gray-800/80 cursor-wait"
                                   }`}
                                 >
                                   Publish
