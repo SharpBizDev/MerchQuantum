@@ -11,8 +11,8 @@ const BOOT_TAGLINE = "EFFORTLESS PRODUCT CREATION.";
 const ACTIVE_BATCH_FILES = 50;
 const CONNECTED_TOTAL_BATCH_FILES = 50;
 const FIXED_TAG_COUNT = 13;
-const BRAND_WORDMARK_TEXT_CLASSES = "text-[3.5rem] sm:text-[4rem]";
-const BRAND_TAGLINE_TEXT_CLASSES = "text-xs";
+const BRAND_WORDMARK_TEXT_CLASSES = "text-3xl sm:text-4xl";
+const BRAND_TAGLINE_TEXT_CLASSES = "text-[12px]";
 const DETAIL_DATA_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-white";
 const WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY = "mq-workspace-selection-condensed";
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
@@ -1498,8 +1498,8 @@ function CreativeWellspringBrandMark({
 }) {
   if (docked) {
     return (
-      <div className={`mt-auto py-8 flex flex-col items-center justify-center gap-2 text-center ${className}`.trim()}>
-        <div className={`flex items-center gap-x-2 ${BRAND_WORDMARK_TEXT_CLASSES}`}>
+      <div className={`mt-auto py-4 flex flex-col items-center justify-center gap-1 text-center ${className}`.trim()}>
+        <div className={`flex items-center gap-x-1 ${BRAND_WORDMARK_TEXT_CLASSES}`}>
           <span className="font-bold tracking-tighter text-[#7F22FE]">Merch</span>
           <span className="font-bold tracking-tighter text-white">Quantum</span>
         </div>
@@ -4486,7 +4486,7 @@ export default function MerchQuantumApp() {
                                   type="button"
                                   onClick={triggerDescriptionAction}
                                   disabled={descriptionActionDisabled}
-                                  className="text-[12px] leading-none px-3 py-1.5 flex items-center justify-center bg-gray-800/80 border border-gray-600/50 rounded-md whitespace-nowrap cursor-pointer hover:bg-gray-700/80 transition-colors text-purple-400 font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+                                  className="text-[12px] leading-none px-2.5 py-1.5 flex shrink-0 items-center justify-center text-purple-400 bg-gray-800/80 border border-gray-600/50 rounded-md whitespace-nowrap font-sans font-normal cursor-pointer hover:bg-gray-700/80 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                                 >
                                   Upload
                                 </button>
