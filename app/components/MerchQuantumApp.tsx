@@ -1920,11 +1920,14 @@ export default function MerchQuantumApp() {
   const [isWorkspaceSelectionCollapsed, setIsWorkspaceSelectionCollapsed] = useState(getStoredWorkspaceSelectionCondensed);
   const [isImportingListings, setIsImportingListings] = useState(false);
   const [, setImportStatus] = useState("");
+  const [isSyncingImportedListings, setIsSyncingImportedListings] = useState(false);
+  const [isPublishingImportedListings, setIsPublishingImportedListings] = useState(false);
   const [images, setImages] = useState<Img[]>([]);
   const [completedImportedImages, setCompletedImportedImages] = useState<Img[]>([]);
   const [queuedImages, setQueuedImages] = useState<Img[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [, setRunStatus] = useState("");
+  const [isRunningBatch, setIsRunningBatch] = useState(false);
   const [, setBatchResults] = useState<BatchResult[]>([]);
   const [attentionTarget, setAttentionTarget] = useState<"provider" | "token" | "import" | "shop" | "template" | "mode" | null>(null);
   const [editingField, setEditingField] = useState<InlineEditableField>(null);
@@ -1948,6 +1951,8 @@ export default function MerchQuantumApp() {
   const isCreateMode = workspaceMode === "create";
   const isBulkEditMode = workspaceMode === "edit";
   const supportsProviderMetadataSync = resolvedProviderId === "printify";
+  const supportsImportedListingSync = resolvedProviderId === "printify" || resolvedProviderId === "printful";
+  const supportsImportedPublish = resolvedProviderId === "printify";
   const totalBatchLimit = CONNECTED_TOTAL_BATCH_FILES;
   const activeBatchLimit = ACTIVE_BATCH_FILES;
   const allImages = useMemo(() => [...completedImportedImages, ...images], [completedImportedImages, images]);
@@ -2015,11 +2020,13 @@ export default function MerchQuantumApp() {
   const readyCount = images.filter((img) => getResolvedItemStatus(img) === "ready").length;
   const errorCount = images.filter((img) => getResolvedItemStatus(img) === "error").length;
   const processingCount = images.filter((img) => getResolvedItemStatus(img) === "pending").length;
+  const draftReadyCount = images.filter((img) => img.sourceType !== "imported" && getResolvedItemStatus(img) === "ready").length;
   const hasAnyLoadedImages = allImages.length > 0 || queuedImages.length > 0;
   const completedGenerationCount = readyCount + errorCount;
   const generationProgressPct = images.length > 0 ? Math.round((completedGenerationCount / images.length) * 100) : 0;
   const isWorkspaceConfigured = isCreateMode ? connected && !!shopId && !!template : hasWorkspaceRoute;
   const canSubmitProviderConnection = Boolean(provider && isLiveProvider && token.trim() && !loadingApi && !connected);
+  const isQuantumAiGenerating = processingCount > 0;
   const canShowDetailWorkspace = hasWorkspaceRoute;
   const canShowWorkspacePreview = isCreateMode
     ? canShowDetailWorkspace && (!!activeGridProduct || hasAnyLoadedImages)
@@ -2120,6 +2127,7 @@ export default function MerchQuantumApp() {
   const detailTags = selectedImage && selectedImageFieldStates.tags === "ready"
     ? selectedImage.tags
     : [];
+  const approvedImportedItems = allImages.filter((img) => img.sourceType === "imported" && getResolvedItemStatus(img) === "ready");
   const importedProductIds = useMemo(
     () => new Set([...allImages, ...queuedImages].map((img) => img.providerProductId).filter((value): value is string => !!value)),
     [allImages, queuedImages]
@@ -2178,6 +2186,23 @@ export default function MerchQuantumApp() {
     ? `${safeCreateThumbPage * createThumbPageSize + 1}-${Math.min(sortedImages.length, safeCreateThumbPage * createThumbPageSize + visibleCreateThumbnails.length)} of ${sortedImages.length}`
     : "0 of 0";
   const workspaceModePickerLabel = isCreateMode ? "Bulk Create" : isBulkEditMode ? "Bulk Edit" : "Edit mode";
+  const uploadDisabled = !isCreateMode || !isWorkspaceConfigured || draftReadyCount === 0 || isRunningBatch || isQuantumAiGenerating;
+  const bulkEditPublishDisabled =
+    !isBulkEditMode
+    || approvedImportedItems.length === 0
+    || isSyncingImportedListings
+    || isPublishingImportedListings
+    || isQuantumAiGenerating
+    || (!supportsImportedListingSync && !supportsImportedPublish);
+  const descriptionActionDisabled = isCreateMode ? uploadDisabled : bulkEditPublishDisabled;
+  const descriptionActionReady = !descriptionActionDisabled;
+  const triggerDescriptionAction = () => {
+    if (isCreateMode) {
+      void runDraftBatch();
+      return;
+    }
+    void runBulkEditPublishAction();
+  };
   const routingGuidanceTarget =
     !provider
       ? "provider"
@@ -3541,6 +3566,332 @@ export default function MerchQuantumApp() {
     }
   }
 
+  async function syncImportedItems(items: Img[], options: { announce?: boolean } = {}) {
+    const announce = options.announce !== false;
+
+    if (!resolvedProviderId || !shopId || items.length === 0) {
+      return { syncedItems: [] as Img[], failedCount: 0 };
+    }
+
+    if (!supportsImportedListingSync) {
+      if (announce) {
+        setImportStatus(`${selectedProvider?.label || "This provider"} metadata sync is not available in this pass yet.`);
+      }
+      return { syncedItems: [] as Img[], failedCount: items.length };
+    }
+
+    setIsSyncingImportedListings(true);
+    if (announce) {
+      setImportStatus(`Syncing ${items.length} approved listing${items.length === 1 ? "" : "s"} back to ${selectedProvider?.label || "the provider"}...`);
+    }
+
+    let syncedCount = 0;
+    let failedCount = 0;
+    const syncedItems: Img[] = [];
+
+    for (const item of items) {
+      if (!item.providerProductId) {
+        failedCount += 1;
+        continue;
+      }
+
+      setImages((current) =>
+        current.map((img) =>
+          img.id === item.id
+            ? {
+                ...img,
+                syncState: "syncing",
+                syncMessage: "Syncing SEO rewrite to provider...",
+              }
+            : img
+        )
+      );
+
+      try {
+        const requestBody: Record<string, unknown> = {
+          provider: resolvedProviderId,
+          shopId,
+          productId: item.providerProductId,
+          title: item.final,
+        };
+
+        if (resolvedProviderId === "printify") {
+          requestBody.description = item.finalDescription;
+          requestBody.tags = item.tags;
+        }
+
+        const response = await fetchWithTimeout(
+          "/api/update-listing-metadata",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(requestBody),
+          },
+          60000
+        );
+        const data = await parseResponsePayload(response);
+        if (!response.ok) {
+          throw new Error(data?.error || `Metadata sync failed with status ${response.status}.`);
+        }
+
+        syncedCount += 1;
+        syncedItems.push(item);
+        setImages((current) =>
+          current.map((img) =>
+            img.id === item.id
+              ? {
+                  ...img,
+                  syncState: "synced",
+                  syncMessage: "Provider metadata is synced.",
+                }
+              : img
+          )
+        );
+      } catch (error) {
+        failedCount += 1;
+        const message = formatApiError("metadataSave", error, "[MerchQuantum] metadata sync failed");
+        setImages((current) =>
+          current.map((img) =>
+            img.id === item.id
+              ? {
+                  ...img,
+                  syncState: "error",
+                  syncMessage: message,
+                }
+              : img
+          )
+        );
+      }
+    }
+
+    if (announce) {
+      setImportStatus(
+        failedCount > 0
+          ? `Synced ${syncedCount} approved listing${syncedCount === 1 ? "" : "s"} and flagged ${failedCount} for manual review.`
+          : `Synced ${syncedCount} approved listing${syncedCount === 1 ? "" : "s"} back to ${selectedProvider?.label || "the provider"}.`
+      );
+    }
+    setIsSyncingImportedListings(false);
+    return { syncedItems, failedCount };
+  }
+
+  async function publishImportedItems(items: Img[]) {
+    if (!resolvedProviderId || !shopId || items.length === 0) {
+      setImportStatus("Sync approved listings before sending them to the provider publish step.");
+      return;
+    }
+
+    if (!supportsImportedPublish) {
+      setImportStatus(`${selectedProvider?.label || "This provider"} direct publishing is not available in this pass yet.`);
+      return;
+    }
+
+    const publishableProductIds = new Set(
+      items.map((item) => item.providerProductId).filter((value): value is string => !!value)
+    );
+    if (publishableProductIds.size === 0) {
+      setImportStatus("Sync approved listings before sending them to the provider publish step.");
+      return;
+    }
+
+    setIsPublishingImportedListings(true);
+    setImportStatus(`Publishing ${publishableProductIds.size} synced approved listing${publishableProductIds.size === 1 ? "" : "s"}...`);
+
+    try {
+      const response = await fetchWithTimeout(
+        "/api/providers/publish-listings",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            provider: resolvedProviderId,
+            shopId,
+            items: items.map((item) => ({
+              productId: item.providerProductId,
+              title: item.final,
+              description: item.finalDescription,
+              tags: item.tags,
+              publishReady: item.aiDraft?.publishReady === true,
+              qcApproved: item.aiDraft?.qcApproved !== false,
+            })),
+          }),
+        },
+        60000
+      );
+      const data = await parseResponsePayload(response);
+      if (!response.ok) {
+        throw new Error(data?.error || `Publish request failed with status ${response.status}.`);
+      }
+
+      const results = Array.isArray(data?.results) ? data.results : [];
+      const publishedIds = new Set<string>();
+      const errorMessages = new Map<string, string>();
+
+      for (const entry of results) {
+        const productId = String(entry?.productId || "").trim();
+        const message = String(entry?.message || "").trim();
+        if (!productId) continue;
+        if (/accepted/i.test(message)) {
+          publishedIds.add(productId);
+        } else if (message) {
+          errorMessages.set(productId, message);
+        }
+      }
+
+      setImages((current) =>
+        current.map((img) => {
+          if (!img.providerProductId || !publishableProductIds.has(img.providerProductId)) {
+            return img;
+          }
+
+          if (publishedIds.has(img.providerProductId)) {
+            return {
+              ...img,
+              syncMessage: "Provider publish request accepted.",
+            };
+          }
+
+          if (errorMessages.has(img.providerProductId)) {
+            return {
+              ...img,
+              syncState: "error",
+              syncMessage: formatApiError(
+                "listingPublish",
+                errorMessages.get(img.providerProductId) || null,
+                "[MerchQuantum] publish listing failed"
+              ),
+            };
+          }
+
+          return img;
+        })
+      );
+
+      const failedCount = errorMessages.size;
+      setImportStatus(
+        failedCount > 0
+          ? `Published ${publishedIds.size} listing${publishedIds.size === 1 ? "" : "s"} and left ${failedCount} flagged for follow-up.`
+          : `Published ${publishedIds.size} approved listing${publishedIds.size === 1 ? "" : "s"} to ${selectedProvider?.label || "the provider"}.`
+      );
+    } catch (error) {
+      setImportStatus(formatApiError("listingPublish", error, "[MerchQuantum] publish listings failed"));
+    } finally {
+      setIsPublishingImportedListings(false);
+    }
+  }
+
+  async function runBulkEditPublishAction() {
+    if (approvedImportedItems.length === 0) {
+      setImportStatus("Approve at least one rescued listing before publishing.");
+      return;
+    }
+
+    if (supportsImportedPublish) {
+      setImportStatus(`Preparing ${approvedImportedItems.length} approved listing${approvedImportedItems.length === 1 ? "" : "s"} for publish...`);
+      const { syncedItems } = await syncImportedItems(approvedImportedItems, { announce: false });
+      if (syncedItems.length === 0) {
+        setImportStatus("No approved rescued listings were ready to publish after provider sync.");
+        return;
+      }
+      await publishImportedItems(syncedItems);
+      return;
+    }
+
+    if (supportsImportedListingSync) {
+      await syncImportedItems(approvedImportedItems);
+      return;
+    }
+
+    setImportStatus(`${selectedProvider?.label || "This provider"} publishing is not available in this pass yet.`);
+  }
+
+  async function runDraftBatch() {
+    if (!template || !shopId || readyCount === 0 || !isLiveProvider || !resolvedProviderId) return;
+
+    const activeImages = images.filter((img) => img.sourceType !== "imported" && getResolvedItemStatus(img) === "ready");
+    setIsRunningBatch(true);
+    setRunStatus("");
+    setBatchResults([]);
+    const nextResults: BatchResult[] = [];
+
+    try {
+      for (let index = 0; index < activeImages.length; index += 1) {
+        const img = activeImages[index];
+        const titleForUpload = String(img.final || "").trim();
+        const description = String(img.finalDescription || "").trim();
+        const tags = img.tags
+          .map((tag) => String(tag || "").trim())
+          .filter(Boolean);
+
+        setRunStatus(`Uploading draft ${index + 1} of ${activeImages.length}...`);
+
+        try {
+          if (!titleForUpload || !description || tags.length === 0 || img.aiDraft?.publishReady !== true || img.aiDraft?.qcApproved === false) {
+            throw new Error("Only Good items with complete Quantum AI output can be uploaded.");
+          }
+
+          const imageDataUrl = await readDataUrl(img.file);
+          const artworkBounds = img.artworkBounds || (await analyzeArtworkBounds(img.file));
+          if (!img.artworkBounds) {
+            setImages((current) => current.map((entry) => (entry.id === img.id ? { ...entry, artworkBounds } : entry)));
+          }
+
+          const response = await fetchWithTimeout(getProviderRoute("batch-create"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              provider: resolvedProviderId,
+              shopId,
+              templateProductId: template.reference,
+              item: {
+                fileName: img.name,
+                title: titleForUpload,
+                description,
+                tags,
+                imageDataUrl,
+                artworkBounds,
+                publishReady: img.aiDraft?.publishReady === true,
+                qcApproved: true,
+              },
+            }),
+          });
+
+          const data = await parseResponsePayload(response);
+          if (!response.ok) throw new Error(data?.error || `Draft request failed with status ${response.status}.`);
+
+          const result = Array.isArray(data?.results) && data.results[0]
+            ? (data.results[0] as BatchResult)
+            : { fileName: img.name, title: titleForUpload, message: data?.message || "Created draft product." };
+
+          nextResults.push(result);
+          setBatchResults([...nextResults]);
+        } catch (error) {
+          const errorMessage = formatApiError("draftCreate", error, "[MerchQuantum] draft create failed");
+          nextResults.push({ fileName: img.name, title: titleForUpload, message: errorMessage });
+          setBatchResults([...nextResults]);
+        }
+      }
+
+      const createdCount = nextResults.filter((result) => !!result.productId).length;
+      const batchSucceeded = createdCount === activeImages.length && activeImages.length > 0;
+
+      if (batchSucceeded && queuedImages.length > 0) {
+        const nextBatch = queuedImages.slice(0, ACTIVE_BATCH_FILES);
+        const remainingQueue = queuedImages.slice(ACTIVE_BATCH_FILES);
+        setImages(nextBatch);
+        setQueuedImages(remainingQueue);
+        setSelectedId(nextBatch[0]?.id || "");
+        setRunStatus(
+          `Uploaded ${createdCount} draft product${createdCount === 1 ? "" : "s"}. Loaded ${nextBatch.length} queued image${nextBatch.length === 1 ? "" : "s"} next.`
+        );
+      } else {
+        setRunStatus(`Uploaded ${createdCount} draft product${createdCount === 1 ? "" : "s"} out of ${activeImages.length}.`);
+      }
+    } finally {
+      setIsRunningBatch(false);
+    }
+  }
+
   function removePreviewItem(targetId: string) {
     const remainingActive = images.filter((entry) => entry.id !== targetId);
     const { active: nextActive, queued: nextQueued } = fillActiveBatch(remainingActive, queuedImages, activeBatchLimit);
@@ -4123,13 +4474,25 @@ export default function MerchQuantumApp() {
                             </div>
 
                             <div className="flex flex-col gap-2 w-full">
-                              <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center justify-between w-full">
                                 <div className="flex min-h-[20px] min-w-0 flex-1 items-center text-left text-sm font-medium leading-6 tracking-tight text-slate-200">
                                   <span className="inline-flex min-w-0 items-center text-sm font-semibold leading-6">
                                     <span className="text-[#7F22FE]">Quantum</span>
                                     <span className="ml-1 truncate text-white">AI Description</span>
                                   </span>
                                 </div>
+                                <button
+                                  type="button"
+                                  onClick={triggerDescriptionAction}
+                                  disabled={descriptionActionDisabled}
+                                  className={`text-[12px] leading-none font-sans font-normal px-2.5 py-1.5 flex items-center justify-center whitespace-nowrap shrink-0 border rounded-md transition-colors duration-200 ${
+                                    descriptionActionReady
+                                      ? "bg-purple-600 border-purple-500 text-white cursor-pointer hover:bg-purple-500"
+                                      : "bg-gray-800/80 border-gray-600/50 text-gray-300 cursor-wait opacity-80"
+                                  }`}
+                                >
+                                  Publish
+                                </button>
                               </div>
                               <div className="space-y-2">
                                 <div className={`rounded-xl border bg-[#020616] px-3 py-2.5 transition ${DETAIL_DATA_TEXT_CLASSES} ${canEditDetailDescription ? "border-slate-700 hover:border-slate-500 focus-within:border-[#7F22FE] focus-within:ring-2 focus-within:ring-[#7F22FE]/30" : "border-slate-700"}`}>
