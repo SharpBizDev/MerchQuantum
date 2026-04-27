@@ -1,42 +1,30 @@
-# START HERE
+# START_HERE.md: SESSION INITIALIZATION
 
-MerchQuantum reusable baseline repo.
+## 🚨 ATTENTION ALL AGENTS 🚨
+Before processing any user request, you MUST synchronize with the project's Supreme Law.
 
-## Valid working repo path
-- `C:\Users\prog\OneDrive\Documents\New Project`
+### 1. THE BOOT SEQUENCE
+1. **Read:** `MERCH_QUANTUM_MANIFEST.md` (Primary Law & Execution Mandate).
+2. **Read:** `AGENTS.md` (Operational Protocols & F.O.R.C.E. Requirements).
+3. **Scan:** `docs/ARCHITECTURE.md` (System Mapping).
 
-## Read these files first
-1. `AGENTS.md`
-2. `docs/MERCHQUANTUM_RECOVERY.md`
-3. `docs/CONTROL_LAYER_MAP.md`
-4. `docs/ARCHITECTURE.md`
-5. `docs/PROVIDER_RULES.md`
-6. `docs/PROMPT_PLAYBOOK.md`
-7. `docs/HOSTINGER_CLOUD_STARTUP.md` for future deployment direction
+### 2. CORE MISSION
+MerchQuantum is a high-efficiency, bulk Print-on-Demand (POD) creation engine. We prioritize architectural integrity and cost-protection over rapid, sloppy feature delivery.
 
-## Source of truth
-- GitHub `main` is the source of truth.
-- Treat the current repository state as the baseline.
-- Use the live app only as a comparison point.
+### 3. OPERATING CONSTRAINTS
+- **Model Usage:** Respect the user's rate limits and token overhead. 
+- **Code Philosophy:** KISS (Keep It Simple, Stupid). No bloat. No status text. Bulletproof containers.
+- **Provider Integrity:** All external calls must adhere to the Governor rate-limits and Adapter patterns found in `lib/providers/`.
 
-## Current hosting model
-- Vercel is temporary testing/live only.
-- Hostinger Cloud Startup is the likely future managed production target.
-- Hostinger migration is later work, not current work.
+### 4. CURRENT STATE
+- **Development Environment:** Full-stack TypeScript/Next.js.
+- **UI Standard:** 8px/12px Golden Token spacing, Unified Borders, Minimalist UX.
+- **Data Source:** Git/GitHub is the source of truth.
 
-## Hard repo rules
-- Do not create `.codex-*` folders inside the repo root.
-- Do not create nested repo copies or worktrees inside this repo.
-- Do not use `git add -A`.
-- Stage explicit files only.
+### 5. HOW TO COMMUNICATE
+- Provide the PowerShell context for every file operation.
+- Be clear, be direct, and avoid conversational filler.
+- If the F.O.R.C.E. protocol is not followed, the user will reject the output.
 
-## Control-document authority chain
-- `AGENTS.md` sets operating rules and validation discipline.
-- `docs/MERCHQUANTUM_RECOVERY.md` is the strongest restart/control document.
-- `docs/CONTROL_LAYER_MAP.md` is the canonical map of the control layer and reading order.
-- `docs/ARCHITECTURE.md` explains the current app structure.
-- `docs/PROVIDER_RULES.md` defines provider philosophy and no-drift rules.
-- `docs/PROMPT_PLAYBOOK.md` defines safe prompt patterns for future work.
-
-## Practical baseline
-- This repo is the reusable baseline/framework for MerchQuantum and closely related future apps.
+---
+*Last Verified Sync: April 2026*
