@@ -1936,7 +1936,6 @@ export default function MerchQuantumApp() {
   const [inlineSaveFeedback, setInlineSaveFeedback] = useState<InlineSaveFeedback | null>(null);
   const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
   const [activeGridProductId, setActiveGridProductId] = useState("");
-  const detailTagsTrackRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -1944,15 +1943,6 @@ export default function MerchQuantumApp() {
       isWorkspaceSelectionCollapsed ? "1" : "0"
     );
   }, [isWorkspaceSelectionCollapsed]);
-
-  const handleDetailTagsScroll = useCallback((direction: "left" | "right") => {
-    const node = detailTagsTrackRef.current;
-    if (!node) return;
-    node.scrollBy({
-      left: direction === "right" ? 200 : -200,
-      behavior: "smooth",
-    });
-  }, []);
 
   const resolvedProviderId = provider === "spreadconnect" ? "spod" : provider;
   const providerTokenStorageKey = getProviderTokenStorageKey(resolvedProviderId);
@@ -4594,10 +4584,10 @@ export default function MerchQuantumApp() {
                                   </p>
                                 </div>
                               ) : null}
-                              <div className="flex items-center justify-between w-full gap-4">
+                              <div className="flex overflow-hidden w-full relative">
                               <div
-                                ref={detailTagsTrackRef}
-                                className="flex overflow-x-auto gap-2 flex-1 items-center pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                                className="flex w-max gap-2 items-center hover:[animation-play-state:paused]"
+                                style={{ animation: "infinite-scroll 30s linear infinite" }}
                               >
                                 {isDetailTagsLoading ? (
                                   Array.from({ length: LISTING_LIMITS.tagCount }).map((_, index) => (
@@ -4609,9 +4599,9 @@ export default function MerchQuantumApp() {
                                     </div>
                                   ))
                                 ) : detailTags.length > 0 ? (
-                                  detailTags.map((tag, index) => (
+                                  [...detailTags, ...detailTags].map((tag, index) => (
                                     <div
-                                      key={`${selectedImage?.id || productId}-tag-${index}`}
+                                      key={`tag-${index}`}
                                       title={tag}
                                       className="text-[12px] leading-none px-2.5 py-1.5 flex items-center justify-center text-gray-300 bg-gray-800/80 border border-gray-600/50 rounded-md whitespace-nowrap shrink-0 font-sans"
                                     >
@@ -4623,24 +4613,6 @@ export default function MerchQuantumApp() {
                                     Tags will appear after Quantum AI processing completes.
                                   </div>
                                 )}
-                              </div>
-                              <div className="hidden md:flex items-center gap-1 text-gray-400">
-                                <button
-                                  type="button"
-                                  onClick={() => handleDetailTagsScroll("left")}
-                                  className="hover:text-white cursor-pointer transition-colors"
-                                  aria-label="Scroll tags left"
-                                >
-                                  <ChevronIcon open={false} className="h-4 w-4 rotate-90" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDetailTagsScroll("right")}
-                                  className="hover:text-white cursor-pointer transition-colors"
-                                  aria-label="Scroll tags right"
-                                >
-                                  <ChevronIcon open={false} className="h-4 w-4 -rotate-90" />
-                                </button>
                               </div>
                               </div>
                             </div>
@@ -4671,6 +4643,11 @@ export default function MerchQuantumApp() {
           display: none;
           width: 0;
           height: 0;
+        }
+
+        @keyframes infinite-scroll {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
         }
       `}</style>
     </main>
