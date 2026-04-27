@@ -4091,7 +4091,6 @@ export default function MerchQuantumApp() {
             </div>
             </div>
 
-            {apiStatus ? <p className="mt-3 text-sm text-[#FF2056]">{apiStatus}</p> : null}
           </Box>
           </div>
           ) : null}
