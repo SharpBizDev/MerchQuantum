@@ -12,11 +12,13 @@ Adapters are not centralized; they are encapsulated by provider:
 - `lib/providers/spod/adapter.ts`
 - `lib/providers/prodigi/adapter.ts`
 
-## 3. THE GOVERNANCE LAYER
-`lib/providers/governor.ts` acts as the mandatory gatekeeper for all LLM calls to prevent token waste and ensure model-specific rule compliance.
+## 3. THE GOVERNANCE LAYER (CURRENT PHYSICAL STATE)
+- **Provider Traffic:** `lib/providers/governor.ts` acts as the mandatory gatekeeper for all marketplace and provider fulfillment operations.
+- **AI Traffic:** `lib/ai/listing-engine.ts` currently handles AI LLM generation traffic directly (it bypasses the governor).
 
 ## 4. DATA FLOW
-UI (`app/page.tsx`) -> Engine (`lib/ai/listing-engine.ts`) -> Governor -> Adapter -> Marketplace API.
+- **Generation Path:** UI (`app/page.tsx`) -> Engine (`lib/ai/listing-engine.ts`) -> Direct LLM API.
+- **Fulfillment Path:** UI -> Governor (`lib/providers/governor.ts`) -> Adapter -> Marketplace API.
 
 ---
-*STATUS: RE-INDEXED & ACCURATE*
+*STATUS: RE-INDEXED & ABSOLUTE*
