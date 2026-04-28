@@ -22,3 +22,12 @@
 
 ---
 *TIMESTAMP: APRIL 27, 2026 | STATUS: ABSOLUTE*
+## 5. FEATURE-LEVEL PENDING LOG (REHYDRATION DATA)
+- [ ] **UI/Carousel:** Implement 5-image rotating preview in collapsed card state (8px-safe). 
+- [ ] **Grok SEO:** Fix generic/duplicate output bug; requires increased prompt entropy in listing-engine.
+- [ ] **Image Enhancer:** Finalize spec for Computer Vision / Upscaling agent workflow.
+- [ ] **MCP Integration:** Pending Milestone 3 (Specialized Agent File Access).
+- [ ] **Voice Trigger Isolation:** - Trigger "Quant": Bulk/Macro operations only.
+    - Trigger "Merch": Individual/Micro precision refinement only.
+    - Goal: Zero conflict when both layers are active.
+- [ ] **Appliq:** Provider active; awaiting engine audit for POD variant logic (candles/soaps).
