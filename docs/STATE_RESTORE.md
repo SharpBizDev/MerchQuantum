@@ -6,21 +6,19 @@
 - **State:** React Context / Lucide Icons
 - **AI Integration:** Registry-Adapter Pattern (Gemini/Grok/Codex)
 
-## 2. KEY PATHS (CURRENT TRUTH)
-- **Logic Engine:** `lib/engines/listing-engine.ts`
+## 2. KEY PATHS (VERIFIED TRUTH)
+- **Logic Engine:** `lib/ai/listing-engine.ts`
 - **AI Governor:** `lib/providers/governor.ts`
-- **UI Entry:** `app/dashboard/page.tsx`
-- **Doc Center:** `/docs` (8/8 Core Files)
+- **UI Entry:** `app/page.tsx`
+- **Doc Center:** `/docs` (10 Core Files)
 
-## 3. CRITICAL ENVIRONMENT VARS
-Ensure the following are present in `.env.local` before execution:
-- `GEMINI_API_KEY`
-- `GROK_API_KEY`
-- `VERCEL_DEPLOY_HOOK` (if applicable)
+## 3. PROVIDER ARCHITECTURE
+- **Pattern:** Per-provider encapsulation.
+- **Paths:** `lib/providers/[provider_name]/adapter.ts` (e.g., printify, printful, gooten).
 
 ## 4. CURRENT BUILD STATE
 - **Last Refactor:** Unified borders & AI Bloat removal.
-- **Next Task:** High-density Listing Engine audit.
+- **Next Task:** High-density Listing Engine audit in `lib/ai/`.
 
 ---
-*TIMESTAMP: APRIL 27, 2026 | SESSION CONTINUITY: SECURED*
+*TIMESTAMP: APRIL 27, 2026 | STATUS: ABSOLUTE*
