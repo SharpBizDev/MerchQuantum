@@ -7,6 +7,7 @@ The "Truth Pass" is absolute. All 10 core files in the `/docs` Command Center ar
 - **Integrity:** Zero path conflicts remain. Repo-Doc exact-match achieved.
 - **Context:** Transitioning to high-density technical execution.
 - **Architecture:** Registry-First. Governor-Gated. 8px Golden Token UI.
+- **Active Working Directory:** `C:\Users\prog\OneDrive\Documents\New Prodject`
 
 ## 3. SESSION REHYDRATION (MANDATORY)
 1. **Supreme Law:** Read `docs/MERCH_QUANTUM_MANIFEST.md`.

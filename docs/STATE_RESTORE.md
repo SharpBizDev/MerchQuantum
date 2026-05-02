@@ -11,6 +11,7 @@
 - **AI Governor:** `lib/providers/governor.ts`
 - **UI Entry:** `app/page.tsx`
 - **Doc Center:** `/docs` (10 Core Files)
+- **Active Working Directory:** `C:\Users\prog\OneDrive\Documents\New Prodject`
 
 ## 3. PROVIDER ARCHITECTURE
 - **Pattern:** Per-provider encapsulation.
