@@ -139,3 +139,8 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vercel
 .env*.local
+
+# Rust build artifacts
+.cargo-target/
+.tmp/quantum-target/
+target*/
