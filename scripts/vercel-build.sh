@@ -9,9 +9,9 @@ export RUSTUP_HOME="${RUSTUP_HOME:-$ROOT_DIR/.rustup-home}"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT_DIR/.cargo-target/vercel}"
 export PATH="$CARGO_HOME/bin:$PATH"
 
-DX_VERSION="0.6.3"
-DX_ROOT="$ROOT_DIR/.vercel-tools/dx"
-DX_BIN="$DX_ROOT/bin/dx"
+WASM_BINDGEN_VERSION="0.2.120"
+WBG_ROOT="$ROOT_DIR/.vercel-tools/wasm-bindgen"
+WBG_BIN="$WBG_ROOT/bin/wasm-bindgen"
 
 if ! command -v rustup >/dev/null 2>&1; then
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
@@ -20,8 +20,48 @@ fi
 
 rustup target add wasm32-unknown-unknown
 
-if [ ! -x "$DX_BIN" ]; then
-  cargo install dioxus-cli --version "$DX_VERSION" --root "$DX_ROOT" --locked
+if [ ! -x "$WBG_BIN" ]; then
+  cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --root "$WBG_ROOT" --locked
 fi
 
-"$DX_BIN" build --release --platform web
+cargo build --release --target wasm32-unknown-unknown --no-default-features --features web -j 1
+
+rm -rf dist
+mkdir -p dist
+
+"$WBG_BIN" \
+  --target web \
+  --no-typescript \
+  --out-dir dist \
+  "$CARGO_TARGET_DIR/wasm32-unknown-unknown/release/quantum_core.wasm"
+
+cat > dist/index.html <<'EOF'
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ContextQuantum</title>
+    <meta name="color-scheme" content="dark" />
+    <style>
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background: #0b0f19;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import init from "./quantum_core.js";
+      init();
+    </script>
+  </body>
+</html>
+EOF
+
+if [ -d assets ]; then
+  mkdir -p dist/assets
+  cp -R assets/. dist/assets/
+fi
+

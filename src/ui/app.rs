@@ -8,9 +8,9 @@ use crate::vault::QuantumVault;
 use crate::APP_RUNTIME;
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
 use dioxus::desktop::use_window;
-use serde::Serialize;
 use dioxus::prelude::*;
 use futures_util::StreamExt;
+use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
@@ -836,7 +836,9 @@ pub fn ContextQuantumApp() -> Element {
         .unwrap_or_else(|| "context-quantum-drafts".to_string());
     let persisted_mode = persisted_workspace_mode(&persisted_connections);
     let persisted_platforms = persisted_platform_set(&persisted_connections);
-    let persisted_quantum_blast = persisted_connections.iter().any(|entry| entry == "quantum_blast:armed");
+    let persisted_quantum_blast = persisted_connections
+        .iter()
+        .any(|entry| entry == "quantum_blast:armed");
     let persisted_selected_asset_id = persisted_state
         .selected_asset_id
         .as_deref()
@@ -857,13 +859,12 @@ pub fn ContextQuantumApp() -> Element {
     let selected_ids = use_signal(BTreeSet::<u64>::new);
     let pending_imports = use_signal(seed_pending_imports);
     let batch_draft = use_signal(BatchMetadataDraft::default);
-    let banner = use_signal(|| {
-        persisted_state
-            .logs
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "Drop images or click-import to stage your next batch.".to_string())
-    });
+    let banner =
+        use_signal(|| {
+            persisted_state.logs.first().cloned().unwrap_or_else(|| {
+                "Drop images or click-import to stage your next batch.".to_string()
+            })
+        });
     let pipeline_status = use_signal(PipelineStatus::default);
     let selected_provider = use_signal(|| persisted_provider.clone());
     let shop_choice = use_signal(|| persisted_shop.clone());
@@ -871,26 +872,30 @@ pub fn ContextQuantumApp() -> Element {
     let quantum_blast = use_signal(|| persisted_quantum_blast);
 
     let mut pipeline_state = pipeline_status;
-    let pipeline = use_coroutine(move |mut rx: UnboundedReceiver<PipelineCommand>| async move {
-        while let Some(cmd) = rx.next().await {
-            match cmd {
-                PipelineCommand::ImagesStaged { count } => pipeline_state.set(PipelineStatus {
-                    phase: PipelinePhase::Intake,
-                    queued_jobs: count,
-                    completed_jobs: 0,
-                    blocked_jobs: 0,
-                    note: format!("{count} image assets staged for template fan-out."),
-                }),
-                PipelineCommand::PublishQueued { count } => pipeline_state.set(PipelineStatus {
-                    phase: PipelinePhase::Publishing,
-                    queued_jobs: count,
-                    completed_jobs: count,
-                    blocked_jobs: 0,
-                    note: format!("Publish armed for {count} listings."),
-                }),
+    let pipeline = use_coroutine(
+        move |mut rx: UnboundedReceiver<PipelineCommand>| async move {
+            while let Some(cmd) = rx.next().await {
+                match cmd {
+                    PipelineCommand::ImagesStaged { count } => pipeline_state.set(PipelineStatus {
+                        phase: PipelinePhase::Intake,
+                        queued_jobs: count,
+                        completed_jobs: 0,
+                        blocked_jobs: 0,
+                        note: format!("{count} image assets staged for template fan-out."),
+                    }),
+                    PipelineCommand::PublishQueued { count } => {
+                        pipeline_state.set(PipelineStatus {
+                            phase: PipelinePhase::Publishing,
+                            queued_jobs: count,
+                            completed_jobs: count,
+                            blocked_jobs: 0,
+                            note: format!("Publish armed for {count} listings."),
+                        })
+                    }
+                }
             }
-        }
-    });
+        },
+    );
 
     use_effect({
         let mut active_platforms = active_platforms;
@@ -899,7 +904,9 @@ pub fn ContextQuantumApp() -> Element {
             if quantum_blast() {
                 let mut platforms = active_platforms.write();
                 let needs_sync = platforms.len() != PLATFORM_OPTIONS.len()
-                    || PLATFORM_OPTIONS.iter().any(|platform| !platforms.contains(*platform));
+                    || PLATFORM_OPTIONS
+                        .iter()
+                        .any(|platform| !platforms.contains(*platform));
                 if needs_sync {
                     platforms.clear();
                     for platform in PLATFORM_OPTIONS {
@@ -970,13 +977,17 @@ pub fn ContextQuantumApp() -> Element {
         move |_| {
             let provider = selected_provider();
             if provider.trim().is_empty() {
-                banner.set("Choose a Provider Valve before firing the Omni-Blast rail.".to_string());
+                banner
+                    .set("Choose a Provider Valve before firing the Omni-Blast rail.".to_string());
                 return;
             }
 
             let platforms = active_platforms().iter().cloned().collect::<Vec<_>>();
             if platforms.is_empty() {
-                banner.set("Select at least one target platform before forging the payload matrix.".to_string());
+                banner.set(
+                    "Select at least one target platform before forging the payload matrix."
+                        .to_string(),
+                );
                 return;
             }
 
@@ -992,7 +1003,9 @@ pub fn ContextQuantumApp() -> Element {
                 .cloned()
                 .collect::<Vec<_>>();
             if ready_items.is_empty() {
-                banner.set("No publish-ready items are armed for the Omni-Blast queue yet.".to_string());
+                banner.set(
+                    "No publish-ready items are armed for the Omni-Blast queue yet.".to_string(),
+                );
                 return;
             }
 
@@ -1006,8 +1019,7 @@ pub fn ContextQuantumApp() -> Element {
 
             banner.set(format!(
                 "Quantum blast queued for {} ready item(s) across {} platform(s).",
-                item_count,
-                platform_count
+                item_count, platform_count
             ));
             pipeline.send(PipelineCommand::PublishQueued { count: item_count });
 
@@ -1037,7 +1049,10 @@ pub fn ContextQuantumApp() -> Element {
                     }
                 });
             } else {
-                println!("BLASTING {} ITEMS TO {} PLATFORMS.", item_count, platform_count);
+                println!(
+                    "BLASTING {} ITEMS TO {} PLATFORMS.",
+                    item_count, platform_count
+                );
                 if let Some(metadata) = first_metadata.as_ref() {
                     match serde_json::to_string_pretty(metadata) {
                         Ok(serialized) => println!(
@@ -1115,29 +1130,51 @@ pub fn ContextQuantumApp() -> Element {
         move |imports: Vec<ImportedImageStub>| {
             #[cfg(target_arch = "wasm32")]
             let accepted = {
-                let accepted = imports.into_iter().filter(|item| item.mime_hint.is_some()).take(100).collect::<Vec<_>>();
-                if accepted.is_empty() { wasm_demo_payload() } else { accepted }
+                let accepted = imports
+                    .into_iter()
+                    .filter(|item| item.mime_hint.is_some())
+                    .take(100)
+                    .collect::<Vec<_>>();
+                if accepted.is_empty() {
+                    wasm_demo_payload()
+                } else {
+                    accepted
+                }
             };
             #[cfg(not(target_arch = "wasm32"))]
-            let accepted = imports.into_iter().filter(|item| item.mime_hint.is_some()).take(100).collect::<Vec<_>>();
+            let accepted = imports
+                .into_iter()
+                .filter(|item| item.mime_hint.is_some())
+                .take(100)
+                .collect::<Vec<_>>();
             let count = accepted.len();
             if count == 0 {
-                banner.set("No compatible PNG/JPG files were detected in the dropped batch.".to_string());
+                banner.set(
+                    "No compatible PNG/JPG files were detected in the dropped batch.".to_string(),
+                );
                 return;
             }
 
             let existing_items = items();
             let first_new_index = existing_items.len();
-            let starting_client_id = existing_items.iter().map(|item| item.client_id).max().unwrap_or(0) + 1;
+            let starting_client_id = existing_items
+                .iter()
+                .map(|item| item.client_id)
+                .max()
+                .unwrap_or(0)
+                + 1;
             let master_packet = resolve_master_packet(&existing_items, master_template_id());
-            let hydrated_items = hydrate_imported_items(&accepted, master_packet.as_ref(), starting_client_id);
+            let hydrated_items =
+                hydrate_imported_items(&accepted, master_packet.as_ref(), starting_client_id);
             let first_new_id = hydrated_items.first().map(|item| item.client_id);
 
             pending_imports.write().extend(accepted);
             items.write().extend(hydrated_items);
             center_index.set(first_new_index);
             active_card_id.set(first_new_id);
-            banner.set(format!("{count} images hydrated into live workbench items."));
+            banner.set(format!(
+                "{count} images hydrated into live workbench items."
+            ));
             pipeline.send(PipelineCommand::ImagesStaged { count });
         }
     };
@@ -1183,28 +1220,34 @@ pub fn ContextQuantumApp() -> Element {
     let _update_active_title = {
         let items = items;
         let active_card_id = active_card_id;
-        move |value: String| mutate_active_item(items, active_card_id(), move |item| {
-            item.packet.forge.title = value.clone();
-            item.dirty = true;
-        })
+        move |value: String| {
+            mutate_active_item(items, active_card_id(), move |item| {
+                item.packet.forge.title = value.clone();
+                item.dirty = true;
+            })
+        }
     };
 
     let _update_active_description = {
         let items = items;
         let active_card_id = active_card_id;
-        move |value: String| mutate_active_item(items, active_card_id(), move |item| {
-            item.packet.forge.description = value.clone();
-            item.dirty = true;
-        })
+        move |value: String| {
+            mutate_active_item(items, active_card_id(), move |item| {
+                item.packet.forge.description = value.clone();
+                item.dirty = true;
+            })
+        }
     };
 
     let _update_active_tags = {
         let items = items;
         let active_card_id = active_card_id;
-        move |value: String| mutate_active_item(items, active_card_id(), move |item| {
-            item.packet.forge.tags = parse_tags_csv(&value);
-            item.dirty = true;
-        })
+        move |value: String| {
+            mutate_active_item(items, active_card_id(), move |item| {
+                item.packet.forge.tags = parse_tags_csv(&value);
+                item.dirty = true;
+            })
+        }
     };
 
     let apply_batch = {
@@ -1240,7 +1283,8 @@ pub fn ContextQuantumApp() -> Element {
 
                 if !draft.title_prefix.trim().is_empty() {
                     let prefix = draft.title_prefix.trim();
-                    item.packet.forge.title = format!("{prefix} {}", item.packet.forge.title.trim());
+                    item.packet.forge.title =
+                        format!("{prefix} {}", item.packet.forge.title.trim());
                 }
 
                 if !draft.description_append.trim().is_empty() {
@@ -1248,7 +1292,8 @@ pub fn ContextQuantumApp() -> Element {
                     if item.packet.forge.description.trim().is_empty() {
                         item.packet.forge.description = patch.to_string();
                     } else {
-                        item.packet.forge.description = format!("{}\n\n{}", item.packet.forge.description.trim(), patch);
+                        item.packet.forge.description =
+                            format!("{}\n\n{}", item.packet.forge.description.trim(), patch);
                     }
                 }
 
@@ -1267,9 +1312,11 @@ pub fn ContextQuantumApp() -> Element {
     let handle_refinement_change = {
         let items = items;
         let active_card_id = active_card_id;
-        move |asset: crate::models::Asset| mutate_active_item(items, active_card_id(), move |item| {
-            apply_asset_to_workbench_item(item, &asset);
-        })
+        move |asset: crate::models::Asset| {
+            mutate_active_item(items, active_card_id(), move |item| {
+                apply_asset_to_workbench_item(item, &asset);
+            })
+        }
     };
 
     let drag_window = {
@@ -1329,7 +1376,8 @@ pub fn ContextQuantumApp() -> Element {
     let mut batch_tags_draft = batch_draft;
     let mut set_master_action = set_master;
     let mut toggle_select_action = toggle_select;
-    let blast_armed = !provider_missing && !active_platforms().is_empty() && !library_snapshot.is_empty();
+    let blast_armed =
+        !provider_missing && !active_platforms().is_empty() && !library_snapshot.is_empty();
     let orb_pulse = !active_platforms().is_empty();
     let forge_logs = build_quantum_logs(
         &banner(),
@@ -1489,26 +1537,29 @@ pub fn ContextQuantumApp() -> Element {
                                         button {
                                             key: "{template.label}",
                                             class: "template-pill",
-                                            onclick: move |_| {
-                                                let Some(target_id) = active_card_id() else {
-                                                    let mut banner_signal = banner;
-                                                    banner_signal.set("Select an active asset before merging a metadata template.".to_string());
-                                                    return;
-                                                };
-
-                                                let mut item_signal = items;
-                                                let mut banner_signal = banner;
+                                            onclick: {
                                                 let template = template.clone();
-                                                let mut updated = false;
-                                                if let Some(item) = item_signal.write().iter_mut().find(|item| item.client_id == target_id) {
-                                                    let mut asset = asset_from_workbench_item(item);
-                                                    merge_template_into_asset(&mut asset, &template);
-                                                    apply_asset_to_workbench_item(item, &asset);
-                                                    updated = true;
-                                                }
+                                                move |_| {
+                                                    let Some(target_id) = active_card_id() else {
+                                                        let mut banner_signal = banner;
+                                                        banner_signal.set("Select an active asset before merging a metadata template.".to_string());
+                                                        return;
+                                                    };
 
-                                                if updated {
-                                                    banner_signal.set(format!("Template '{}' merged into the active asset.", template.label));
+                                                    let mut item_signal = items;
+                                                    let mut banner_signal = banner;
+                                                    let template = template.clone();
+                                                    let mut updated = false;
+                                                    if let Some(item) = item_signal.write().iter_mut().find(|item| item.client_id == target_id) {
+                                                        let mut asset = asset_from_workbench_item(item);
+                                                        merge_template_into_asset(&mut asset, &template);
+                                                        apply_asset_to_workbench_item(item, &asset);
+                                                        updated = true;
+                                                    }
+
+                                                    if updated {
+                                                        banner_signal.set(format!("Template '{}' merged into the active asset.", template.label));
+                                                    }
                                                 }
                                             },
                                             "{template.label}"
@@ -1540,7 +1591,10 @@ pub fn ContextQuantumApp() -> Element {
 }
 
 #[component]
-pub fn RefinementCockpit(asset: crate::models::Asset, on_change: EventHandler<crate::models::Asset>) -> Element {
+pub fn RefinementCockpit(
+    asset: crate::models::Asset,
+    on_change: EventHandler<crate::models::Asset>,
+) -> Element {
     let title_value = asset_metadata_value(&asset, "title");
     let description_value = asset_metadata_value(&asset, "description");
     let tags_value = asset_metadata_value(&asset, "tags");
@@ -1602,7 +1656,13 @@ pub fn RefinementCockpit(asset: crate::models::Asset, on_change: EventHandler<cr
 }
 
 #[component]
-fn OrbAction(label: String, armed: bool, quantum: bool, pulse: bool, onclick: EventHandler<MouseEvent>) -> Element {
+fn OrbAction(
+    label: String,
+    armed: bool,
+    quantum: bool,
+    pulse: bool,
+    onclick: EventHandler<MouseEvent>,
+) -> Element {
     rsx! { button { class: "cq-orb-action", "data-armed": if armed { "true" } else { "false" }, "data-quantum": if quantum { "true" } else { "false" }, "data-pulse": if pulse { "true" } else { "false" }, onclick: move |evt| onclick.call(evt), "{label}" } }
 }
 
@@ -1630,7 +1690,6 @@ fn MonitorTile(label: String, value: String) -> Element {
         }
     }
 }
-
 
 #[component]
 fn StatusRailNode(label: String, active: bool) -> Element {
@@ -1714,7 +1773,11 @@ fn build_quantum_connections(
     if let Some(id) = master_template_id {
         connections.push(format!("master_template:{id}"));
     }
-    connections.extend(active_platforms.iter().map(|platform| format!("platform:{platform}")));
+    connections.extend(
+        active_platforms
+            .iter()
+            .map(|platform| format!("platform:{platform}")),
+    );
     connections
 }
 
@@ -1742,16 +1805,34 @@ fn build_quantum_assets(items: &[WorkbenchItem]) -> Vec<crate::models::Asset> {
         .map(|item| {
             let mut metadata = std::collections::HashMap::new();
             metadata.insert("title".to_string(), item.packet.forge.title.clone());
-            metadata.insert("description".to_string(), item.packet.forge.description.clone());
+            metadata.insert(
+                "description".to_string(),
+                item.packet.forge.description.clone(),
+            );
             metadata.insert("tags".to_string(), item.packet.forge.tags.join(", "));
-            metadata.insert("preview_url".to_string(), item.preview_url.clone().unwrap_or_default());
-            metadata.insert("provider".to_string(), format!("{:?}", item.packet.provider));
+            metadata.insert(
+                "preview_url".to_string(),
+                item.preview_url.clone().unwrap_or_default(),
+            );
+            metadata.insert(
+                "provider".to_string(),
+                format!("{:?}", item.packet.provider),
+            );
             metadata.insert("store_id".to_string(), item.packet.store_id.clone());
             metadata.insert("source_label".to_string(), item.source_label.clone());
             metadata.insert("dirty".to_string(), item.dirty.to_string());
-            metadata.insert("is_master_template".to_string(), item.is_master_template.to_string());
-            metadata.insert("publish_ready".to_string(), item.packet.forge.publish_ready.to_string());
-            metadata.insert("qc_approved".to_string(), item.packet.forge.qc_approved.to_string());
+            metadata.insert(
+                "is_master_template".to_string(),
+                item.is_master_template.to_string(),
+            );
+            metadata.insert(
+                "publish_ready".to_string(),
+                item.packet.forge.publish_ready.to_string(),
+            );
+            metadata.insert(
+                "qc_approved".to_string(),
+                item.packet.forge.qc_approved.to_string(),
+            );
 
             crate::models::Asset {
                 id: item.client_id.to_string(),
@@ -1766,16 +1847,34 @@ fn build_quantum_assets(items: &[WorkbenchItem]) -> Vec<crate::models::Asset> {
 fn asset_from_workbench_item(item: &WorkbenchItem) -> crate::models::Asset {
     let mut metadata = std::collections::HashMap::new();
     metadata.insert("title".to_string(), item.packet.forge.title.clone());
-    metadata.insert("description".to_string(), item.packet.forge.description.clone());
+    metadata.insert(
+        "description".to_string(),
+        item.packet.forge.description.clone(),
+    );
     metadata.insert("tags".to_string(), item.packet.forge.tags.join(", "));
-    metadata.insert("preview_url".to_string(), item.preview_url.clone().unwrap_or_default());
-    metadata.insert("provider".to_string(), format!("{:?}", item.packet.provider));
+    metadata.insert(
+        "preview_url".to_string(),
+        item.preview_url.clone().unwrap_or_default(),
+    );
+    metadata.insert(
+        "provider".to_string(),
+        format!("{:?}", item.packet.provider),
+    );
     metadata.insert("store_id".to_string(), item.packet.store_id.clone());
     metadata.insert("source_label".to_string(), item.source_label.clone());
     metadata.insert("dirty".to_string(), item.dirty.to_string());
-    metadata.insert("is_master_template".to_string(), item.is_master_template.to_string());
-    metadata.insert("publish_ready".to_string(), item.packet.forge.publish_ready.to_string());
-    metadata.insert("qc_approved".to_string(), item.packet.forge.qc_approved.to_string());
+    metadata.insert(
+        "is_master_template".to_string(),
+        item.is_master_template.to_string(),
+    );
+    metadata.insert(
+        "publish_ready".to_string(),
+        item.packet.forge.publish_ready.to_string(),
+    );
+    metadata.insert(
+        "qc_approved".to_string(),
+        item.packet.forge.qc_approved.to_string(),
+    );
 
     crate::models::Asset {
         id: item.client_id.to_string(),
@@ -1861,17 +1960,23 @@ fn wasm_demo_payload() -> Vec<ImportedImageStub> {
     vec![
         ImportedImageStub {
             file_name: "demo_signal_01.png".to_string(),
-            preview_url: Some("https://placehold.co/960x1280/0b0f19/8b5cf6?text=Signal+01".to_string()),
+            preview_url: Some(
+                "https://placehold.co/960x1280/0b0f19/8b5cf6?text=Signal+01".to_string(),
+            ),
             mime_hint: Some("image/png".to_string()),
         },
         ImportedImageStub {
             file_name: "demo_signal_02.jpg".to_string(),
-            preview_url: Some("https://placehold.co/960x1280/111827/f3f4f6?text=Signal+02".to_string()),
+            preview_url: Some(
+                "https://placehold.co/960x1280/111827/f3f4f6?text=Signal+02".to_string(),
+            ),
             mime_hint: Some("image/jpeg".to_string()),
         },
         ImportedImageStub {
             file_name: "demo_signal_03.png".to_string(),
-            preview_url: Some("https://placehold.co/960x1280/111827/10b981?text=Signal+03".to_string()),
+            preview_url: Some(
+                "https://placehold.co/960x1280/111827/10b981?text=Signal+03".to_string(),
+            ),
             mime_hint: Some("image/png".to_string()),
         },
     ]
@@ -1880,7 +1985,11 @@ fn wasm_demo_payload() -> Vec<ImportedImageStub> {
 fn seed_master_template_item() -> WorkbenchItem {
     WorkbenchItem {
         client_id: 1,
-        packet: base_packet("Master Template", "master_template.png", "memory://master-template"),
+        packet: base_packet(
+            "Master Template",
+            "master_template.png",
+            "memory://master-template",
+        ),
         preview_url: Some("memory://master-template".to_string()),
         source_label: "master_template.png".to_string(),
         dirty: false,
@@ -1888,27 +1997,62 @@ fn seed_master_template_item() -> WorkbenchItem {
     }
 }
 
-fn resolve_master_packet(items: &[WorkbenchItem], master_template_id: Option<u64>) -> Option<QuantumPacket> {
+fn resolve_master_packet(
+    items: &[WorkbenchItem],
+    master_template_id: Option<u64>,
+) -> Option<QuantumPacket> {
     master_template_id
-        .and_then(|target_id| items.iter().find(|item| item.client_id == target_id).map(|item| item.packet.clone()))
-        .or_else(|| items.iter().find(|item| item.is_master_template).map(|item| item.packet.clone()))
+        .and_then(|target_id| {
+            items
+                .iter()
+                .find(|item| item.client_id == target_id)
+                .map(|item| item.packet.clone())
+        })
+        .or_else(|| {
+            items
+                .iter()
+                .find(|item| item.is_master_template)
+                .map(|item| item.packet.clone())
+        })
 }
 
-fn hydrate_imported_items(imports: &[ImportedImageStub], master_packet: Option<&QuantumPacket>, starting_client_id: u64) -> Vec<WorkbenchItem> {
+fn hydrate_imported_items(
+    imports: &[ImportedImageStub],
+    master_packet: Option<&QuantumPacket>,
+    starting_client_id: u64,
+) -> Vec<WorkbenchItem> {
     imports
         .iter()
         .enumerate()
         .map(|(offset, import)| {
             let client_id = starting_client_id + offset as u64;
-            let preview_url = import.preview_url.clone().unwrap_or_else(|| fallback_preview_url(&import.file_name));
-            let mut packet = master_packet.cloned().unwrap_or_else(|| base_packet(&humanize_file_name(&import.file_name), &import.file_name, &preview_url));
+            let preview_url = import
+                .preview_url
+                .clone()
+                .unwrap_or_else(|| fallback_preview_url(&import.file_name));
+            let mut packet = master_packet.cloned().unwrap_or_else(|| {
+                base_packet(
+                    &humanize_file_name(&import.file_name),
+                    &import.file_name,
+                    &preview_url,
+                )
+            });
             packet.artwork.file_name = import.file_name.clone();
             packet.artwork.image_data_url = preview_url.clone();
             packet.platform.mockup_urls = vec![preview_url.clone()];
             packet.forge.qc_approved = false;
             packet.forge.publish_ready = false;
-            if packet.forge.title.trim().is_empty() { packet.forge.title = humanize_file_name(&import.file_name); }
-            WorkbenchItem { client_id, packet, preview_url: Some(preview_url), source_label: import.file_name.clone(), dirty: true, is_master_template: false }
+            if packet.forge.title.trim().is_empty() {
+                packet.forge.title = humanize_file_name(&import.file_name);
+            }
+            WorkbenchItem {
+                client_id,
+                packet,
+                preview_url: Some(preview_url),
+                source_label: import.file_name.clone(),
+                dirty: true,
+                is_master_template: false,
+            }
         })
         .collect()
 }
@@ -1949,9 +2093,19 @@ fn build_omni_payload(
         .collect()
 }
 
-fn mutate_active_item(mut items: Signal<Vec<WorkbenchItem>>, active_card_id: Option<u64>, mut mutate: impl FnMut(&mut WorkbenchItem)) {
-    let Some(target_id) = active_card_id else { return; };
-    if let Some(item) = items.write().iter_mut().find(|item| item.client_id == target_id) {
+fn mutate_active_item(
+    mut items: Signal<Vec<WorkbenchItem>>,
+    active_card_id: Option<u64>,
+    mut mutate: impl FnMut(&mut WorkbenchItem),
+) {
+    let Some(target_id) = active_card_id else {
+        return;
+    };
+    if let Some(item) = items
+        .write()
+        .iter_mut()
+        .find(|item| item.client_id == target_id)
+    {
         mutate(item);
     }
 }
@@ -1962,12 +2116,18 @@ fn base_packet(title: &str, file_name: &str, image_data_url: &str) -> QuantumPac
         store_id: "context-quantum-drafts".to_string(),
         forge: ForgeOutput {
             title: title.to_string(),
-            description: format!("{title} is staged inside ContextQuantum and ready for metadata refinement."),
+            description: format!(
+                "{title} is staged inside ContextQuantum and ready for metadata refinement."
+            ),
             tags: vec!["contextquantum".to_string(), "draft".to_string()],
             qc_approved: false,
             publish_ready: false,
         },
-        artwork: ArtworkPayload { file_name: file_name.to_string(), image_data_url: image_data_url.to_string(), artwork_bounds: None },
+        artwork: ArtworkPayload {
+            file_name: file_name.to_string(),
+            image_data_url: image_data_url.to_string(),
+            artwork_bounds: None,
+        },
         template: ProviderTemplateContext::Printful(PrintfulTemplateContext {
             thumbnail_url: None,
             placement_guide: PlacementGuide {
@@ -1981,12 +2141,24 @@ fn base_packet(title: &str, file_name: &str, image_data_url: &str) -> QuantumPac
                 variant_id: 1001,
                 retail_price: Some("29.00".to_string()),
                 options: vec![
-                    PrintfulVariantOptionContext { id: Some("size".to_string()), value: Some("L".to_string()) },
-                    PrintfulVariantOptionContext { id: Some("color".to_string()), value: Some("Black".to_string()) },
+                    PrintfulVariantOptionContext {
+                        id: Some("size".to_string()),
+                        value: Some("L".to_string()),
+                    },
+                    PrintfulVariantOptionContext {
+                        id: Some("color".to_string()),
+                        value: Some("Black".to_string()),
+                    },
                 ],
             }],
         }),
-        platform: PlatformPacketContext { sku: None, quantity: 1, price_major: 29.0, mockup_urls: vec![image_data_url.to_string()], etsy: None },
+        platform: PlatformPacketContext {
+            sku: None,
+            quantity: 1,
+            price_major: 29.0,
+            mockup_urls: vec![image_data_url.to_string()],
+            etsy: None,
+        },
     }
 }
 
@@ -2005,7 +2177,11 @@ fn humanize_file_name(file_name: &str) -> String {
 fn capitalize_word(word: &str) -> String {
     let mut chars = word.chars();
     match chars.next() {
-        Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str().to_ascii_lowercase()),
+        Some(first) => format!(
+            "{}{}",
+            first.to_ascii_uppercase(),
+            chars.as_str().to_ascii_lowercase()
+        ),
         None => String::new(),
     }
 }
@@ -2015,13 +2191,19 @@ fn merge_template_into_asset(asset: &mut crate::models::Asset, template: &Metada
 }
 
 fn parse_tags_csv(raw: &str) -> Vec<String> {
-    raw.split(',').map(|tag| tag.trim().to_string()).filter(|tag| !tag.is_empty()).collect()
+    raw.split(',')
+        .map(|tag| tag.trim().to_string())
+        .filter(|tag| !tag.is_empty())
+        .collect()
 }
 
 fn merge_tags(existing: &[String], incoming: &[String]) -> Vec<String> {
     let mut merged = existing.to_vec();
     for tag in incoming {
-        if !merged.iter().any(|current| current.eq_ignore_ascii_case(tag)) {
+        if !merged
+            .iter()
+            .any(|current| current.eq_ignore_ascii_case(tag))
+        {
             merged.push(tag.clone());
         }
     }
@@ -2033,5 +2215,14 @@ fn fallback_preview_url(file_name: &str) -> String {
 }
 
 fn sanitize_token(name: &str) -> String {
-    name.chars().map(|ch| if ch.is_ascii_alphanumeric() { ch.to_ascii_lowercase() } else { '-' }).collect()
+    name.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect()
 }
+
