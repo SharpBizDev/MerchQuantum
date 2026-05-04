@@ -1,6 +1,9 @@
+use dioxus::prelude::Writable;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -280,6 +283,7 @@ pub struct PlatformAuth {
     pub expires_at_epoch_secs: Option<u64>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlatformListingResponse {
     pub platform: CommercePlatform,
@@ -346,6 +350,156 @@ pub struct ProviderOrderResponse {
     pub dashboard_url: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct Asset {
+    pub id: String,
+    pub filename: String,
+    pub status: String,
+    pub metadata: std::collections::HashMap<String, String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct MetadataTemplate {
+    pub label: String,
+    pub title_prefix: String,
+    pub tags: Vec<String>,
+    pub provider_settings: std::collections::HashMap<String, String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct QuantumState {
+    pub project_name: String,
+    pub connections: Vec<String>,
+    pub logs: Vec<String>,
+    #[serde(default)]
+    pub assets: Vec<Asset>,
+    #[serde(default)]
+    pub selected_asset_id: Option<String>,
+    #[serde(default)]
+    pub templates: Vec<MetadataTemplate>,
+}
+
+impl QuantumState {
+    #[cfg(target_arch = "wasm32")]
+    pub fn load() -> Self {
+        web_sys::window()
+            .and_then(|window| window.local_storage().ok().flatten())
+            .and_then(|storage| storage.get_item("quantum_state").ok().flatten())
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_else(|| Self {
+                project_name: "ContextQuantum_Alpha".to_string(),
+                ..Default::default()
+            })
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn load() -> Self {
+        std::fs::read_to_string(Self::anchor_path())
+            .ok()
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_else(|| Self {
+                project_name: "ContextQuantum_Alpha".to_string(),
+                ..Default::default()
+            })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn save(&self) {
+        if let Some(storage) = web_sys::window().and_then(|window| window.local_storage().ok().flatten()) {
+            if let Ok(json) = serde_json::to_string(self) {
+                let _ = storage.set_item("quantum_state", &json);
+            }
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn save(&self) {
+        let anchor = Self::anchor_path();
+        if let Some(parent) = anchor.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(json) = serde_json::to_string_pretty(self) {
+            let _ = std::fs::write(anchor, json);
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn anchor_path() -> PathBuf {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(".tmp")
+            .join("quantum_state.json")
+    }
+}
+#[allow(dead_code)]
+pub fn apply_template_to_all(state: &mut dioxus::prelude::Signal<QuantumState>, template: MetadataTemplate) {
+    state.with_mut(|snapshot| {
+        for asset in snapshot.assets.iter_mut() {
+            if asset.status == "Raw" {
+                merge_template_metadata(asset, &template);
+                asset.status = "Refined".to_string();
+            }
+        }
+    });
+}
+pub fn merge_template_metadata(asset: &mut Asset, template: &MetadataTemplate) {
+    let title_prefix = template.title_prefix.trim();
+    if !title_prefix.is_empty() {
+        let current_title = asset_metadata_value(asset, "title");
+        let next_title = if current_title.trim().is_empty() {
+            title_prefix.to_string()
+        } else if title_starts_with_prefix(&current_title, title_prefix) {
+            current_title
+        } else {
+            format!("{title_prefix} {}", current_title.trim())
+        };
+        asset.metadata.insert("title".to_string(), next_title);
+    }
+    let merged_tags = merge_tags(&parse_tags_csv(&asset_metadata_value(asset, "tags")), &template.tags);
+    if !merged_tags.is_empty() {
+        asset.metadata.insert("tags".to_string(), merged_tags.join(", "));
+    }
+    for (key, value) in &template.provider_settings {
+        if value.trim().is_empty() {
+            continue;
+        }
+        let should_fill = asset
+            .metadata
+            .get(key)
+            .map(|current| current.trim().is_empty())
+            .unwrap_or(true);
+        if should_fill {
+            asset.metadata.insert(key.clone(), value.clone());
+        }
+    }
+    asset.metadata.insert("template_label".to_string(), template.label.clone());
+}
+fn asset_metadata_value(asset: &Asset, key: &str) -> String {
+    asset.metadata.get(key).cloned().unwrap_or_default()
+}
+fn title_starts_with_prefix(title: &str, prefix: &str) -> bool {
+    let normalized_title = title.trim();
+    let normalized_prefix = prefix.trim();
+    normalized_title.eq_ignore_ascii_case(normalized_prefix)
+        || normalized_title
+            .to_ascii_lowercase()
+            .starts_with(&format!("{} ", normalized_prefix.to_ascii_lowercase()))
+}
+fn parse_tags_csv(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|tag| tag.trim().to_string())
+        .filter(|tag| !tag.is_empty())
+        .collect()
+}
+fn merge_tags(existing: &[String], incoming: &[String]) -> Vec<String> {
+    let mut merged = existing.to_vec();
+    for tag in incoming {
+        if !merged.iter().any(|current| current.eq_ignore_ascii_case(tag)) {
+            merged.push(tag.clone());
+        }
+    }
+    merged
+}
 #[derive(Debug)]
 pub enum QuantumError {
     Vault(String),

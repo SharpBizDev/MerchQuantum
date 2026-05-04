@@ -146,3 +146,18 @@ vite.config.ts.timestamp-*
 target*/
 
 .tmp/
+# Local Dioxus/Codex tooling artifacts
+.preview_stage/
+dx-0.6.3/
+dx-0.6.3.zip
+dx-x86_64-pc-windows-msvc/
+dx-aarch64-pc-windows-msvc.sha256
+dx.exe
+cargo.cmd
+cargo.exe
+sanity_write_test/
+src/bin/webview_probe.rs
+gcm-diagnose.log
+.vercel-tools/
+.cargo-home/
+.rustup-home/

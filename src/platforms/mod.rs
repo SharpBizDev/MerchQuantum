@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_imports)]
 use crate::models::*;
 use crate::vault::*;
 use async_trait::async_trait;
@@ -16,7 +17,8 @@ use std::time::Duration;
 const USER_AGENT_VALUE: &str = "MerchQuantum/1.0 (Language=Rust)";
 const PLATFORM_TIMEOUT_SECS: u64 = 90;
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait PlatformGateway: Send + Sync {
     async fn authorize(&self, auth_payload: &PlatformAuth) -> Result<(), QuantumError>;
     async fn refresh_token(&self) -> Result<(), QuantumError>;
@@ -94,7 +96,8 @@ impl TiktokGateway {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl PlatformGateway for EtsyGateway {
     async fn authorize(&self, auth_payload: &PlatformAuth) -> Result<(), QuantumError> {
         if auth_payload.platform != CommercePlatform::Etsy {
@@ -168,7 +171,8 @@ impl PlatformGateway for EtsyGateway {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl PlatformGateway for AmazonGateway {
     async fn authorize(&self, auth_payload: &PlatformAuth) -> Result<(), QuantumError> {
         if auth_payload.platform != CommercePlatform::Amazon {
@@ -261,7 +265,8 @@ impl PlatformGateway for AmazonGateway {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl PlatformGateway for WalmartGateway {
     async fn authorize(&self, auth_payload: &PlatformAuth) -> Result<(), QuantumError> {
         if auth_payload.platform != CommercePlatform::Walmart {
@@ -316,7 +321,8 @@ impl PlatformGateway for WalmartGateway {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl PlatformGateway for MetaGateway {
     async fn authorize(&self, auth_payload: &PlatformAuth) -> Result<(), QuantumError> {
         if auth_payload.platform != CommercePlatform::Meta {
@@ -384,7 +390,8 @@ impl PlatformGateway for MetaGateway {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl PlatformGateway for TiktokGateway {
     async fn authorize(&self, auth_payload: &PlatformAuth) -> Result<(), QuantumError> {
         if auth_payload.platform != CommercePlatform::TikTok {
@@ -446,13 +453,14 @@ impl PlatformGateway for TiktokGateway {
 }
 
 fn platform_client(service: &'static str) -> Result<Client, QuantumError> {
-    Client::builder()
-        .timeout(Duration::from_secs(PLATFORM_TIMEOUT_SECS))
-        .build()
-        .map_err(|e| QuantumError::Transport {
-            service,
-            message: e.to_string(),
-        })
+    let builder = Client::builder();
+    #[cfg(not(target_arch = "wasm32"))]
+    let builder = builder.timeout(Duration::from_secs(PLATFORM_TIMEOUT_SECS));
+
+    builder.build().map_err(|e| QuantumError::Transport {
+        service,
+        message: e.to_string(),
+    })
 }
 
 #[derive(Debug, Clone)]

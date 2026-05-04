@@ -2,17 +2,17 @@
 name = "quantum_core"
 version = "0.1.0"
 edition = "2021"
+autobins = false
 
 [dependencies]
 # The Engine (Async & Data Structuring)
-tokio = { version = "1", features = ["full"] }
+# STRIP: Removed "full" features to bypass mio/net conflict on WASM
+tokio = { version = "1", features = ["sync", "macros", "rt"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 async-trait = "0.1"
 
 # The Omni-Blast Core (Networking & URLs)
-# Added multipart & rustls-tls for secure Etsy image uploads
-reqwest = { version = "0.11.27", features = ["json", "multipart", "rustls-tls"] }
 urlencoding = "2.1"
 chrono = { version = "0.4", features = ["serde"] }
 
@@ -22,5 +22,41 @@ hmac = "0.12"
 base64 = "0.22"
 
 # The Cockpit (ContextQuantum Dioxus UI & Pipeline State)
-dioxus = { version = "0.6", features = ["desktop"] }
+dioxus = { version = "0.6" }
 futures-util = "0.3"
+
+[features]
+# STRIP: Decoupled desktop from default to prevent WASM build poisoning
+default = []
+desktop = ["dioxus/desktop"]
+web = ["dioxus/web"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Native builds use pure-Rust TLS to bypass the broken Windows schannel stack
+reqwest = { version = "0.11.27", default-features = false, features = ["json", "multipart", "rustls-tls"] }
+# FORGE: Native builds keep full features for high-performance daemonless logic
+tokio = { version = "1", features = ["full"] }
+
+[[bin]]
+name = "quantum_core"
+path = "src/main.rs"
+
+[profile]
+
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+
+[profile.server-dev]
+inherits = "dev"
+
+[profile.android-dev]
+inherits = "dev"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# WASM builds rely on the browser fetch stack and must not pull native TLS/OpenSSL.
+reqwest = { version = "0.11.27", default-features = false, features = ["json"] }
+web-sys = { version = "0.3", features = ["Window", "Storage"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen = "0.2"

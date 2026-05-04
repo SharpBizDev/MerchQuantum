@@ -5,6 +5,7 @@ use crate::providers::{
 };
 use std::sync::Arc;
 
+#[derive(Debug)]
 pub struct OrderRouter {
     printful: Arc<PrintfulGateway>,
     gooten: Arc<GootenGateway>,
