@@ -10,9 +10,8 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT_DIR/.cargo-target/vercel}"
 export PATH="$CARGO_HOME/bin:$PATH"
 
 DX_VERSION="0.6.3"
-DX_DIR="$ROOT_DIR/.vercel-tools/dx"
-DX_BIN="$DX_DIR/dx"
-DX_URL="https://github.com/DioxusLabs/dioxus/releases/download/v${DX_VERSION}/dx-x86_64-unknown-linux-gnu-v${DX_VERSION}.tar.gz"
+DX_ROOT="$ROOT_DIR/.vercel-tools/dx"
+DX_BIN="$DX_ROOT/bin/dx"
 
 if ! command -v rustup >/dev/null 2>&1; then
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
@@ -22,8 +21,7 @@ fi
 rustup target add wasm32-unknown-unknown
 
 if [ ! -x "$DX_BIN" ]; then
-  mkdir -p "$DX_DIR"
-  curl -fsSL "$DX_URL" | tar -xz -C "$DX_DIR"
+  cargo install dioxus-cli --version "$DX_VERSION" --root "$DX_ROOT" --locked
 fi
 
 "$DX_BIN" build --release --platform web
