@@ -29,7 +29,18 @@ export function useSpecializedRefineryBridge() {
     };
   }, []);
 
-  return useMemo(() => bridge, [bridge]);
+  return useMemo(() => {
+    const sabEnabled = typeof SharedArrayBuffer !== "undefined" && window.crossOriginIsolated;
+    if (bridge.status === "ready" && sabEnabled) {
+      return {
+        ...bridge,
+        source: "native-sab-bridge",
+        message: "Native specialized refinery bridge is online (SAB enabled).",
+      };
+    }
+
+    return bridge;
+  }, [bridge]);
 }
 
 export type UseSpecializedRefineryBridgeResult = ReturnType<typeof useSpecializedRefineryBridge>;

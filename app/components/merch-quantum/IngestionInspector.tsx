@@ -30,6 +30,13 @@ function bridgeBadgeClass(status: UseSpecializedRefineryBridgeResult["status"]) 
   return "border-[#FFBF00]/35 bg-[#FFBF00]/10 text-[#FEF3C7]";
 }
 
+function formatBridgeSource(source: string | null) {
+  if (source === "native-sab-bridge") return "Native (SAB Enabled)";
+  if (source === "wasm-browser-loader") return "Browser WASM";
+  if (source === "loader") return "Loader";
+  return source ?? "pending";
+}
+
 function JobRow({ job }: { job: JobGraphJob }) {
   const active = ACTIVE_STAGES.has(job.status);
 
@@ -217,7 +224,7 @@ function IngestionInspectorImpl({
               <dl className="mt-3 space-y-2 text-[11px] text-slate-300 sm:text-sm">
                 <div className="flex items-center justify-between gap-3">
                   <dt>Source</dt>
-                  <dd className="font-mono text-slate-100">{bridge.source ?? "pending"}</dd>
+                  <dd className="font-mono text-slate-100">{formatBridgeSource(bridge.source)}</dd>
                 </div>
                 {bridge.lastError ? (
                   <div className="rounded-[14px] border border-[#FF6B6B]/35 bg-[rgba(255,107,107,0.08)] p-3">
@@ -286,3 +293,4 @@ function IngestionInspectorImpl({
 }
 
 export const IngestionInspector = memo(IngestionInspectorImpl);
+

@@ -170,10 +170,11 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
     setInlineSaveFeedback
   } = controller;
 
-  return (    <main className="box-border flex h-full w-full max-w-full flex-col overflow-y-auto overflow-x-hidden bg-transparent px-2 pb-24 pt-1.5 font-sans text-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:px-5 sm:pb-32 sm:pt-3">
-      <div className="mx-auto flex w-full max-w-[46rem] flex-1 flex-col">
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:gap-2">
-        <div className="sticky top-0 z-10 space-y-1.5 bg-transparent pb-1.5 backdrop-blur-[2px] sm:space-y-2 sm:pb-2">
+  return (
+    <main className="box-border flex h-full w-full max-w-full flex-col overflow-y-auto overflow-x-hidden bg-transparent font-sans text-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ paddingInline: "var(--cq-shell-inline)", paddingTop: "clamp(0.35rem, 1.2vw, 0.9rem)", paddingBottom: "clamp(5.8rem, 16vw, 8rem)" }} >
+      <div className="mx-auto flex w-full max-w-[46rem] flex-1 flex-col" style={{ gap: "clamp(0.35rem, 1.1vw, 0.7rem)" }}>
+      <div className="flex min-w-0 flex-1 flex-col" style={{ gap: "clamp(0.35rem, 1vw, 0.55rem)" }}>
+        <div className="sticky top-0 z-10 flex flex-col bg-transparent backdrop-blur-[2px]" style={{ paddingBottom: "clamp(0.3rem, 0.9vw, 0.55rem)", gap: "clamp(0.3rem, 0.9vw, 0.55rem)" }}>
           {!workspaceMode || isRoutingGridExpanded ? (
           <div className="relative">
             <Box
@@ -374,7 +375,7 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
               ref={fileRef}
               type="file"
               multiple
-              accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg,.pdf,.mp4,.step,.stp,.dcm,.dicom,.json,.txt"
+              accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg,.pdf,.mp4,.stl,.step,.stp,.dcm,.dicom,.json,.txt"
               className="hidden"
               onChange={(e) => {
                 if (isCreateMode && connected && isWorkspaceConfigured) {
@@ -925,6 +926,10 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
     </main>
   );
 }
+
+
+
+
 
 
 
