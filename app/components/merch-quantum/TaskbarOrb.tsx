@@ -7,10 +7,17 @@ type TaskbarOrbProps = {
   latestFrameRef: React.MutableRefObject<{ metadata?: Record<string, unknown> } | null>;
   inspectorOpen?: boolean;
   activeJobCount?: number;
+  bridgeStatus?: "waiting" | "ready" | "error";
   onToggleInspector?: () => void;
 };
 
-export function TaskbarOrb({ latestFrameRef, inspectorOpen = false, activeJobCount = 0, onToggleInspector }: TaskbarOrbProps) {
+function bridgeIndicatorClass(status: TaskbarOrbProps["bridgeStatus"]) {
+  if (status === "ready") return "bg-emerald-300 shadow-[0_0_18px_rgba(52,211,153,0.95)]";
+  if (status === "error") return "bg-[#FF6B6B] shadow-[0_0_18px_rgba(255,107,107,0.95)]";
+  return "bg-[#FFBF00] shadow-[0_0_18px_rgba(255,191,0,0.95)]";
+}
+
+export function TaskbarOrb({ latestFrameRef, inspectorOpen = false, activeJobCount = 0, bridgeStatus = "waiting", onToggleInspector }: TaskbarOrbProps) {
   const haloRef = useRef<HTMLDivElement | null>(null);
   const orbRef = useRef<HTMLDivElement | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
@@ -63,6 +70,7 @@ export function TaskbarOrb({ latestFrameRef, inspectorOpen = false, activeJobCou
             className={`pointer-events-auto absolute bottom-5 right-14 inline-flex h-11 min-w-[44px] items-center justify-center rounded-full border px-3 transition ${inspectorOpen ? "border-[#BC13FE]/45 bg-[#BC13FE]/18 text-white" : "border-white/10 bg-[rgba(15,23,42,0.82)] text-slate-200 hover:border-[#BC13FE]/40 hover:text-white"}`}
             aria-label="Toggle ingestion inspector"
           >
+            <span className={`mr-2 inline-flex h-2.5 w-2.5 rounded-full ${bridgeIndicatorClass(bridgeStatus)}`} />
             <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em]">Pulse</span>
             {activeJobCount > 0 ? (
               <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#BC13FE]/22 px-1 font-mono text-[10px] text-[#F5D0FE]">

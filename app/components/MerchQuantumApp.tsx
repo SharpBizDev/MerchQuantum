@@ -27,6 +27,7 @@ export default function MerchQuantumApp() {
           latestFrameRef={controller.ambientStreams.latestFrameRef}
           inspectorOpen={controller.ingestionInspector.open}
           activeJobCount={controller.ingestionInspector.snapshot.pendingCount}
+          bridgeStatus={controller.specializedBridge.status}
           onToggleInspector={controller.ingestionInspector.togglePanel}
         />
       }
@@ -35,6 +36,7 @@ export default function MerchQuantumApp() {
       <IngestionInspector
         open={controller.ingestionInspector.open}
         snapshot={controller.ingestionInspector.snapshot}
+        bridge={controller.ingestionInspector.bridge}
         onClose={controller.ingestionInspector.closePanel}
         onTogglePaused={controller.ingestionInspector.togglePaused}
         onPurgeFinished={controller.ingestionInspector.purgeFinished}

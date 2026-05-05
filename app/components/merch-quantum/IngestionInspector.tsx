@@ -2,6 +2,7 @@
 
 import { memo, useEffect, useMemo, useRef } from "react";
 import type { JobGraphJob, JobGraphSnapshot, JobGraphState } from "../../../lib/services/ingestion/JobGraph";
+import type { UseSpecializedRefineryBridgeResult } from "./hooks/useSpecializedRefineryBridge";
 
 const ACTIVE_STAGES = new Set<JobGraphState>(["HYDRATING", "SNIFFING", "REFINING"]);
 
@@ -21,6 +22,12 @@ function stageChipClass(status: JobGraphState) {
     return "border-emerald-400/35 bg-emerald-400/10 text-emerald-100";
   }
   return "border-white/10 bg-white/5 text-slate-200";
+}
+
+function bridgeBadgeClass(status: UseSpecializedRefineryBridgeResult["status"]) {
+  if (status === "ready") return "border-emerald-400/35 bg-emerald-400/10 text-emerald-100";
+  if (status === "error") return "border-[#FF6B6B]/35 bg-[#FF6B6B]/10 text-[#FFE4E6]";
+  return "border-[#FFBF00]/35 bg-[#FFBF00]/10 text-[#FEF3C7]";
 }
 
 function JobRow({ job }: { job: JobGraphJob }) {
@@ -74,6 +81,7 @@ function JobRow({ job }: { job: JobGraphJob }) {
 function IngestionInspectorImpl({
   open,
   snapshot,
+  bridge,
   onClose,
   onTogglePaused,
   onPurgeFinished,
@@ -81,8 +89,9 @@ function IngestionInspectorImpl({
 }: {
   open: boolean;
   snapshot: JobGraphSnapshot;
+  bridge: UseSpecializedRefineryBridgeResult;
   onClose: () => void;
-  onTogglePaused: () => void;
+  onTogglePaused: () => void | Promise<void>;
   onPurgeFinished: () => void | Promise<void>;
   onRefreshStorageAudit: () => void | Promise<void>;
 }) {
@@ -172,6 +181,30 @@ function IngestionInspectorImpl({
                   <dt>Isolation</dt>
                   <dd className="font-mono text-slate-100">{snapshot.storageAudit.crossOriginIsolated ? "isolated" : "shared"}</dd>
                 </div>
+              </dl>
+            </section>
+
+            <section className="rounded-[22px] border border-white/10 bg-[rgba(255,255,255,0.04)] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-slate-400">Bridge Status</p>
+                  <p className="mt-1 text-sm text-slate-200">{bridge.message}</p>
+                </div>
+                <span className={`inline-flex items-center rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.22em] ${bridgeBadgeClass(bridge.status)}`}>
+                  {bridge.status}
+                </span>
+              </div>
+              <dl className="mt-4 space-y-2 text-sm text-slate-300">
+                <div className="flex items-center justify-between gap-3">
+                  <dt>Source</dt>
+                  <dd className="font-mono text-slate-100">{bridge.source ?? "pending"}</dd>
+                </div>
+                {bridge.lastError ? (
+                  <div className="rounded-[16px] border border-[#FF6B6B]/35 bg-[rgba(255,107,107,0.08)] p-3">
+                    <dt className="font-semibold text-[#FFE4E6]">Bridge Error</dt>
+                    <dd className="mt-2 font-mono text-[11px] leading-5 text-slate-200">{bridge.lastError}</dd>
+                  </div>
+                ) : null}
               </dl>
             </section>
 

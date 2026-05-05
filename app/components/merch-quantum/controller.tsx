@@ -6,12 +6,14 @@ import { useBatchState } from "./hooks/useBatchState";
 import { useProviderWorkspace } from "./hooks/useProviderWorkspace";
 import { useQuantumEditor } from "./hooks/useQuantumEditor";
 import { useIngestionPressureBridge } from "./hooks/useIngestionPressureBridge";
+import { useSpecializedRefineryBridge } from "./hooks/useSpecializedRefineryBridge";
 
 export function useMerchQuantumController() {
   const ambientStreams = useAmbientStreams();
   const batchState = useBatchState();
   const providerWorkspace = useProviderWorkspace(batchState);
   const quantumEditor = useQuantumEditor(batchState);
+  const specializedBridge = useSpecializedRefineryBridge();
   const [isIngestionInspectorOpen, setIsIngestionInspectorOpen] = useState(false);
 
   useIngestionPressureBridge(batchState.jobGraphSnapshot, ambientStreams);
@@ -42,19 +44,21 @@ export function useMerchQuantumController() {
   const ingestionInspector = useMemo(() => ({
     open: isIngestionInspectorOpen,
     snapshot: batchState.jobGraphSnapshot,
+    bridge: specializedBridge,
     openPanel: () => setIsIngestionInspectorOpen(true),
     closePanel: () => setIsIngestionInspectorOpen(false),
     togglePanel: () => setIsIngestionInspectorOpen((current) => !current),
     togglePaused: batchState.toggleIngestionGraphPaused,
     purgeFinished: batchState.purgeFinishedIngestionJobs,
     refreshStorageAudit: batchState.refreshIngestionStorageAudit,
-  }), [batchState.jobGraphSnapshot, batchState.purgeFinishedIngestionJobs, batchState.refreshIngestionStorageAudit, batchState.toggleIngestionGraphPaused, isIngestionInspectorOpen]);
+  }), [batchState.jobGraphSnapshot, batchState.purgeFinishedIngestionJobs, batchState.refreshIngestionStorageAudit, batchState.toggleIngestionGraphPaused, isIngestionInspectorOpen, specializedBridge]);
 
   return {
     ...batchState,
     ...providerWorkspace,
     ...quantumEditor,
     ambientStreams,
+    specializedBridge,
     ingestionInspector,
     providerTaskRouter,
     computerUseFallback: ambientStreams.computerUseFallback,
