@@ -1,5 +1,8 @@
 'use client';
 
+import { QuantumFamilyShell } from "./quantum-family/Shell";
+import { SpectralBar } from "./merch-quantum/SpectralBar";
+import { TaskbarOrb } from "./merch-quantum/TaskbarOrb";
 import { useMerchQuantumController } from "./merch-quantum/controller";
 import { MerchQuantumView } from "./merch-quantum/view";
 export {
@@ -14,5 +17,13 @@ export {
 
 export default function MerchQuantumApp() {
   const controller = useMerchQuantumController();
-  return <MerchQuantumView controller={controller} />;
+
+  return (
+    <QuantumFamilyShell
+      spectralSlot={<SpectralBar latestFrameRef={controller.ambientStreams.latestFrameRef} />}
+      taskbarSlot={<TaskbarOrb latestFrameRef={controller.ambientStreams.latestFrameRef} />}
+    >
+      <MerchQuantumView controller={controller} />
+    </QuantumFamilyShell>
+  );
 }

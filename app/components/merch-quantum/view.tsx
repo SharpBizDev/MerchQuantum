@@ -150,10 +150,10 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
     setInlineSaveFeedback
   } = controller;
 
-  return (    <main className="box-border flex h-[100dvh] w-full max-w-full flex-col overflow-y-auto overflow-x-hidden bg-[#0d1117] p-6 font-sans text-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+  return (    <main className="box-border flex h-full w-full max-w-full flex-col overflow-y-auto overflow-x-hidden bg-transparent px-4 pb-28 pt-2 font-sans text-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:px-5 sm:pb-32 sm:pt-3">
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
       <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <div className="sticky top-0 z-10 bg-[#0d1117] pb-2 space-y-2">
+        <div className="sticky top-0 z-10 space-y-2 bg-transparent pb-2 backdrop-blur-[2px]">
           {!workspaceMode || isRoutingGridExpanded ? (
           <div className="relative">
             <Box
@@ -904,3 +904,4 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
     </main>
   );
 }
+
