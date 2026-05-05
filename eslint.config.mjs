@@ -16,6 +16,8 @@ const config = [
     files: [
       "app/components/merch-quantum/controller.tsx",
       "app/components/merch-quantum/ui.tsx",
+      "app/components/merch-quantum/hooks/*.ts",
+      "app/components/merch-quantum/hooks/*.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",
