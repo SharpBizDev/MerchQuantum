@@ -1,4 +1,6 @@
 use crate::models::*;
+#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+use crate::native_shell::use_native_shell_bridge;
 use crate::router::OrderRouter;
 use crate::sensory::emitter::use_sensory_emitter;
 use crate::ui::carousel::{
@@ -824,6 +826,8 @@ pub fn ContextQuantumApp() -> Element {
 
     #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
     let desktop = use_window();
+    #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+    use_native_shell_bridge(desktop.clone());
 
     let persisted_state = QuantumState::load();
     let persisted_connections = persisted_state.connections.clone();
@@ -2227,6 +2231,9 @@ fn sanitize_token(name: &str) -> String {
         })
         .collect()
 }
+
+
+
 
 
 

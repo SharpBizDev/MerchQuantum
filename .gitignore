@@ -164,3 +164,7 @@ gcm-diagnose.log
 .tmp-cargo-home/
 .tmp-target/
 
+
+.publish-clone/
+.tmp-target-*/
+.tmp-cargo-home-*/

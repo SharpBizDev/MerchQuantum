@@ -1,6 +1,8 @@
 #![allow(non_snake_case)]
 mod ingestion;
+mod metadata;
 mod models;
+mod native_shell;
 mod platforms;
 mod providers;
 mod router;
@@ -26,7 +28,7 @@ use crate::sensory::governor::SensoryGovernor;
 use crate::ui::app::ContextQuantumApp;
 use crate::vault::QuantumVault;
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
-use dioxus::desktop::{Config, WindowBuilder};
+use crate::native_shell::desktop_config;
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
 use dioxus::LaunchBuilder;
 use std::sync::{Arc, OnceLock};
@@ -66,14 +68,7 @@ fn init_runtime() {
 fn main() {
     init_runtime();
     LaunchBuilder::desktop()
-        .with_cfg(
-            Config::new().with_window(
-                WindowBuilder::new()
-                    .with_title("ContextQuantum")
-                    .with_transparent(true)
-                    .with_decorations(false),
-            ),
-        )
+        .with_cfg(desktop_config())
         .launch(ContextQuantumApp);
 }
 
@@ -90,3 +85,4 @@ fn main() {
 fn main() {
     panic!("Enable the desktop or web feature.");
 }
+
