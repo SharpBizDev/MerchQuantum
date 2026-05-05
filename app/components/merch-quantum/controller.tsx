@@ -5,12 +5,15 @@ import { useAmbientStreams } from "./hooks/useAmbientStreams";
 import { useBatchState } from "./hooks/useBatchState";
 import { useProviderWorkspace } from "./hooks/useProviderWorkspace";
 import { useQuantumEditor } from "./hooks/useQuantumEditor";
+import { useIngestionPressureBridge } from "./hooks/useIngestionPressureBridge";
 
 export function useMerchQuantumController() {
+  const ambientStreams = useAmbientStreams();
   const batchState = useBatchState();
   const providerWorkspace = useProviderWorkspace(batchState);
   const quantumEditor = useQuantumEditor(batchState);
-  const ambientStreams = useAmbientStreams();
+
+  useIngestionPressureBridge(batchState.jobGraphSnapshot, ambientStreams);
 
   const providerTaskRouter = useMemo(() => {
     const route = ambientStreams.computerUseFallback ? "computer-use" : "mcp";

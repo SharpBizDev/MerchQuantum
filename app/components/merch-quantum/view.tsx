@@ -27,6 +27,25 @@ const DETAIL_DATA_TEXT_CLASSES = "font-sans text-sm font-normal leading-6 text-w
 export const QUANTUM_TITLE_AWAITING_TEXT = "Awaiting Quantum AI title...";
 export const QUANTUM_DESCRIPTION_AWAITING_TEXT = "Awaiting Quantum AI description...";
 
+function extractDroppedUrls(dataTransfer: DataTransfer) {
+  const uriList = dataTransfer.getData("text/uri-list");
+  const plainText = dataTransfer.getData("text/plain");
+  const urls = new Set<string>();
+
+  for (const chunk of [uriList, plainText]) {
+    chunk
+      .split(/[\r\n\s]+/g)
+      .map((entry) => entry.trim())
+      .filter((entry) => /^https?:\/\//i.test(entry))
+      .forEach((entry) => urls.add(entry));
+  }
+
+  return {
+    urls: [...urls],
+    text: plainText,
+  };
+}
+
 export function MerchQuantumView({ controller }: { controller: UseMerchQuantumControllerResult }) {
   const {
     PROVIDERS,
@@ -131,6 +150,7 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
     handleWorkspaceModeChange,
     handleShopSelection,
     openArtworkPicker,
+    addIngestionPayload,
     addFiles,
     handleBulkEditThumbnailSelection,
     handleCreateTemplateSelection,
@@ -354,7 +374,7 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
               ref={fileRef}
               type="file"
               multiple
-              accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg"
+              accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.svg,.pdf,.mp4,.step,.stp,.dcm,.dicom,.json,.txt"
               className="hidden"
               onChange={(e) => {
                 if (isCreateMode && connected && isWorkspaceConfigured) {
@@ -490,14 +510,15 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
                                   nudgeWorkflow(true);
                                   return;
                                 }
-                                void addFiles(e.dataTransfer.files);
+                                const { urls, text } = extractDroppedUrls(e.dataTransfer);
+                                void addIngestionPayload({ files: e.dataTransfer.files, urls, text });
                               }}
                             >
                               <div className="flex min-h-[44px] flex-col justify-between gap-2">
                                 <div className="flex items-center justify-center">
                                   <div className="flex flex-col items-center gap-2 text-center">
                                     <p className="text-sm font-medium leading-6 text-white">
-                                      Drop Images Here
+                                      Drop Files or Links Here
                                     </p>
                                     <p className="text-xs font-medium text-slate-100">
                                       50 per batch • 500 max queue
@@ -904,4 +925,8 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
     </main>
   );
 }
+
+
+
+
 

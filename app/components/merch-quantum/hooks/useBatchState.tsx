@@ -65,6 +65,7 @@ import {
   parseResponsePayload,
   WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY,
 } from "../../../../lib/services/merch-quantum/platform-utils";
+import { getUniversalJobGraph, type JobGraphSnapshot } from "../../../../lib/services/ingestion/JobGraph";
 import { getUserFacingErrorMessage, logErrorToConsole } from "../../../../lib/user-facing-errors";
 import type {
   AiFieldStates,
@@ -105,6 +106,10 @@ export function useBatchState() {
   const aiLoopBusyRef = useRef<symbol | null>(null);
   const activeTemplateKeyRef = useRef("");
   const inlineFeedbackTimeoutRef = useRef<number | null>(null);
+  const jobGraph = useMemo(() => getUniversalJobGraph(), []);
+  const [jobGraphSnapshot, setJobGraphSnapshot] = useState<JobGraphSnapshot>(() => jobGraph.getSnapshot());
+
+  useEffect(() => jobGraph.subscribe(setJobGraphSnapshot), [jobGraph]);
 
   const [provider, setProvider] = useState<ProviderChoiceId | "">("");
     const [token, setToken] = useState("");
@@ -1432,12 +1437,37 @@ export function useBatchState() {
     fileRef.current?.click();
   }
 
+  const addIngestionPayload = useCallback((payload: { files?: FileList | File[] | null; urls?: string[]; text?: string }) => {
+    const incomingFiles = payload.files ? Array.from(payload.files) : [];
+    const normalizedUrls = (payload.urls ?? []).map((entry) => entry.trim()).filter(Boolean);
+    const createdJobs = jobGraph.enqueueMixedPayload({
+      files: incomingFiles,
+      urls: normalizedUrls,
+      text: payload.text,
+    });
+
+    if (createdJobs.length) {
+      const fileJobCount = createdJobs.filter((job) => job.kind === "file").length;
+      const urlJobCount = createdJobs.filter((job) => job.kind === "url").length;
+      const parts: string[] = [];
+      if (fileJobCount) parts.push(`Queued ${fileJobCount} file${fileJobCount === 1 ? "" : "s"} for OPFS staging.`);
+      if (urlJobCount) parts.push(`Queued ${urlJobCount} link${urlJobCount === 1 ? "" : "s"} for metadata hydration.`);
+      setRunStatus(parts.join(" "));
+    }
+
+    return {
+      incomingFiles,
+      createdJobs,
+      urlJobCount: createdJobs.filter((job) => job.kind === "url").length,
+    };
+  }, [jobGraph]);
+
   async function addFiles(list: FileList | null) {
     if (!list) return;
+    const { incomingFiles } = addIngestionPayload({ files: list });
     if (!connected) return;
-    const incoming = Array.from(list);
-    const imageFiles = incoming.filter(isImage);
-    const ignoredByType = incoming.length - imageFiles.length;
+    const imageFiles = incomingFiles.filter(isImage);
+    const nonImageCount = incomingFiles.length - imageFiles.length;
     const existingSignatures = new Set(
       [...images, ...completedImportedImages, ...queuedImages]
         .map((entry) => getFileSignature(entry.file))
@@ -1484,7 +1514,7 @@ export function useBatchState() {
     if (mergedQueued.length) {
       parts.push(`Queued ${mergedQueued.length} for later batches.`);
     }
-    if (ignoredByType) parts.push(`Ignored ${ignoredByType} non-image file${ignoredByType === 1 ? "" : "s"}.`);
+    if (nonImageCount) parts.push(`Staged ${nonImageCount} non-image file${nonImageCount === 1 ? "" : "s"} in the ingestion graph.`);
     if (ignoredByLimit) {
       parts.push(`Ignored ${ignoredByLimit} image${ignoredByLimit === 1 ? "" : "s"} above the ${CONNECTED_TOTAL_BATCH_FILES}-image total cap.`);
     }
@@ -2288,6 +2318,7 @@ export function useBatchState() {
     isPublishingImportedListings,
     importStatus,
     runStatus,
+    jobGraphSnapshot,
     batchResults,
     batchProjection,
     batchAuthority,
@@ -2426,6 +2457,7 @@ export function useBatchState() {
     handleWorkspaceModeChange,
     handleShopSelection,
     openArtworkPicker,
+    addIngestionPayload,
     addFiles,
     loadProductTemplate,
     handleBulkEditThumbnailSelection,
@@ -2451,6 +2483,17 @@ export function useBatchState() {
 }
 
 export type UseBatchStateResult = ReturnType<typeof useBatchState>;
+
+
+
+
+
+
+
+
+
+
+
 
 
 
