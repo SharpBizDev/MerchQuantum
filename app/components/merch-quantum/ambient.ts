@@ -8,6 +8,7 @@ export type AmbientVisualSignal = {
   amplitudeVector: number[];
   orbPulseIntensity: number;
   fallbackSignal: boolean;
+  summonWithoutFocus: boolean;
   sequence: number;
   timestampEpochMs: number;
 };
@@ -16,6 +17,7 @@ const EMPTY_SIGNAL: AmbientVisualSignal = {
   amplitudeVector: Array.from({ length: 32 }, () => 0),
   orbPulseIntensity: 0,
   fallbackSignal: false,
+  summonWithoutFocus: false,
   sequence: 0,
   timestampEpochMs: 0,
 };
@@ -58,6 +60,7 @@ export function readAmbientVisualSignal(frame: AmbientFrameLike): AmbientVisualS
     amplitudeVector: normalizeAmplitudeVector(payload?.amplitude_vector),
     orbPulseIntensity,
     fallbackSignal: payload?.fallback_signal === true,
+    summonWithoutFocus: payload?.summon_without_focus === true,
     sequence: typeof params?.sequence === "number" ? params.sequence : 0,
     timestampEpochMs: typeof params?.timestamp_epoch_ms === "number" ? params.timestamp_epoch_ms : 0,
   };

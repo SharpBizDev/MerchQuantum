@@ -11,8 +11,8 @@ import {
 import type { ProductGridProps, SmartThumbnailProps } from "./types";
 
 const BOOT_TAGLINE = "EFFORTLESS PRODUCT CREATION.";
-const BRAND_WORDMARK_TEXT_CLASSES = "text-3xl sm:text-4xl";
-const BRAND_TAGLINE_TEXT_CLASSES = "text-[12px]";
+const BRAND_WORDMARK_TEXT_CLASSES = "text-[clamp(1.35rem,4vw,2.25rem)]";
+const BRAND_TAGLINE_TEXT_CLASSES = "text-[clamp(0.58rem,1.8vw,0.75rem)]";
 
 type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
 type SelectProps = React.SelectHTMLAttributes<HTMLSelectElement>;
@@ -60,7 +60,7 @@ export function SetupSelect({ className = "", children, ...props }: SelectProps)
 
 export function Box({ title, children, className = "", headerClassName = "" }: BoxProps) {
   return (
-    <section className={`rounded-[28px] border border-slate-800 bg-[#020616] p-4 text-white shadow-[0_18px_60px_-38px_rgba(2,6,22,0.9)] backdrop-blur-sm ${className}`}>
+    <section className={`rounded-[24px] border border-slate-800 bg-[#020616] p-3 sm:rounded-[28px] sm:p-4 text-white shadow-[0_18px_60px_-38px_rgba(2,6,22,0.9)] backdrop-blur-sm ${className}`}>
       {title ? <div className={`mb-4 text-sm font-semibold leading-6 tracking-tight ${headerClassName}`}>{title}</div> : null}
       {children}
     </section>
@@ -69,7 +69,7 @@ export function Box({ title, children, className = "", headerClassName = "" }: B
 
 export function MerchQuantumInlineHeading({ className = "" }: { className?: string }) {
   return (
-    <span className={`min-w-0 text-sm font-semibold leading-6 tracking-tight text-white ${className}`}>
+    <span className={`min-w-0 text-[clamp(0.72rem,2.2vw,0.9rem)] font-semibold leading-5 tracking-tight text-white ${className}`}>
       <span className="text-[#7F22FE]">Merch</span>{" "}
       <span className="text-white">Quantum AI bulk auto listings</span>
     </span>

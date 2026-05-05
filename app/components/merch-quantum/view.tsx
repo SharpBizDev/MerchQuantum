@@ -170,10 +170,10 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
     setInlineSaveFeedback
   } = controller;
 
-  return (    <main className="box-border flex h-full w-full max-w-full flex-col overflow-y-auto overflow-x-hidden bg-transparent px-4 pb-28 pt-2 font-sans text-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:px-5 sm:pb-32 sm:pt-3">
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <div className="sticky top-0 z-10 space-y-2 bg-transparent pb-2 backdrop-blur-[2px]">
+  return (    <main className="box-border flex h-full w-full max-w-full flex-col overflow-y-auto overflow-x-hidden bg-transparent px-2 pb-24 pt-1.5 font-sans text-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:px-5 sm:pb-32 sm:pt-3">
+      <div className="mx-auto flex w-full max-w-[46rem] flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:gap-2">
+        <div className="sticky top-0 z-10 space-y-1.5 bg-transparent pb-1.5 backdrop-blur-[2px] sm:space-y-2 sm:pb-2">
           {!workspaceMode || isRoutingGridExpanded ? (
           <div className="relative">
             <Box
@@ -185,10 +185,10 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
             <div
               className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-[#00BC7D]/90 to-transparent" : "bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent"} ${pulseConnected || routingGuidanceTarget ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
             />
-            <div className="mb-3 flex min-w-0 items-center">
+            <div className="mb-2 flex min-w-0 items-center sm:mb-3">
               <MerchQuantumInlineHeading className="max-w-full" />
             </div>
-            <div className="grid w-full grid-cols-2 gap-2">
+            <div className="grid w-full grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2">
             <div className={`min-w-0 self-start ${getRoutingFieldGlowClass("provider")}`}>
               <SetupSelect
                 value={provider}
@@ -925,6 +925,7 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
     </main>
   );
 }
+
 
 
 

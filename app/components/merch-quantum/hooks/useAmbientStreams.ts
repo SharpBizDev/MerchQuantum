@@ -25,6 +25,16 @@ function createMetadata(text: string): Record<string, unknown> {
   }
 }
 
+function normalizeMetadata(payload: unknown): Record<string, unknown> {
+  if (typeof payload === "string") {
+    return createMetadata(payload);
+  }
+  if (typeof payload === "object" && payload !== null) {
+    return payload as Record<string, unknown>;
+  }
+  return { value: payload };
+}
+
 export function useAmbientStreams() {
   const socketRef = useRef<WebSocket | null>(null);
   const transportRef = useRef<unknown>(null);
@@ -129,7 +139,7 @@ export function useAmbientStreams() {
   }, [disconnect, pushFrame]);
 
   useEffect(() => {
-    const handleLocalPayload = (text: string) => {
+    const handleLocalPayload = (payload: unknown) => {
       setTransport("local-bridge");
       setConnectionState("open");
       setComputerUseFallback(false);
@@ -137,25 +147,20 @@ export function useAmbientStreams() {
       pushFrame({
         channel: LOCAL_AMBIENT_CHANNEL,
         payload: null,
-        metadata: createMetadata(text),
+        metadata: normalizeMetadata(payload),
       });
     };
 
     const channel = typeof BroadcastChannel !== "undefined"
       ? new BroadcastChannel(LOCAL_AMBIENT_CHANNEL)
       : null;
-    const channelHandler = (event: MessageEvent<string>) => {
-      if (typeof event.data === "string") {
-        handleLocalPayload(event.data);
-      }
+    const channelHandler = (event: MessageEvent<unknown>) => {
+      handleLocalPayload(event.data);
     };
     channel?.addEventListener("message", channelHandler);
 
     const customEventHandler = (event: Event) => {
-      const detail = (event as CustomEvent<unknown>).detail;
-      if (typeof detail === "string") {
-        handleLocalPayload(detail);
-      }
+      handleLocalPayload((event as CustomEvent<unknown>).detail);
     };
 
     window.addEventListener(LOCAL_AMBIENT_EVENT, customEventHandler);

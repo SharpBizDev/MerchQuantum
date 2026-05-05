@@ -1,10 +1,17 @@
 "use client";
 
+import { stringify as stringifyYaml } from "yaml";
 import { getOpfsStagingBridge, type OpfsStageResult } from "./OpfsStaging";
 
 export type RefineryBucket = "text" | "media" | "binary" | "generic";
 export type RefineryStatus = "refined" | "metadata-only" | "awaiting-research-data" | "raw";
 export type SpecializedRefineryKind = "step" | "stl" | "dicom";
+export type SpecializedRefineryBridgeStatus = {
+  status: "waiting" | "ready" | "error";
+  source: string | null;
+  message: string;
+  lastError: string | null;
+};
 
 export type RefinerySniffInput = {
   mimeType: string;
@@ -34,13 +41,43 @@ type SpecializedRefineryBridge = {
   refine: (kind: SpecializedRefineryKind, buffer: Uint8Array) => Promise<string | Record<string, unknown>> | string | Record<string, unknown>;
 };
 
+type RustSpecializedRefineryHost = {
+  refine_specialized_bytes?: (kind: string, buffer: Uint8Array) => Promise<string> | string;
+};
+
+type QuantumRefineryWasmModule = {
+  default?: (input?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module) => Promise<unknown>;
+  refine_specialized_bytes?: (kind: string, buffer: Uint8Array) => string;
+};
+
 declare global {
   interface Window {
+    __contextQuantumRustWasm__?: RustSpecializedRefineryHost;
     __contextQuantumSpecializedRefinery__?: SpecializedRefineryBridge;
   }
 }
 
+let bridgeLoadPromise: Promise<SpecializedRefineryBridge | null> | null = null;
+let bridgeStatus: SpecializedRefineryBridgeStatus = {
+  status: "waiting",
+  source: null,
+  message: "Awaiting Rust specialized refinery bridge.",
+  lastError: null,
+};
+
+function setBridgeStatus(next: SpecializedRefineryBridgeStatus) {
+  bridgeStatus = next;
+}
+
+function getFingerprint(input: RefineryForgeInput) {
+  return `${input.sniff.magicSignature ?? ""} ${input.sniff.mimeType} ${input.sourceLabel}`.toLowerCase();
+}
+
 function routeBucket(input: RefineryForgeInput): RefineryBucket {
+  if (detectSpecializedKind(input)) {
+    return "binary";
+  }
+
   const mime = input.sniff.magicSignature ?? input.sniff.mimeType;
   if (mime.startsWith("text/") || mime.includes("json") || mime.includes("xml") || mime.includes("yaml") || mime.includes("markdown")) {
     return "text";
@@ -96,6 +133,12 @@ function normalizeTextSample(textSample: string, mimeType: string) {
   };
 }
 
+function normalizeBuffer(buffer: Uint8Array | ArrayBuffer | number[]) {
+  if (buffer instanceof Uint8Array) return buffer;
+  if (buffer instanceof ArrayBuffer) return new Uint8Array(buffer);
+  return Uint8Array.from(buffer);
+}
+
 function parseSpecializedPayload(payload: string | Record<string, unknown>) {
   if (typeof payload === "string") {
     try {
@@ -109,20 +152,122 @@ function parseSpecializedPayload(payload: string | Record<string, unknown>) {
 }
 
 function detectSpecializedKind(input: RefineryForgeInput): SpecializedRefineryKind | null {
-  const fingerprint = `${input.sniff.magicSignature ?? ""} ${input.sniff.mimeType} ${input.sourceLabel}`.toLowerCase();
+  const fingerprint = getFingerprint(input);
   if (fingerprint.includes("dicom") || fingerprint.endsWith(".dcm")) return "dicom";
   if (fingerprint.includes("step") || fingerprint.endsWith(".stp") || fingerprint.endsWith(".step")) return "step";
   if (fingerprint.includes("stl") || fingerprint.endsWith(".stl")) return "stl";
   return null;
 }
 
+async function ensureRustSpecializedRefineryHost() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  if (window.__contextQuantumRustWasm__?.refine_specialized_bytes) {
+    return window.__contextQuantumRustWasm__;
+  }
+
+  const modulePath = "/refinery-wasm/quantum_core.js";
+  const wasmModule = await import(/* webpackIgnore: true */ modulePath) as unknown as QuantumRefineryWasmModule;
+  if (typeof wasmModule.default === "function") {
+    await wasmModule.default("/refinery-wasm/quantum_core_bg.wasm");
+  }
+
+  if (typeof wasmModule.refine_specialized_bytes !== "function") {
+    throw new Error("Rust specialized refinery export refine_specialized_bytes was not found.");
+  }
+
+  window.__contextQuantumRustWasm__ = {
+    refine_specialized_bytes: (kind, buffer) => wasmModule.refine_specialized_bytes!(kind, normalizeBuffer(buffer)),
+  };
+
+  return window.__contextQuantumRustWasm__;
+}
+
+export function getSpecializedRefineryBridgeStatus() {
+  return bridgeStatus;
+}
+
+export async function ensureSpecializedRefineryBridge() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  if (window.__contextQuantumSpecializedRefinery__) {
+    if (bridgeStatus.status !== "ready") {
+      setBridgeStatus({
+        status: "ready",
+        source: bridgeStatus.source ?? "browser-bridge",
+        message: "Specialized refinery bridge is armed.",
+        lastError: null,
+      });
+    }
+    return window.__contextQuantumSpecializedRefinery__;
+  }
+
+  if (!bridgeLoadPromise) {
+    setBridgeStatus({
+      status: "waiting",
+      source: "loader",
+      message: "Loading Rust specialized refinery bridge.",
+      lastError: null,
+    });
+
+    bridgeLoadPromise = (async () => {
+      try {
+        const rustHost = await ensureRustSpecializedRefineryHost();
+        if (!rustHost?.refine_specialized_bytes) {
+          setBridgeStatus({
+            status: "waiting",
+            source: null,
+            message: "Awaiting Rust specialized refinery bridge.",
+            lastError: null,
+          });
+          return null;
+        }
+
+        window.__contextQuantumSpecializedRefinery__ = {
+          refine: async (kind, buffer) => rustHost.refine_specialized_bytes!(kind, normalizeBuffer(buffer)),
+        };
+
+        setBridgeStatus({
+          status: "ready",
+          source: "wasm-browser-loader",
+          message: "Rust specialized refinery bridge is online.",
+          lastError: null,
+        });
+
+        return window.__contextQuantumSpecializedRefinery__;
+      } catch (error) {
+        setBridgeStatus({
+          status: "error",
+          source: "wasm-browser-loader",
+          message: "Rust specialized refinery bridge failed to initialize.",
+          lastError: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      } finally {
+        bridgeLoadPromise = null;
+      }
+    })();
+  }
+
+  return bridgeLoadPromise;
+}
+
 async function invokeSpecializedRefinery(kind: SpecializedRefineryKind, staged: OpfsStageResult) {
-  if (typeof window === "undefined" || !window.__contextQuantumSpecializedRefinery__ || !staged.scratchPath) {
+  if (typeof window === "undefined" || !staged.scratchPath) {
+    return null;
+  }
+
+  const bridge = window.__contextQuantumSpecializedRefinery__ ?? await ensureSpecializedRefineryBridge();
+  if (!bridge) {
     return null;
   }
 
   const buffer = await getOpfsStagingBridge().readScratchBytes(staged.scratchPath);
-  const payload = await window.__contextQuantumSpecializedRefinery__.refine(kind, buffer);
+  const payload = await bridge.refine(kind, buffer);
   return parseSpecializedPayload(payload);
 }
 
@@ -165,16 +310,19 @@ async function refineBinary(input: RefineryForgeInput): Promise<RefineryArtifact
   const rustMetadata = kind ? await invokeSpecializedRefinery(kind, input.staged) : null;
 
   if (rustMetadata && kind) {
+    const yamlMetadata = stringifyYaml(rustMetadata).trim();
     return {
       bucket: "binary",
       status: "refined",
       summary: `Rust specialized refinery completed deep ${kind.toUpperCase()} extraction.`,
-      outputText: null,
+      outputText: yamlMetadata,
       metadata: {
         specialization,
+        specializedKind: kind,
         canonicalUrl: input.sniff.canonicalUrl,
         byteLength: input.sniff.byteLength,
         rustMetadata,
+        yamlMetadata,
       },
     };
   }
@@ -190,6 +338,7 @@ async function refineBinary(input: RefineryForgeInput): Promise<RefineryArtifact
       byteLength: input.sniff.byteLength,
       headerAudit: input.sniff.openGraph,
       specializedKind: kind,
+      bridgeStatus: getSpecializedRefineryBridgeStatus(),
     },
   };
 }

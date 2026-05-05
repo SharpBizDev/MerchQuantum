@@ -2,16 +2,17 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
 
 const config = [
-  ...nextVitals,
-  ...nextTypescript,
   {
     ignores: [
       "tests/**",
       "eslint.config.mjs",
       "postcss.config.mjs",
       "lib/ai/listing-engine.ts",
+      "public/refinery-wasm/**",
     ],
   },
+  ...nextVitals,
+  ...nextTypescript,
   {
     files: [
       "app/components/merch-quantum/controller.tsx",

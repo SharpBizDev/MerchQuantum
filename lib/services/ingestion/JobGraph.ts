@@ -74,6 +74,9 @@ export type JobGraphSnapshot = {
   pressureAmplitudeVector: number[];
   orbPulseIntensity: number;
   fallbackSignal: boolean;
+  summonWithoutFocus: boolean;
+  specializedForgedCount: number;
+  mostRecentSpecializedForgeAt: number | null;
 };
 
 type JobGraphListener = (snapshot: JobGraphSnapshot) => void;
@@ -218,6 +221,16 @@ function buildSnapshot(
     counts,
     workerLimit,
   });
+  const specializedForgedJobs = serializedJobs.filter((job) =>
+    job.status === "FORGED"
+    && job.refineryBucket === "binary"
+    && job.refineryStatus === "refined"
+  );
+  const mostRecentSpecializedForgeAt = specializedForgedJobs.reduce<number | null>((latest, job) => {
+    if (latest === null || job.updatedAt > latest) return job.updatedAt;
+    return latest;
+  }, null);
+  const summonWithoutFocus = mostRecentSpecializedForgeAt !== null && Date.now() - mostRecentSpecializedForgeAt < 4200;
 
   return {
     jobs: serializedJobs,
@@ -239,8 +252,12 @@ function buildSnapshot(
       + (batchPressure ? 0.34 : 0)
       + clamp(activeHydrationCount / Math.max(1, workerLimit)) * 0.16
       + (paused ? 0.04 : 0)
+      + (summonWithoutFocus ? 0.16 : 0)
     ),
     fallbackSignal: !staging.available,
+    summonWithoutFocus,
+    specializedForgedCount: specializedForgedJobs.length,
+    mostRecentSpecializedForgeAt,
   };
 }
 
@@ -607,3 +624,6 @@ export function getUniversalJobGraph() {
 
   return universalJobGraphSingleton;
 }
+
+
+

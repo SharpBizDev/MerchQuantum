@@ -15,6 +15,7 @@ function buildAmbientMetadata(snapshot: JobGraphSnapshot) {
         amplitude_vector: snapshot.pressureAmplitudeVector,
         orb_pulse_intensity: snapshot.orbPulseIntensity,
         fallback_signal: snapshot.fallbackSignal,
+        summon_without_focus: snapshot.summonWithoutFocus,
       },
     },
   };
@@ -31,3 +32,5 @@ export function useIngestionPressureBridge(snapshot: JobGraphSnapshot, ambientSt
     });
   }, [pushFrame, snapshot.eventSequence, snapshot.orbPulseIntensity, snapshot.fallbackSignal, snapshot.pressureAmplitudeVector]);
 }
+
+
