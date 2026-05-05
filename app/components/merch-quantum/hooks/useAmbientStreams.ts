@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const MAX_BUFFERED_FRAMES = 144;
+const LOCAL_AMBIENT_CHANNEL = "contextquantum:ambient";
+const LOCAL_AMBIENT_EVENT = "contextquantum:ambient-stream";
 
-type AmbientTransport = "offline" | "websocket" | "webtransport";
+type AmbientTransport = "offline" | "websocket" | "webtransport" | "local-bridge";
 type AmbientConnectionState = "idle" | "connecting" | "open" | "error" | "closed";
 
 type AmbientFrame = {
@@ -14,6 +16,14 @@ type AmbientFrame = {
   payload: ArrayBuffer | ArrayBufferView | null;
   metadata?: Record<string, unknown>;
 };
+
+function createMetadata(text: string): Record<string, unknown> {
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return { text };
+  }
+}
 
 export function useAmbientStreams() {
   const socketRef = useRef<WebSocket | null>(null);
@@ -112,11 +122,50 @@ export function useAmbientStreams() {
       pushFrame({
         channel: "rust-ambient",
         payload: typeof event.data === "string" ? null : event.data,
-        metadata: typeof event.data === "string" ? { text: event.data } : undefined,
+        metadata: typeof event.data === "string" ? createMetadata(event.data) : undefined,
       });
     };
     socketRef.current = socket;
   }, [disconnect, pushFrame]);
+
+  useEffect(() => {
+    const handleLocalPayload = (text: string) => {
+      setTransport("local-bridge");
+      setConnectionState("open");
+      setComputerUseFallback(false);
+      setHostileSurfaceReason(null);
+      pushFrame({
+        channel: LOCAL_AMBIENT_CHANNEL,
+        payload: null,
+        metadata: createMetadata(text),
+      });
+    };
+
+    const channel = typeof BroadcastChannel !== "undefined"
+      ? new BroadcastChannel(LOCAL_AMBIENT_CHANNEL)
+      : null;
+    const channelHandler = (event: MessageEvent<string>) => {
+      if (typeof event.data === "string") {
+        handleLocalPayload(event.data);
+      }
+    };
+    channel?.addEventListener("message", channelHandler);
+
+    const customEventHandler = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (typeof detail === "string") {
+        handleLocalPayload(detail);
+      }
+    };
+
+    window.addEventListener(LOCAL_AMBIENT_EVENT, customEventHandler);
+
+    return () => {
+      channel?.removeEventListener("message", channelHandler);
+      channel?.close();
+      window.removeEventListener(LOCAL_AMBIENT_EVENT, customEventHandler);
+    };
+  }, [pushFrame]);
 
   useEffect(() => () => disconnect(), [disconnect]);
 
