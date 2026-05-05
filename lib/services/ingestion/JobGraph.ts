@@ -1,6 +1,18 @@
 "use client";
 
-import { getOpfsStagingBridge, type OpfsStagingState, type OpfsStageResult, type OpfsStagingMode } from "./OpfsStaging";
+import {
+  forgeRefineryArtifact,
+  type RefineryArtifact,
+  type RefineryBucket,
+  type RefineryStatus,
+} from "./RefineryExtractionForge";
+import {
+  getOpfsStagingBridge,
+  type OpfsStageResult,
+  type OpfsStagingMode,
+  type OpfsStagingState,
+  type OpfsStorageAudit,
+} from "./OpfsStaging";
 
 export type JobGraphState = "QUEUED" | "HYDRATING" | "SNIFFING" | "REFINING" | "FORGED" | "FAILED";
 export type JobGraphKind = "file" | "url";
@@ -36,6 +48,12 @@ export type JobGraphJob = {
   canonicalUrl: string | null;
   title: string | null;
   error: string | null;
+  errorDetail: string | null;
+  refineryBucket: RefineryBucket | null;
+  refineryStatus: RefineryStatus | null;
+  refinerySummary: string | null;
+  refineryOutputText: string | null;
+  refineryMetadata: Record<string, unknown> | null;
   file?: File;
   url?: string;
 };
@@ -46,10 +64,13 @@ export type JobGraphSnapshot = {
   workerLimit: number;
   activeHydrationCount: number;
   pendingCount: number;
+  terminalCount: number;
+  paused: boolean;
   queuePressure: number;
   batchPressure: boolean;
   eventSequence: number;
   staging: OpfsStagingState;
+  storageAudit: OpfsStorageAudit;
   pressureAmplitudeVector: number[];
   orbPulseIntensity: number;
   fallbackSignal: boolean;
@@ -60,6 +81,16 @@ type JobGraphListener = (snapshot: JobGraphSnapshot) => void;
 const DEFAULT_WORKER_LIMIT = 4;
 const MAX_WORKER_LIMIT = 6;
 const URL_TEXT_SAMPLE_LIMIT = 8;
+const EMPTY_STORAGE_AUDIT: OpfsStorageAudit = {
+  available: false,
+  crossOriginIsolated: false,
+  preferredMode: "unavailable",
+  syncAccessHandleReady: false,
+  usageBytes: null,
+  quotaBytes: null,
+  reason: "Storage audit pending.",
+  lastUpdatedAt: 0,
+};
 
 function clamp(value: number, minimum = 0, maximum = 1) {
   return Math.max(minimum, Math.min(maximum, value));
@@ -145,12 +176,18 @@ function buildPressureAmplitudeVector(snapshot: Pick<JobGraphSnapshot, "activeHy
   const activeIntensity = clamp(snapshot.activeHydrationCount / Math.max(1, snapshot.workerLimit));
   const queueIntensity = clamp(snapshot.pendingCount / 50);
   const sniffingIntensity = clamp(snapshot.counts.SNIFFING / Math.max(1, snapshot.workerLimit));
+  const refiningIntensity = clamp(snapshot.counts.REFINING / Math.max(1, snapshot.workerLimit));
 
   return Array.from({ length: 32 }, (_, index) => {
     const centerDistance = Math.abs(index - 15.5) / 15.5;
     const ridge = 1 - clamp(centerDistance);
     const lanePulse = (index % 4) / 6;
-    return clamp(activeIntensity * (0.28 + ridge * 0.62) + queueIntensity * (0.12 + lanePulse) + sniffingIntensity * 0.18);
+    return clamp(
+      activeIntensity * (0.22 + ridge * 0.58)
+      + queueIntensity * (0.1 + lanePulse)
+      + sniffingIntensity * 0.18
+      + refiningIntensity * 0.2
+    );
   });
 }
 
@@ -160,7 +197,9 @@ function buildSnapshot(
   workerLimit: number,
   activeHydrationCount: number,
   eventSequence: number,
-  staging: OpfsStagingState
+  staging: OpfsStagingState,
+  storageAudit: OpfsStorageAudit,
+  paused: boolean
 ): JobGraphSnapshot {
   const counts = emptyCounts();
   const serializedJobs = order.map((jobId) => jobs.get(jobId)).filter((job): job is JobGraphJob => Boolean(job));
@@ -170,6 +209,7 @@ function buildSnapshot(
   }
 
   const pendingCount = counts.QUEUED + counts.HYDRATING + counts.SNIFFING + counts.REFINING;
+  const terminalCount = counts.FORGED + counts.FAILED;
   const queuePressure = clamp(pendingCount / 50);
   const batchPressure = pendingCount > 10;
   const pressureAmplitudeVector = buildPressureAmplitudeVector({
@@ -185,12 +225,21 @@ function buildSnapshot(
     workerLimit,
     activeHydrationCount,
     pendingCount,
+    terminalCount,
+    paused,
     queuePressure,
     batchPressure,
     eventSequence,
     staging,
+    storageAudit,
     pressureAmplitudeVector,
-    orbPulseIntensity: clamp(0.18 + queuePressure * 0.32 + (batchPressure ? 0.34 : 0) + clamp(activeHydrationCount / Math.max(1, workerLimit)) * 0.16),
+    orbPulseIntensity: clamp(
+      0.18
+      + queuePressure * 0.28
+      + (batchPressure ? 0.34 : 0)
+      + clamp(activeHydrationCount / Math.max(1, workerLimit)) * 0.16
+      + (paused ? 0.04 : 0)
+    ),
     fallbackSignal: !staging.available,
   };
 }
@@ -204,7 +253,22 @@ export class UniversalJobGraph {
   private readonly activeHydrations = new Set<string>();
   private workerLimit = DEFAULT_WORKER_LIMIT;
   private eventSequence = 0;
-  private snapshot = buildSnapshot(this.jobs, this.order, this.workerLimit, 0, this.eventSequence, this.stagingBridge.getState());
+  private paused = false;
+  private storageAudit = EMPTY_STORAGE_AUDIT;
+  private snapshot = buildSnapshot(
+    this.jobs,
+    this.order,
+    this.workerLimit,
+    0,
+    this.eventSequence,
+    this.stagingBridge.getState(),
+    this.storageAudit,
+    this.paused
+  );
+
+  constructor() {
+    void this.refreshStorageAudit();
+  }
 
   subscribe(listener: JobGraphListener) {
     this.listeners.add(listener);
@@ -220,6 +284,49 @@ export class UniversalJobGraph {
 
   configure(options: { workerLimit?: number } = {}) {
     this.workerLimit = normalizeWorkerLimit(options.workerLimit);
+    this.publish();
+    this.drainQueue();
+  }
+
+  pause() {
+    this.paused = true;
+    this.publish();
+  }
+
+  resume() {
+    this.paused = false;
+    this.publish();
+    this.drainQueue();
+  }
+
+  togglePaused() {
+    if (this.paused) {
+      this.resume();
+      return;
+    }
+    this.pause();
+  }
+
+  async purgeFinished() {
+    const purgeCandidates = [...this.jobs.values()].filter((job) => job.status === "FORGED" || job.status === "FAILED");
+    const scratchPaths = purgeCandidates.map((job) => job.scratchPath).filter((value): value is string => Boolean(value));
+
+    for (const job of purgeCandidates) {
+      this.jobs.delete(job.id);
+      const orderIndex = this.order.indexOf(job.id);
+      if (orderIndex >= 0) this.order.splice(orderIndex, 1);
+    }
+
+    if (scratchPaths.length) {
+      await this.stagingBridge.purgeScratchFiles(scratchPaths);
+    }
+
+    await this.refreshStorageAudit();
+    this.publish();
+  }
+
+  async refreshStorageAudit() {
+    this.storageAudit = await this.stagingBridge.getStorageAudit();
     this.publish();
   }
 
@@ -237,6 +344,7 @@ export class UniversalJobGraph {
     }
 
     this.drainQueue();
+    void this.refreshStorageAudit();
     return createdJobs;
   }
 
@@ -296,6 +404,12 @@ export class UniversalJobGraph {
       canonicalUrl: input.url ?? null,
       title: null,
       error: null,
+      errorDetail: null,
+      refineryBucket: null,
+      refineryStatus: null,
+      refinerySummary: null,
+      refineryOutputText: null,
+      refineryMetadata: null,
       file: input.file,
       url: input.url,
     };
@@ -324,7 +438,9 @@ export class UniversalJobGraph {
       this.workerLimit,
       this.activeHydrations.size,
       this.eventSequence,
-      this.stagingBridge.getState()
+      this.stagingBridge.getState(),
+      this.storageAudit,
+      this.paused
     );
     for (const listener of this.listeners) {
       listener(this.snapshot);
@@ -332,6 +448,8 @@ export class UniversalJobGraph {
   }
 
   private drainQueue() {
+    if (this.paused) return;
+
     while (this.activeHydrations.size < this.workerLimit && this.queuedJobIds.length > 0) {
       const nextJobId = this.queuedJobIds.shift();
       if (!nextJobId) break;
@@ -352,6 +470,7 @@ export class UniversalJobGraph {
       progress: 0.08,
       updatedAt: Date.now(),
       error: null,
+      errorDetail: null,
     }));
 
     try {
@@ -401,11 +520,18 @@ export class UniversalJobGraph {
         updatedAt: Date.now(),
       }));
 
+      const artifact = await this.refineStage(job, stageResult, sniffResult);
+
       this.updateJob(jobId, (current) => ({
         ...current,
         status: "FORGED",
         progress: 1,
         byteLength: sniffResult.byteLength,
+        refineryBucket: artifact.bucket,
+        refineryStatus: artifact.status,
+        refinerySummary: artifact.summary,
+        refineryOutputText: artifact.outputText,
+        refineryMetadata: artifact.metadata,
         updatedAt: Date.now(),
       }));
     } catch (error) {
@@ -414,13 +540,31 @@ export class UniversalJobGraph {
         status: "FAILED",
         progress: 1,
         error: error instanceof Error ? error.message : String(error),
+        errorDetail: error instanceof Error ? error.stack ?? error.message : String(error),
         updatedAt: Date.now(),
       }));
     } finally {
       this.activeHydrations.delete(jobId);
       this.publish();
       this.drainQueue();
+      void this.refreshStorageAudit();
     }
+  }
+
+  private async refineStage(job: JobGraphJob, stageResult: OpfsStageResult, sniffResult: JobGraphSniffResult): Promise<RefineryArtifact> {
+    return forgeRefineryArtifact({
+      sourceLabel: job.sourceLabel,
+      staged: stageResult,
+      sniff: {
+        mimeType: sniffResult.mimeType,
+        magicSignature: sniffResult.magicSignature,
+        openGraph: sniffResult.openGraph,
+        jsonLd: sniffResult.jsonLd,
+        canonicalUrl: sniffResult.canonicalUrl,
+        title: sniffResult.title,
+        byteLength: sniffResult.byteLength,
+      },
+    });
   }
 
   private sniffStage(job: JobGraphJob, stageResult: OpfsStageResult): JobGraphSniffResult {
@@ -463,6 +607,3 @@ export function getUniversalJobGraph() {
 
   return universalJobGraphSingleton;
 }
-
-
-

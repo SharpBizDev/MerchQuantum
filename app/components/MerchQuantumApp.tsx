@@ -1,6 +1,7 @@
 'use client';
 
 import { QuantumFamilyShell } from "./quantum-family/Shell";
+import { IngestionInspector } from "./merch-quantum/IngestionInspector";
 import { SpectralBar } from "./merch-quantum/SpectralBar";
 import { TaskbarOrb } from "./merch-quantum/TaskbarOrb";
 import { useMerchQuantumController } from "./merch-quantum/controller";
@@ -21,9 +22,24 @@ export default function MerchQuantumApp() {
   return (
     <QuantumFamilyShell
       spectralSlot={<SpectralBar latestFrameRef={controller.ambientStreams.latestFrameRef} />}
-      taskbarSlot={<TaskbarOrb latestFrameRef={controller.ambientStreams.latestFrameRef} />}
+      taskbarSlot={
+        <TaskbarOrb
+          latestFrameRef={controller.ambientStreams.latestFrameRef}
+          inspectorOpen={controller.ingestionInspector.open}
+          activeJobCount={controller.ingestionInspector.snapshot.pendingCount}
+          onToggleInspector={controller.ingestionInspector.togglePanel}
+        />
+      }
     >
       <MerchQuantumView controller={controller} />
+      <IngestionInspector
+        open={controller.ingestionInspector.open}
+        snapshot={controller.ingestionInspector.snapshot}
+        onClose={controller.ingestionInspector.closePanel}
+        onTogglePaused={controller.ingestionInspector.togglePaused}
+        onPurgeFinished={controller.ingestionInspector.purgeFinished}
+        onRefreshStorageAudit={controller.ingestionInspector.refreshStorageAudit}
+      />
     </QuantumFamilyShell>
   );
 }

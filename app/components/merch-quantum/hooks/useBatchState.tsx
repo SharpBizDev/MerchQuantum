@@ -111,6 +111,26 @@ export function useBatchState() {
 
   useEffect(() => jobGraph.subscribe(setJobGraphSnapshot), [jobGraph]);
 
+  const pauseIngestionGraph = useCallback(() => {
+    jobGraph.pause();
+  }, [jobGraph]);
+
+  const resumeIngestionGraph = useCallback(() => {
+    jobGraph.resume();
+  }, [jobGraph]);
+
+  const toggleIngestionGraphPaused = useCallback(() => {
+    jobGraph.togglePaused();
+  }, [jobGraph]);
+
+  const purgeFinishedIngestionJobs = useCallback(async () => {
+    await jobGraph.purgeFinished();
+  }, [jobGraph]);
+
+  const refreshIngestionStorageAudit = useCallback(async () => {
+    await jobGraph.refreshStorageAudit();
+  }, [jobGraph]);
+
   const [provider, setProvider] = useState<ProviderChoiceId | "">("");
     const [token, setToken] = useState("");
   const [connected, setConnected] = useState(false);
@@ -2319,6 +2339,11 @@ export function useBatchState() {
     importStatus,
     runStatus,
     jobGraphSnapshot,
+    pauseIngestionGraph,
+    resumeIngestionGraph,
+    toggleIngestionGraphPaused,
+    purgeFinishedIngestionJobs,
+    refreshIngestionStorageAudit,
     batchResults,
     batchProjection,
     batchAuthority,
@@ -2483,6 +2508,9 @@ export function useBatchState() {
 }
 
 export type UseBatchStateResult = ReturnType<typeof useBatchState>;
+
+
+
 
 
 

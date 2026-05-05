@@ -20,6 +20,17 @@ export type OpfsStagingState = {
   reason: string | null;
 };
 
+export type OpfsStorageAudit = {
+  available: boolean;
+  crossOriginIsolated: boolean;
+  preferredMode: OpfsStagingMode;
+  syncAccessHandleReady: boolean;
+  usageBytes: number | null;
+  quotaBytes: number | null;
+  reason: string | null;
+  lastUpdatedAt: number;
+};
+
 type StageProgress = {
   byteLength: number;
   totalBytes: number | null;
@@ -105,6 +116,15 @@ async function createAsyncWritable(path: string) {
   const root = await navigator.storage.getDirectory();
   const fileHandle = await root.getFileHandle(path, { create: true });
   return fileHandle.createWritable();
+}
+
+async function removeScratchEntry(path: string) {
+  try {
+    const root = await navigator.storage.getDirectory();
+    await root.removeEntry(path);
+  } catch {
+    return;
+  }
 }
 
 async function stageReadableStream(
@@ -307,6 +327,35 @@ export class OpfsStagingBridge {
     };
   }
 
+  async getStorageAudit(): Promise<OpfsStorageAudit> {
+    const state = this.getState();
+    const estimate = state.available && typeof navigator.storage.estimate === "function"
+      ? await navigator.storage.estimate()
+      : null;
+
+    return {
+      available: state.available,
+      crossOriginIsolated: state.crossOriginIsolated,
+      preferredMode: state.preferredMode,
+      syncAccessHandleReady: state.preferredMode === "sync-worker",
+      usageBytes: typeof estimate?.usage === "number" ? estimate.usage : null,
+      quotaBytes: typeof estimate?.quota === "number" ? estimate.quota : null,
+      reason: state.reason,
+      lastUpdatedAt: Date.now(),
+    };
+  }
+
+  async purgeScratchFiles(paths: string[]) {
+    await Promise.all(paths.filter(Boolean).map((path) => removeScratchEntry(path)));
+  }
+
+  async readScratchBytes(path: string) {
+    const root = await navigator.storage.getDirectory();
+    const fileHandle = await root.getFileHandle(path);
+    const file = await fileHandle.getFile();
+    return new Uint8Array(await file.arrayBuffer());
+  }
+
   async stageFile(file: File, scratchKey: string, onProgress?: (progress: StageProgress) => void) {
     const state = this.getState();
     const scratchPath = `${sanitizeScratchPath(scratchKey)}.bin`;
@@ -435,5 +484,4 @@ export function getOpfsStagingBridge() {
 
   return opfsStagingBridgeSingleton;
 }
-
 

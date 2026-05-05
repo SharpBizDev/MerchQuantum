@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAmbientStreams } from "./hooks/useAmbientStreams";
 import { useBatchState } from "./hooks/useBatchState";
 import { useProviderWorkspace } from "./hooks/useProviderWorkspace";
@@ -12,8 +12,14 @@ export function useMerchQuantumController() {
   const batchState = useBatchState();
   const providerWorkspace = useProviderWorkspace(batchState);
   const quantumEditor = useQuantumEditor(batchState);
+  const [isIngestionInspectorOpen, setIsIngestionInspectorOpen] = useState(false);
 
   useIngestionPressureBridge(batchState.jobGraphSnapshot, ambientStreams);
+
+  useEffect(() => {
+    if (!isIngestionInspectorOpen) return;
+    void batchState.refreshIngestionStorageAudit();
+  }, [batchState, isIngestionInspectorOpen]);
 
   const providerTaskRouter = useMemo(() => {
     const route = ambientStreams.computerUseFallback ? "computer-use" : "mcp";
@@ -33,11 +39,23 @@ export function useMerchQuantumController() {
     };
   }, [ambientStreams.computerUseFallback, ambientStreams.hostileSurfaceReason, batchState.batchAuthority, batchState.batchStreamCursor]);
 
+  const ingestionInspector = useMemo(() => ({
+    open: isIngestionInspectorOpen,
+    snapshot: batchState.jobGraphSnapshot,
+    openPanel: () => setIsIngestionInspectorOpen(true),
+    closePanel: () => setIsIngestionInspectorOpen(false),
+    togglePanel: () => setIsIngestionInspectorOpen((current) => !current),
+    togglePaused: batchState.toggleIngestionGraphPaused,
+    purgeFinished: batchState.purgeFinishedIngestionJobs,
+    refreshStorageAudit: batchState.refreshIngestionStorageAudit,
+  }), [batchState.jobGraphSnapshot, batchState.purgeFinishedIngestionJobs, batchState.refreshIngestionStorageAudit, batchState.toggleIngestionGraphPaused, isIngestionInspectorOpen]);
+
   return {
     ...batchState,
     ...providerWorkspace,
     ...quantumEditor,
     ambientStreams,
+    ingestionInspector,
     providerTaskRouter,
     computerUseFallback: ambientStreams.computerUseFallback,
     setComputerUseFallback: ambientStreams.setComputerUseFallback,
