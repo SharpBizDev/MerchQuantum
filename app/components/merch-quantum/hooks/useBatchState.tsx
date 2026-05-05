@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { requestAiListing } from "../../../../lib/client/quantum-routes";
 import { PROVIDER_OPTIONS, type ProviderChoiceId } from "../../../../lib/providers/client-options";
 import type { ArtworkBounds, ProviderId } from "../../../../lib/providers/types";
@@ -15,12 +15,22 @@ import {
 } from "../../../../lib/services/merch-quantum/artwork-analysis";
 import {
   appendToActiveBatch,
+  createBatchEvent,
+  createBatchProjection,
   fillActiveBatch,
+  getPendingBatchEventCount,
   getResolvedItemStatus,
   getStatusSortValue,
   IMPORT_QUEUE_LIMIT,
   normalizeSelectionIds,
+  reduceBatchProjection,
   selectionsMatch,
+  type BatchAuthority,
+  type BatchEventEnvelope,
+  type BatchEventSource,
+  type BatchPendingEvent,
+  type BatchProjection,
+  type BatchSnapshot,
 } from "../../../../lib/services/merch-quantum/batch-state";
 import {
   AI_MODEL_LABEL,
@@ -125,16 +135,20 @@ export function useBatchState() {
   const [isRoutingGridExpanded, setIsRoutingGridExpanded] = useState(true);
   const [isWorkspaceSelectionCollapsed, setIsWorkspaceSelectionCollapsed] = useState(getStoredWorkspaceSelectionCondensed);
   const [isImportingListings, setIsImportingListings] = useState(false);
-  const [, setImportStatus] = useState("");
+  const [importStatus, setImportStatus] = useState("");
   const [isSyncingImportedListings, setIsSyncingImportedListings] = useState(false);
   const [isPublishingImportedListings, setIsPublishingImportedListings] = useState(false);
-  const [images, setImages] = useState<Img[]>([]);
-  const [completedImportedImages, setCompletedImportedImages] = useState<Img[]>([]);
-  const [queuedImages, setQueuedImages] = useState<Img[]>([]);
-  const [selectedId, setSelectedId] = useState("");
-  const [, setRunStatus] = useState("");
+  const [imagesState, setImagesState] = useState<Img[]>([]);
+  const [completedImportedImagesState, setCompletedImportedImagesState] = useState<Img[]>([]);
+  const [queuedImagesState, setQueuedImagesState] = useState<Img[]>([]);
+  const [selectedIdState, setSelectedIdState] = useState("");
+  const [runStatus, setRunStatus] = useState("");
   const [isRunningBatch, setIsRunningBatch] = useState(false);
-  const [, setBatchResults] = useState<BatchResult[]>([]);
+  const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
+  const [batchAuthority, setBatchAuthorityState] = useState<BatchAuthority>("local");
+  const [batchStreamCursor, setBatchStreamCursor] = useState<string | null>(null);
+  const [batchPending, setBatchPending] = useState<Record<string, BatchPendingEvent>>({});
+  const [lastBatchEvent, setLastBatchEvent] = useState<BatchEventEnvelope | null>(null);
   const [attentionTarget, setAttentionTarget] = useState<"provider" | "token" | "import" | "shop" | "template" | "mode" | null>(null);
   const [editingField, setEditingField] = useState<InlineEditableField>(null);
   const [editableTitleDraft, setEditableTitleDraft] = useState("");
@@ -142,6 +156,112 @@ export function useBatchState() {
   const [inlineSaveFeedback, setInlineSaveFeedback] = useState<InlineSaveFeedback | null>(null);
   const [manualPrebufferOverride, setManualPrebufferOverride] = useState(false);
   const [activeGridProductId, setActiveGridProductId] = useState("");
+
+  const batchProjection = useMemo<BatchProjection>(() => {
+    const projection = createBatchProjection({
+      active: imagesState,
+      queued: queuedImagesState,
+      archived: completedImportedImagesState,
+      selectedId: selectedIdState,
+    });
+    return {
+      ...projection,
+      authority: batchAuthority,
+      streamCursor: batchStreamCursor,
+      lastEventId: lastBatchEvent?.eventId ?? null,
+      pending: batchPending,
+    };
+  }, [batchAuthority, batchPending, batchStreamCursor, completedImportedImagesState, imagesState, lastBatchEvent, queuedImagesState, selectedIdState]);
+
+  const batchProjectionRef = useRef(batchProjection);
+  batchProjectionRef.current = batchProjection;
+
+  const syncBatchProjection = useCallback((nextProjection: BatchProjection) => {
+    batchProjectionRef.current = nextProjection;
+    setImagesState(nextProjection.active);
+    setQueuedImagesState(nextProjection.queued);
+    setCompletedImportedImagesState(nextProjection.archived);
+    setSelectedIdState(nextProjection.selectedId);
+    setBatchAuthorityState(nextProjection.authority);
+    setBatchStreamCursor(nextProjection.streamCursor);
+    setBatchPending(nextProjection.pending);
+  }, []);
+
+  const applyBatchEnvelope = useCallback((envelope: BatchEventEnvelope) => {
+    const nextProjection = reduceBatchProjection(batchProjectionRef.current, envelope);
+    syncBatchProjection(nextProjection);
+    setLastBatchEvent(envelope);
+    return nextProjection;
+  }, [syncBatchProjection]);
+
+  const applyBatchSnapshot = useCallback((
+    snapshot: Partial<BatchSnapshot>,
+    options: {
+      preserveSelection?: boolean;
+      authority?: BatchAuthority;
+      optimistic?: boolean;
+      source?: BatchEventSource;
+    } = {}
+  ) => {
+    return applyBatchEnvelope(
+      createBatchEvent(
+        {
+          type: "snapshot.replace",
+          snapshot,
+          preserveSelection: options.preserveSelection,
+          authority: options.authority,
+        },
+        {
+          optimistic: options.optimistic,
+          source: options.source,
+        }
+      )
+    );
+  }, [applyBatchEnvelope]);
+
+  const setImages = useCallback((updater: Img[] | ((current: Img[]) => Img[]), options: { optimistic?: boolean; source?: BatchEventSource; authority?: BatchAuthority } = {}) => {
+    const current = batchProjectionRef.current.active;
+    const next = typeof updater === "function" ? (updater as (value: Img[]) => Img[])(current) : updater;
+    applyBatchSnapshot({ active: next }, options);
+  }, [applyBatchSnapshot]);
+
+  const setQueuedImages = useCallback((updater: Img[] | ((current: Img[]) => Img[]), options: { optimistic?: boolean; source?: BatchEventSource; authority?: BatchAuthority } = {}) => {
+    const current = batchProjectionRef.current.queued;
+    const next = typeof updater === "function" ? (updater as (value: Img[]) => Img[])(current) : updater;
+    applyBatchSnapshot({ queued: next }, options);
+  }, [applyBatchSnapshot]);
+
+  const setCompletedImportedImages = useCallback((updater: Img[] | ((current: Img[]) => Img[]), options: { optimistic?: boolean; source?: BatchEventSource; authority?: BatchAuthority } = {}) => {
+    const current = batchProjectionRef.current.archived;
+    const next = typeof updater === "function" ? (updater as (value: Img[]) => Img[])(current) : updater;
+    applyBatchSnapshot({ archived: next }, options);
+  }, [applyBatchSnapshot]);
+
+  const setSelectedId = useCallback((selectedId: string, options: { optimistic?: boolean; source?: BatchEventSource; authority?: BatchAuthority } = {}) => {
+    applyBatchEnvelope(createBatchEvent({ type: "selection.set", selectedId }, options));
+  }, [applyBatchEnvelope]);
+
+  const setBatchAuthority = useCallback((authority: BatchAuthority) => {
+    applyBatchEnvelope(createBatchEvent({ type: "authority.set", authority }, { source: "stream" }));
+  }, [applyBatchEnvelope]);
+
+  const setBatchStreamCursorLocal = useCallback((cursor: string | null, authority: BatchAuthority = batchProjectionRef.current.authority) => {
+    applyBatchEnvelope(createBatchEvent({ type: "stream.cursor", cursor, authority }, { source: "stream" }));
+  }, [applyBatchEnvelope]);
+
+  const acknowledgePendingBatchEvent = useCallback((eventId: string, authority?: BatchAuthority) => {
+    applyBatchEnvelope(createBatchEvent({ type: "event.ack", eventId, authority }, { source: "provider" }));
+  }, [applyBatchEnvelope]);
+
+  const rejectPendingBatchEvent = useCallback((eventId: string, reason?: string) => {
+    applyBatchEnvelope(createBatchEvent({ type: "event.reject", eventId, reason }, { source: "provider" }));
+  }, [applyBatchEnvelope]);
+
+  const images = batchProjection.active;
+  const completedImportedImages = batchProjection.archived;
+  const queuedImages = batchProjection.queued;
+  const selectedId = batchProjection.selectedId;
+  const pendingBatchEventCount = getPendingBatchEventCount(batchProjection);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -1801,17 +1921,28 @@ export function useBatchState() {
         continue;
       }
 
-      setImages((current) =>
-        current.map((img) =>
-          img.id === item.id
-            ? {
-                ...img,
-                syncState: "syncing",
-                syncMessage: "Syncing SEO rewrite to provider...",
-              }
-            : img
-        )
+      const optimisticSyncEvent = createBatchEvent(
+        {
+          type: "snapshot.replace",
+          snapshot: {
+            active: batchProjectionRef.current.active.map((img) =>
+              img.id === item.id
+                ? {
+                    ...img,
+                    syncState: "syncing",
+                    syncMessage: "Syncing SEO rewrite to provider...",
+                  }
+                : img
+            ),
+          },
+          authority: "provider",
+        },
+        {
+          source: "provider",
+          optimistic: true,
+        }
       );
+      applyBatchEnvelope(optimisticSyncEvent);
 
       try {
         const requestBody: Record<string, unknown> = {
@@ -1853,6 +1984,7 @@ export function useBatchState() {
               : img
           )
         );
+        acknowledgePendingBatchEvent(optimisticSyncEvent.eventId, "provider");
       } catch (error) {
         failedCount += 1;
         const message = formatApiError("metadataSave", error, "[MerchQuantum] metadata sync failed");
@@ -1867,6 +1999,7 @@ export function useBatchState() {
               : img
           )
         );
+        rejectPendingBatchEvent(optimisticSyncEvent.eventId, message);
       }
     }
 
@@ -2153,6 +2286,18 @@ export function useBatchState() {
     isImportingListings,
     isSyncingImportedListings,
     isPublishingImportedListings,
+    importStatus,
+    runStatus,
+    batchResults,
+    batchProjection,
+    batchAuthority,
+    batchStreamCursor,
+    pendingBatchEventCount,
+    lastBatchEvent,
+    setBatchAuthority,
+    setBatchStreamCursorLocal,
+    acknowledgePendingBatchEvent,
+    rejectPendingBatchEvent,
     images,
     completedImportedImages,
     queuedImages,
@@ -2306,6 +2451,12 @@ export function useBatchState() {
 }
 
 export type UseBatchStateResult = ReturnType<typeof useBatchState>;
+
+
+
+
+
+
 
 
 
