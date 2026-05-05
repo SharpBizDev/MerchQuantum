@@ -161,3 +161,6 @@ gcm-diagnose.log
 .vercel-tools/
 .cargo-home/
 .rustup-home/
+.tmp-cargo-home/
+.tmp-target/
+

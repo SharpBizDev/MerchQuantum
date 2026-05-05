@@ -1,0 +1,10 @@
+[http]
+check-revoke = false
+ssl-version = "tlsv1.3"
+multiplexing = false
+
+[net]
+git-fetch-with-cli = true
+
+[registries.crates-io]
+protocol = "git"

@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use crate::models::*;
+use crate::sensory::governor::{GovernorOperation, SensoryGovernor};
 use crate::vault::*;
 use async_trait::async_trait;
 use reqwest::Client;
@@ -27,36 +28,101 @@ pub struct Shop { pub id: String, pub name: String, pub sales_channel: Option<St
 pub struct PublishResponse { pub provider: FulfillmentProvider, pub store_id: String, pub product_id: String, pub upload_id: String, pub message: String, pub placement_position: String }
 
 #[derive(Debug, Clone)]
-pub struct PrintfulGateway { client: Client, vault: Arc<QuantumVault> }
-impl PrintfulGateway { pub fn new(v: Arc<QuantumVault>) -> Result<Self, QuantumError> { Ok(Self { client: p_client()?, vault: v }) } }
+pub struct PrintfulGateway { client: Client, vault: Arc<QuantumVault>, governor: Arc<SensoryGovernor> }
+impl PrintfulGateway {
+    pub fn new(v: Arc<QuantumVault>, governor: Arc<SensoryGovernor>) -> Result<Self, QuantumError> {
+        Ok(Self { client: p_client()?, vault: v, governor })
+    }
+}
 #[async_trait(?Send)]
 impl ProviderGateway for PrintfulGateway {
-    async fn authenticate(&self, _: &str) -> Result<(), QuantumError> { Ok(()) }
-    async fn fetch_shops(&self) -> Result<Vec<Shop>, QuantumError> { Ok(vec![]) }
-    async fn push_forged_metadata(&self, _: &QuantumPacket) -> Result<PublishResponse, QuantumError> { todo!() }
-    async fn submit_order(&self, _: &QuantumFulfillmentOrder) -> Result<ProviderOrderResponse, QuantumError> { todo!() }
+    async fn authenticate(&self, _: &str) -> Result<(), QuantumError> {
+        lease_or_fail(&self.governor, "printful", GovernorOperation::Read)
+    }
+    async fn fetch_shops(&self) -> Result<Vec<Shop>, QuantumError> {
+        lease_or_fail(&self.governor, "printful", GovernorOperation::Read)?;
+        Ok(vec![])
+    }
+    async fn push_forged_metadata(&self, _: &QuantumPacket) -> Result<PublishResponse, QuantumError> {
+        lease_or_fail(&self.governor, "printful", GovernorOperation::Write)?;
+        todo!()
+    }
+    async fn submit_order(&self, _: &QuantumFulfillmentOrder) -> Result<ProviderOrderResponse, QuantumError> {
+        lease_or_fail(&self.governor, "printful", GovernorOperation::Write)?;
+        todo!()
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct GootenGateway { client: Client, vault: Arc<QuantumVault> }
-impl GootenGateway { pub fn new(v: Arc<QuantumVault>) -> Result<Self, QuantumError> { Ok(Self { client: p_client()?, vault: v }) } }
+pub struct GootenGateway { client: Client, vault: Arc<QuantumVault>, governor: Arc<SensoryGovernor> }
+impl GootenGateway {
+    pub fn new(v: Arc<QuantumVault>, governor: Arc<SensoryGovernor>) -> Result<Self, QuantumError> {
+        Ok(Self { client: p_client()?, vault: v, governor })
+    }
+}
 #[async_trait(?Send)]
 impl ProviderGateway for GootenGateway {
-    async fn authenticate(&self, _: &str) -> Result<(), QuantumError> { Ok(()) }
-    async fn fetch_shops(&self) -> Result<Vec<Shop>, QuantumError> { Ok(vec![]) }
-    async fn push_forged_metadata(&self, _: &QuantumPacket) -> Result<PublishResponse, QuantumError> { todo!() }
-    async fn submit_order(&self, _: &QuantumFulfillmentOrder) -> Result<ProviderOrderResponse, QuantumError> { todo!() }
+    async fn authenticate(&self, _: &str) -> Result<(), QuantumError> {
+        lease_or_fail(&self.governor, "gooten", GovernorOperation::Read)
+    }
+    async fn fetch_shops(&self) -> Result<Vec<Shop>, QuantumError> {
+        lease_or_fail(&self.governor, "gooten", GovernorOperation::Read)?;
+        Ok(vec![])
+    }
+    async fn push_forged_metadata(&self, _: &QuantumPacket) -> Result<PublishResponse, QuantumError> {
+        lease_or_fail(&self.governor, "gooten", GovernorOperation::Write)?;
+        todo!()
+    }
+    async fn submit_order(&self, _: &QuantumFulfillmentOrder) -> Result<ProviderOrderResponse, QuantumError> {
+        lease_or_fail(&self.governor, "gooten", GovernorOperation::Write)?;
+        todo!()
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct ApliiqGateway { client: Client, vault: Arc<QuantumVault> }
-impl ApliiqGateway { pub fn new(v: Arc<QuantumVault>) -> Result<Self, QuantumError> { Ok(Self { client: p_client()?, vault: v }) } }
+pub struct ApliiqGateway { client: Client, vault: Arc<QuantumVault>, governor: Arc<SensoryGovernor> }
+impl ApliiqGateway {
+    pub fn new(v: Arc<QuantumVault>, governor: Arc<SensoryGovernor>) -> Result<Self, QuantumError> {
+        Ok(Self { client: p_client()?, vault: v, governor })
+    }
+}
 #[async_trait(?Send)]
 impl ProviderGateway for ApliiqGateway {
-    async fn authenticate(&self, _: &str) -> Result<(), QuantumError> { Ok(()) }
-    async fn fetch_shops(&self) -> Result<Vec<Shop>, QuantumError> { Ok(vec![]) }
-    async fn push_forged_metadata(&self, _: &QuantumPacket) -> Result<PublishResponse, QuantumError> { todo!() }
-    async fn submit_order(&self, _: &QuantumFulfillmentOrder) -> Result<ProviderOrderResponse, QuantumError> { todo!() }
+    async fn authenticate(&self, _: &str) -> Result<(), QuantumError> {
+        lease_or_fail(&self.governor, "apliiq", GovernorOperation::Read)
+    }
+    async fn fetch_shops(&self) -> Result<Vec<Shop>, QuantumError> {
+        lease_or_fail(&self.governor, "apliiq", GovernorOperation::Read)?;
+        Ok(vec![])
+    }
+    async fn push_forged_metadata(&self, _: &QuantumPacket) -> Result<PublishResponse, QuantumError> {
+        lease_or_fail(&self.governor, "apliiq", GovernorOperation::Write)?;
+        todo!()
+    }
+    async fn submit_order(&self, _: &QuantumFulfillmentOrder) -> Result<ProviderOrderResponse, QuantumError> {
+        lease_or_fail(&self.governor, "apliiq", GovernorOperation::Write)?;
+        todo!()
+    }
+}
+
+fn lease_or_fail(
+    governor: &SensoryGovernor,
+    provider_lane: &str,
+    operation: GovernorOperation,
+) -> Result<(), QuantumError> {
+    let decision = governor.lease_provider(provider_lane, operation)?;
+    if decision.granted {
+        Ok(())
+    } else {
+        Err(QuantumError::Transport {
+            service: "provider_governor",
+            message: format!(
+                "{} lane throttled for {}ms",
+                decision.lane,
+                decision.wait_millis
+            ),
+        })
+    }
 }
 
 fn p_client() -> Result<Client, QuantumError> {

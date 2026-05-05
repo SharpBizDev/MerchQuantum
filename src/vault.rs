@@ -1,7 +1,12 @@
 use crate::models::{CommercePlatform, FulfillmentProvider, PlatformAuth, QuantumError};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine as _;
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{atomic::{AtomicU64, Ordering}, RwLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlatformListingIndexRecord {
@@ -39,12 +44,23 @@ pub struct PlatformVaultState {
     pub sessions: HashMap<CommercePlatform, PlatformSessionRecord>,
 }
 
+type HmacSha256 = Hmac<Sha256>;
+static PROVIDER_SESSION_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderSessionRecord {
+    pub provider: FulfillmentProvider,
+    pub opaque_session_id: String,
+    pub credential_fingerprint: String,
+    pub issued_at_epoch_secs: u64,
+}
+
 #[derive(Debug)]
 pub struct QuantumVault {
     selected_provider: RwLock<Option<FulfillmentProvider>>,
     selected_platform: RwLock<Option<CommercePlatform>>,
     selected_store_id: RwLock<Option<String>>,
-    api_keys: RwLock<HashMap<FulfillmentProvider, String>>,
+    provider_sessions: RwLock<HashMap<FulfillmentProvider, ProviderSessionRecord>>,
     platform_state: RwLock<PlatformVaultState>,
 }
 
@@ -54,7 +70,7 @@ impl QuantumVault {
             selected_provider: RwLock::new(None),
             selected_platform: RwLock::new(None),
             selected_store_id: RwLock::new(None),
-            api_keys: RwLock::new(HashMap::new()),
+            provider_sessions: RwLock::new(HashMap::new()),
             platform_state: RwLock::new(PlatformVaultState::default()),
         }
     }
@@ -116,10 +132,22 @@ impl QuantumVault {
         api_key: impl Into<String>,
     ) -> Result<(), QuantumError> {
         let mut lock = self
-            .api_keys
+            .provider_sessions
             .write()
-            .map_err(|_| QuantumError::Vault("api_keys lock poisoned".into()))?;
-        lock.insert(provider, api_key.into());
+            .map_err(|_| QuantumError::Vault("provider_sessions lock poisoned".into()))?;
+        let api_key = api_key.into();
+        let issued_at_epoch_secs = epoch_secs();
+        let credential_fingerprint = fingerprint_credential(&api_key);
+        let opaque_session_id = sign_opaque_session_id(provider, &api_key, issued_at_epoch_secs);
+        lock.insert(
+            provider,
+            ProviderSessionRecord {
+                provider,
+                opaque_session_id,
+                credential_fingerprint,
+                issued_at_epoch_secs,
+            },
+        );
         Ok(())
     }
 
@@ -128,10 +156,24 @@ impl QuantumVault {
         provider: FulfillmentProvider,
     ) -> Result<Option<String>, QuantumError> {
         let lock = self
-            .api_keys
+            .provider_sessions
             .read()
-            .map_err(|_| QuantumError::Vault("api_keys lock poisoned".into()))?;
-        Ok(lock.get(&provider).cloned())
+            .map_err(|_| QuantumError::Vault("provider_sessions lock poisoned".into()))?;
+        Ok(lock.get(&provider).map(|_| None).unwrap_or(None))
+    }
+
+    pub fn provider_session(
+        &self,
+        provider: FulfillmentProvider,
+    ) -> Result<ProviderSessionRecord, QuantumError> {
+        let lock = self
+            .provider_sessions
+            .read()
+            .map_err(|_| QuantumError::Vault("provider_sessions lock poisoned".into()))?;
+
+        lock.get(&provider).cloned().ok_or_else(|| {
+            QuantumError::Vault(format!("missing provider session for {provider:?}"))
+        })
     }
 
     pub fn store_platform_auth(&self, auth: PlatformAuth) -> Result<(), QuantumError> {
@@ -252,6 +294,33 @@ impl QuantumVault {
                 QuantumError::Vault(format!("missing Etsy inventory template for sku {sku}"))
             })
     }
+}
+
+fn epoch_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn fingerprint_credential(api_key: &str) -> String {
+    let digest = Sha256::digest(api_key.as_bytes());
+    URL_SAFE_NO_PAD.encode(digest)
+}
+
+fn sign_opaque_session_id(
+    provider: FulfillmentProvider,
+    api_key: &str,
+    issued_at_epoch_secs: u64,
+) -> String {
+    let nonce = PROVIDER_SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let message = format!("{provider:?}:{issued_at_epoch_secs}:{nonce}");
+    let mut mac = HmacSha256::new_from_slice(api_key.as_bytes())
+        .expect("HMAC supports arbitrary key lengths");
+    mac.update(message.as_bytes());
+    let signature = mac.finalize().into_bytes();
+    let compact = format!("mq:{}:{}", issued_at_epoch_secs, URL_SAFE_NO_PAD.encode(signature));
+    URL_SAFE_NO_PAD.encode(compact.as_bytes())
 }
 
 impl Default for QuantumVault {

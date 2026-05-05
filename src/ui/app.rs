@@ -1,5 +1,6 @@
 use crate::models::*;
 use crate::router::OrderRouter;
+use crate::sensory::emitter::use_sensory_emitter;
 use crate::ui::carousel::{
     BatchMetadataDraft, ImportedImageStub, PipelineCommand, PipelinePhase, PipelineStatus,
     QuantumCarousel, WorkbenchItem, WorkspaceMode,
@@ -819,6 +820,7 @@ pub fn ContextQuantumApp() -> Element {
     let router: Arc<OrderRouter> = runtime.router.clone();
     use_context_provider(move || vault.clone());
     use_context_provider(move || router.clone());
+    use_sensory_emitter();
 
     #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
     let desktop = use_window();
@@ -2225,4 +2227,6 @@ fn sanitize_token(name: &str) -> String {
         })
         .collect()
 }
+
+
 
