@@ -15,15 +15,16 @@ branches:
     name: feature/quantum-sensory-core
 protocol:
   target_category: 0
-  status: FORGED
+  status: REFINED_TRUTH
+  serialization_overhead_ms: 0.0
   forge_writes:
     queue_file: "C:\\Users\\prog\\Documents\\New Prodject\\.tmp\\worktrees\\rust-sensory-core\\pulsar_queue.json"
     input_chunk:
       chunk_id: "chunk-00"
-      mime_hint: "text/markdown"
+      mime_hint: "text/plain"
       zero_copy_block: "block://vault/category/00"
-      source_path: "C:\\Users\\prog\\Documents\\New Prodject\\.tmp\\worktrees\\rust-sensory-core\\dummy-pulsar-fuel.md"
-      content_excerpt: "Dummy content from queue fuel for category zero. The micro-cell should ingest this string during boot and surface it in the refined truth manifest."
+      source_path: "C:\\Users\\prog\\Documents\\New Prodject\\.tmp\\worktrees\\rust-sensory-core\\dummy-pulsar-fuel.bin"
+      content_excerpt: "Dummy content from queue fuel for category zero. This path should now be written into guest linear memory as raw bytes with zero serialization overhead."
   micro_cell_reads:
     designated_memory_block: "block://vault/category/00"
     zero_copy: true
@@ -34,14 +35,16 @@ protocol:
         corpus_id: category-00
         embedding_model: sbert-compact
         authority: Quantum Forge
+        serialization_overhead_ms: 0.0
         records:
-          - source_label: "C:\\Users\\prog\\Documents\\New Prodject\\.tmp\\worktrees\\rust-sensory-core\\dummy-pulsar-fuel.md"
-            mime_hint: "text/markdown"
-            content_excerpt: "Dummy content from queue fuel for category zero. The micro-cell should ingest this string during boot and surface it in the refined truth manifest."
-            content_block_preview: |
-              Dummy content from queue fuel for category zero. The micro-cell should ingest this string during boot and surface it in the refined truth manifest.
+          - source_label: "C:\\Users\\prog\\Documents\\New Prodject\\.tmp\\worktrees\\rust-sensory-core\\dummy-pulsar-fuel.bin"
+            mime_hint: "text/plain"
+            content_excerpt: "Dummy content from queue fuel for category zero. This path should now be written into guest linear memory as raw bytes with zero serialization overhead."
+            fuel_offset: 0
+            fuel_len: 154
+            fuel_preview: |
+              Dummy content from queue fuel for category zero. This path should now be written into guest linear memory as raw bytes with zero serialization overhead.
 last_tick:
-  emitted_at_epoch_ms: 1778036935342
+  emitted_at_epoch_ms: 1778037722416
   category_pointer_after_tick: 1
-findings:
-[]
+findings: []
