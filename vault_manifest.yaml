@@ -1,0 +1,23 @@
+authority: Quantum Forge
+runtime:
+  native_bridge: wry-ipc
+  state_owner: rust-single-writer
+  surface: ContextQuantum Refinery
+librarian:
+  role: Agent Librarian
+  exchange: vault-manifest-v1
+  embedding_model: sbert-compact
+  output_format: yaml
+branches:
+  ui:
+    name: feature/quantum-refinery-core
+    head: e4444bffcebaa4869745f726cba5b11d1ebc62c5
+  native:
+    name: feature/quantum-sensory-core
+    head: 011569fae68ae12b12b821a673dbbca0396ad223
+handoff:
+  append_only: true
+  redact_suffixes:
+    - _id
+    - _name
+findings: []

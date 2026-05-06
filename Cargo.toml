@@ -42,7 +42,7 @@ web = ["dioxus/web"]
 reqwest = { version = "0.11.27", default-features = false, features = ["json", "multipart", "rustls-tls"] }
 # FORGE: Native builds keep full features for high-performance daemonless logic
 tokio = { version = "1", features = ["full"] }
-wasmtime = { version = "29.0.1", optional = true, default-features = false, features = ["cranelift"] }
+wasmtime = { version = "29.0.1", optional = true, default-features = false, features = ["async", "cranelift", "runtime", "std"] }
 
 [[bin]]
 name = "quantum_core"
@@ -65,3 +65,4 @@ inherits = "dev"
 reqwest = { version = "0.11.27", default-features = false, features = ["json"] }
 wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = ["Window", "Storage", "BroadcastChannel", "CustomEvent", "CustomEventInit", "EventTarget"] }
+
