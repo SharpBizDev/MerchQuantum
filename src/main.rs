@@ -128,9 +128,12 @@ fn maybe_run_pulsar_tick() -> Result<bool, String> {
             .tick(crate::pulsar::default_manifest_path())
             .await?;
         println!(
-            "pulsar tick emitted category {:02} at {}",
-            emission.target_category, emission.emitted_at_epoch_ms
+            "pulsar tick emitted category {:02} status {} excerpt {}",
+            emission.target_category,
+            emission.status.as_str(),
+            emission.input_chunk.content_excerpt
         );
         Ok(true)
     })
 }
+

@@ -16,6 +16,8 @@ pub struct LibrarianIngressRecord {
     pub source_label: String,
     pub mime_hint: String,
     pub content_excerpt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_block: Option<String>,
 }
 
 #[cfg(feature = "micro-cell")]
@@ -38,6 +40,9 @@ impl Default for LibrarianIngressPayload {
                 source_label: "seed://librarian".to_string(),
                 mime_hint: "text/markdown".to_string(),
                 content_excerpt: "Bootstrap the librarian ingestion lane with SBERT-aligned summaries.".to_string(),
+                content_block: Some(
+                    "Bootstrap the librarian ingestion lane with SBERT-aligned summaries.".to_string(),
+                ),
             }],
         }
     }
@@ -73,6 +78,10 @@ impl LibrarianDataPlane {
             yaml.push(format!("    - source_label: {}", sanitize_yaml_scalar(&record.source_label)));
             yaml.push(format!("      mime_hint: {}", sanitize_yaml_scalar(&record.mime_hint)));
             yaml.push(format!("      content_excerpt: {}", sanitize_yaml_scalar(&record.content_excerpt)));
+            if let Some(block) = &record.content_block {
+                yaml.push("      content_block_preview: |".to_string());
+                yaml.extend(indent_yaml_block(&summarize_block(block), 8));
+            }
         }
 
         yaml.join("\n")
@@ -156,6 +165,29 @@ fn sanitize_yaml_scalar(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', " "))
 }
 
+#[cfg(feature = "micro-cell")]
+fn indent_yaml_block(value: &str, spaces: usize) -> Vec<String> {
+    let prefix = " ".repeat(spaces);
+    value
+        .lines()
+        .map(|line| format!("{prefix}{line}"))
+        .collect::<Vec<_>>()
+}
+
+#[cfg(feature = "micro-cell")]
+fn summarize_block(value: &str) -> String {
+    const PREVIEW_LIMIT: usize = 160;
+    let squashed = value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut preview = squashed.chars().take(PREVIEW_LIMIT).collect::<String>();
+    if squashed.chars().count() > PREVIEW_LIMIT {
+        preview.push_str("...");
+    }
+    preview
+}
+
 #[cfg(all(test, feature = "micro-cell"))]
 mod tests {
     use super::{LibrarianIngressPayload, LibrarianIngressRecord, QuantumMicroCell};
@@ -178,12 +210,17 @@ mod tests {
                         source_label: "memory://record-1".to_string(),
                         mime_hint: "text/plain".to_string(),
                         content_excerpt: "Diskless daemonless librarian micro-cell boot.".to_string(),
+                        content_block: Some("Diskless daemonless librarian micro-cell boot.".to_string()),
                     }],
                 })
                 .await
                 .expect("instantiate librarian micro-cell");
 
             assert!(handle.librarian_plane.yaml_manifest().contains("corpus_id: test-corpus"));
+            assert!(handle
+                .librarian_plane
+                .yaml_manifest()
+                .contains("content_block_preview:"));
         });
     }
 }
