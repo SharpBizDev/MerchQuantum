@@ -17,6 +17,7 @@ protocol:
   target_category: 0
   status: REFINED_TRUTH
   serialization_overhead_ms: 0.0
+  purifier_fired: true
   forge_writes:
     queue_file: "C:\\Users\\prog\\Documents\\New Prodject\\.tmp\\worktrees\\rust-sensory-core\\pulsar_queue.json"
     input_chunk:
@@ -24,7 +25,10 @@ protocol:
       mime_hint: "text/plain"
       zero_copy_block: "block://vault/category/00"
       source_path: "C:\\Users\\prog\\Documents\\New Prodject\\.tmp\\worktrees\\rust-sensory-core\\dummy-pulsar-fuel.bin"
-      content_excerpt: "Dummy content from queue fuel for category zero. This path should now be written into guest linear memory as raw bytes with zero serialization overhead."
+      content_excerpt: "Dummy content from queue fuel for category zero. The purifier should strip punctuation and the cold vault should archive this raw chunk before forge output."
+  cold_vault:
+    archive_path: "C:\\Users\\prog\\Documents\\New Prodject\\.tmp\\worktrees\\rust-sensory-core\\vault\\provenance\\00\\0893fbf5fac9903ee4752f71509a6b3db093815a479f191b1edfc6c914ab66e7.raw.zst"
+    sha256: "0893fbf5fac9903ee4752f71509a6b3db093815a479f191b1edfc6c914ab66e7"
   micro_cell_reads:
     designated_memory_block: "block://vault/category/00"
     zero_copy: true
@@ -36,15 +40,24 @@ protocol:
         embedding_model: sbert-compact
         authority: Quantum Forge
         serialization_overhead_ms: 0.0
+        checksum_verified: true
+        purifier:
+          fired: true
+          clinical_text: |
+            Dummy content from queue fuel for category zero The purifier should strip punctuation and the cold vault should archive this raw chunk before forge output
+        cold_vault:
+          archive_path: "C:\\Users\\prog\\Documents\\New Prodject\\.tmp\\worktrees\\rust-sensory-core\\vault\\provenance\\00\\0893fbf5fac9903ee4752f71509a6b3db093815a479f191b1edfc6c914ab66e7.raw.zst"
+          sha256: "0893fbf5fac9903ee4752f71509a6b3db093815a479f191b1edfc6c914ab66e7"
         records:
           - source_label: "C:\\Users\\prog\\Documents\\New Prodject\\.tmp\\worktrees\\rust-sensory-core\\dummy-pulsar-fuel.bin"
             mime_hint: "text/plain"
-            content_excerpt: "Dummy content from queue fuel for category zero. This path should now be written into guest linear memory as raw bytes with zero serialization overhead."
+            content_excerpt: "Dummy content from queue fuel for category zero. The purifier should strip punctuation and the cold vault should archive this raw chunk before forge output."
             fuel_offset: 0
-            fuel_len: 154
+            fuel_len: 158
+            checksum_crc32: 1226013218
             fuel_preview: |
-              Dummy content from queue fuel for category zero. This path should now be written into guest linear memory as raw bytes with zero serialization overhead.
+              Dummy content from queue fuel for category zero. The purifier should strip punctuation and the cold vault should archive this raw chunk before forge output.
 last_tick:
-  emitted_at_epoch_ms: 1778037722416
+  emitted_at_epoch_ms: 1778041486291
   category_pointer_after_tick: 1
 findings: []

@@ -1,4 +1,6 @@
 #![allow(non_snake_case)]
+#[cfg(feature = "micro-cell")]
+mod cold_vault;
 #[cfg(all(feature = "deploy", not(target_arch = "wasm32")))]
 mod deploy;
 mod ingestion;
@@ -128,14 +130,17 @@ fn maybe_run_pulsar_tick() -> Result<bool, String> {
             .tick(crate::pulsar::default_manifest_path())
             .await?;
         println!(
-            "pulsar tick emitted {} category {:02} serialization_overhead_ms {:.1} excerpt {}",
+            "pulsar tick emitted {} category {:02} serialization_overhead_ms {:.1} archive {} purifier_fired {} excerpt {}",
             emission.status.as_str(),
             emission.target_category,
             emission.serialization_overhead_ms,
+            emission
+                .archive_path
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
+            emission.purifier_fired,
             emission.input_chunk.content_excerpt
         );
         Ok(true)
     })
 }
-
-
