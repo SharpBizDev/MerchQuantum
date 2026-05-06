@@ -1,6 +1,10 @@
 #![allow(non_snake_case)]
+#[cfg(all(feature = "deploy", not(target_arch = "wasm32")))]
+mod deploy;
 mod ingestion;
 mod metadata;
+#[cfg(feature = "micro-cell")]
+mod micro_cell;
 mod models;
 mod native_shell;
 mod platforms;
@@ -64,7 +68,15 @@ fn init_runtime() {
     });
 }
 
-#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+#[cfg(all(feature = "deploy", not(target_arch = "wasm32")))]
+fn main() {
+    if let Err(error) = crate::deploy::run() {
+        eprintln!("quantum deploy failed: {error}");
+        std::process::exit(1);
+    }
+}
+
+#[cfg(all(feature = "desktop", not(target_arch = "wasm32"), not(feature = "deploy")))]
 fn main() {
     init_runtime();
     LaunchBuilder::desktop()
@@ -72,17 +84,17 @@ fn main() {
         .launch(ContextQuantumApp);
 }
 
-#[cfg(all(feature = "web", target_arch = "wasm32"))]
+#[cfg(all(feature = "web", target_arch = "wasm32", not(feature = "deploy")))]
 fn main() {
     init_runtime();
     dioxus::launch(ContextQuantumApp);
 }
 
 #[cfg(not(any(
+    all(feature = "deploy", not(target_arch = "wasm32")),
     all(feature = "desktop", not(target_arch = "wasm32")),
     all(feature = "web", target_arch = "wasm32")
 )))]
 fn main() {
-    panic!("Enable the desktop or web feature.");
+    panic!("Enable the deploy, desktop, or web feature.");
 }
-

@@ -36,6 +36,7 @@ pub struct HoleScore {
     pub width: i32,
     pub height: i32,
     pub score: f32,
+    pub compact_mode: bool,
 }
 
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
@@ -62,6 +63,7 @@ fn best_hole_store() -> Arc<RwLock<HoleScore>> {
                 width: 420,
                 height: 720,
                 score: 0.72,
+                compact_mode: false,
             }))
         })
         .clone()
@@ -78,6 +80,7 @@ pub fn current_hole_score() -> HoleScore {
             width: 420,
             height: 720,
             score: 0.72,
+            compact_mode: false,
         })
 }
 
@@ -230,7 +233,7 @@ fn compute_best_hole() -> HoleScore {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        HoleScore { x: 1180, y: 120, width: 420, height: 720, score: 0.72 }
+        HoleScore { x: 1180, y: 120, width: 420, height: 720, score: 0.72, compact_mode: false }
     }
 }
 
@@ -318,6 +321,7 @@ mod windows {
                 width: target_width,
                 height: target_height,
                 score: 0.0,
+                compact_mode: target_width < 400,
             };
 
             for (x, y) in candidate_positions {
@@ -328,13 +332,14 @@ mod windows {
                 let edge_bias = if x > work_area.left + work_width / 2 { 0.08 } else { 0.02 };
                 let score = (free_ratio + edge_bias).clamp(0.0, 1.0);
                 if score > best.score {
-                    best = HoleScore { x, y, width: target_width, height: target_height, score };
+                    best = HoleScore { x, y, width: target_width, height: target_height, score, compact_mode: target_width < 400 };
                 }
             }
 
             if best.score <= 0.0 {
                 best.score = 0.42;
             }
+            best.compact_mode = best.width < 400;
             best
         }
     }

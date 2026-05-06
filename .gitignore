@@ -163,8 +163,11 @@ gcm-diagnose.log
 .rustup-home/
 .tmp-cargo-home/
 .tmp-target/
+target-local/
 
 
 .publish-clone/
 .tmp-target-*/
 .tmp-cargo-home-*/
+
+

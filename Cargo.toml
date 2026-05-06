@@ -32,7 +32,9 @@ futures-util = "0.3"
 [features]
 # STRIP: Decoupled desktop from default to prevent WASM build poisoning
 default = []
+deploy = []
 desktop = ["dioxus/desktop"]
+micro-cell = ["dep:wasmtime"]
 web = ["dioxus/web"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -40,6 +42,7 @@ web = ["dioxus/web"]
 reqwest = { version = "0.11.27", default-features = false, features = ["json", "multipart", "rustls-tls"] }
 # FORGE: Native builds keep full features for high-performance daemonless logic
 tokio = { version = "1", features = ["full"] }
+wasmtime = { version = "29.0.1", optional = true, default-features = false, features = ["cranelift"] }
 
 [[bin]]
 name = "quantum_core"
@@ -62,5 +65,3 @@ inherits = "dev"
 reqwest = { version = "0.11.27", default-features = false, features = ["json"] }
 wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = ["Window", "Storage", "BroadcastChannel", "CustomEvent", "CustomEventInit", "EventTarget"] }
-
-
