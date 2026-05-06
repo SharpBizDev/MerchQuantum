@@ -128,12 +128,14 @@ fn maybe_run_pulsar_tick() -> Result<bool, String> {
             .tick(crate::pulsar::default_manifest_path())
             .await?;
         println!(
-            "pulsar tick emitted category {:02} status {} excerpt {}",
-            emission.target_category,
+            "pulsar tick emitted {} category {:02} serialization_overhead_ms {:.1} excerpt {}",
             emission.status.as_str(),
+            emission.target_category,
+            emission.serialization_overhead_ms,
             emission.input_chunk.content_excerpt
         );
         Ok(true)
     })
 }
+
 

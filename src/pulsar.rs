@@ -14,6 +14,8 @@ use std::sync::{Arc, OnceLock};
 use std::thread;
 #[cfg(feature = "micro-cell")]
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+#[cfg(feature = "micro-cell")]
+use tokio::time::MissedTickBehavior;
 
 #[cfg(feature = "micro-cell")]
 const CATEGORY_RING_SIZE: u8 = 96;
@@ -30,7 +32,7 @@ static PULSAR_SCHEDULER: OnceLock<Arc<PulsarScheduler>> = OnceLock::new();
 #[cfg(feature = "micro-cell")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PulsarStatus {
-    Forged,
+    RefinedTruth,
     WaitingForFuel,
 }
 
@@ -38,7 +40,7 @@ pub enum PulsarStatus {
 impl PulsarStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Forged => "FORGED",
+            Self::RefinedTruth => "REFINED_TRUTH",
             Self::WaitingForFuel => "WAITING_FOR_FUEL",
         }
     }
@@ -64,6 +66,7 @@ pub struct PulsarEmission {
     pub refined_truth_yaml: String,
     pub emitted_at_epoch_ms: u128,
     pub findings: Vec<String>,
+    pub serialization_overhead_ms: f32,
 }
 
 #[cfg(feature = "micro-cell")]
@@ -91,7 +94,7 @@ enum FuelLoad {
     Ready {
         source_path: PathBuf,
         mime_hint: String,
-        content: String,
+        content: Vec<u8>,
     },
     Waiting {
         reason: String,
@@ -149,14 +152,14 @@ impl PulsarScheduler {
                             .unwrap_or_else(|| input_chunk.zero_copy_block.clone()),
                         mime_hint: input_chunk.mime_hint.clone(),
                         content_excerpt: input_chunk.content_excerpt.clone(),
-                        content_block: Some(content),
+                        fuel: None,
                     }],
                 };
 
                 let micro_cell = QuantumMicroCell::new().map_err(|error| error.to_string())?;
                 let handle = tokio::spawn(async move {
                     micro_cell
-                        .instantiate_diskless_librarian(payload)
+                        .instantiate_diskless_librarian(payload, content)
                         .await
                         .map_err(|error| error.to_string())
                 });
@@ -167,12 +170,13 @@ impl PulsarScheduler {
 
                 PulsarEmission {
                     target_category,
-                    status: PulsarStatus::Forged,
+                    status: PulsarStatus::RefinedTruth,
                     queue_path: queue_path.display().to_string(),
                     input_chunk,
                     refined_truth_yaml: micro_cell.librarian_plane.yaml_manifest(),
                     emitted_at_epoch_ms: now_epoch_ms(),
                     findings: vec![],
+                    serialization_overhead_ms: micro_cell.serialization_overhead_ms,
                 }
             }
             FuelLoad::Waiting { reason } => build_waiting_emission(target_category, &queue_path, reason),
@@ -222,6 +226,7 @@ pub fn start_background(manifest_path: PathBuf) {
 
         runtime.block_on(async move {
             let mut interval = tokio::time::interval(PULSAR_CADENCE);
+            interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
             loop {
                 interval.tick().await;
                 let path = manifest_path.clone();
@@ -267,7 +272,7 @@ fn load_fuel(target_category: u8, queue_path: &Path) -> FuelLoad {
     };
 
     let source_path = resolve_fuel_path(queue_path, &entry.research_file_path);
-    let content = match fs::read_to_string(&source_path) {
+    let content = match fs::read(&source_path) {
         Ok(content) => content,
         Err(_) => {
             return FuelLoad::Waiting {
@@ -331,11 +336,12 @@ fn build_waiting_emission(target_category: u8, queue_path: &Path, reason: String
             None,
         ),
         refined_truth_yaml: format!(
-            "authority: Quantum Forge\nlibrarian_plane:\n  status: WAITING_FOR_FUEL\n  requested_category: category-{target_category:02}\n  note: {}",
+            "authority: Quantum Forge\nlibrarian_plane:\n  status: WAITING_FOR_FUEL\n  requested_category: category-{target_category:02}\n  note: {}\n  serialization_overhead_ms: 0.0",
             sanitize_yaml_scalar(&reason)
         ),
         emitted_at_epoch_ms: now_epoch_ms(),
         findings: vec![reason],
+        serialization_overhead_ms: 0.0,
     }
 }
 
@@ -349,15 +355,16 @@ fn infer_mime_hint(path: &str) -> String {
             "json" => "application/json",
             "md" => "text/markdown",
             "txt" => "text/plain",
-            _ => "text/plain",
+            _ => "application/octet-stream",
         })
-        .unwrap_or("text/plain")
+        .unwrap_or("application/octet-stream")
         .to_string()
 }
 
 #[cfg(feature = "micro-cell")]
-fn summarize_content(content: &str) -> String {
-    let squashed = content.split_whitespace().collect::<Vec<_>>().join(" ");
+fn summarize_content(content: &[u8]) -> String {
+    let text = String::from_utf8_lossy(content);
+    let squashed = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut preview = squashed.chars().take(CONTENT_PREVIEW_LIMIT).collect::<String>();
     if squashed.chars().count() > CONTENT_PREVIEW_LIMIT {
         preview.push_str("...");
@@ -382,20 +389,24 @@ fn render_manifest(emission: &PulsarEmission) -> String {
         .clone()
         .unwrap_or_else(|| "WAITING_FOR_FUEL".to_string());
     let findings_block = if emission.findings.is_empty() {
-        "[]".to_string()
+        "findings: []".to_string()
     } else {
-        emission
-            .findings
-            .iter()
-            .map(|finding| format!("  - {}", sanitize_yaml_scalar(finding)))
-            .collect::<Vec<_>>()
-            .join("\n")
+        format!(
+            "findings:\n{}",
+            emission
+                .findings
+                .iter()
+                .map(|finding| format!("  - {}", sanitize_yaml_scalar(finding)))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
     };
 
     format!(
-        "authority: Quantum Forge\nruntime:\n  native_bridge: wry-ipc\n  state_owner: rust-single-writer\n  surface: ContextQuantum Refinery\nlibrarian:\n  role: Agent Librarian\n  exchange: vault-manifest-v1\n  embedding_model: sbert-compact\n  output_format: yaml\nbranches:\n  ui:\n    name: feature/quantum-refinery-core\n  native:\n    name: feature/quantum-sensory-core\nprotocol:\n  target_category: {category}\n  status: {status}\n  forge_writes:\n    queue_file: {queue_path}\n    input_chunk:\n      chunk_id: {chunk_id}\n      mime_hint: {mime_hint}\n      zero_copy_block: {zero_copy_block}\n      source_path: {source_path}\n      content_excerpt: {excerpt}\n  micro_cell_reads:\n    designated_memory_block: {zero_copy_block}\n    zero_copy: true\n  micro_cell_emits:\n    refined_truth: |\n{refined_truth}\nlast_tick:\n  emitted_at_epoch_ms: {emitted_at}\n  category_pointer_after_tick: {next_category}\n{findings}\n",
+        "authority: Quantum Forge\nruntime:\n  native_bridge: wry-ipc\n  state_owner: rust-single-writer\n  surface: ContextQuantum Refinery\nlibrarian:\n  role: Agent Librarian\n  exchange: vault-manifest-v1\n  embedding_model: sbert-compact\n  output_format: yaml\nbranches:\n  ui:\n    name: feature/quantum-refinery-core\n  native:\n    name: feature/quantum-sensory-core\nprotocol:\n  target_category: {category}\n  status: {status}\n  serialization_overhead_ms: {serialization_overhead_ms:.1}\n  forge_writes:\n    queue_file: {queue_path}\n    input_chunk:\n      chunk_id: {chunk_id}\n      mime_hint: {mime_hint}\n      zero_copy_block: {zero_copy_block}\n      source_path: {source_path}\n      content_excerpt: {excerpt}\n  micro_cell_reads:\n    designated_memory_block: {zero_copy_block}\n    zero_copy: true\n  micro_cell_emits:\n    refined_truth: |\n{refined_truth}\nlast_tick:\n  emitted_at_epoch_ms: {emitted_at}\n  category_pointer_after_tick: {next_category}\n{findings}\n",
         category = emission.target_category,
         status = emission.status.as_str(),
+        serialization_overhead_ms = emission.serialization_overhead_ms,
         queue_path = sanitize_yaml_scalar(&emission.queue_path),
         chunk_id = sanitize_yaml_scalar(&emission.input_chunk.chunk_id),
         mime_hint = sanitize_yaml_scalar(&emission.input_chunk.mime_hint),
@@ -461,12 +472,15 @@ mod tests {
             let local_scheduler = PulsarScheduler::new();
             let emission = local_scheduler.tick(&manifest_path).await.expect("pulsar tick");
             assert_eq!(emission.target_category, 0);
-            assert_eq!(emission.status, PulsarStatus::Forged);
+            assert_eq!(emission.status, PulsarStatus::RefinedTruth);
             assert!(emission.input_chunk.content_excerpt.contains("dummy content from queue fuel"));
+            assert_eq!(emission.serialization_overhead_ms, 0.0);
         });
 
         let manifest = fs::read_to_string(&manifest_path).expect("manifest output");
-        assert!(manifest.contains("status: FORGED"));
+        assert!(manifest.contains("status: REFINED_TRUTH"));
+        assert!(manifest.contains("serialization_overhead_ms: 0.0"));
+        assert!(manifest.contains("fuel_offset: 0"));
         assert!(manifest.contains("dummy content from queue fuel"));
         let _ = fs::remove_dir_all(&temp_dir);
     }
@@ -512,6 +526,3 @@ mod tests {
         fs::write(temp_dir.join("pulsar_queue.json"), queue_json).expect("queue fixture");
     }
 }
-
-
-
