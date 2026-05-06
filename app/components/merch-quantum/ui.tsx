@@ -60,8 +60,8 @@ export function SetupSelect({ className = "", children, ...props }: SelectProps)
 
 export function Box({ title, children, className = "", headerClassName = "" }: BoxProps) {
   return (
-    <section className={`rounded-[24px] border border-slate-800 bg-[#020616] p-3 sm:rounded-[28px] sm:p-4 text-white shadow-[0_18px_60px_-38px_rgba(2,6,22,0.9)] backdrop-blur-sm ${className}`}>
-      {title ? <div className={`mb-4 text-sm font-semibold leading-6 tracking-tight ${headerClassName}`}>{title}</div> : null}
+    <section className={`rounded-[22px] border border-slate-800 bg-[#020616] p-2 sm:rounded-[24px] sm:p-2.5 text-white shadow-[0_18px_60px_-38px_rgba(2,6,22,0.9)] ${className}`}>
+      {title ? <div className={`mb-2 text-xs font-semibold leading-5 tracking-tight sm:mb-2.5 sm:text-sm ${headerClassName}`}>{title}</div> : null}
       {children}
     </section>
   );
@@ -69,7 +69,7 @@ export function Box({ title, children, className = "", headerClassName = "" }: B
 
 export function MerchQuantumInlineHeading({ className = "" }: { className?: string }) {
   return (
-    <span className={`min-w-0 text-[clamp(0.72rem,2.2vw,0.9rem)] font-semibold leading-5 tracking-tight text-white ${className}`}>
+    <span className={`min-w-0 text-[clamp(0.64rem,1.45vw,0.82rem)] font-semibold leading-4 tracking-tight text-white sm:leading-5 ${className}`}>
       <span className="text-[#7F22FE]">Merch</span>{" "}
       <span className="text-white">Quantum AI bulk auto listings</span>
     </span>
@@ -181,6 +181,7 @@ export function ProductGrid({
   pageSize,
   totalPages,
   loading,
+  compactMode = false,
   headerAccessory,
   onToggleCollapsed,
   onSelectAll,
@@ -203,10 +204,10 @@ export function ProductGrid({
   }, [collapsed, footerLabel, rangeLabel, visibleItems.length]);
 
   return (
-    <div className={`mx-auto flex w-full max-w-6xl flex-col gap-2 ${highlighted ? "drop-shadow-[0_10px_24px_rgba(127,34,254,0.18)]" : ""}`}>
-      <div className="flex w-full min-w-0 items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-white">{heading}</span>
-        <div className="ml-auto flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 text-xs">
+    <div className={`mx-auto flex w-full max-w-6xl flex-col ${compactMode ? "gap-1" : "gap-2"} ${highlighted ? "drop-shadow-[0_10px_24px_rgba(127,34,254,0.18)]" : ""}`}>
+      <div className={`flex w-full min-w-0 items-center ${compactMode ? "gap-1" : "gap-2"}`}>
+        <span className="min-w-0 flex-1 truncate font-semibold tracking-tight text-white" style={{ fontSize: compactMode ? "clamp(12px, calc(11.07px + 0.33cqi), 14px)" : undefined }}>{heading}</span>
+        <div className={`ml-auto flex min-w-0 shrink-0 flex-wrap items-center justify-end ${compactMode ? "gap-1 text-[11px]" : "gap-2 text-xs"}`}>
           {onSelectAll ? (
             <button
               type="button"
@@ -222,7 +223,7 @@ export function ProductGrid({
       </div>
 
       {items.length > 0 ? (
-        <div className="grid h-full w-full grid-cols-5 gap-1 overflow-hidden snap-y snap-mandatory">
+        <div className="grid h-full w-full grid-cols-5 gap-1 overflow-hidden snap-y snap-mandatory" style={{ contentVisibility: "auto" }}>
           {visibleItems.map((product, index) => {
             const globalIndex = page * pageSize + index;
             const isSelected = selectedIds.includes(product.id);
@@ -252,13 +253,14 @@ export function ProductGrid({
                     onItemActivate(product, globalIndex, event);
                   }
                 }}
-                className={`w-full snap-start transition-all duration-500 focus-visible:outline-none ${frameGlow}`}
+                className={`w-full snap-start transition-all duration-500 focus-visible:outline-none ${frameGlow}`} style={{ contentVisibility: "auto", containIntrinsicSize: "180px" }}
                 aria-label={product.title}
               >
                 <SmartThumbnail
                   src={product.previewUrl}
                   alt={product.title}
-                  className={`group rounded-lg border transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
+                  className={`group rounded-md border transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${cardTone}`}
+                  imageClassName={compactMode ? "absolute inset-0 h-full w-full object-cover" : undefined}
                   fallbackClassName="flex items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(127,34,254,0.28),_transparent_55%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,22,0.98))]"
                 >
                   {(isSelected || alreadyImported) ? (
@@ -382,3 +384,4 @@ export function ChevronIcon({ open, className = "" }: { open: boolean; className
     </svg>
   );
 }
+

@@ -41,7 +41,7 @@ function JobRow({ job }: { job: JobGraphJob }) {
   const active = ACTIVE_STAGES.has(job.status);
 
   return (
-    <li className={`rounded-[18px] border ${job.status === "FAILED" ? "border-[#BC13FE]/45" : "border-white/10"} bg-[rgba(15,23,42,0.55)] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]`}>
+    <li className={`rounded-[18px] border ${job.status === "FAILED" ? "border-[#BC13FE]/45" : "border-white/10"} bg-[rgba(15,23,42,0.55)] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]`} style={{ contentVisibility: "auto", containIntrinsicSize: "220px" }}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
@@ -135,7 +135,7 @@ function IngestionInspectorImpl({
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-[rgba(2,6,23,0.58)] px-2 pb-20 pt-2 backdrop-blur-[10px] sm:items-center sm:px-4 sm:pb-6 sm:pt-6">
       <div
         ref={panelRef}
-        className="relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-[22px] border border-white/10 bg-[rgba(15,23,42,0.84)] text-white shadow-[0_40px_140px_-42px_rgba(2,6,23,0.95)] [--inspector-haunt:0.5] sm:rounded-[28px]"
+        className="glass-pane relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-[22px] border border-white/10 bg-[rgba(15,23,42,0.84)] text-white shadow-[0_40px_140px_-42px_rgba(2,6,23,0.95)] [--inspector-haunt:0.5] sm:rounded-[28px]" style={{ backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)" }}
       >
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(188,19,254,0.12),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(188,19,254,0.08),transparent_28%)] opacity-[calc(0.4+var(--inspector-haunt)*0.22)]" />
         <div className="relative border-b border-white/10 px-3 py-3 sm:px-5 sm:py-4">
@@ -155,7 +155,7 @@ function IngestionInspectorImpl({
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-8">
             {Object.entries(snapshot.counts).map(([label, value]) => (
-              <div key={label} className="rounded-[16px] border border-white/10 bg-white/5 px-2.5 py-2">
+              <div key={label} className="rounded-[16px] border border-white/10 bg-white/5 px-2 py-1.5" style={{ containerType: "inline-size", fontSize: "clamp(12px, calc(11.07px + 0.33cqi), 14px)" }}>
                 <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-slate-400 sm:text-[10px] sm:tracking-[0.24em]">{label}</p>
                 <p className="mt-1 text-sm font-semibold text-white sm:mt-2 sm:text-lg">{value}</p>
               </div>

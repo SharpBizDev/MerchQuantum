@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { requestAiListing } from "../../../../lib/client/quantum-routes";
 import { PROVIDER_OPTIONS, type ProviderChoiceId } from "../../../../lib/providers/client-options";
 import type { ArtworkBounds, ProviderId } from "../../../../lib/providers/types";
@@ -66,6 +66,7 @@ import {
   WORKSPACE_SELECTION_CONDENSED_STORAGE_KEY,
 } from "../../../../lib/services/merch-quantum/platform-utils";
 import { getUniversalJobGraph, type JobGraphSnapshot } from "../../../../lib/services/ingestion/JobGraph";
+import { getOpfsStagingBridge } from "../../../../lib/services/ingestion/OpfsStaging";
 import { getUserFacingErrorMessage, logErrorToConsole } from "../../../../lib/user-facing-errors";
 import type {
   AiFieldStates,
@@ -107,9 +108,12 @@ export function useBatchState() {
   const activeTemplateKeyRef = useRef("");
   const inlineFeedbackTimeoutRef = useRef<number | null>(null);
   const jobGraph = useMemo(() => getUniversalJobGraph(), []);
-  const [jobGraphSnapshot, setJobGraphSnapshot] = useState<JobGraphSnapshot>(() => jobGraph.getSnapshot());
-
-  useEffect(() => jobGraph.subscribe(setJobGraphSnapshot), [jobGraph]);
+  const stagingBridge = useMemo(() => getOpfsStagingBridge(), []);
+  const subscribeJobGraphSnapshot = useCallback((onStoreChange: () => void) => jobGraph.subscribe(() => onStoreChange()), [jobGraph]);
+  const getJobGraphSnapshot = useCallback((): JobGraphSnapshot => jobGraph.getSnapshot(), [jobGraph]);
+  const jobGraphSnapshot = useSyncExternalStore(subscribeJobGraphSnapshot, getJobGraphSnapshot, getJobGraphSnapshot);
+  const [isBulkEditRefineryMounted, setIsBulkEditRefineryMounted] = useState(false);
+  const [isBulkEditRefineryMounting, setIsBulkEditRefineryMounting] = useState(false);
 
   const pauseIngestionGraph = useCallback(() => {
     jobGraph.pause();
@@ -324,6 +328,9 @@ export function useBatchState() {
   const templateReadyForAi = !!template && !loadingTemplateDetails;
   const hasWorkspaceRoute = connected && !!shopId && !!workspaceMode;
   const workspaceModeLoadingLabel = isCreateMode ? "Awaiting Quantum AI Templates..." : "Awaiting Quantum AI Edit...";
+  const isRefineryMounted = isCreateMode ? true : !hasWorkspaceRoute ? false : isBulkEditMode ? isBulkEditRefineryMounted : true;
+  const showRefineryMountLoader = hasWorkspaceRoute && isBulkEditMode && isBulkEditRefineryMounting && !isBulkEditRefineryMounted;
+  const refineryMountLabel = "Confirming OPFS sync before entering the Refinery...";
 
   const visibleProducts = useMemo(() => {
     return productSource.filter((p) => p.shopId === shopId);
@@ -381,7 +388,7 @@ export function useBatchState() {
   const canShowDetailWorkspace = hasWorkspaceRoute;
   const canShowWorkspacePreview = isCreateMode
     ? canShowDetailWorkspace && (!!activeGridProduct || hasAnyLoadedImages)
-    : canShowDetailWorkspace && (hasAnyLoadedImages || !!selectedImage || !!activeGridProduct);
+    : canShowDetailWorkspace && isRefineryMounted && (hasAnyLoadedImages || !!selectedImage || !!activeGridProduct);
   const canShowDetailPanel = canShowWorkspacePreview && hasAnyLoadedImages && !!selectedImage;
   const canShowLoadedQueueGrid = canShowWorkspacePreview && sortedImages.length > 0;
   const showPreviewStats = hasAnyLoadedImages;
@@ -1358,6 +1365,27 @@ export function useBatchState() {
     }
   }, [activeBatchLimit, images, queuedImages, queuedImportedImages, selectedId]);
 
+  async function confirmRefineryOpfsSync(items: Img[]) {
+    if (items.length === 0) {
+      return { syncedCount: 0, failedCount: 0 };
+    }
+
+    let syncedCount = 0;
+    let failedCount = 0;
+
+    for (const [index, item] of items.entries()) {
+      try {
+        await stagingBridge.stageFile(item.file, `refinery-load-selected-${index}-${item.providerProductId || item.id}`);
+        syncedCount += 1;
+      } catch {
+        failedCount += 1;
+      }
+    }
+
+    await jobGraph.refreshStorageAudit();
+    return { syncedCount, failedCount };
+  }
+
   function resetProviderState(clearStatus = true) {
     setConnected(false);
     setLoadingApi(false);
@@ -1375,6 +1403,8 @@ export function useBatchState() {
     setImportedListingTitle("");
     setImportedListingDescription("");
     setWorkspaceMode("");
+    setIsBulkEditRefineryMounted(false);
+    setIsBulkEditRefineryMounting(false);
     setIsRoutingGridExpanded(true);
     setIsWorkspaceSelectionCollapsed(getStoredWorkspaceSelectionCondensed());
     setManualPrebufferOverride(false);
@@ -1392,6 +1422,8 @@ export function useBatchState() {
   }
 
   function clearPreviewWorkspace() {
+    setIsBulkEditRefineryMounted(false);
+    setIsBulkEditRefineryMounting(false);
     setImages([]);
     setCompletedImportedImages([]);
     setQueuedImages([]);
@@ -1756,7 +1788,13 @@ export function useBatchState() {
 
     if (!selectionChanged) {
       if (isBulkEditMode && nextSelections.length > 0) {
-        setImportStatus("");
+        if (!isRefineryMounted && !isImportingListings) {
+          setIsBulkEditRefineryMounted(false);
+          setIsBulkEditRefineryMounting(true);
+          await importSelectedListings(nextSelections, { replaceExisting: true });
+        } else {
+          setImportStatus("");
+        }
       }
       return;
     }
@@ -1769,6 +1807,8 @@ export function useBatchState() {
     setImportedListingDescription("");
 
     if (nextSelections.length === 0) {
+      setIsBulkEditRefineryMounted(false);
+      setIsBulkEditRefineryMounting(false);
       setImportStatus("");
       return;
     }
@@ -1779,6 +1819,8 @@ export function useBatchState() {
       return;
     }
 
+    setIsBulkEditRefineryMounted(false);
+    setIsBulkEditRefineryMounting(true);
     setImportStatus(`Loading ${nextSelections.length} provider listing${nextSelections.length === 1 ? "" : "s"} for SEO tuning...`);
     await importSelectedListings(nextSelections, { replaceExisting: true });
   }
@@ -1903,6 +1945,10 @@ export function useBatchState() {
         }
       }
 
+      const syncCheck = rescued.length > 0
+        ? await confirmRefineryOpfsSync(rescued)
+        : { syncedCount: 0, failedCount: 0 };
+
       let queuedImportedAfterImport = queuedImportedImages.length;
       if (rescued.length > 0) {
         const baseActive = options.replaceExisting ? [] : images;
@@ -1915,6 +1961,10 @@ export function useBatchState() {
         setQueuedImages(mergedQueued);
         setSelectedId(mergedActive[0]?.id || "");
         queuedImportedAfterImport = mergedQueued.filter((img) => img.sourceType === "imported").length;
+      }
+
+      if (rescued.length > 0 && syncCheck.failedCount === 0) {
+        setIsBulkEditRefineryMounted(true);
       }
 
       const summary: string[] = [];
@@ -1933,11 +1983,16 @@ export function useBatchState() {
       if (skippedFailedRescue > 0) {
         summary.push(`${skippedFailedRescue} artwork rescue${skippedFailedRescue === 1 ? "" : "s"} failed during download.`);
       }
+      if (syncCheck.failedCount > 0) {
+        summary.push(`${syncCheck.failedCount} imported asset${syncCheck.failedCount === 1 ? " was" : "s were"} not confirmed in OPFS, so the Refinery stayed parked.`);
+      }
 
       setImportStatus(summary.join(" ") || "No provider listings were imported.");
     } catch (error) {
+      setIsBulkEditRefineryMounted(false);
       setImportStatus(formatApiError("listingImport", error, "[MerchQuantum] listing import failed"));
     } finally {
+      setIsBulkEditRefineryMounting(false);
       setIsImportingListings(false);
     }
   }
@@ -2339,6 +2394,8 @@ export function useBatchState() {
     importStatus,
     runStatus,
     jobGraphSnapshot,
+    subscribeJobGraphSnapshot,
+    getJobGraphSnapshot,
     pauseIngestionGraph,
     resumeIngestionGraph,
     toggleIngestionGraphPaused,
@@ -2409,10 +2466,13 @@ export function useBatchState() {
     isQuantumAiGenerating,
     canShowDetailWorkspace,
     canShowWorkspacePreview,
+    isRefineryMounted,
     canShowDetailPanel,
     canShowLoadedQueueGrid,
     showPreviewStats,
     showWorkspaceModeLoader,
+    showRefineryMountLoader,
+    refineryMountLabel,
     selectedImageFieldStates,
     detailTemplateDescription,
     selectedImageTemplateKey,
@@ -2508,6 +2568,8 @@ export function useBatchState() {
 }
 
 export type UseBatchStateResult = ReturnType<typeof useBatchState>;
+
+
 
 
 

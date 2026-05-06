@@ -102,6 +102,8 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
     canShowLoadedQueueGrid,
     showPreviewStats,
     showWorkspaceModeLoader,
+    showRefineryMountLoader,
+    refineryMountLabel,
     isDetailTagsLoading,
     shouldAwaitQuantumTitle,
     shouldAwaitQuantumDescription,
@@ -170,11 +172,14 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
     setInlineSaveFeedback
   } = controller;
 
+  const showWorkspaceLoader = showWorkspaceModeLoader || showRefineryMountLoader;
+  const workspaceLoaderLabel = showRefineryMountLoader ? refineryMountLabel : workspaceModeLoadingLabel;
+
   return (
-    <main className="box-border flex h-full w-full max-w-full flex-col overflow-y-auto overflow-x-hidden bg-transparent font-sans text-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ paddingInline: "var(--cq-shell-inline)", paddingTop: "clamp(0.35rem, 1.2vw, 0.9rem)", paddingBottom: "clamp(5.8rem, 16vw, 8rem)" }} >
-      <div className="mx-auto flex w-full max-w-[46rem] flex-1 flex-col" style={{ gap: "clamp(0.35rem, 1.1vw, 0.7rem)" }}>
-      <div className="flex min-w-0 flex-1 flex-col" style={{ gap: "clamp(0.35rem, 1vw, 0.55rem)" }}>
-        <div className="sticky top-0 z-10 flex flex-col bg-transparent backdrop-blur-[2px]" style={{ paddingBottom: "clamp(0.3rem, 0.9vw, 0.55rem)", gap: "clamp(0.3rem, 0.9vw, 0.55rem)" }}>
+    <main className="refinery-workspace box-border flex h-full w-full max-w-full flex-col overflow-y-auto overflow-x-hidden bg-transparent font-sans text-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ paddingInline: "var(--cq-shell-inline)", paddingTop: "clamp(0.35rem, 1.2vw, 0.9rem)", paddingBottom: "clamp(5.8rem, 16vw, 8rem)", fontSize: "var(--font-body)", containerType: "inline-size" }} >
+      <div className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col" style={{ gap: "var(--gap-surgical)" }}>
+      <div className="flex min-w-0 flex-1 flex-col" style={{ gap: "var(--gap-surgical)" }}>
+        <div className="sticky top-0 z-10 flex flex-col bg-transparent" style={{ paddingBottom: "var(--gap-surgical)", gap: "var(--gap-surgical)" }}>
           {!workspaceMode || isRoutingGridExpanded ? (
           <div className="relative">
             <Box
@@ -186,10 +191,10 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
             <div
               className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-[#00BC7D]/90 to-transparent" : "bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent"} ${pulseConnected || routingGuidanceTarget ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
             />
-            <div className="mb-2 flex min-w-0 items-center sm:mb-3">
+            <div className="mb-1 flex min-w-0 items-center sm:mb-1.5">
               <MerchQuantumInlineHeading className="max-w-full" />
             </div>
-            <div className="grid w-full grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2">
+            <div className="grid w-full grid-cols-1 gap-1 sm:grid-cols-2 sm:gap-1.5">
             <div className={`min-w-0 self-start ${getRoutingFieldGlowClass("provider")}`}>
               <SetupSelect
                 value={provider}
@@ -368,8 +373,8 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
         </div>
         {connected && shopId && workspaceMode ? (
           <div className="relative z-10">
-            {showWorkspaceModeLoader ? <WorkspaceModeLoadingOverlay label={workspaceModeLoadingLabel} /> : null}
-            <div aria-hidden={showWorkspaceModeLoader} className={showWorkspaceModeLoader ? "pointer-events-none opacity-0" : ""}>
+            {showWorkspaceLoader ? <WorkspaceModeLoadingOverlay label={workspaceLoaderLabel} /> : null}
+            <div aria-hidden={showWorkspaceLoader} className={showWorkspaceLoader ? "pointer-events-none opacity-0" : ""}>
           <Box className="relative border-slate-800 bg-[#020616] shadow-[0_24px_70px_-38px_rgba(2,6,22,0.95)]">
             <input
               ref={fileRef}
@@ -400,6 +405,7 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
                 pageSize={bulkEditPageSize}
                 totalPages={bulkEditTotalPages}
                 loading={loadingProducts}
+                compactMode
                 footerLabel={bulkEditVisibleRangeLabel}
                 collapsed={isWorkspaceSelectionCollapsed}
                 selectAllLabel={hasAllBulkEditVisibleSelections ? "Deselect All" : "Select All"}
@@ -460,6 +466,7 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
                 pageSize={createTemplatePageSize}
                 totalPages={createTemplateTotalPages}
                 loading={loadingProducts}
+                compactMode
                 collapsed={isWorkspaceSelectionCollapsed}
                 headerAccessory={
                   <button
@@ -554,7 +561,7 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
                             </div>
                           ) : null}
                           {canShowLoadedQueueGrid ? (
-                            <div className="space-y-1 p-1">
+                            <div className="space-y-1 p-0.5">
                         <div className="quantum-scroll-hidden grid grid-cols-5 gap-1 overflow-y-auto overflow-x-hidden snap-y snap-mandatory">
                                 {visibleCreateThumbnails.map((img) => {
                                   const isSelected = selectedImage?.id === img.id;
@@ -584,14 +591,15 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
                                       <SmartThumbnail
                                         src={img.preview}
                                         alt={img.final}
-                                        className={`group rounded-lg border transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${previewFrameTone}`}
+                                        className={`group rounded-md border transition-all duration-200 ease-out hover:z-10 hover:shadow-[inset_0_0_0_2px_rgba(127,34,254,0.8)] ${previewFrameTone}`}
+                                        imageClassName="absolute inset-0 h-full w-full object-cover"
                                       >
                                         {isProcessing ? <div className="pointer-events-none absolute inset-x-2 top-0 z-10 h-px animate-pulse bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" /> : null}
                                         {statusIndicator ? (
                                           <div
                                             aria-label={statusIndicator.tone}
                                             className="absolute bottom-2 left-1/2 z-20 inline-flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full bg-black"
-                                          >
+                                      >
                                             <StatusThumbIcon tone={statusIndicator.tone} direction={statusIndicator.direction} />
                                           </div>
                                         ) : null}
@@ -603,7 +611,7 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
                                             removePreviewItem(img.id);
                                           }}
                                           className="absolute right-1 top-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#020616]/92 p-0 text-xs font-normal text-slate-300 shadow-sm transition-colors hover:text-[#FF2056]"
-                                        >
+                                      >
                                           x
                                         </button>
                                       </SmartThumbnail>
@@ -817,7 +825,7 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
                                           }}
                                           disabled={!canEditDetailDescription}
                                           className={`group relative flex min-h-[112px] w-full items-start bg-transparent px-0 py-0 text-left transition ${DETAIL_DATA_TEXT_CLASSES} ${canEditDetailDescription ? "cursor-text focus-visible:outline-none" : "cursor-default"}`}
-                                        >
+                                      >
                                           {shouldAwaitQuantumDescription ? (
                                             <div className={`flex w-full items-center justify-start gap-2 text-left ${DETAIL_DATA_TEXT_CLASSES}`}>
                                               <QuantOrbLoader />
@@ -926,6 +934,12 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
     </main>
   );
 }
+
+
+
+
+
+
 
 
 

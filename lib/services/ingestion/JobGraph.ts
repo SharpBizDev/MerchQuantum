@@ -194,6 +194,35 @@ function buildPressureAmplitudeVector(snapshot: Pick<JobGraphSnapshot, "activeHy
   });
 }
 
+function buildRecoveredImageArtifact(
+  job: JobGraphJob,
+  stageResult: OpfsStageResult,
+  sniffResult: JobGraphSniffResult | null,
+  error: unknown
+): RefineryArtifact | null {
+  const mimeType = (sniffResult?.mimeType ?? stageResult.contentType) || job.mimeType;
+  if (!mimeType.startsWith("image/")) {
+    return null;
+  }
+
+  const transparentSafe = mimeType === "image/png";
+  return {
+    bucket: "media",
+    status: "metadata-only",
+    summary: transparentSafe
+      ? "Transparent PNG scan stabilized through the fallback refinery path."
+      : "Image scan stabilized through the fallback refinery path.",
+    outputText: null,
+    metadata: {
+      fallbackReason: error instanceof Error ? error.message : String(error),
+      mimeType,
+      byteLength: sniffResult?.byteLength ?? stageResult.byteLength,
+      canonicalUrl: sniffResult?.canonicalUrl ?? job.url ?? null,
+      transparentSafe,
+    },
+  };
+}
+
 function buildSnapshot(
   jobs: Map<string, JobGraphJob>,
   order: string[],
@@ -480,6 +509,9 @@ export class UniversalJobGraph {
     const job = this.jobs.get(jobId);
     if (!job) return;
 
+    let stageResult: OpfsStageResult | null = null;
+    let sniffResult: JobGraphSniffResult | null = null;
+
     this.activeHydrations.add(jobId);
     this.updateJob(jobId, (current) => ({
       ...current,
@@ -491,7 +523,7 @@ export class UniversalJobGraph {
     }));
 
     try {
-      const stageResult = job.kind === "file" && job.file
+      stageResult = job.kind === "file" && job.file
         ? await this.stagingBridge.stageFile(job.file, `${job.id}-${job.sourceLabel}`, (progress) => {
             this.updateJob(jobId, (current) => ({
               ...current,
@@ -509,41 +541,44 @@ export class UniversalJobGraph {
             }));
           });
 
+      const finalizedStageResult = stageResult;
+
       this.updateJob(jobId, (current) => ({
         ...current,
         status: "SNIFFING",
         progress: 0.76,
-        byteLength: stageResult.byteLength,
-        scratchPath: stageResult.scratchPath,
-        mimeType: stageResult.contentType || current.mimeType,
-        stagingMode: stageResult.mode,
-        crossOriginIsolated: stageResult.crossOriginIsolated,
+        byteLength: finalizedStageResult.byteLength,
+        scratchPath: finalizedStageResult.scratchPath,
+        mimeType: finalizedStageResult.contentType || current.mimeType,
+        stagingMode: finalizedStageResult.mode,
+        crossOriginIsolated: finalizedStageResult.crossOriginIsolated,
         updatedAt: Date.now(),
       }));
 
-      const sniffResult = this.sniffStage(job, stageResult);
+      sniffResult = this.sniffStage(job, finalizedStageResult);
+      const finalizedSniffResult = sniffResult;
 
       this.updateJob(jobId, (current) => ({
         ...current,
         status: "REFINING",
         progress: 0.9,
-        mimeType: sniffResult.mimeType,
-        headerAudit: sniffResult.headerAudit,
-        magicSignature: sniffResult.magicSignature,
-        openGraph: sniffResult.openGraph,
-        jsonLd: sniffResult.jsonLd,
-        canonicalUrl: sniffResult.canonicalUrl,
-        title: sniffResult.title,
+        mimeType: finalizedSniffResult.mimeType,
+        headerAudit: finalizedSniffResult.headerAudit,
+        magicSignature: finalizedSniffResult.magicSignature,
+        openGraph: finalizedSniffResult.openGraph,
+        jsonLd: finalizedSniffResult.jsonLd,
+        canonicalUrl: finalizedSniffResult.canonicalUrl,
+        title: finalizedSniffResult.title,
         updatedAt: Date.now(),
       }));
 
-      const artifact = await this.refineStage(job, stageResult, sniffResult);
+      const artifact = await this.refineStage(job, finalizedStageResult, finalizedSniffResult);
 
       this.updateJob(jobId, (current) => ({
         ...current,
         status: "FORGED",
         progress: 1,
-        byteLength: sniffResult.byteLength,
+        byteLength: finalizedSniffResult.byteLength,
         refineryBucket: artifact.bucket,
         refineryStatus: artifact.status,
         refinerySummary: artifact.summary,
@@ -552,14 +587,43 @@ export class UniversalJobGraph {
         updatedAt: Date.now(),
       }));
     } catch (error) {
-      this.updateJob(jobId, (current) => ({
-        ...current,
-        status: "FAILED",
-        progress: 1,
-        error: error instanceof Error ? error.message : String(error),
-        errorDetail: error instanceof Error ? error.stack ?? error.message : String(error),
-        updatedAt: Date.now(),
-      }));
+      const recoveredArtifact = stageResult ? buildRecoveredImageArtifact(job, stageResult, sniffResult, error) : null;
+
+      if (recoveredArtifact) {
+        const recoveredStageResult = stageResult!;
+        const recoveredSniffResult = sniffResult;
+
+        this.updateJob(jobId, (current) => ({
+          ...current,
+          status: "FORGED",
+          progress: 1,
+          byteLength: recoveredSniffResult?.byteLength ?? recoveredStageResult.byteLength,
+          mimeType: (recoveredSniffResult?.mimeType ?? recoveredStageResult.contentType) || current.mimeType,
+          headerAudit: recoveredSniffResult?.headerAudit ?? current.headerAudit,
+          magicSignature: recoveredSniffResult?.magicSignature ?? current.magicSignature,
+          openGraph: recoveredSniffResult?.openGraph ?? current.openGraph,
+          jsonLd: recoveredSniffResult?.jsonLd ?? current.jsonLd,
+          canonicalUrl: recoveredSniffResult?.canonicalUrl ?? current.canonicalUrl,
+          title: recoveredSniffResult?.title ?? current.title,
+          refineryBucket: recoveredArtifact.bucket,
+          refineryStatus: recoveredArtifact.status,
+          refinerySummary: recoveredArtifact.summary,
+          refineryOutputText: recoveredArtifact.outputText,
+          refineryMetadata: recoveredArtifact.metadata,
+          error: null,
+          errorDetail: null,
+          updatedAt: Date.now(),
+        }));
+      } else {
+        this.updateJob(jobId, (current) => ({
+          ...current,
+          status: "FAILED",
+          progress: 1,
+          error: error instanceof Error ? error.message : String(error),
+          errorDetail: error instanceof Error ? error.stack ?? error.message : String(error),
+          updatedAt: Date.now(),
+        }));
+      }
     } finally {
       this.activeHydrations.delete(jobId);
       this.publish();
@@ -624,6 +688,8 @@ export function getUniversalJobGraph() {
 
   return universalJobGraphSingleton;
 }
+
+
 
 
 

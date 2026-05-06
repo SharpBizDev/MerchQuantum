@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useAmbientStreams } from "./hooks/useAmbientStreams";
 import { useBatchState } from "./hooks/useBatchState";
 import { useProviderWorkspace } from "./hooks/useProviderWorkspace";
@@ -11,12 +11,17 @@ import { useSpecializedRefineryBridge } from "./hooks/useSpecializedRefineryBrid
 export function useMerchQuantumController() {
   const ambientStreams = useAmbientStreams();
   const batchState = useBatchState();
+  const immutableJobGraphSnapshot = useSyncExternalStore(
+    batchState.subscribeJobGraphSnapshot,
+    batchState.getJobGraphSnapshot,
+    batchState.getJobGraphSnapshot
+  );
   const providerWorkspace = useProviderWorkspace(batchState);
   const quantumEditor = useQuantumEditor(batchState);
   const specializedBridge = useSpecializedRefineryBridge();
   const [isIngestionInspectorOpen, setIsIngestionInspectorOpen] = useState(false);
 
-  useIngestionPressureBridge(batchState.jobGraphSnapshot, ambientStreams);
+  useIngestionPressureBridge(immutableJobGraphSnapshot, ambientStreams);
 
   useEffect(() => {
     if (!isIngestionInspectorOpen) return;
@@ -43,7 +48,7 @@ export function useMerchQuantumController() {
 
   const ingestionInspector = useMemo(() => ({
     open: isIngestionInspectorOpen,
-    snapshot: batchState.jobGraphSnapshot,
+    snapshot: immutableJobGraphSnapshot,
     bridge: specializedBridge,
     openPanel: () => setIsIngestionInspectorOpen(true),
     closePanel: () => setIsIngestionInspectorOpen(false),
@@ -51,7 +56,7 @@ export function useMerchQuantumController() {
     togglePaused: batchState.toggleIngestionGraphPaused,
     purgeFinished: batchState.purgeFinishedIngestionJobs,
     refreshStorageAudit: batchState.refreshIngestionStorageAudit,
-  }), [batchState.jobGraphSnapshot, batchState.purgeFinishedIngestionJobs, batchState.refreshIngestionStorageAudit, batchState.toggleIngestionGraphPaused, isIngestionInspectorOpen, specializedBridge]);
+  }), [batchState.purgeFinishedIngestionJobs, batchState.refreshIngestionStorageAudit, batchState.toggleIngestionGraphPaused, immutableJobGraphSnapshot, isIngestionInspectorOpen, specializedBridge]);
 
   return {
     ...batchState,
@@ -61,6 +66,7 @@ export function useMerchQuantumController() {
     specializedBridge,
     ingestionInspector,
     providerTaskRouter,
+    jobGraphSnapshot: immutableJobGraphSnapshot,
     computerUseFallback: ambientStreams.computerUseFallback,
     setComputerUseFallback: ambientStreams.setComputerUseFallback,
   };

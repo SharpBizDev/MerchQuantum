@@ -102,6 +102,7 @@ export type ProductGridProps = {
   pageSize: number;
   totalPages: number;
   loading: boolean;
+  compactMode?: boolean;
   headerAccessory?: React.ReactNode;
   onToggleCollapsed?: () => void;
   onSelectAll?: () => void;

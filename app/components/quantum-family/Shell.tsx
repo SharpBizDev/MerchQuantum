@@ -11,6 +11,7 @@ type QuantumFamilyShellProps = {
 type HoleScoreDetail = {
   width?: number;
   height?: number;
+  compact_mode?: boolean;
 };
 
 const HAUNTED_MASK =
@@ -43,7 +44,7 @@ export function QuantumFamilyShell({ children, spectralSlot, taskbarSlot }: Quan
 
     const onHoleScore = (event: Event) => {
       const detail = (event as CustomEvent<HoleScoreDetail>).detail ?? {};
-      const compact = (detail.width ?? Number.POSITIVE_INFINITY) <= 560 || (detail.height ?? Number.POSITIVE_INFINITY) <= 720;
+      const compact = detail.compact_mode ?? ((detail.width ?? Number.POSITIVE_INFINITY) < 400);
       shell.dataset.nativeHoleCompact = compact ? "true" : "";
       applyDensity(shell, compact);
     };
@@ -66,6 +67,8 @@ export function QuantumFamilyShell({ children, spectralSlot, taskbarSlot }: Quan
         ['--cq-shell-radius' as string]: 'clamp(1.4rem, 3vw, 2rem)',
         ['--cq-spectral-pad' as string]: 'clamp(0.45rem, 1.3vw, 0.9rem)',
         ['--cq-spectral-top' as string]: 'clamp(0.7rem, 1.8vw, 1.4rem)',
+        ['--font-body' as string]: 'clamp(13px, calc(12.14px + 0.27vw), 16px)',
+        ['--gap-surgical' as string]: 'clamp(4px, calc(3px + 0.2vw), 8px)',
       }}
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(188,19,254,0.24),transparent_30%),radial-gradient(circle_at_85%_15%,rgba(96,165,250,0.12),transparent_24%),linear-gradient(180deg,#020617_0%,#020617_100%)]" />
@@ -73,15 +76,13 @@ export function QuantumFamilyShell({ children, spectralSlot, taskbarSlot }: Quan
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 opacity-60"
         style={{
-          backdropFilter: 'blur(20px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(20px) saturate(180%)',
           maskImage: HAUNTED_MASK,
           WebkitMaskImage: HAUNTED_MASK,
           background: 'linear-gradient(125deg, rgba(255,255,255,0.12), rgba(255,255,255,0.02) 42%, rgba(188,19,254,0.08) 100%)',
         }}
       />
-      <div className="relative mx-auto flex min-h-screen max-w-[1700px] flex-col px-[var(--cq-shell-inline)] py-[var(--cq-shell-block)]">
-        <div className="relative flex min-h-[calc(100vh-(var(--cq-shell-block)*2))] flex-1 flex-col overflow-hidden rounded-[var(--cq-shell-radius)] border border-white/10 bg-[rgba(15,23,42,0.62)] shadow-[0_40px_120px_-48px_rgba(15,23,42,0.95)] backdrop-blur-[20px] [backdrop-filter:blur(20px)_saturate(180%)]">
+      <div className="relative mx-auto flex min-h-screen max-w-[1440px] flex-col px-[var(--cq-shell-inline)] py-[var(--cq-shell-block)]">
+        <div className="glass-pane relative flex min-h-[calc(100vh-(var(--cq-shell-block)*2))] flex-1 flex-col overflow-hidden rounded-[var(--cq-shell-radius)] border border-white/10 bg-[rgba(15,23,42,0.62)] shadow-[0_40px_120px_-48px_rgba(15,23,42,0.95)]" style={{ backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#BC13FE]/80 to-transparent" />
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_15%,rgba(255,255,255,0.08),transparent_22%),radial-gradient(circle_at_90%_80%,rgba(188,19,254,0.1),transparent_26%)]" />
           {spectralSlot ? (
@@ -89,7 +90,9 @@ export function QuantumFamilyShell({ children, spectralSlot, taskbarSlot }: Quan
               {spectralSlot}
             </div>
           ) : null}
-          <div className="relative z-10 flex flex-1 flex-col">{children}</div>
+          <div className="refinery-workspace relative z-10 flex flex-1 flex-col" style={{ containerType: 'inline-size', fontSize: 'var(--font-body)' }}>
+            {children}
+          </div>
         </div>
       </div>
       {taskbarSlot}
