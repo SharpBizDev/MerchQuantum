@@ -5,6 +5,8 @@ mod ingestion;
 mod metadata;
 #[cfg(feature = "micro-cell")]
 mod micro_cell;
+#[cfg(feature = "micro-cell")]
+mod pulsar;
 mod models;
 mod native_shell;
 mod platforms;
@@ -79,6 +81,17 @@ fn main() {
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32"), not(feature = "deploy")))]
 fn main() {
     init_runtime();
+    #[cfg(feature = "micro-cell")]
+    match maybe_run_pulsar_tick() {
+        Ok(true) => return,
+        Ok(false) => {}
+        Err(error) => {
+            eprintln!("quantum pulsar tick failed: {error}");
+            std::process::exit(1);
+        }
+    }
+    #[cfg(feature = "micro-cell")]
+    crate::pulsar::start_background(crate::pulsar::default_manifest_path());
     LaunchBuilder::desktop()
         .with_cfg(desktop_config())
         .launch(ContextQuantumApp);
@@ -97,4 +110,27 @@ fn main() {
 )))]
 fn main() {
     panic!("Enable the deploy, desktop, or web feature.");
+}
+
+#[cfg(all(feature = "desktop", feature = "micro-cell", not(target_arch = "wasm32")))]
+fn maybe_run_pulsar_tick() -> Result<bool, String> {
+    if !std::env::args().any(|arg| arg == "--pulsar-tick") {
+        return Ok(false);
+    }
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| error.to_string())?;
+
+    runtime.block_on(async {
+        let emission = crate::pulsar::scheduler()
+            .tick(crate::pulsar::default_manifest_path())
+            .await?;
+        println!(
+            "pulsar tick emitted category {:02} at {}",
+            emission.target_category, emission.emitted_at_epoch_ms
+        );
+        Ok(true)
+    })
 }

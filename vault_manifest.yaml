@@ -11,13 +11,31 @@ librarian:
 branches:
   ui:
     name: feature/quantum-refinery-core
-    head: e4444bffcebaa4869745f726cba5b11d1ebc62c5
   native:
     name: feature/quantum-sensory-core
-    head: 011569fae68ae12b12b821a673dbbca0396ad223
-handoff:
-  append_only: true
-  redact_suffixes:
-    - _id
-    - _name
+protocol:
+  target_category: 0
+  forge_writes:
+    input_chunk:
+      chunk_id: "chunk-00"
+      mime_hint: "text/markdown"
+      zero_copy_block: "block://vault/category/00"
+      content_excerpt: "Target category 00 is queued for librarian refinement through the pulsar lane."
+  micro_cell_reads:
+    designated_memory_block: "block://vault/category/00"
+    zero_copy: true
+  micro_cell_emits:
+    refined_truth: |
+      authority: Quantum Forge
+      librarian_plane:
+        corpus_id: category-00
+        embedding_model: sbert-compact
+        authority: Quantum Forge
+        records:
+          - source_label: "block://vault/category/00"
+            mime_hint: "text/markdown"
+            content_excerpt: "Target category 00 is queued for librarian refinement through the pulsar lane."
+last_tick:
+  emitted_at_epoch_ms: 1778034724230
+  category_pointer_after_tick: 1
 findings: []
