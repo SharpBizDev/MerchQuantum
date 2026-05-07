@@ -3,12 +3,14 @@ use crate::models::*;
 use crate::native_shell::use_native_shell_bridge;
 use crate::router::OrderRouter;
 use crate::sensory::emitter::use_sensory_emitter;
+use crate::ui::components::uwf_gauge::UwfGauge;
+use crate::ui::spectral_bar::SurfaceSpectralBar;
+use crate::ui::surface_projection::use_surface_projection;
 use crate::ui::carousel::{
     BatchMetadataDraft, ImportedImageStub, PipelineCommand, PipelinePhase, PipelineStatus,
     QuantumCarousel, WorkbenchItem, WorkspaceMode,
 };
 use crate::vault::QuantumVault;
-use crate::APP_RUNTIME;
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
 use dioxus::desktop::use_window;
 use dioxus::prelude::*;
@@ -290,6 +292,29 @@ select {
     font-weight: 600;
     letter-spacing: 0.05em;
     color: #e5e7eb;
+}
+
+.cq-orb-cluster {
+    position: relative;
+    display: grid;
+    place-items: center;
+}
+
+.cq-heartbeat-spark {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(34, 211, 238, 0.18);
+    box-shadow: 0 0 0 rgba(34, 211, 238, 0.0);
+    transition: all 0.12s ease;
+}
+
+.cq-heartbeat-spark[data-active='true'] {
+    background: rgba(34, 211, 238, 0.96);
+    box-shadow: 0 0 12px rgba(34, 211, 238, 0.95), 0 0 18px rgba(34, 211, 238, 0.42);
 }
 
 .cq-orb-action {
@@ -595,6 +620,12 @@ select {
     100% { filter: hue-rotate(360deg); }
 }
 
+@keyframes cq-spectral-tear {
+    0% { opacity: 0; transform: translateX(-18%); }
+    20% { opacity: 1; }
+    100% { opacity: 0; transform: translateX(18%); }
+}
+
 @keyframes cq-quantum-pulse {
     0%, 100% {
         box-shadow: 0 0 18px rgba(139, 92, 246, 0.24);
@@ -787,6 +818,117 @@ select {
         transform: translateX(0);
     }
 }
+.cq-uwf-gauge-shell {
+    position: relative;
+    width: 18px;
+    height: 84px;
+    border-radius: 999px;
+    overflow: hidden;
+    isolation: isolate;
+    background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)), rgba(10, 16, 26, 0.42);
+    border: 1px solid rgba(255,255,255,0.09);
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,0.05) inset,
+        0 0 calc(10px + var(--uwf-luma) * 18px) color-mix(in srgb, var(--uwf-color) 82%, transparent),
+        0 0 calc(20px + var(--uwf-luma) * 20px) color-mix(in srgb, var(--uwf-accent) 68%, transparent);
+    backdrop-filter: blur(10px) saturate(160%);
+    -webkit-backdrop-filter: blur(10px) saturate(160%);
+    transition: transform 140ms ease, box-shadow 140ms ease, opacity 120ms linear;
+}
+
+.cq-uwf-gauge-shell::after {
+    content: '';
+    position: absolute;
+    inset: 1px;
+    border-radius: inherit;
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--uwf-accent) 56%, transparent), transparent 32%),
+        linear-gradient(180deg, rgba(255,255,255,0.12), transparent 22%);
+    opacity: calc(0.22 + var(--uwf-luma) * 0.3);
+    pointer-events: none;
+}
+
+.cq-uwf-gauge-shell--amber {
+    animation: cq-uwf-breathe 2.4s ease-in-out infinite;
+}
+
+.cq-uwf-gauge-shell--critical {
+    animation: cq-uwf-critical-pulse 1s ease-in-out infinite;
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,0.05) inset,
+        0 0 18px rgba(255, 0, 66, 0.78),
+        0 0 34px rgba(255, 0, 66, 0.46);
+}
+
+.cq-uwf-gauge-core,
+.cq-uwf-gauge-fill,
+.cq-uwf-gauge-glint,
+.cq-uwf-gauge-vapor {
+    position: absolute;
+    inset-inline: 2px;
+    border-radius: inherit;
+}
+
+.cq-uwf-gauge-core {
+    inset-block: 2px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.0));
+}
+
+.cq-uwf-gauge-fill {
+    left: 2px;
+    right: 2px;
+    bottom: 2px;
+    height: var(--uwf-fill);
+    background:
+        radial-gradient(circle at 50% 12%, color-mix(in srgb, var(--uwf-accent) 82%, white), transparent 44%),
+        linear-gradient(180deg, color-mix(in srgb, var(--uwf-accent) 76%, transparent), var(--uwf-color));
+    box-shadow:
+        0 0 14px color-mix(in srgb, var(--uwf-color) 76%, transparent),
+        0 0 22px color-mix(in srgb, var(--uwf-accent) 56%, transparent);
+    transform-origin: bottom center;
+    transition: height 120ms linear, background 160ms ease, box-shadow 160ms ease;
+}
+
+.cq-uwf-gauge-glint {
+    top: 10%;
+    bottom: 10%;
+    width: 42%;
+    left: 30%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.0), rgba(255,255,255,0.18), rgba(255,255,255,0.0));
+    opacity: calc(0.18 + var(--uwf-luma) * 0.22);
+    mix-blend-mode: screen;
+    transform: skewY(-12deg);
+}
+
+.cq-uwf-gauge-vapor {
+    left: -18%;
+    right: -18%;
+    top: -12%;
+    bottom: -12%;
+    background:
+        radial-gradient(circle at 50% 18%, color-mix(in srgb, var(--uwf-accent) 72%, transparent), transparent 58%),
+        radial-gradient(circle at 50% 72%, color-mix(in srgb, var(--uwf-color) 54%, transparent), transparent 64%);
+    opacity: calc(0.14 + var(--uwf-luma) * 0.34);
+    filter: blur(8px);
+    mix-blend-mode: screen;
+    pointer-events: none;
+}
+
+@keyframes cq-uwf-breathe {
+    0%, 100% { transform: translateY(0) scaleY(1); }
+    50% { transform: translateY(-1px) scaleY(1.04); }
+}
+
+@keyframes cq-uwf-critical-pulse {
+    0%, 100% {
+        transform: scale(1);
+        filter: saturate(1);
+    }
+    50% {
+        transform: scale(1.06);
+        filter: saturate(1.24);
+    }
+}
 @media (max-width: 1320px) {
     .cq-workbench[data-inspector='true'] { padding-right: 20px; padding-left: 92px; }
     .cq-inspector { position: static; width: auto; max-height: none; }
@@ -817,7 +959,17 @@ const SHOP_OPTIONS: [&str; 3] = [
 const PLATFORM_OPTIONS: [&str; 6] = ["Amazon", "Etsy", "eBay", "TikTok", "Walmart", "Meta"];
 
 pub fn ContextQuantumApp() -> Element {
-    let runtime = APP_RUNTIME.get().expect("Runtime init");
+    let runtime = match crate::app_runtime() {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            return rsx! {
+                div {
+                    class: "cq-shell cq-runtime-fault",
+                    div { class: "cq-card", h1 { "Runtime Quarantined" } p { "{error}" } }
+                }
+            };
+        }
+    };
     let vault: Arc<QuantumVault> = runtime.vault.clone();
     let router: Arc<OrderRouter> = runtime.router.clone();
     use_context_provider(move || vault.clone());
@@ -1384,7 +1536,9 @@ pub fn ContextQuantumApp() -> Element {
     let mut toggle_select_action = toggle_select;
     let blast_armed =
         !provider_missing && !active_platforms().is_empty() && !library_snapshot.is_empty();
-    let orb_pulse = !active_platforms().is_empty();
+    let surface_projection = use_surface_projection();
+    let projection = surface_projection();
+    let orb_pulse = projection.pulse_active || !active_platforms().is_empty();
     let forge_logs = build_quantum_logs(
         &banner(),
         &pipeline_status(),
@@ -1401,7 +1555,7 @@ pub fn ContextQuantumApp() -> Element {
                 div { class: "cq-provider-overlay-card", "Select the Provider Valve to unlock the Nuclear Forge." }
             }
         }
-        div { class: "cq-shell",
+        div { class: "cq-shell", "data-ghost": if projection.ghost_mode { "true" } else { "false" }, "data-compact": if projection.compact_mode { "true" } else { "false" },
             aside { class: "cq-status-rail",
                 div { class: "cq-status-stack",
                     for platform in PLATFORM_OPTIONS {
@@ -1477,12 +1631,17 @@ pub fn ContextQuantumApp() -> Element {
                             }
                         }
                         div { class: "cq-topbar-right",
+                            SurfaceSpectralBar { projection: projection }
+                            UwfGauge { projection: projection }
                             div { class: "cq-monitor-block",
                                 MonitorTile { label: "Queued".to_string(), value: pipeline_status().queued_jobs.to_string() }
                                 MonitorTile { label: "Complete".to_string(), value: pipeline_status().completed_jobs.to_string() }
                                 MonitorTile { label: "Pending".to_string(), value: pending_imports().len().to_string() }
                             }
-                            OrbAction { label: "Forge".to_string(), armed: blast_armed, quantum: quantum_blast(), pulse: orb_pulse, onclick: queue_publish }
+                            div { class: "cq-orb-cluster",
+                                HeartbeatSpark { active: projection.janitor_heartbeat_active }
+                                OrbAction { label: "Forge".to_string(), armed: blast_armed, quantum: quantum_blast(), pulse: orb_pulse, novelty: projection.novelty_active, onclick: queue_publish }
+                            }
                             if cfg!(all(feature = "desktop", not(target_arch = "wasm32"))) {
                                 div { class: "cq-window-controls",
                                     WindowChromeButton { label: "_".to_string(), tone: "normal".to_string(), onclick: minimize_window }
@@ -1662,14 +1821,20 @@ pub fn RefinementCockpit(
 }
 
 #[component]
+fn HeartbeatSpark(active: bool) -> Element {
+    rsx! { div { class: "cq-heartbeat-spark", "data-active": if active { "true" } else { "false" } } }
+}
+
+#[component]
 fn OrbAction(
     label: String,
     armed: bool,
     quantum: bool,
     pulse: bool,
+    novelty: bool,
     onclick: EventHandler<MouseEvent>,
 ) -> Element {
-    rsx! { button { class: "cq-orb-action", "data-armed": if armed { "true" } else { "false" }, "data-quantum": if quantum { "true" } else { "false" }, "data-pulse": if pulse { "true" } else { "false" }, onclick: move |evt| onclick.call(evt), "{label}" } }
+    rsx! { button { class: "cq-orb-action", "data-armed": if armed { "true" } else { "false" }, "data-quantum": if quantum { "true" } else { "false" }, "data-pulse": if pulse { "true" } else { "false" }, "data-novelty": if novelty { "true" } else { "false" }, onclick: move |evt| onclick.call(evt), "{label}" } }
 }
 
 #[component]
@@ -2231,6 +2396,14 @@ fn sanitize_token(name: &str) -> String {
         })
         .collect()
 }
+
+
+
+
+
+
+
+
 
 
 

@@ -3,7 +3,7 @@ use crc32fast::Hasher;
 #[cfg(feature = "micro-cell")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "micro-cell")]
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 #[cfg(feature = "micro-cell")]
 use std::sync::Arc;
 #[cfg(feature = "micro-cell")]
@@ -17,8 +17,14 @@ use wasmtime::{Config, Engine, Instance, Linker, Module, Store, StoreLimits, Sto
 
 #[cfg(feature = "micro-cell")]
 const DISKLESS_LIBRARIAN_WASM: &[u8] = &[
-    0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x05, 0x03, 0x01, 0x00, 0x01, 0x07, 0x0a,
-    0x01, 0x06, 0x6d, 0x65, 0x6d, 0x6f, 0x72, 0x79, 0x02, 0x00,
+    0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+    0x01, 0x07, 0x01, 0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7f,
+    0x03, 0x02, 0x01, 0x00,
+    0x05, 0x03, 0x01, 0x00, 0x01,
+    0x07, 0x19, 0x02,
+    0x06, 0x6d, 0x65, 0x6d, 0x6f, 0x72, 0x79, 0x02, 0x00,
+    0x0c, 0x65, 0x78, 0x65, 0x63, 0x75, 0x74, 0x65, 0x5f, 0x74, 0x61, 0x73, 0x6b, 0x00, 0x00,
+    0x0a, 0x06, 0x01, 0x04, 0x00, 0x20, 0x00, 0x0b,
 ];
 #[cfg(feature = "micro-cell")]
 pub const MICRO_CELL_MEMORY_LIMIT_BYTES: usize = 64 * 1024 * 1024;
@@ -26,6 +32,8 @@ pub const MICRO_CELL_MEMORY_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 const WASM_PAGE_BYTES: usize = 65_536;
 #[cfg(feature = "micro-cell")]
 const EPOCH_GUILLOTINE_INTERVAL: Duration = Duration::from_micros(500);
+#[cfg(feature = "micro-cell")]
+const QABI_ERROR_BIT: u32 = 1 << 31;
 
 #[cfg(feature = "micro-cell")]
 #[repr(C)]
@@ -225,10 +233,11 @@ impl QuantumMicroCell {
                 },
             );
             store.limiter(|state| &mut state.limits);
-            store.set_epoch_deadline(1);
+            store.set_epoch_deadline(4);
             let linker = Linker::new(&engine);
             let instance = linker.instantiate_async(&mut store, &module).await?;
             let fuel = write_guest_fuel(&mut store, &instance, &fuel_bytes)?;
+            let guest_result_offset = execute_guest_task(&engine, &mut store, &instance, fuel).await?;
             let fuel_preview = if fuel.data_len == 0 {
                 None
             } else {
@@ -244,6 +253,7 @@ impl QuantumMicroCell {
                 _store: store,
                 _instance: instance,
                 _fuel: Some(fuel),
+                guest_result_offset,
                 serialization_overhead_ms: 0.0,
                 checksum_verified: true,
                 purifier_fired: true,
@@ -302,6 +312,7 @@ pub struct QuantumMicroCellHandle {
     _store: Store<MicroCellStoreState>,
     _instance: Instance,
     _fuel: Option<QuantumFuel>,
+    pub guest_result_offset: u32,
     pub serialization_overhead_ms: f32,
     pub checksum_verified: bool,
     pub purifier_fired: bool,
@@ -310,21 +321,53 @@ pub struct QuantumMicroCellHandle {
 }
 
 #[cfg(feature = "micro-cell")]
-pub fn spawn_epoch_guillotine(engine: Arc<Engine>) -> Arc<AtomicBool> {
+pub struct EpochInterruptGuard {
+    stop: Arc<AtomicBool>,
+    ticks: Arc<AtomicU64>,
+}
+
+impl EpochInterruptGuard {
+    pub fn ensure_ticking(&self) -> Result<(), wasmtime::Error> {
+        let baseline = self.ticks.load(Ordering::Relaxed);
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_millis(2) {
+            if self.ticks.load(Ordering::Relaxed) > baseline {
+                return Ok(());
+            }
+            std::hint::spin_loop();
+        }
+
+        Err(wasmtime::Error::msg("epoch interruption thread failed to advance"))
+    }
+
+    pub fn stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+pub fn spawn_epoch_guillotine(engine: Arc<Engine>) -> Result<EpochInterruptGuard, wasmtime::Error> {
     let stop = Arc::new(AtomicBool::new(false));
     let stop_signal = Arc::clone(&stop);
-    thread::spawn(move || {
-        let mut last_epoch = Instant::now();
-        while !stop_signal.load(Ordering::Relaxed) {
-            if last_epoch.elapsed() >= EPOCH_GUILLOTINE_INTERVAL {
-                engine.increment_epoch();
-                last_epoch = Instant::now();
-            } else {
-                std::hint::spin_loop();
+    let ticks = Arc::new(AtomicU64::new(0));
+    let tick_signal = Arc::clone(&ticks);
+
+    thread::Builder::new()
+        .name("quantum-epoch-guillotine".into())
+        .spawn(move || {
+            let mut last_epoch = Instant::now();
+            while !stop_signal.load(Ordering::Relaxed) {
+                if last_epoch.elapsed() >= EPOCH_GUILLOTINE_INTERVAL {
+                    engine.increment_epoch();
+                    tick_signal.fetch_add(1, Ordering::Relaxed);
+                    last_epoch = Instant::now();
+                } else {
+                    std::hint::spin_loop();
+                }
             }
-        }
-    });
-    stop
+        })
+        .map_err(|error| wasmtime::Error::msg(format!("failed to spawn epoch interruption thread: {error}")))?;
+
+    Ok(EpochInterruptGuard { stop, ticks })
 }
 
 #[cfg(feature = "micro-cell")]
@@ -333,6 +376,9 @@ fn write_guest_fuel(
     instance: &Instance,
     fuel_bytes: &[u8],
 ) -> Result<QuantumFuel, wasmtime::Error> {
+    std::str::from_utf8(fuel_bytes)
+        .map_err(|error| wasmtime::Error::msg(format!("host utf8 validation failed: {error}")))?;
+
     let Some(memory) = instance.get_memory(&mut *store, "memory") else {
         return Err(wasmtime::Error::msg("guest memory export missing"));
     };
@@ -364,6 +410,43 @@ fn write_guest_fuel(
         data_len: data_len as u32,
         checksum_crc32,
     })
+}
+
+#[cfg(feature = "micro-cell")]
+async fn execute_guest_task(
+    engine: &Arc<Engine>,
+    store: &mut Store<MicroCellStoreState>,
+    instance: &Instance,
+    fuel: QuantumFuel,
+) -> Result<u32, wasmtime::Error> {
+    let execute_task = instance
+        .get_typed_func::<(u32, u32), u32>(&mut *store, "execute_task")
+        .map_err(|error| wasmtime::Error::msg(format!("guest execute_task export missing: {error}")))?;
+    let epoch_guard = spawn_epoch_guillotine(Arc::clone(engine))?;
+    epoch_guard.ensure_ticking()?;
+
+    let result = match decode_qabi_result(
+        execute_task
+            .call_async(&mut *store, (fuel.data_offset, fuel.data_len))
+            .await?,
+    ) {
+        Ok(offset) => Ok(offset),
+        Err(status) => Err(wasmtime::Error::msg(format!(
+            "guest execute_task failed with status code {status}"
+        ))),
+    };
+
+    epoch_guard.stop();
+    result
+}
+
+#[cfg(feature = "micro-cell")]
+fn decode_qabi_result(raw: u32) -> Result<u32, u32> {
+    if raw & QABI_ERROR_BIT == 0 {
+        Ok(raw)
+    } else {
+        Err(raw & !QABI_ERROR_BIT)
+    }
 }
 
 #[cfg(feature = "micro-cell")]
@@ -437,7 +520,6 @@ mod tests {
         QuantumMicroCell, MICRO_CELL_MEMORY_LIMIT_BYTES,
     };
     use std::sync::Arc;
-    use std::sync::atomic::Ordering;
     use wasmtime::Engine;
 
     #[test]
@@ -512,9 +594,11 @@ mod tests {
     #[test]
     fn epoch_guillotine_thread_can_start_and_stop() {
         let engine = Arc::new(Engine::default());
-        let stop = spawn_epoch_guillotine(engine);
-        stop.store(true, Ordering::Relaxed);
+        let guard = spawn_epoch_guillotine(engine).expect("epoch guard");
+        guard.stop();
     }
 }
+
+
 
 

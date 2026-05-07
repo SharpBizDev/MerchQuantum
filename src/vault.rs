@@ -138,7 +138,7 @@ impl QuantumVault {
         let api_key = api_key.into();
         let issued_at_epoch_secs = epoch_secs();
         let credential_fingerprint = fingerprint_credential(&api_key);
-        let opaque_session_id = sign_opaque_session_id(provider, &api_key, issued_at_epoch_secs);
+        let opaque_session_id = sign_opaque_session_id(provider, &api_key, issued_at_epoch_secs)?;
         lock.insert(
             provider,
             ProviderSessionRecord {
@@ -312,15 +312,18 @@ fn sign_opaque_session_id(
     provider: FulfillmentProvider,
     api_key: &str,
     issued_at_epoch_secs: u64,
-) -> String {
+) -> Result<String, QuantumError> {
     let nonce = PROVIDER_SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
     let message = format!("{provider:?}:{issued_at_epoch_secs}:{nonce}");
-    let mut mac = HmacSha256::new_from_slice(api_key.as_bytes())
-        .expect("HMAC supports arbitrary key lengths");
+    let mut mac = HmacSha256::new_from_slice(api_key.as_bytes()).map_err(|error| {
+        QuantumError::CriticalFault(format!(
+            "opaque session signing initialization failed: {error}"
+        ))
+    })?;
     mac.update(message.as_bytes());
     let signature = mac.finalize().into_bytes();
     let compact = format!("mq:{}:{}", issued_at_epoch_secs, URL_SAFE_NO_PAD.encode(signature));
-    URL_SAFE_NO_PAD.encode(compact.as_bytes())
+    Ok(URL_SAFE_NO_PAD.encode(compact.as_bytes()))
 }
 
 impl Default for QuantumVault {

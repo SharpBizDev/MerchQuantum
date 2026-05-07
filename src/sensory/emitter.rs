@@ -1,5 +1,4 @@
 use crate::vault::QuantumVault;
-use crate::APP_RUNTIME;
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
@@ -131,7 +130,9 @@ impl Drop for SensoryEmitterControl {
 }
 
 pub fn use_sensory_emitter() {
-    let runtime = APP_RUNTIME.get().expect("Runtime init");
+    let Ok(runtime) = crate::app_runtime() else {
+        return;
+    };
     let governor = Arc::clone(&runtime.governor);
     let bridge = Arc::clone(&runtime.sensory_bridge);
     let vault = Arc::clone(&runtime.vault);

@@ -158,13 +158,13 @@ fn respond_native_protocol(path: String, responder: RequestAsyncResponder) {
         };
 
         let status = if body.is_empty() { StatusCode::NOT_FOUND } else { StatusCode::OK };
-        responder.respond(
-            HttpResponse::builder()
-                .status(status)
-                .header(CONTENT_TYPE, "application/json")
-                .body(Cow::Owned(body))
-                .unwrap(),
-        );
+        if let Ok(response) = HttpResponse::builder()
+            .status(status)
+            .header(CONTENT_TYPE, "application/json")
+            .body(Cow::Owned(body))
+        {
+            responder.respond(response);
+        }
     });
 }
 
@@ -179,10 +179,11 @@ pub fn use_native_shell_bridge(desktop: DesktopContext) {
 
         spawn(async move {
             while !shutdown_task.load(Ordering::Relaxed) {
-                let hole = serde_json::to_string(&current_hole_score()).unwrap_or_else(|_| "{}".to_string());
+                let hole_snapshot = current_hole_score();
+                let hole = serde_json::to_string(&hole_snapshot).unwrap_or_else(|_| "{}".to_string());
                 let bridge = serde_json::to_string(&native_bridge_descriptor()).unwrap_or_else(|_| "{}".to_string());
                 let script = format!(
-                    "window.dispatchEvent(new CustomEvent('{hole_event}', {{ detail: {hole} }}));window.dispatchEvent(new CustomEvent('{bridge_event}', {{ detail: {bridge} }}));",
+                    "window.__CONTEXT_QUANTUM_HOLE__ = {hole};window.dispatchEvent(new CustomEvent('{hole_event}', {{ detail: {hole} }}));window.dispatchEvent(new CustomEvent('{bridge_event}', {{ detail: {bridge} }}));",
                     hole_event = HOLE_SCORE_EVENT,
                     bridge_event = NATIVE_BRIDGE_EVENT,
                     hole = hole,
@@ -217,12 +218,12 @@ fn ensure_hole_scorer() {
     }
 
     let store = best_hole_store();
-    thread::spawn(move || loop {
+    thread::spawn(move || { let _ = crate::iris::register_pillar_thread_current(1); loop {
         if let Ok(mut slot) = store.write() {
             *slot = compute_best_hole();
         }
         thread::sleep(Duration::from_millis(100));
-    });
+    }});
 }
 
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
@@ -384,3 +385,5 @@ mod windows {
         width.saturating_mul(height)
     }
 }
+
+

@@ -500,8 +500,52 @@ fn merge_tags(existing: &[String], incoming: &[String]) -> Vec<String> {
     }
     merged
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProvenanceHeader {
+    pub topic_id: u32,
+    pub sector_id: u8,
+    pub source_url: String,
+    pub timestamp_epoch_ms: u128,
+    pub parent_crc32: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoveltySeed {
+    pub category_id: Option<u8>,
+    pub depth_counter: u8,
+    pub tag: String,
+    pub believer_crc32: u32,
+    pub skeptic_crc32: u32,
+    pub divergence_ratio: f32,
+    pub seed_excerpt: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SynthesisOutcome {
+    pub believer_state: String,
+    pub skeptic_state: String,
+    pub believer_crc32: u32,
+    pub skeptic_crc32: u32,
+    pub divergence_ratio: f32,
+    pub novelty_seed: Option<NoveltySeed>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SystemError {
+    ThermalSensorOffline,
+}
+
+impl SystemError {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ThermalSensorOffline => "SystemError::ThermalSensorOffline",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum QuantumError {
+    CriticalFault(String),
     Vault(String),
     MissingApiKey {
         provider: FulfillmentProvider,
@@ -528,11 +572,13 @@ pub enum QuantumError {
         message: String,
         body: String,
     },
+    IOFailure(String),
 }
 
 impl fmt::Display for QuantumError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::CriticalFault(message) => write!(f, "critical fault: {message}"),
             Self::Vault(message) => write!(f, "vault error: {message}"),
             Self::MissingApiKey { provider } => {
                 write!(f, "missing api key for provider {provider:?}")
@@ -566,8 +612,13 @@ impl fmt::Display for QuantumError {
                 message,
                 body,
             } => write!(f, "json decode error for {service}: {message}; body={body}"),
+            Self::IOFailure(message) => write!(f, "io failure: {message}"),
         }
     }
 }
-
 impl std::error::Error for QuantumError {}
+
+
+
+
+
