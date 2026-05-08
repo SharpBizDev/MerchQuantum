@@ -55,6 +55,10 @@ use crate::models::QuantumError;
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
 use crate::mutex_manager::with_v_drive_write_lock;
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+use crate::neural::umg::{
+    CognitiveDemand, LocalEngineKind, RemoteProvider, UmgRequest, UniversalModelGateway,
+};
+#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
 use crate::native_shell::desktop_config;
 use crate::router::OrderRouter;
 use crate::sensory::emitter::SpectralBridge;
@@ -215,6 +219,107 @@ fn maybe_run_native_merch_listing() -> Result<bool, QuantumError> {
     Ok(true)
 }
 
+
+#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+fn maybe_run_umg() -> Result<bool, QuantumError> {
+    let mut args = std::env::args().skip(1);
+    let mut enabled = false;
+    let mut prompt = None;
+    let mut prompt_file = None;
+    let mut system_prompt = None;
+    let mut demand = CognitiveDemand::Tier1Local;
+    let mut local_engine = None;
+    let mut remote_provider = None;
+    let mut model = None;
+    let mut output_path = None;
+    let mut temperature = None;
+    let mut max_output_tokens = None;
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--umg" => enabled = true,
+            "--umg-prompt" => prompt = args.next(),
+            "--umg-prompt-file" => prompt_file = args.next(),
+            "--umg-system" => system_prompt = args.next(),
+            "--umg-demand" => {
+                let Some(value) = args.next() else {
+                    return Err(critical_fault("--umg-demand requires a value"));
+                };
+                demand = parse_umg_demand(&value)?;
+            }
+            "--umg-engine" => {
+                let Some(value) = args.next() else {
+                    return Err(critical_fault("--umg-engine requires a value"));
+                };
+                local_engine = Some(parse_umg_engine(&value)?);
+            }
+            "--umg-provider" => {
+                let Some(value) = args.next() else {
+                    return Err(critical_fault("--umg-provider requires a value"));
+                };
+                remote_provider = Some(parse_umg_provider(&value)?);
+            }
+            "--umg-model" => model = args.next(),
+            "--umg-output" => output_path = args.next().map(std::path::PathBuf::from),
+            "--umg-temperature" => {
+                let Some(value) = args.next() else {
+                    return Err(critical_fault("--umg-temperature requires a value"));
+                };
+                temperature = Some(value.parse::<f32>().map_err(|error| {
+                    critical_fault(format!(
+                        "--umg-temperature requires an f32 value, received '{value}': {error}"
+                    ))
+                })?);
+            }
+            "--umg-max-tokens" => {
+                let Some(value) = args.next() else {
+                    return Err(critical_fault("--umg-max-tokens requires a value"));
+                };
+                max_output_tokens = Some(value.parse::<u32>().map_err(|error| {
+                    critical_fault(format!(
+                        "--umg-max-tokens requires a u32 value, received '{value}': {error}"
+                    ))
+                })?);
+            }
+            _ => {}
+        }
+    }
+
+    if !enabled {
+        return Ok(false);
+    }
+
+    let prompt = match (prompt, prompt_file) {
+        (Some(inline), _) => inline,
+        (None, Some(file_path)) => fs::read_to_string(&file_path).map_err(|error| {
+            critical_fault(format!("failed to read --umg-prompt-file {file_path}: {error}"))
+        })?,
+        (None, None) => {
+            return Err(critical_fault(
+                "--umg requires --umg-prompt or --umg-prompt-file".to_string(),
+            ))
+        }
+    };
+
+    let response = UniversalModelGateway::default().infer(UmgRequest {
+        prompt,
+        system_prompt,
+        demand,
+        local_engine,
+        remote_provider,
+        model,
+        temperature,
+        max_output_tokens,
+        output_path,
+    })?;
+
+    let rendered = serde_json::to_string_pretty(&response)
+        .map_err(|error| critical_fault(format!("failed to render UMG response: {error}")))?;
+    println!("{rendered}");
+    Ok(true)
+}
+
+
 #[cfg(any(
     all(feature = "desktop", not(target_arch = "wasm32")),
     all(feature = "web", target_arch = "wasm32")
@@ -275,6 +380,10 @@ fn desktop_entry() -> Result<(), QuantumError> {
     }
 
     if maybe_run_native_merch_listing()? {
+        return Ok(());
+    }
+
+    if maybe_run_umg()? {
         return Ok(());
     }
 
@@ -425,6 +534,41 @@ fn parse_bool_flag(flag: &str, value: &str) -> Result<bool, QuantumError> {
         "{flag} requires true/false or 1/0, received '{value}'"
     )))
 }
+
+
+#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+fn parse_umg_demand(value: &str) -> Result<CognitiveDemand, QuantumError> {
+    match value.to_ascii_lowercase().as_str() {
+        "tier1" | "local" | "reflex" => Ok(CognitiveDemand::Tier1Local),
+        "tier2" | "remote" | "synthesis" => Ok(CognitiveDemand::Tier2Remote),
+        _ => Err(critical_fault(format!(
+            "--umg-demand requires tier1/local/reflex or tier2/remote/synthesis, received '{value}'"
+        ))),
+    }
+}
+
+#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+fn parse_umg_engine(value: &str) -> Result<LocalEngineKind, QuantumError> {
+    match value.to_ascii_lowercase().as_str() {
+        "ollama" | "ollama-cli" => Ok(LocalEngineKind::OllamaCli),
+        "llama" | "llama-cpp" | "llama-cli" => Ok(LocalEngineKind::LlamaCppCli),
+        _ => Err(critical_fault(format!(
+            "--umg-engine requires ollama or llama-cpp, received '{value}'"
+        ))),
+    }
+}
+
+#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+fn parse_umg_provider(value: &str) -> Result<RemoteProvider, QuantumError> {
+    match value.to_ascii_lowercase().as_str() {
+        "openai" | "openai-http" => Ok(RemoteProvider::OpenAi),
+        "gemini" | "gemini-http" => Ok(RemoteProvider::Gemini),
+        _ => Err(critical_fault(format!(
+            "--umg-provider requires openai or gemini, received '{value}'"
+        ))),
+    }
+}
+
 
 #[cfg(all(feature = "desktop", feature = "micro-cell", not(target_arch = "wasm32")))]
 fn maybe_run_stress_station() -> Result<bool, QuantumError> {
