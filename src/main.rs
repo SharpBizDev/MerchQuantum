@@ -376,6 +376,47 @@ fn main() {
 }
 
 #[cfg(all(feature = "desktop", feature = "micro-cell", not(target_arch = "wasm32")))]
+fn parse_stress_station_options(
+    args: impl IntoIterator<Item = String>,
+) -> Result<crate::stress_station::StressStationOptions, QuantumError> {
+    let mut options = crate::stress_station::StressStationOptions::default();
+    let mut args = args.into_iter();
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--dry-run" => {
+                let Some(value) = args.next() else {
+                    return Err(critical_fault("--dry-run requires an explicit true/false value"));
+                };
+                options.dry_run = parse_bool_flag("--dry-run", &value)?;
+            }
+            _ if arg.starts_with("--dry-run=") => {
+                let value = arg.trim_start_matches("--dry-run=");
+                options.dry_run = parse_bool_flag("--dry-run", value)?;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(options)
+}
+
+#[cfg(all(feature = "desktop", feature = "micro-cell", not(target_arch = "wasm32")))]
+fn parse_bool_flag(flag: &str, value: &str) -> Result<bool, QuantumError> {
+    if value.eq_ignore_ascii_case("true") || value == "1" {
+        return Ok(true);
+    }
+
+    if value.eq_ignore_ascii_case("false") || value == "0" {
+        return Ok(false);
+    }
+
+    Err(critical_fault(format!(
+        "{flag} requires true/false or 1/0, received '{value}'"
+    )))
+}
+
+#[cfg(all(feature = "desktop", feature = "micro-cell", not(target_arch = "wasm32")))]
 fn maybe_run_stress_station() -> Result<bool, QuantumError> {
     if !std::env::args().any(|arg| arg == "--stress-station") {
         return Ok(false);
@@ -383,7 +424,8 @@ fn maybe_run_stress_station() -> Result<bool, QuantumError> {
 
     let repo_root = std::env::current_dir()
         .map_err(|error| critical_fault(format!("failed to resolve repo root: {error}")))?;
-    let report = crate::stress_station::run_accelerated_stress_station(repo_root)?;
+    let options = parse_stress_station_options(std::env::args().skip(1))?;
+    let report = crate::stress_station::run_accelerated_stress_station(repo_root, options)?;
     let rendered = serde_json::to_string_pretty(&report)
         .map_err(|error| critical_fault(format!("failed to render stress report: {error}")))?;
     println!("{rendered}");
@@ -420,4 +462,41 @@ fn maybe_run_pulsar_tick() -> Result<bool, QuantumError> {
         );
         Ok(true)
     })
+}
+
+
+#[cfg(all(test, feature = "desktop", feature = "micro-cell", not(target_arch = "wasm32")))]
+mod stress_station_cli_tests {
+    use super::{parse_bool_flag, parse_stress_station_options};
+
+    #[test]
+    fn parses_explicit_false_value() {
+        let options = parse_stress_station_options(vec![
+            "--stress-station".to_string(),
+            "--dry-run".to_string(),
+            "false".to_string(),
+        ])
+        .expect("expected dry-run flag to parse");
+
+        assert!(!options.dry_run);
+    }
+
+    #[test]
+    fn parses_inline_true_value() {
+        let options = parse_stress_station_options(vec![
+            "--stress-station".to_string(),
+            "--dry-run=true".to_string(),
+        ])
+        .expect("expected inline dry-run flag to parse");
+
+        assert!(options.dry_run);
+    }
+
+    #[test]
+    fn rejects_invalid_bool_value() {
+        let error = parse_bool_flag("--dry-run", "maybe").expect_err("expected invalid bool to fail");
+        let rendered = format!("{error}");
+        assert!(rendered.contains("--dry-run"));
+        assert!(rendered.contains("maybe"));
+    }
 }

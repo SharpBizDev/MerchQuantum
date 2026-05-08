@@ -90,6 +90,17 @@ pub struct StressStationReport {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct StressStationOptions {
+    pub dry_run: bool,
+}
+
+impl Default for StressStationOptions {
+    fn default() -> Self {
+        Self { dry_run: true }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 struct QueuedSector {
     sector_id: u8,
     depth: u8,
@@ -171,7 +182,10 @@ impl SimulatedRingBuffer {
     }
 }
 
-pub fn run_accelerated_stress_station(repo_root: PathBuf) -> Result<StressStationReport, QuantumError> {
+pub fn run_accelerated_stress_station(
+    repo_root: PathBuf,
+    options: StressStationOptions,
+) -> Result<StressStationReport, QuantumError> {
     let core_count = std::thread::available_parallelism()
         .map(|count| count.get())
         .unwrap_or(4)
@@ -350,7 +364,7 @@ pub fn run_accelerated_stress_station(repo_root: PathBuf) -> Result<StressStatio
         },
     };
 
-    let thermal_fault_audit = simulate_thermal_fault(&repo_root, 48, true)?;
+    let thermal_fault_audit = simulate_thermal_fault(&repo_root, 48, options.dry_run)?;
     let resource_shedding = if let Some((tick_index, snapshot)) = shedding_snapshot {
         ResourceSheddingAudit {
             triggered: snapshot.purge_triggered,
