@@ -89,6 +89,8 @@ fn critical_fault(message: impl Into<String>) -> QuantumError {
 #[cfg(all(feature = "desktop", feature = "micro-cell", not(target_arch = "wasm32")))]
 fn zero_forge_hotswap_projection() -> Result<(), QuantumError> {
     const HOTSWAP_BYTES: u64 = 134_217_728;
+
+    let _ = crate::sovereign::ensure_hardware_anchor_ready()?;
     const FORGE_CHUNK_BYTES: usize = 1_048_576;
 
     let hotswap_path = std::path::Path::new(r"V:\Egress\HotSwap.raw");

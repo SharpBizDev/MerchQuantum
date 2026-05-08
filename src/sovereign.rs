@@ -34,8 +34,8 @@ use windows::Win32::System::Wmi::{
 use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Storage::FileSystem::{
-    CreateFileW, FlushFileBuffers, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_DELETE, FILE_SHARE_READ,
-    FILE_SHARE_WRITE, OPEN_EXISTING,
+    CreateFileW, FlushFileBuffers, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    OPEN_EXISTING,
 };
 
 const WARNING_TEMP_C: u8 = 42;
@@ -50,6 +50,10 @@ const HOTSWAP_SOURCE_PATH: &str = r"V:\Egress\HotSwap.raw";
 const HOTSWAP_SNAPSHOT_PATH: &str = r"V:\Archive\HotSwap.raw.fault.snapshot";
 const COLD_VAULT_PATH: &str = r"V:\Archive\ColdVault.zst";
 const THERMAL_SENSOR_AMBER_INTENSITY: u8 = 153;
+#[cfg(target_os = "windows")]
+const RAW_FLUSH_ACCESS_MASK: u32 = 0x40000000u32;
+#[cfg(target_os = "windows")]
+const RAW_FLUSH_SHARE_MASK: u32 = FILE_SHARE_READ | FILE_SHARE_WRITE;
 #[cfg(target_os = "windows")]
 const RPC_E_TOO_LATE_CODE: i32 = -2147417831;
 #[cfg(target_os = "windows")]
@@ -69,7 +73,178 @@ pub struct ThermalFaultAudit {
     pub dry_run: bool,
     pub janitor_sync_completed: bool,
     pub flush_file_buffers_verified: bool,
+    pub flush_verification: FlushVerificationAudit,
     pub literal_shutdown_dispatched: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FlushVerificationAudit {
+    pub volume: FlushTargetAudit,
+    pub files: Vec<FlushTargetAudit>,
+}
+
+impl FlushVerificationAudit {
+    fn verified(&self) -> bool {
+        self.volume.flush_succeeded
+            && self.files.iter().any(|audit| audit.flush_succeeded)
+            && self
+                .files
+                .iter()
+                .filter(|audit| audit.attempted)
+                .all(|audit| audit.flush_succeeded)
+    }
+
+    fn summary(&self) -> String {
+        let mut fragments = Vec::new();
+
+        if !self.volume.flush_succeeded {
+            fragments.push(format!(
+                "volume {} failed at {}{}",
+                self.volume.target,
+                self.volume.error_stage.as_deref().unwrap_or("unknown-stage"),
+                self.volume
+                    .os_error_code
+                    .map(|code| format!(" (os error {code})"))
+                    .unwrap_or_default()
+            ));
+        }
+
+        for audit in self.files.iter().filter(|audit| audit.attempted && !audit.flush_succeeded) {
+            fragments.push(format!(
+                "file {} failed at {}{}",
+                audit.target,
+                audit.error_stage.as_deref().unwrap_or("unknown-stage"),
+                audit
+                    .os_error_code
+                    .map(|code| format!(" (os error {code})"))
+                    .unwrap_or_default()
+            ));
+        }
+
+        if !self.files.iter().any(|audit| audit.attempted) {
+            fragments.push("no HotSwap or ColdVault file targets were present to flush".to_string());
+        }
+
+        if fragments.is_empty() {
+            "flush verification passed".to_string()
+        } else {
+            fragments.join("; ")
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FlushTargetAudit {
+    pub target: String,
+    pub attempted: bool,
+    pub handle_opened: bool,
+    pub flush_succeeded: bool,
+    pub error_stage: Option<String>,
+    pub os_error_code: Option<i32>,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct HardwareAnchorAudit {
+    pub status: String,
+    pub volume_letter: char,
+    pub volume_root: String,
+    pub volume_device_path: String,
+    pub volume_present: bool,
+    pub hotswap_present: bool,
+    pub archive_present: bool,
+    pub ready: bool,
+    pub detail: String,
+    pub remediation: String,
+}
+
+impl HardwareAnchorAudit {
+    fn missing(volume_letter: char) -> Self {
+        let volume_root = format!("{}:\\", volume_letter.to_ascii_uppercase());
+        let volume_device_path = format!(r"\\.\{}:", volume_letter.to_ascii_uppercase());
+        let detail = format!(
+            "bunker volume {} is not mounted or visible to Win32 at {}",
+            volume_letter.to_ascii_uppercase(),
+            volume_device_path
+        );
+        Self {
+            status: "HARDWARE_ANCHOR_MISSING".to_string(),
+            volume_letter,
+            volume_root,
+            volume_device_path,
+            volume_present: false,
+            hotswap_present: false,
+            archive_present: false,
+            ready: false,
+            detail,
+            remediation: format!(
+                "Mount the bunker volume with Tool 06 / diskpart and assign it to {}: before running the stress station",
+                volume_letter.to_ascii_uppercase()
+            ),
+        }
+    }
+
+    fn ready(volume_letter: char, hotswap_present: bool, archive_present: bool) -> Self {
+        let volume_root = format!("{}:\\", volume_letter.to_ascii_uppercase());
+        let volume_device_path = format!(r"\\.\{}:", volume_letter.to_ascii_uppercase());
+        let status = if hotswap_present && archive_present {
+            "READY"
+        } else {
+            "HARDWARE_LAYOUT_DEGRADED"
+        };
+        let detail = if hotswap_present && archive_present {
+            format!(
+                "bunker volume {} is mounted and the HotSwap / ColdVault paths are present",
+                volume_letter.to_ascii_uppercase()
+            )
+        } else {
+            format!(
+                "bunker volume {} is mounted, but HotSwap present={} ColdVault present={}",
+                volume_letter.to_ascii_uppercase(),
+                hotswap_present,
+                archive_present
+            )
+        };
+
+        Self {
+            status: status.to_string(),
+            volume_letter,
+            volume_root,
+            volume_device_path,
+            volume_present: true,
+            hotswap_present,
+            archive_present,
+            ready: true,
+            detail,
+            remediation: "If layout is degraded, run Zero-Forge and Janitor bootstrap on the mounted bunker volume".to_string(),
+        }
+    }
+}
+
+pub fn hardware_anchor_preflight() -> HardwareAnchorAudit {
+    let volume_letter = HOTSWAP_VOLUME_LETTER;
+    let volume_root = Path::new(r"V:\");
+    if !volume_root.exists() {
+        return HardwareAnchorAudit::missing(volume_letter);
+    }
+
+    HardwareAnchorAudit::ready(
+        volume_letter,
+        Path::new(HOTSWAP_SOURCE_PATH).exists(),
+        Path::new(COLD_VAULT_PATH).exists(),
+    )
+}
+
+pub fn ensure_hardware_anchor_ready() -> Result<HardwareAnchorAudit, QuantumError> {
+    let audit = hardware_anchor_preflight();
+    if !audit.ready {
+        return Err(QuantumError::CriticalFault(format!(
+            "{}: {}. Remediation: {}",
+            audit.status, audit.detail, audit.remediation
+        )));
+    }
+
+    Ok(audit)
 }
 
 #[cfg(target_os = "windows")]
@@ -200,10 +375,11 @@ fn dispatch_fault_sequence(temp_c: u8, dry_run: bool) -> Result<ThermalFaultAudi
     let janitor_sync_completed = false;
     let janitor_flush_dispatch_ms = janitor_start.elapsed().as_secs_f64() * 1000.0;
 
-    let flush_file_buffers_verified = verify_flush_file_buffers(&[
+    let flush_verification = verify_flush_file_buffers(&[
         PathBuf::from(HOTSWAP_SOURCE_PATH),
         PathBuf::from(COLD_VAULT_PATH),
     ]);
+    let flush_file_buffers_verified = flush_verification.verified();
 
     eprintln!(
         "0xFF critical fault: sovereign sentinel reached {}C, initiating atomic vault flush and shutdown",
@@ -217,10 +393,15 @@ fn dispatch_fault_sequence(temp_c: u8, dry_run: bool) -> Result<ThermalFaultAudi
     let unmount_start = Instant::now();
     copy_fault_snapshot(Path::new(HOTSWAP_SOURCE_PATH), Path::new(HOTSWAP_SNAPSHOT_PATH))?;
 
+    if !flush_file_buffers_verified {
+        eprintln!("0xFF flush verification rejected: {}", flush_verification.summary());
+    }
+
     if !dry_run && !flush_file_buffers_verified {
-        return Err(QuantumError::IOFailure(
-            "failed to verify FlushFileBuffers against the V: volume before shutdown".into(),
-        ));
+        return Err(QuantumError::IOFailure(format!(
+            "failed to verify FlushFileBuffers against the V: volume before shutdown: {}",
+            flush_verification.summary()
+        )));
     }
 
     if !dry_run {
@@ -242,6 +423,7 @@ fn dispatch_fault_sequence(temp_c: u8, dry_run: bool) -> Result<ThermalFaultAudi
         dry_run,
         janitor_sync_completed,
         flush_file_buffers_verified,
+        flush_verification,
         literal_shutdown_dispatched: !dry_run,
     })
 }
@@ -266,61 +448,97 @@ fn copy_fault_snapshot(source: &Path, target: &Path) -> Result<(), QuantumError>
     Ok(())
 }
 
-fn verify_flush_file_buffers(paths: &[PathBuf]) -> bool {
-    let volume_flushed = flush_volume_write_cache(HOTSWAP_VOLUME_LETTER).unwrap_or(false);
-    if !volume_flushed {
-        return false;
+fn verify_flush_file_buffers(paths: &[PathBuf]) -> FlushVerificationAudit {
+    FlushVerificationAudit {
+        volume: flush_volume_write_cache(HOTSWAP_VOLUME_LETTER),
+        files: paths.iter().map(|path| flush_file_buffers_path(path)).collect(),
     }
-
-    let mut any_file_flushed = false;
-    for path in paths {
-        match flush_file_buffers_path(path) {
-            Ok(true) => any_file_flushed = true,
-            Ok(false) => {}
-            Err(_) => return false,
-        }
-    }
-    any_file_flushed
 }
 
 #[cfg(target_os = "windows")]
-fn flush_volume_write_cache(letter: char) -> Result<bool, QuantumError> {
+fn flush_volume_write_cache(letter: char) -> FlushTargetAudit {
     let volume = format!(r"\\.\{}:", letter.to_ascii_uppercase());
     let wide: Vec<u16> = volume.encode_utf16().chain(std::iter::once(0)).collect();
     unsafe {
         let handle = CreateFileW(
             wide.as_ptr(),
-            0x80000000u32 | 0x40000000u32,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            RAW_FLUSH_ACCESS_MASK,
+            RAW_FLUSH_SHARE_MASK,
             std::ptr::null(),
             OPEN_EXISTING,
             FILE_ATTRIBUTE_NORMAL,
             std::ptr::null_mut(),
         );
         if handle == INVALID_HANDLE_VALUE {
-            return Ok(false);
+            let error = std::io::Error::last_os_error();
+            let code = error.raw_os_error();
+            return FlushTargetAudit {
+                target: volume,
+                attempted: true,
+                handle_opened: false,
+                flush_succeeded: false,
+                error_stage: Some("CreateFileW".to_string()),
+                os_error_code: code,
+                detail: Some(format!("failed to open raw volume handle: {error}")),
+            };
         }
+
         let flushed = FlushFileBuffers(handle);
-        CloseHandle(handle);
         if flushed == 0 {
-            return Err(QuantumError::IOFailure(format!(
-                "FlushFileBuffers failed for volume {}",
-                volume
-            )));
+            let error = std::io::Error::last_os_error();
+            let code = error.raw_os_error();
+            CloseHandle(handle);
+            return FlushTargetAudit {
+                target: volume,
+                attempted: true,
+                handle_opened: true,
+                flush_succeeded: false,
+                error_stage: Some("FlushFileBuffers".to_string()),
+                os_error_code: code,
+                detail: Some(format!("raw volume flush rejected: {error}")),
+            };
         }
+
+        CloseHandle(handle);
     }
-    Ok(true)
+
+    FlushTargetAudit {
+        target: volume,
+        attempted: true,
+        handle_opened: true,
+        flush_succeeded: true,
+        error_stage: None,
+        os_error_code: None,
+        detail: None,
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
-fn flush_volume_write_cache(_letter: char) -> Result<bool, QuantumError> {
-    Ok(false)
+fn flush_volume_write_cache(letter: char) -> FlushTargetAudit {
+    FlushTargetAudit {
+        target: format!(r"\\.\{}:", letter.to_ascii_uppercase()),
+        attempted: false,
+        handle_opened: false,
+        flush_succeeded: false,
+        error_stage: Some("platform".to_string()),
+        os_error_code: None,
+        detail: Some("raw volume flush unsupported on non-Windows targets".to_string()),
+    }
 }
 
 #[cfg(target_os = "windows")]
-fn flush_file_buffers_path(path: &Path) -> Result<bool, QuantumError> {
+fn flush_file_buffers_path(path: &Path) -> FlushTargetAudit {
+    let rendered = path.display().to_string();
     if !path.exists() {
-        return Ok(false);
+        return FlushTargetAudit {
+            target: rendered,
+            attempted: false,
+            handle_opened: false,
+            flush_succeeded: false,
+            error_stage: None,
+            os_error_code: None,
+            detail: Some("path missing, skipped".to_string()),
+        };
     }
 
     let wide: Vec<u16> = path
@@ -333,45 +551,103 @@ fn flush_file_buffers_path(path: &Path) -> Result<bool, QuantumError> {
     unsafe {
         let handle = CreateFileW(
             wide.as_ptr(),
-            0x80000000u32 | 0x40000000u32,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            RAW_FLUSH_ACCESS_MASK,
+            RAW_FLUSH_SHARE_MASK,
             std::ptr::null(),
             OPEN_EXISTING,
             FILE_ATTRIBUTE_NORMAL,
             std::ptr::null_mut(),
         );
         if handle == INVALID_HANDLE_VALUE {
-            return Err(QuantumError::IOFailure(format!(
-                "failed to open {} for FlushFileBuffers",
-                path.display()
-            )));
+            let error = std::io::Error::last_os_error();
+            let code = error.raw_os_error();
+            return FlushTargetAudit {
+                target: rendered,
+                attempted: true,
+                handle_opened: false,
+                flush_succeeded: false,
+                error_stage: Some("CreateFileW".to_string()),
+                os_error_code: code,
+                detail: Some(format!("failed to open file handle for FlushFileBuffers: {error}")),
+            };
         }
+
         let flushed = FlushFileBuffers(handle);
-        CloseHandle(handle);
         if flushed == 0 {
-            return Err(QuantumError::IOFailure(format!(
-                "FlushFileBuffers failed for {}",
-                path.display()
-            )));
+            let error = std::io::Error::last_os_error();
+            let code = error.raw_os_error();
+            CloseHandle(handle);
+            return FlushTargetAudit {
+                target: rendered,
+                attempted: true,
+                handle_opened: true,
+                flush_succeeded: false,
+                error_stage: Some("FlushFileBuffers".to_string()),
+                os_error_code: code,
+                detail: Some(format!("file flush rejected: {error}")),
+            };
         }
+
+        CloseHandle(handle);
     }
 
-    Ok(true)
+    FlushTargetAudit {
+        target: rendered,
+        attempted: true,
+        handle_opened: true,
+        flush_succeeded: true,
+        error_stage: None,
+        os_error_code: None,
+        detail: None,
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
-fn flush_file_buffers_path(path: &Path) -> Result<bool, QuantumError> {
+fn flush_file_buffers_path(path: &Path) -> FlushTargetAudit {
+    let rendered = path.display().to_string();
     if !path.exists() {
-        return Ok(false);
+        return FlushTargetAudit {
+            target: rendered,
+            attempted: false,
+            handle_opened: false,
+            flush_succeeded: false,
+            error_stage: None,
+            os_error_code: None,
+            detail: Some("path missing, skipped".to_string()),
+        };
     }
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)
-        .map_err(|error| QuantumError::IOFailure(format!("failed to open {} for sync: {error}", path.display())))?;
-    file.sync_all()
-        .map_err(|error| QuantumError::IOFailure(format!("sync_all failed for {}: {error}", path.display())))?;
-    Ok(true)
+
+    match std::fs::OpenOptions::new().read(true).write(true).open(path) {
+        Ok(file) => match file.sync_all() {
+            Ok(()) => FlushTargetAudit {
+                target: rendered,
+                attempted: true,
+                handle_opened: true,
+                flush_succeeded: true,
+                error_stage: None,
+                os_error_code: None,
+                detail: None,
+            },
+            Err(error) => FlushTargetAudit {
+                target: rendered,
+                attempted: true,
+                handle_opened: true,
+                flush_succeeded: false,
+                error_stage: Some("sync_all".to_string()),
+                os_error_code: error.raw_os_error(),
+                detail: Some(format!("sync_all failed: {error}")),
+            },
+        },
+        Err(error) => FlushTargetAudit {
+            target: rendered,
+            attempted: true,
+            handle_opened: false,
+            flush_succeeded: false,
+            error_stage: Some("open".to_string()),
+            os_error_code: error.raw_os_error(),
+            detail: Some(format!("failed to open file for sync: {error}")),
+        },
+    }
 }
 
 #[cfg(target_os = "windows")]

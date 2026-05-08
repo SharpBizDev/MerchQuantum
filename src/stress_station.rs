@@ -1,7 +1,7 @@
 use crate::governor::{bloom_subject, evaluate_relevance, OverUnityGate};
 use crate::iris::{AffinityIris, AffinitySnapshot, ResourceShedder, ResourceShedderSnapshot, burn_swarm_core};
 use crate::models::QuantumError;
-use crate::sovereign::{ThermalFaultAudit, simulate_thermal_fault};
+use crate::sovereign::{HardwareAnchorAudit, ThermalFaultAudit, hardware_anchor_preflight, simulate_thermal_fault};
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::fs;
@@ -83,6 +83,7 @@ pub struct StressStationReport {
     pub bloom_affinity: Vec<AffinitySnapshot>,
     pub cache_isolation: CacheIsolationAudit,
     pub overlay_trace: Vec<OverlayTraceSample>,
+    pub hardware_preflight: HardwareAnchorAudit,
     pub thermal_fault_audit: ThermalFaultAudit,
     pub ring_buffer_audit: RingBufferAudit,
     pub chaos_pass: ChaosPassAudit,
@@ -186,6 +187,24 @@ pub fn run_accelerated_stress_station(
     repo_root: PathBuf,
     options: StressStationOptions,
 ) -> Result<StressStationReport, QuantumError> {
+    let hardware_preflight = hardware_anchor_preflight();
+    if !hardware_preflight.ready {
+        eprintln!(
+            "{}: {}. Remediation: {}",
+            hardware_preflight.status,
+            hardware_preflight.detail,
+            hardware_preflight.remediation
+        );
+        if !options.dry_run {
+            return Err(QuantumError::CriticalFault(format!(
+                "{}: {}. Remediation: {}",
+                hardware_preflight.status,
+                hardware_preflight.detail,
+                hardware_preflight.remediation
+            )));
+        }
+    }
+
     let core_count = std::thread::available_parallelism()
         .map(|count| count.get())
         .unwrap_or(4)
@@ -397,6 +416,7 @@ pub fn run_accelerated_stress_station(
         bloom_affinity,
         cache_isolation,
         overlay_trace,
+        hardware_preflight,
         thermal_fault_audit,
         ring_buffer_audit: ring.audit(),
         chaos_pass: ChaosPassAudit {

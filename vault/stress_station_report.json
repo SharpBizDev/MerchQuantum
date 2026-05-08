@@ -4,15 +4,15 @@
   "total_chunks": 684,
   "over_unity_passes": 565,
   "force_protocol_count": 119,
-  "janitor_flush_ms": 50.325,
-  "input_to_suspend_ms": 0.00009999999999999999,
+  "janitor_flush_ms": 110.77969999999999,
+  "input_to_suspend_ms": 0.0,
   "hud_frame_drops": 0,
   "snap_affinity": {
     "phase": "Snap",
     "active_agent_count": 3,
     "pillars_mask": 3,
     "swarm_mask": 65532,
-    "input_to_suspend_ms": 0.00009999999999999999,
+    "input_to_suspend_ms": 0.0,
     "heatmap": [
       {
         "core_index": 0,
@@ -1211,14 +1211,57 @@
       "bytes_written": 25077969225
     }
   ],
+  "hardware_preflight": {
+    "status": "HARDWARE_ANCHOR_MISSING",
+    "volume_letter": "V",
+    "volume_root": "V:\\",
+    "volume_device_path": "\\\\.\\V:",
+    "volume_present": false,
+    "hotswap_present": false,
+    "archive_present": false,
+    "ready": false,
+    "detail": "bunker volume V is not mounted or visible to Win32 at \\\\.\\V:",
+    "remediation": "Mount the bunker volume with Tool 06 / diskpart and assign it to V: before running the stress station"
+  },
   "thermal_fault_audit": {
     "temperature_c": 48,
-    "janitor_flush_dispatch_ms": 0.0213,
-    "unmount_vhd_dispatch_ms": 0.0174,
-    "total_dispatch_ms": 120.51920000000001,
+    "janitor_flush_dispatch_ms": 0.3,
+    "unmount_vhd_dispatch_ms": 0.06760000000000001,
+    "total_dispatch_ms": 121.7148,
     "dry_run": true,
     "janitor_sync_completed": false,
     "flush_file_buffers_verified": false,
+    "flush_verification": {
+      "volume": {
+        "target": "\\\\.\\V:",
+        "attempted": true,
+        "handle_opened": false,
+        "flush_succeeded": false,
+        "error_stage": "CreateFileW",
+        "os_error_code": 2,
+        "detail": "failed to open raw volume handle: The system cannot find the file specified. (os error 2)"
+      },
+      "files": [
+        {
+          "target": "V:\\Egress\\HotSwap.raw",
+          "attempted": false,
+          "handle_opened": false,
+          "flush_succeeded": false,
+          "error_stage": null,
+          "os_error_code": null,
+          "detail": "path missing, skipped"
+        },
+        {
+          "target": "V:\\Archive\\ColdVault.zst",
+          "attempted": false,
+          "handle_opened": false,
+          "flush_succeeded": false,
+          "error_stage": null,
+          "os_error_code": null,
+          "detail": "path missing, skipped"
+        }
+      ]
+    },
     "literal_shutdown_dispatched": false
   },
   "ring_buffer_audit": {
