@@ -9,10 +9,12 @@ use std::process::Command;
 
 const DEFAULT_OLLAMA_MODEL: &str = "llama3.1:8b";
 const DEFAULT_LLAMA_CPP_MODEL_PATH: &str = "vault/models/llama-3-8b-instruct-q4_k_m.gguf";
+const DEFAULT_GROK_MODEL: &str = "grok-4.3";
 const DEFAULT_GEMINI_MODEL: &str = "gemini-2.5-pro";
 const DEFAULT_OPENAI_MODEL: &str = "gpt-4.1";
 const DEFAULT_OPENAI_ENDPOINT: &str = "https://api.openai.com/v1/chat/completions";
 const DEFAULT_GEMINI_API_ROOT: &str = "https://generativelanguage.googleapis.com/v1beta";
+const DEFAULT_XAI_RESPONSES_ENDPOINT: &str = "https://api.x.ai/v1/responses";
 const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 1024;
 const DEFAULT_TEMPERATURE: f32 = 0.2;
 
@@ -45,8 +47,21 @@ pub enum LocalEngineKind {
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 pub enum RemoteProvider {
+    Grok,
     OpenAi,
     Gemini,
+}
+
+#[derive(Debug, Clone)]
+pub struct UmgImageInput {
+    pub image_url: String,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UmgJsonSchema {
+    pub name: String,
+    pub schema: Value,
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +69,7 @@ pub struct UmgConfig {
     pub ollama_cli_path: PathBuf,
     pub llama_cpp_cli_path: PathBuf,
     pub llama_cpp_model_path: PathBuf,
+    pub xai_responses_endpoint: String,
     pub openai_endpoint: String,
     pub gemini_api_root: String,
 }
@@ -71,6 +87,8 @@ impl Default for UmgConfig {
                 std::env::var("UMG_LLAMA_CPP_MODEL")
                     .unwrap_or_else(|_| DEFAULT_LLAMA_CPP_MODEL_PATH.to_string()),
             ),
+            xai_responses_endpoint: std::env::var("UMG_XAI_RESPONSES_ENDPOINT")
+                .unwrap_or_else(|_| DEFAULT_XAI_RESPONSES_ENDPOINT.to_string()),
             openai_endpoint: std::env::var("UMG_OPENAI_ENDPOINT")
                 .unwrap_or_else(|_| DEFAULT_OPENAI_ENDPOINT.to_string()),
             gemini_api_root: std::env::var("UMG_GEMINI_API_ROOT")
@@ -90,6 +108,8 @@ pub struct UmgRequest {
     pub temperature: Option<f32>,
     pub max_output_tokens: Option<u32>,
     pub output_path: Option<PathBuf>,
+    pub input_images: Vec<UmgImageInput>,
+    pub response_schema: Option<UmgJsonSchema>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -286,14 +306,90 @@ impl InferenceExecutor for RemoteBridgeExecutor {
 
 impl RemoteBridgeExecutor {
     async fn infer_async(&self, request: &UmgRequest) -> Result<UmgResponse, QuantumError> {
-        let provider = request.remote_provider.unwrap_or(RemoteProvider::OpenAi);
+        let provider = request.remote_provider.unwrap_or(RemoteProvider::Grok);
         match provider {
+            RemoteProvider::Grok => self.call_grok(request).await,
             RemoteProvider::OpenAi => self.call_openai(request).await,
             RemoteProvider::Gemini => self.call_gemini(request).await,
         }
     }
 
+    async fn call_grok(&self, request: &UmgRequest) -> Result<UmgResponse, QuantumError> {
+        let service = "umg-grok";
+        let api_key = std::env::var("XAI_API_KEY")
+            .or_else(|_| std::env::var("UMG_XAI_API_KEY"))
+            .map_err(|_| {
+                QuantumError::CriticalFault("UMG remote bridge missing XAI_API_KEY".to_string())
+            })?;
+        let model = request
+            .model
+            .clone()
+            .unwrap_or_else(|| DEFAULT_GROK_MODEL.to_string());
+        let mut payload = json!({
+            "model": model,
+            "store": false,
+            "input": build_grok_input(request),
+            "temperature": request.temperature.unwrap_or(DEFAULT_TEMPERATURE),
+            "max_output_tokens": request.max_output_tokens.unwrap_or(DEFAULT_MAX_OUTPUT_TOKENS),
+        });
+        if let Some(schema) = request.response_schema.as_ref() {
+            payload["text"] = json!({
+                "format": {
+                    "type": "json_schema",
+                    "name": schema.name,
+                    "schema": schema.schema,
+                    "strict": true,
+                }
+            });
+        }
+
+        let client = Client::new();
+        let response = client
+            .post(&self.config.xai_responses_endpoint)
+            .bearer_auth(api_key)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|error| QuantumError::Transport {
+                service,
+                message: error.to_string(),
+            })?;
+        let status = response.status();
+        let body = response.text().await.map_err(|error| QuantumError::Transport {
+            service,
+            message: error.to_string(),
+        })?;
+        if !status.is_success() {
+            return Err(QuantumError::Http {
+                service,
+                status: status.as_u16(),
+                body,
+            });
+        }
+
+        let value: Value = serde_json::from_str(&body).map_err(|error| QuantumError::JsonDecode {
+            service,
+            message: error.to_string(),
+            body: body.clone(),
+        })?;
+        let output_text = extract_xai_output(&value).ok_or_else(|| QuantumError::JsonDecode {
+            service,
+            message: "missing output_text inside response.output".to_string(),
+            body: body.clone(),
+        })?;
+
+        Ok(UmgResponse {
+            route: RoutingLane::RemoteBridge,
+            backend: "grok-responses-http".to_string(),
+            model,
+            output_text,
+            persisted_path: None,
+        })
+    }
+
     async fn call_openai(&self, request: &UmgRequest) -> Result<UmgResponse, QuantumError> {
+        ensure_text_only_remote(request, "openai")?;
+
         let service = "umg-openai";
         let api_key = std::env::var("OPENAI_API_KEY")
             .or_else(|_| std::env::var("UMG_OPENAI_API_KEY"))
@@ -357,6 +453,8 @@ impl RemoteBridgeExecutor {
     }
 
     async fn call_gemini(&self, request: &UmgRequest) -> Result<UmgResponse, QuantumError> {
+        ensure_text_only_remote(request, "gemini")?;
+
         let service = "umg-gemini";
         let api_key = std::env::var("GEMINI_API_KEY")
             .or_else(|_| std::env::var("GOOGLE_API_KEY"))
@@ -439,14 +537,63 @@ impl RemoteBridgeExecutor {
     }
 }
 
+fn build_grok_input(request: &UmgRequest) -> Value {
+    let mut input = Vec::new();
+    if let Some(system_prompt) = request.system_prompt.as_deref().filter(|value| not_blank(value)) {
+        input.push(json!({
+            "role": "system",
+            "content": system_prompt,
+        }));
+    }
+
+    if request.input_images.is_empty() {
+        input.push(json!({
+            "role": "user",
+            "content": request.prompt,
+        }));
+        return Value::Array(input);
+    }
+
+    let mut content = Vec::new();
+    for image in &request.input_images {
+        let mut image_entry = json!({
+            "type": "input_image",
+            "image_url": image.image_url,
+        });
+        if let Some(detail) = image.detail.as_deref().filter(|value| not_blank(value)) {
+            image_entry["detail"] = json!(detail);
+        }
+        content.push(image_entry);
+    }
+    if not_blank(&request.prompt) {
+        content.push(json!({
+            "type": "input_text",
+            "text": request.prompt,
+        }));
+    }
+
+    input.push(json!({
+        "role": "user",
+        "content": content,
+    }));
+
+    Value::Array(input)
+}
+
+fn ensure_text_only_remote(request: &UmgRequest, provider: &str) -> Result<(), QuantumError> {
+    if request.input_images.is_empty() && request.response_schema.is_none() {
+        return Ok(());
+    }
+
+    Err(QuantumError::CriticalFault(format!(
+        "UMG {provider} lane is forged for text-only requests; route images or structured vision output through RemoteProvider::Grok"
+    )))
+}
+
 fn render_prompt(request: &UmgRequest) -> String {
     match request.system_prompt.as_deref() {
         Some(system_prompt) if not_blank(system_prompt) => {
-            format!("SYSTEM:
-{system_prompt}
-
-USER:
-{}", request.prompt)
+            format!("SYSTEM:\n{system_prompt}\n\nUSER:\n{}", request.prompt)
         }
         _ => request.prompt.clone(),
     }
@@ -483,8 +630,7 @@ fn extract_openai_output(value: &Value) -> Option<String> {
                 .iter()
                 .filter_map(|part| part.get("text").and_then(Value::as_str))
                 .collect::<Vec<_>>()
-                .join("
-");
+                .join("\n");
             not_blank(&joined).then_some(joined)
         }
         _ => None,
@@ -503,9 +649,29 @@ fn extract_gemini_output(value: &Value) -> Option<String> {
         .iter()
         .filter_map(|part| part.get("text").and_then(Value::as_str))
         .collect::<Vec<_>>()
-        .join("
-");
+        .join("\n");
     not_blank(&joined).then_some(joined)
+}
+
+fn extract_xai_output(value: &Value) -> Option<String> {
+    let output = value.get("output")?.as_array()?;
+    for item in output {
+        if item.get("type").and_then(Value::as_str) != Some("message") {
+            continue;
+        }
+        let content = item.get("content")?.as_array()?;
+        for entry in content {
+            if entry.get("type").and_then(Value::as_str) == Some("output_text") {
+                if let Some(text) = entry.get("text").and_then(Value::as_str) {
+                    let trimmed = text.trim();
+                    if !trimmed.is_empty() {
+                        return Some(trimmed.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 fn not_blank(value: &str) -> bool {
@@ -514,7 +680,11 @@ fn not_blank(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{CognitiveDemand, RoutingLane, UmgResponse, UniversalModelGateway};
+    use super::{
+        extract_xai_output, CognitiveDemand, RoutingLane, UmgImageInput, UmgResponse,
+        UniversalModelGateway,
+    };
+    use serde_json::json;
 
     #[test]
     fn routes_cognitive_demand_to_expected_lane() {
@@ -536,12 +706,41 @@ mod tests {
             std::process::id()
         ));
         response.persist_to_path(&temp_path).expect("persist response");
-        assert_eq!(std::fs::read_to_string(&temp_path).expect("read persisted"), "forge-output");
+        assert_eq!(
+            std::fs::read_to_string(&temp_path).expect("read persisted"),
+            "forge-output"
+        );
         let _ = std::fs::remove_file(&temp_path);
     }
 
     #[test]
     fn default_gateway_constructs() {
         let _ = UniversalModelGateway::default();
+    }
+
+    #[test]
+    fn extracts_xai_output_text_from_responses_shape() {
+        let payload = json!({
+            "output": [{
+                "type": "message",
+                "content": [{
+                    "type": "output_text",
+                    "text": "{\"title\":\"Forge\"}"
+                }]
+            }]
+        });
+        assert_eq!(
+            extract_xai_output(&payload),
+            Some("{\"title\":\"Forge\"}".to_string())
+        );
+    }
+
+    #[test]
+    fn image_input_accepts_data_url() {
+        let image = UmgImageInput {
+            image_url: "data:image/png;base64,Zm9yZ2U=".to_string(),
+            detail: Some("high".to_string()),
+        };
+        assert!(image.image_url.starts_with("data:image/png;base64,"));
     }
 }

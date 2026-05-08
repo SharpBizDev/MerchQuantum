@@ -311,6 +311,8 @@ fn maybe_run_umg() -> Result<bool, QuantumError> {
         temperature,
         max_output_tokens,
         output_path,
+        input_images: Vec::new(),
+        response_schema: None,
     })?;
 
     let rendered = serde_json::to_string_pretty(&response)
@@ -561,14 +563,14 @@ fn parse_umg_engine(value: &str) -> Result<LocalEngineKind, QuantumError> {
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
 fn parse_umg_provider(value: &str) -> Result<RemoteProvider, QuantumError> {
     match value.to_ascii_lowercase().as_str() {
+        "grok" | "xai" | "grok-http" => Ok(RemoteProvider::Grok),
         "openai" | "openai-http" => Ok(RemoteProvider::OpenAi),
         "gemini" | "gemini-http" => Ok(RemoteProvider::Gemini),
         _ => Err(critical_fault(format!(
-            "--umg-provider requires openai or gemini, received '{value}'"
+            "--umg-provider requires grok, openai, or gemini, received '{value}'"
         ))),
     }
 }
-
 
 #[cfg(all(feature = "desktop", feature = "micro-cell", not(target_arch = "wasm32")))]
 fn maybe_run_stress_station() -> Result<bool, QuantumError> {
@@ -654,4 +656,6 @@ mod stress_station_cli_tests {
         assert!(rendered.contains("maybe"));
     }
 }
+
+
 
