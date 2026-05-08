@@ -101,6 +101,31 @@ function makeId() {
     : `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function resetTemplateProcessingState(items: Img[], templateKey: string): Img[] {
+  let changed = false;
+  const nextItems: Img[] = [];
+
+  for (const img of items) {
+    if (img.sourceType === "imported" || img.processedTemplateKey === templateKey) {
+      nextItems.push(img);
+      continue;
+    }
+
+    changed = true;
+    nextItems.push({
+      ...img,
+      processedTemplateKey: undefined,
+      aiDraft: undefined,
+      aiProcessing: false,
+      aiFieldStates: createAiFieldStates("idle"),
+      status: "pending" as const,
+      statusReason: "",
+    });
+  }
+
+  return changed ? nextItems : items;
+}
+
 export function useBatchState() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const previousPreviewUrlsRef = useRef<string[]>([]);
@@ -1209,57 +1234,29 @@ export function useBatchState() {
   useEffect(() => {
     activeTemplateKeyRef.current = templateKey;
     aiLoopBusyRef.current = null;
-    setImages((current) =>
-      current.map((img) =>
-        img.sourceType === "imported" || img.processedTemplateKey === templateKey
-          ? img
-          : {
-              ...img,
-              processedTemplateKey: undefined,
-              aiDraft: undefined,
-              aiProcessing: false,
-              aiFieldStates: createAiFieldStates("idle"),
-              status: "pending",
-              statusReason: "",
-            }
-      )
-    );
-    setQueuedImages((current) =>
-      current.map((img) =>
-        img.sourceType === "imported" || img.processedTemplateKey === templateKey
-          ? img
-          : {
-              ...img,
-              processedTemplateKey: undefined,
-              aiDraft: undefined,
-              aiProcessing: false,
-              aiFieldStates: createAiFieldStates("idle"),
-              status: "pending",
-              statusReason: "",
-            }
-      )
-    );
+    setImages((current) => resetTemplateProcessingState(current, templateKey));
+    setQueuedImages((current) => resetTemplateProcessingState(current, templateKey));
   }, [templateKey]);
 
   useEffect(() => {
     if (!shopId) {
-      setApiProducts([]);
-      setProductId("");
-      setActiveGridProductId("");
-      setTemplate(null);
-      setTemplateDescription("");
-      setImportedListingTitle("");
-      setImportedListingDescription("");
-      setWorkspaceMode("");
-      setIsRoutingGridExpanded(true);
-      setSelectedImportIds([]);
-      setPendingTemplateSelectionIds([]);
-      setBulkEditGridPage(0);
-      setCreateTemplateGridPage(0);
-      setLastSelectedIndex(null);
-      setImportStatus("");
-      setEditingField(null);
-      setInlineSaveFeedback(null);
+      setApiProducts((current) => (current.length === 0 ? current : []));
+      setProductId((current) => (current ? "" : current));
+      setActiveGridProductId((current) => (current ? "" : current));
+      setTemplate((current) => (current === null ? current : null));
+      setTemplateDescription((current) => (current ? "" : current));
+      setImportedListingTitle((current) => (current ? "" : current));
+      setImportedListingDescription((current) => (current ? "" : current));
+      setWorkspaceMode((current) => (current ? "" : current));
+      setIsRoutingGridExpanded((current) => (current ? current : true));
+      setSelectedImportIds((current) => (current.length === 0 ? current : []));
+      setPendingTemplateSelectionIds((current) => (current.length === 0 ? current : []));
+      setBulkEditGridPage((current) => (current === 0 ? current : 0));
+      setCreateTemplateGridPage((current) => (current === 0 ? current : 0));
+      setLastSelectedIndex((current) => (current === null ? current : null));
+      setImportStatus((current) => (current ? "" : current));
+      setEditingField((current) => (current === null ? current : null));
+      setInlineSaveFeedback((current) => (current === null ? current : null));
       return;
     }
 
@@ -2568,33 +2565,4 @@ export function useBatchState() {
 }
 
 export type UseBatchStateResult = ReturnType<typeof useBatchState>;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

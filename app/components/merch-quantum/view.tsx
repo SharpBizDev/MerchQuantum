@@ -176,18 +176,18 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
   const workspaceLoaderLabel = showRefineryMountLoader ? refineryMountLabel : workspaceModeLoadingLabel;
 
   return (
-    <main className="refinery-workspace box-border flex h-full w-full max-w-full flex-col overflow-y-auto overflow-x-hidden bg-transparent font-sans text-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ paddingInline: "var(--cq-shell-inline)", paddingTop: "clamp(0.35rem, 1.2vw, 0.9rem)", paddingBottom: "clamp(5.8rem, 16vw, 8rem)", fontSize: "var(--font-body)", containerType: "inline-size" }} >
-      <div className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col" style={{ gap: "var(--gap-surgical)" }}>
+    <main className="refinery-workspace box-border flex h-full w-full max-w-full flex-col overflow-y-auto overflow-x-hidden bg-transparent font-sans text-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ paddingInline: "var(--cq-shell-inline)", paddingTop: "clamp(0.25rem, 0.9vw, 0.65rem)", paddingBottom: "clamp(5rem, 12vw, 6.75rem)", fontSize: "var(--font-body)", containerType: "inline-size" }} >
+      <div className="mx-auto flex w-full max-w-[1320px] flex-1 flex-col" style={{ gap: "var(--gap-surgical)" }}>
       <div className="flex min-w-0 flex-1 flex-col" style={{ gap: "var(--gap-surgical)" }}>
         <div className="sticky top-0 z-10 flex flex-col bg-transparent" style={{ paddingBottom: "var(--gap-surgical)", gap: "var(--gap-surgical)" }}>
           {!workspaceMode || isRoutingGridExpanded ? (
           <div className="relative">
             <Box
-              className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_28px_80px_-40px_rgba(2,6,22,0.95)] ${routingGuidanceTarget ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""}`}
+              className={`relative overflow-visible border-slate-800 bg-[#0b0f19] text-white shadow-[0_20px_56px_-36px_rgba(2,6,22,0.92)] ${routingGuidanceTarget ? "ring-1 ring-[#7F22FE]/45 shadow-[0_28px_90px_-40px_rgba(127,34,254,0.45)]" : connected ? "ring-1 ring-[#00BC7D]/35 shadow-[0_28px_90px_-40px_rgba(0,188,125,0.32)]" : ""}`}
             >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent" />
-            <div className={`pointer-events-none absolute -right-10 top-0 h-36 w-36 blur-3xl transition-all duration-700 sm:-right-16 sm:h-40 sm:w-40 md:-right-20 md:h-48 md:w-48 ${connected ? "bg-[#00BC7D]/12" : "bg-[#7F22FE]/12"} ${routingGuidanceTarget ? "animate-pulse" : ""}`} />
-            <div className="pointer-events-none absolute -left-6 bottom-0 h-24 w-24 rounded-full bg-white/5 blur-3xl sm:-left-8 sm:h-28 sm:w-28 md:-left-12 md:h-32 md:w-32" />
+            <div className={`pointer-events-none absolute -right-6 top-0 h-28 w-28 blur-3xl transition-all duration-700 sm:-right-10 sm:h-32 sm:w-32 md:-right-14 md:h-40 md:w-40 ${connected ? "bg-[#00BC7D]/12" : "bg-[#7F22FE]/12"} ${routingGuidanceTarget ? "animate-pulse" : ""}`} />
+            <div className="pointer-events-none absolute -left-3 bottom-0 h-[4.5rem] w-[4.5rem] rounded-full bg-white/5 blur-3xl sm:-left-6 sm:h-24 sm:w-24 md:-left-8 md:h-28 md:w-28" />
             <div
               className={`pointer-events-none absolute inset-x-5 bottom-0 h-px transition-all duration-700 ${connected ? "bg-gradient-to-r from-transparent via-[#00BC7D]/90 to-transparent" : "bg-gradient-to-r from-transparent via-[#7F22FE]/80 to-transparent"} ${pulseConnected || routingGuidanceTarget ? "scale-x-100 opacity-100" : "scale-x-75 opacity-60"}`}
             />
@@ -934,19 +934,4 @@ export function MerchQuantumView({ controller }: { controller: UseMerchQuantumCo
     </main>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

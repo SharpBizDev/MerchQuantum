@@ -20,13 +20,16 @@ export function useMerchQuantumController() {
   const quantumEditor = useQuantumEditor(batchState);
   const specializedBridge = useSpecializedRefineryBridge();
   const [isIngestionInspectorOpen, setIsIngestionInspectorOpen] = useState(false);
+  const refreshIngestionStorageAudit = batchState.refreshIngestionStorageAudit;
+  const toggleIngestionGraphPaused = batchState.toggleIngestionGraphPaused;
+  const purgeFinishedIngestionJobs = batchState.purgeFinishedIngestionJobs;
 
   useIngestionPressureBridge(immutableJobGraphSnapshot, ambientStreams);
 
   useEffect(() => {
     if (!isIngestionInspectorOpen) return;
-    void batchState.refreshIngestionStorageAudit();
-  }, [batchState, isIngestionInspectorOpen]);
+    void refreshIngestionStorageAudit();
+  }, [isIngestionInspectorOpen, refreshIngestionStorageAudit]);
 
   const providerTaskRouter = useMemo(() => {
     const route = ambientStreams.computerUseFallback ? "computer-use" : "mcp";
@@ -53,10 +56,10 @@ export function useMerchQuantumController() {
     openPanel: () => setIsIngestionInspectorOpen(true),
     closePanel: () => setIsIngestionInspectorOpen(false),
     togglePanel: () => setIsIngestionInspectorOpen((current) => !current),
-    togglePaused: batchState.toggleIngestionGraphPaused,
-    purgeFinished: batchState.purgeFinishedIngestionJobs,
-    refreshStorageAudit: batchState.refreshIngestionStorageAudit,
-  }), [batchState.purgeFinishedIngestionJobs, batchState.refreshIngestionStorageAudit, batchState.toggleIngestionGraphPaused, immutableJobGraphSnapshot, isIngestionInspectorOpen, specializedBridge]);
+    togglePaused: toggleIngestionGraphPaused,
+    purgeFinished: purgeFinishedIngestionJobs,
+    refreshStorageAudit: refreshIngestionStorageAudit,
+  }), [immutableJobGraphSnapshot, isIngestionInspectorOpen, purgeFinishedIngestionJobs, refreshIngestionStorageAudit, specializedBridge, toggleIngestionGraphPaused]);
 
   return {
     ...batchState,
@@ -73,3 +76,4 @@ export function useMerchQuantumController() {
 }
 
 export type UseMerchQuantumControllerResult = ReturnType<typeof useMerchQuantumController>;
+
