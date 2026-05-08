@@ -1,7 +1,6 @@
-use crate::cold_vault::{inflate_archive, now_epoch_ms, ColdVaultRecord};
+use crate::cold_vault::{archive_chunk, inflate_archive, now_epoch_ms, ColdVaultRecord};
 use crate::models::{NoveltySeed, ProvenanceHeader};
 use crate::pulsar::enqueue_refinement_task;
-use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -113,28 +112,21 @@ fn store_purified_seed(
     frontmatter: &str,
 ) -> Result<ColdVaultRecord, String> {
     let payload = frontmatter.as_bytes();
-    let hash = Sha256::digest(payload);
-    let sha256_hex = format!("{:x}", hash);
-    let archive_dir = repo_root
-        .join("vault")
-        .join("provenance")
-        .join(format!("{category_id:02}"))
-        .join("refinement");
-    fs::create_dir_all(&archive_dir).map_err(|error| error.to_string())?;
-
-    let archive_path = archive_dir.join(format!("{sha256_hex}.raw.zst"));
-    let compressed = zstd::stream::encode_all(payload, 3).map_err(|error| error.to_string())?;
-    fs::write(&archive_path, compressed).map_err(|error| error.to_string())?;
-
-    Ok(ColdVaultRecord {
-        archive_path,
-        sha256_hex,
-        provenance_header: ProvenanceHeader {
-            topic_id: category_id as u32,
-            sector_id: category_id,
-            source_url: "coldvault://refinement-seed".to_string(),
-            timestamp_epoch_ms: now_epoch_ms(),
-            parent_crc32: 0,
-        },
-    })
+    let provenance = ProvenanceHeader {
+        topic_id: category_id as u32,
+        subject_id: category_id as u32,
+        sector_id: category_id,
+        url_id: 0,
+        document_id: format!("refinement-{category_id:02}"),
+        chunk_id: "chunk-0000".to_string(),
+        source_url: "coldvault://refinement-seed".to_string(),
+        timestamp_epoch_ms: now_epoch_ms(),
+        parent_crc32: 0,
+        extraction_version: 1,
+        embedding_version: 1,
+    };
+    archive_chunk(repo_root, provenance, payload)
 }
+
+
+

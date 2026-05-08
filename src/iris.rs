@@ -9,7 +9,7 @@ use std::time::Instant;
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::{
-    GetCurrentProcess, GetCurrentThread, GetCurrentThreadId, OpenProcess, OpenThread,
+    GetCurrentThread, GetCurrentThreadId, OpenProcess, OpenThread,
     ResumeThread, SetThreadAffinityMask, SuspendThread, PROCESS_QUERY_LIMITED_INFORMATION,
     THREAD_SUSPEND_RESUME,
 };
@@ -380,6 +380,16 @@ pub fn register_swarm_thread_current(label: &str) -> Result<(), QuantumError> {
     }
 }
 
+pub fn register_swarm_process_pid(pid: u32) -> Result<(), QuantumError> {
+    if let Some(controller) = live_iris() {
+        controller.register_swarm_process_pid(pid)
+    } else {
+        Err(QuantumError::CriticalFault(
+            "live iris controller unavailable while registering swarm process pid".to_string(),
+        ))
+    }
+}
+
 pub fn register_pillar_thread_current(core_index: usize) -> Result<(), QuantumError> {
     let core = core_index.min(PILLAR_CORE_COUNT.saturating_sub(1));
     bind_current_thread_to_core(core)
@@ -588,5 +598,7 @@ unsafe extern "system" fn low_level_mouse_proc(code: i32, wparam: WPARAM, lparam
 }
 
 pub fn current_pid() -> u32 {
-    unsafe { GetCurrentProcess() as usize as u32 }
+    std::process::id()
 }
+
+

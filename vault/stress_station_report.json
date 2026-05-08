@@ -4,7 +4,7 @@
   "total_chunks": 684,
   "over_unity_passes": 565,
   "force_protocol_count": 119,
-  "janitor_flush_ms": 252.50869999999998,
+  "janitor_flush_ms": 50.325,
   "input_to_suspend_ms": 0.00009999999999999999,
   "hud_frame_drops": 0,
   "snap_affinity": {
@@ -1213,9 +1213,9 @@
   ],
   "thermal_fault_audit": {
     "temperature_c": 48,
-    "janitor_flush_dispatch_ms": 0.035800000000000005,
-    "unmount_vhd_dispatch_ms": 905.5229,
-    "total_dispatch_ms": 905.7105,
+    "janitor_flush_dispatch_ms": 0.0213,
+    "unmount_vhd_dispatch_ms": 0.0174,
+    "total_dispatch_ms": 120.51920000000001,
     "dry_run": true,
     "janitor_sync_completed": false,
     "flush_file_buffers_verified": false,

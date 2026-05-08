@@ -1,3 +1,4 @@
+use crate::models::ForceState;
 use crc32fast::Hasher;
 
 pub const GOVERNOR_SECTOR_COUNT: u8 = 96;
@@ -20,7 +21,11 @@ pub struct TierZeroBloom {
 #[derive(Debug, Clone)]
 pub enum OverUnityGate {
     Stable { relevance: f32 },
-    ForceProtocol { relevance: f32, rearticulated_subject: String },
+    ForceProtocol {
+        relevance: f32,
+        force_state: ForceState,
+        rearticulated_subject: String,
+    },
 }
 
 pub fn bloom_subject(subject: &str) -> TierZeroBloom {
@@ -72,9 +77,17 @@ pub fn sector_articulation(subject: &str, sector_id: u8) -> String {
 pub fn evaluate_relevance(subject: &str, purified_text: &str, refined_yaml: &str) -> OverUnityGate {
     let relevance = semantic_overlap_score(subject, purified_text, refined_yaml);
     if relevance < OVER_UNITY_RELEVANCE_FLOOR {
+        let force_state = if relevance < 0.55 {
+            ForceState::RewriteSubject
+        } else if relevance < 0.72 {
+            ForceState::EscalateUpstream
+        } else {
+            ForceState::RefineLocal
+        };
         OverUnityGate::ForceProtocol {
             relevance,
-            rearticulated_subject: force_protocol_articulation(subject),
+            force_state,
+            rearticulated_subject: force_protocol_articulation(subject, force_state),
         }
     } else {
         OverUnityGate::Stable { relevance }
@@ -96,9 +109,16 @@ fn semantic_overlap_score(subject: &str, purified_text: &str, refined_yaml: &str
     (matches as f32 / subject_terms.len() as f32).clamp(0.0, 1.0)
 }
 
-fn force_protocol_articulation(subject: &str) -> String {
+fn force_protocol_articulation(subject: &str, force_state: ForceState) -> String {
+    let directive = match force_state {
+        ForceState::RefineLocal => "tighten local parsing against the current evidence band",
+        ForceState::EscalateUpstream => "discard the weak extraction and request a stronger upstream source",
+        ForceState::RewriteSubject => "rewrite the sector articulation from first principles and verified evidence",
+        ForceState::NullSector => "terminate this sector to preserve scheduler integrity",
+    };
     format!(
-        "Force Protocol :: re-articulate '{}' through primary evidence, boundary conditions, and contradiction mapping.",
+        "Force Protocol :: {} :: '{}'",
+        directive,
         normalize_subject(subject)
     )
 }
@@ -119,3 +139,5 @@ fn tokenize(value: &str) -> Vec<String> {
         .map(|token| token.to_ascii_lowercase())
         .collect()
 }
+
+

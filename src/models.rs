@@ -503,12 +503,49 @@ fn merge_tags(existing: &[String], incoming: &[String]) -> Vec<String> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProvenanceHeader {
     pub topic_id: u32,
+    pub subject_id: u32,
     pub sector_id: u8,
+    pub url_id: u32,
+    pub document_id: String,
+    pub chunk_id: String,
     pub source_url: String,
     pub timestamp_epoch_ms: u128,
     pub parent_crc32: u32,
+    pub extraction_version: u32,
+    pub embedding_version: u32,
 }
 
+impl ProvenanceHeader {
+    pub fn lineage_label(&self) -> String {
+        format!(
+            "topic-{:08x}/subject-{:08x}/sector-{:02}/doc-{}/chunk-{}",
+            self.topic_id,
+            self.subject_id,
+            self.sector_id,
+            self.document_id,
+            self.chunk_id,
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ForceState {
+    RefineLocal,
+    EscalateUpstream,
+    RewriteSubject,
+    NullSector,
+}
+
+impl ForceState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RefineLocal => "refine_local",
+            Self::EscalateUpstream => "escalate_upstream",
+            Self::RewriteSubject => "rewrite_subject",
+            Self::NullSector => "null_sector",
+        }
+    }
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoveltySeed {
     pub category_id: Option<u8>,
@@ -617,6 +654,8 @@ impl fmt::Display for QuantumError {
     }
 }
 impl std::error::Error for QuantumError {}
+
+
 
 
 
