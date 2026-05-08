@@ -49,6 +49,7 @@ const HOTSWAP_VOLUME_LETTER: char = 'V';
 const HOTSWAP_SOURCE_PATH: &str = r"V:\Egress\HotSwap.raw";
 const HOTSWAP_SNAPSHOT_PATH: &str = r"V:\Archive\HotSwap.raw.fault.snapshot";
 const COLD_VAULT_PATH: &str = r"V:\Archive\ColdVault.zst";
+const BUNKER_VHD_FILE_NAME: &str = "Bunker.vhd";
 const THERMAL_SENSOR_AMBER_INTENSITY: u8 = 153;
 #[cfg(target_os = "windows")]
 const RAW_FLUSH_ACCESS_MASK: u32 = 0x40000000u32;
@@ -150,6 +151,8 @@ pub struct HardwareAnchorAudit {
     pub volume_letter: char,
     pub volume_root: String,
     pub volume_device_path: String,
+    pub bunker_vhd_path: String,
+    pub bunker_image_present: bool,
     pub volume_present: bool,
     pub hotswap_present: bool,
     pub archive_present: bool,
@@ -159,9 +162,10 @@ pub struct HardwareAnchorAudit {
 }
 
 impl HardwareAnchorAudit {
-    fn missing(volume_letter: char) -> Self {
+    fn missing(volume_letter: char, bunker_vhd_path: &Path) -> Self {
         let volume_root = format!("{}:\\", volume_letter.to_ascii_uppercase());
         let volume_device_path = format!(r"\\.\{}:", volume_letter.to_ascii_uppercase());
+        let bunker_image_present = bunker_vhd_path.exists();
         let detail = format!(
             "bunker volume {} is not mounted or visible to Win32 at {}",
             volume_letter.to_ascii_uppercase(),
@@ -172,6 +176,8 @@ impl HardwareAnchorAudit {
             volume_letter,
             volume_root,
             volume_device_path,
+            bunker_vhd_path: bunker_vhd_path.display().to_string(),
+            bunker_image_present,
             volume_present: false,
             hotswap_present: false,
             archive_present: false,
@@ -184,7 +190,7 @@ impl HardwareAnchorAudit {
         }
     }
 
-    fn ready(volume_letter: char, hotswap_present: bool, archive_present: bool) -> Self {
+    fn ready(volume_letter: char, bunker_vhd_path: &Path, hotswap_present: bool, archive_present: bool) -> Self {
         let volume_root = format!("{}:\\", volume_letter.to_ascii_uppercase());
         let volume_device_path = format!(r"\\.\{}:", volume_letter.to_ascii_uppercase());
         let status = if hotswap_present && archive_present {
@@ -211,6 +217,8 @@ impl HardwareAnchorAudit {
             volume_letter,
             volume_root,
             volume_device_path,
+            bunker_vhd_path: bunker_vhd_path.display().to_string(),
+            bunker_image_present: bunker_vhd_path.exists(),
             volume_present: true,
             hotswap_present,
             archive_present,
@@ -221,30 +229,146 @@ impl HardwareAnchorAudit {
     }
 }
 
-pub fn hardware_anchor_preflight() -> HardwareAnchorAudit {
+#[derive(Debug, Clone)]
+struct BunkerMountResult {
+    exit_code: Option<i32>,
+    stdout: String,
+    stderr: String,
+}
+
+fn resolve_bunker_vhd_path(repo_root: &Path) -> PathBuf {
+    repo_root.join("vault").join(BUNKER_VHD_FILE_NAME)
+}
+
+fn resolve_mount_script_path(repo_root: &Path) -> PathBuf {
+    repo_root.join(".tmp").join("tool_06_mount_bunker.ps1")
+}
+
+fn write_bunker_mount_script(script_path: &Path) -> Result<(), QuantumError> {
+    if let Some(parent) = script_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| QuantumError::IOFailure(format!("failed to create Tool 06 script directory: {error}")))?;
+    }
+
+    let script = r#"param(
+    [Parameter(Mandatory = $true)][string]$BunkerPath,
+    [Parameter(Mandatory = $true)][string]$DriveLetter
+)
+
+$ErrorActionPreference = 'Stop'
+
+if (-not (Test-Path -LiteralPath $BunkerPath)) {
+    throw "Bunker VHD missing at $BunkerPath"
+}
+
+$diskImage = Get-DiskImage -ImagePath $BunkerPath -ErrorAction SilentlyContinue
+if ($null -eq $diskImage -or -not $diskImage.Attached) {
+    $diskImage = Mount-DiskImage -ImagePath $BunkerPath -Access ReadWrite -PassThru -ErrorAction Stop
+}
+
+Start-Sleep -Milliseconds 500
+
+$disk = $diskImage | Get-Disk -ErrorAction Stop
+$partition = $disk | Get-Partition | Sort-Object Size -Descending | Select-Object -First 1
+if ($null -eq $partition) {
+    throw "No partition available after mounting $BunkerPath"
+}
+
+$currentLetter = if ($partition.DriveLetter) { [string]$partition.DriveLetter } else { '' }
+if ($currentLetter -ne $DriveLetter) {
+    $partition | Set-Partition -NewDriveLetter $DriveLetter -ErrorAction Stop | Out-Null
+}
+"#;
+
+    fs::write(script_path, script)
+        .map_err(|error| QuantumError::IOFailure(format!("failed to write Tool 06 mount script: {error}")))
+}
+
+fn ps_quote(value: &str) -> String {
+    value.replace("'", "''")
+}
+
+fn mount_bunker(repo_root: &Path, bunker_vhd_path: &Path) -> Result<BunkerMountResult, QuantumError> {
+    write_bunker_mount_script(&resolve_mount_script_path(repo_root))?;
+    let script_path = resolve_mount_script_path(repo_root);
+    let command = format!(
+        "$p = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','{}','-BunkerPath','{}','-DriveLetter','{}'); if ($null -eq $p) {{ exit 1 }}; exit $p.ExitCode",
+        ps_quote(&script_path.display().to_string()),
+        ps_quote(&bunker_vhd_path.display().to_string()),
+        HOTSWAP_VOLUME_LETTER.to_ascii_uppercase()
+    );
+
+    let output = Command::new("powershell.exe")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &command])
+        .output()
+        .map_err(|error| QuantumError::IOFailure(format!("failed to launch Tool 06 bunker mount bridge: {error}")))?;
+
+    Ok(BunkerMountResult {
+        exit_code: output.status.code(),
+        stdout: String::from_utf8_lossy(&output.stdout).trim().to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+    })
+}
+
+pub fn hardware_anchor_preflight(repo_root: &Path) -> HardwareAnchorAudit {
     let volume_letter = HOTSWAP_VOLUME_LETTER;
-    let volume_root = Path::new(r"V:\");
+    let bunker_vhd_path = resolve_bunker_vhd_path(repo_root);
+    let volume_root_string = format!("{}:\\", volume_letter.to_ascii_uppercase());
+    let volume_root = Path::new(&volume_root_string);
     if !volume_root.exists() {
-        return HardwareAnchorAudit::missing(volume_letter);
+        return HardwareAnchorAudit::missing(volume_letter, &bunker_vhd_path);
     }
 
     HardwareAnchorAudit::ready(
         volume_letter,
+        &bunker_vhd_path,
         Path::new(HOTSWAP_SOURCE_PATH).exists(),
         Path::new(COLD_VAULT_PATH).exists(),
     )
 }
 
-pub fn ensure_hardware_anchor_ready() -> Result<HardwareAnchorAudit, QuantumError> {
-    let audit = hardware_anchor_preflight();
-    if !audit.ready {
+pub fn ensure_hardware_anchor_ready(repo_root: &Path) -> Result<HardwareAnchorAudit, QuantumError> {
+    let audit = hardware_anchor_preflight(repo_root);
+    if audit.ready {
+        return Ok(audit);
+    }
+
+    let bunker_vhd_path = resolve_bunker_vhd_path(repo_root);
+    if !bunker_vhd_path.exists() {
         return Err(QuantumError::CriticalFault(format!(
-            "{}: {}. Remediation: {}",
-            audit.status, audit.detail, audit.remediation
+            "{}: {}. Bunker image missing at {}. Remediation: provision {} before Tool 06 runs.",
+            audit.status,
+            audit.detail,
+            bunker_vhd_path.display(),
+            bunker_vhd_path.display()
         )));
     }
 
-    Ok(audit)
+    let mount_result = mount_bunker(repo_root, &bunker_vhd_path)?;
+    let post_mount = hardware_anchor_preflight(repo_root);
+    if !post_mount.ready {
+        let stderr_suffix = if mount_result.stderr.is_empty() {
+            String::new()
+        } else {
+            format!(" stderr={}", mount_result.stderr)
+        };
+        let stdout_suffix = if mount_result.stdout.is_empty() {
+            String::new()
+        } else {
+            format!(" stdout={}", mount_result.stdout)
+        };
+        return Err(QuantumError::CriticalFault(format!(
+            "{}: {}. Tool 06 exit_code={:?}.{}{} Remediation: {}",
+            post_mount.status,
+            post_mount.detail,
+            mount_result.exit_code,
+            stdout_suffix,
+            stderr_suffix,
+            post_mount.remediation
+        )));
+    }
+
+    Ok(post_mount)
 }
 
 #[cfg(target_os = "windows")]
@@ -957,3 +1081,4 @@ fn normalize_identifier(value: &str) -> String {
         .flat_map(|ch| ch.to_uppercase())
         .collect()
 }
+

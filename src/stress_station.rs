@@ -1,7 +1,7 @@
 use crate::governor::{bloom_subject, evaluate_relevance, OverUnityGate};
 use crate::iris::{AffinityIris, AffinitySnapshot, ResourceShedder, ResourceShedderSnapshot, burn_swarm_core};
 use crate::models::QuantumError;
-use crate::sovereign::{HardwareAnchorAudit, ThermalFaultAudit, hardware_anchor_preflight, simulate_thermal_fault};
+use crate::sovereign::{HardwareAnchorAudit, ThermalFaultAudit, ensure_hardware_anchor_ready, hardware_anchor_preflight, simulate_thermal_fault};
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::fs;
@@ -187,7 +187,11 @@ pub fn run_accelerated_stress_station(
     repo_root: PathBuf,
     options: StressStationOptions,
 ) -> Result<StressStationReport, QuantumError> {
-    let hardware_preflight = hardware_anchor_preflight();
+    let hardware_preflight = if options.dry_run {
+        hardware_anchor_preflight(&repo_root)
+    } else {
+        ensure_hardware_anchor_ready(&repo_root)?
+    };
     if !hardware_preflight.ready {
         eprintln!(
             "{}: {}. Remediation: {}",
@@ -195,14 +199,6 @@ pub fn run_accelerated_stress_station(
             hardware_preflight.detail,
             hardware_preflight.remediation
         );
-        if !options.dry_run {
-            return Err(QuantumError::CriticalFault(format!(
-                "{}: {}. Remediation: {}",
-                hardware_preflight.status,
-                hardware_preflight.detail,
-                hardware_preflight.remediation
-            )));
-        }
     }
 
     let core_count = std::thread::available_parallelism()

@@ -90,7 +90,9 @@ fn critical_fault(message: impl Into<String>) -> QuantumError {
 fn zero_forge_hotswap_projection() -> Result<(), QuantumError> {
     const HOTSWAP_BYTES: u64 = 134_217_728;
 
-    let _ = crate::sovereign::ensure_hardware_anchor_ready()?;
+    let repo_root = std::env::current_dir()
+        .map_err(|error| QuantumError::IOFailure(format!("failed to resolve repo root for Tool 06: {error}")))?;
+    let _ = crate::sovereign::ensure_hardware_anchor_ready(&repo_root)?;
     const FORGE_CHUNK_BYTES: usize = 1_048_576;
 
     let hotswap_path = std::path::Path::new(r"V:\Egress\HotSwap.raw");
