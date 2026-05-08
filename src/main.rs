@@ -25,8 +25,9 @@ mod router;
 mod sensory;
 mod sovereign;
 mod stress_station;
-mod synthesis;
-pub mod ui {
+#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+mod swarm;
+mod synthesis;pub mod ui {
     pub mod app;
     pub mod carousel;
     pub mod components {
@@ -656,6 +657,8 @@ mod stress_station_cli_tests {
         assert!(rendered.contains("maybe"));
     }
 }
+
+
 
 
 
