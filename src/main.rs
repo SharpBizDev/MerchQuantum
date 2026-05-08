@@ -11,6 +11,7 @@ mod iris;
 mod ipc;
 mod merch_engine;
 mod metadata;
+mod mutex_manager;
 mod native_shell;
 mod neural;
 #[cfg(feature = "micro-cell")]
@@ -51,6 +52,8 @@ use crate::ui::app::ContextQuantumApp;
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
 use crate::merch_engine::{MerchEngine, MerchListingRequest};
 use crate::models::QuantumError;
+#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+use crate::mutex_manager::with_v_drive_write_lock;
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
 use crate::native_shell::desktop_config;
 use crate::router::OrderRouter;
@@ -96,40 +99,43 @@ fn zero_forge_hotswap_projection() -> Result<(), QuantumError> {
     const FORGE_CHUNK_BYTES: usize = 1_048_576;
 
     let hotswap_path = std::path::Path::new(r"V:\Egress\HotSwap.raw");
-    if let Some(parent) = hotswap_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| QuantumError::IOFailure(format!("failed to create HotSwap directory: {error}")))?;
-    }
-
-    let mut file = OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .read(true)
-        .write(true)
-        .open(hotswap_path)
-        .map_err(|error| QuantumError::IOFailure(format!("failed to open HotSwap.raw: {error}")))?;
-
-    file.set_len(HOTSWAP_BYTES)
-        .map_err(|error| QuantumError::IOFailure(format!("failed to size HotSwap.raw: {error}")))?;
-    file.seek(SeekFrom::Start(0))
-        .map_err(|error| QuantumError::IOFailure(format!("failed to rewind HotSwap.raw: {error}")))?;
-
     let zero_chunk = vec![0u8; FORGE_CHUNK_BYTES];
     let full_chunks = HOTSWAP_BYTES as usize / FORGE_CHUNK_BYTES;
     let remainder = HOTSWAP_BYTES as usize % FORGE_CHUNK_BYTES;
 
-    for _ in 0..full_chunks {
-        file.write_all(&zero_chunk)
-            .map_err(|error| QuantumError::IOFailure(format!("failed to zero-forge HotSwap.raw: {error}")))?;
-    }
+    with_v_drive_write_lock(hotswap_path, || {
+        if let Some(parent) = hotswap_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| QuantumError::IOFailure(format!("failed to create HotSwap directory: {error}")))?;
+        }
 
-    if remainder > 0 {
-        file.write_all(&zero_chunk[..remainder])
-            .map_err(|error| QuantumError::IOFailure(format!("failed to finalize HotSwap.raw zero-forge tail: {error}")))?;
-    }
+        let mut file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .read(true)
+            .write(true)
+            .open(hotswap_path)
+            .map_err(|error| QuantumError::IOFailure(format!("failed to open HotSwap.raw: {error}")))?;
 
-    file.sync_all()
-        .map_err(|error| QuantumError::IOFailure(format!("failed to flush HotSwap.raw: {error}")))?;
+        file.set_len(HOTSWAP_BYTES)
+            .map_err(|error| QuantumError::IOFailure(format!("failed to size HotSwap.raw: {error}")))?;
+        file.seek(SeekFrom::Start(0))
+            .map_err(|error| QuantumError::IOFailure(format!("failed to rewind HotSwap.raw: {error}")))?;
+
+        for _ in 0..full_chunks {
+            file.write_all(&zero_chunk)
+                .map_err(|error| QuantumError::IOFailure(format!("failed to zero-forge HotSwap.raw: {error}")))?;
+        }
+
+        if remainder > 0 {
+            file.write_all(&zero_chunk[..remainder])
+                .map_err(|error| QuantumError::IOFailure(format!("failed to finalize HotSwap.raw zero-forge tail: {error}")))?;
+        }
+
+        file.sync_all()
+            .map_err(|error| QuantumError::IOFailure(format!("failed to flush HotSwap.raw: {error}")))?;
+        Ok(())
+    })?;
 
     Ok(())
 }
@@ -504,3 +510,4 @@ mod stress_station_cli_tests {
         assert!(rendered.contains("maybe"));
     }
 }
+

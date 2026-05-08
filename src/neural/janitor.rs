@@ -1,4 +1,5 @@
 use crate::models::QuantumError;
+use crate::mutex_manager::with_v_drive_write_lock;
 use crate::neural::egress_controller::EgressRingBuffer;
 use crate::ui::surface_projection::dispatch_surface_packet;
 use crate::ipc::signals::{SurfaceSignalPacket, VisualHudCue};
@@ -77,25 +78,29 @@ fn sync_once(controller: &EgressRingBuffer) -> Result<bool, QuantumError> {
     };
 
     let archive_path = PathBuf::from(JANITOR_ARCHIVE_PATH);
-    if let Some(parent) = archive_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| QuantumError::IOFailure(format!("failed to create archive directory: {error}")))?;
-    }
-
     let compressed = zstd::stream::encode_all(&claim.bytes[..], 3)
         .map_err(|error| QuantumError::IOFailure(format!("janitor compression failed: {error}")))?;
 
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&archive_path)
-        .map_err(|error| QuantumError::IOFailure(format!("failed to open ColdVault.zst: {error}")))?;
-    file.write_all(&compressed)
-        .map_err(|error| QuantumError::IOFailure(format!("failed to append ColdVault.zst: {error}")))?;
-    file.flush()
-        .map_err(|error| QuantumError::IOFailure(format!("failed to flush ColdVault.zst: {error}")))?;
+    with_v_drive_write_lock(&archive_path, || {
+        if let Some(parent) = archive_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| QuantumError::IOFailure(format!("failed to create archive directory: {error}")))?;
+        }
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&archive_path)
+            .map_err(|error| QuantumError::IOFailure(format!("failed to open ColdVault.zst: {error}")))?;
+        file.write_all(&compressed)
+            .map_err(|error| QuantumError::IOFailure(format!("failed to append ColdVault.zst: {error}")))?;
+        file.flush()
+            .map_err(|error| QuantumError::IOFailure(format!("failed to flush ColdVault.zst: {error}")))?;
+        Ok(())
+    })?;
 
     controller.release_claim(claim);
     dispatch_surface_packet(SurfaceSignalPacket::new(VisualHudCue::JanitorPulse, 0xFF));
     Ok(true)
 }
+

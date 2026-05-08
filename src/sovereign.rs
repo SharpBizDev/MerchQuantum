@@ -1,5 +1,6 @@
 use crate::ipc::signals::{SurfaceSignalPacket, VisualHudCue};
 use crate::models::{QuantumError, SystemError};
+use crate::mutex_manager::with_v_drive_write_lock;
 #[cfg(all(feature = "desktop", feature = "micro-cell", not(target_arch = "wasm32")))]
 use crate::neural::janitor;
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
@@ -557,19 +558,21 @@ fn copy_fault_snapshot(source: &Path, target: &Path) -> Result<(), QuantumError>
         return Ok(());
     }
 
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| QuantumError::IOFailure(format!("failed to create thermal snapshot directory: {error}")))?;
-    }
+    with_v_drive_write_lock(target, || {
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| QuantumError::IOFailure(format!("failed to create thermal snapshot directory: {error}")))?;
+        }
 
-    fs::copy(source, target).map_err(|error| {
-        QuantumError::IOFailure(format!(
-            "failed to archive HotSwap fault snapshot from {} to {}: {error}",
-            source.display(),
-            target.display()
-        ))
-    })?;
-    Ok(())
+        fs::copy(source, target).map_err(|error| {
+            QuantumError::IOFailure(format!(
+                "failed to archive HotSwap fault snapshot from {} to {}: {error}",
+                source.display(),
+                target.display()
+            ))
+        })?;
+        Ok(())
+    })
 }
 
 fn verify_flush_file_buffers(paths: &[PathBuf]) -> FlushVerificationAudit {

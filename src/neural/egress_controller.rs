@@ -1,4 +1,5 @@
 use crate::models::QuantumError;
+use crate::mutex_manager::with_v_drive_write_lock;
 use memmap2::{Mmap, MmapMut, MmapOptions};
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -37,32 +38,35 @@ impl EgressRingBuffer {
         }
 
         let path = PathBuf::from(HOTSWAP_PATH);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|error| {
-                QuantumError::IOFailure(format!("failed to create HotSwap directory: {error}"))
-            })?;
-        }
+        let mmap = with_v_drive_write_lock(&path, || {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    QuantumError::IOFailure(format!("failed to create HotSwap directory: {error}"))
+                })?;
+            }
 
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&path)
-            .map_err(|error| QuantumError::IOFailure(format!("failed to open HotSwap.raw: {error}")))?;
+            let file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .open(&path)
+                .map_err(|error| QuantumError::IOFailure(format!("failed to open HotSwap.raw: {error}")))?;
 
-        file.set_len(HOTSWAP_BYTES as u64)
-            .map_err(|error| QuantumError::IOFailure(format!("failed to size HotSwap.raw: {error}")))?;
+            file.set_len(HOTSWAP_BYTES as u64)
+                .map_err(|error| QuantumError::IOFailure(format!("failed to size HotSwap.raw: {error}")))?;
 
-        let mut mmap = unsafe {
-            MmapOptions::new()
-                .len(HOTSWAP_BYTES)
-                .map_mut(&file)
-                .map_err(|error| QuantumError::IOFailure(format!("failed to mmap HotSwap.raw: {error}")))?
-        };
-        mmap[..HOTSWAP_SENTINEL_BYTES]
-            .copy_from_slice(&HEARTBEAT_SENTINEL_INITIAL.to_le_bytes());
-        mmap.flush_async()
-            .map_err(|error| QuantumError::IOFailure(format!("failed to flush HotSwap sentinel: {error}")))?;
+            let mut mmap = unsafe {
+                MmapOptions::new()
+                    .len(HOTSWAP_BYTES)
+                    .map_mut(&file)
+                    .map_err(|error| QuantumError::IOFailure(format!("failed to mmap HotSwap.raw: {error}")))?
+            };
+            mmap[..HOTSWAP_SENTINEL_BYTES]
+                .copy_from_slice(&HEARTBEAT_SENTINEL_INITIAL.to_le_bytes());
+            mmap.flush_async()
+                .map_err(|error| QuantumError::IOFailure(format!("failed to flush HotSwap sentinel: {error}")))?;
+            Ok(mmap)
+        })?;
 
         let ring = Arc::new(Self {
             path,
@@ -327,5 +331,4 @@ impl MmapSentinelReader {
         u32::from_le_bytes(bytes)
     }
 }
-
 
