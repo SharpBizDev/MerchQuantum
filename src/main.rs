@@ -27,7 +27,8 @@ mod sovereign;
 mod stress_station;
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
 mod swarm;
-mod synthesis;pub mod ui {
+mod synthesis;
+pub mod ui {
     pub mod app;
     pub mod carousel;
     pub mod components {
@@ -61,6 +62,8 @@ use crate::neural::umg::{
 };
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
 use crate::native_shell::desktop_config;
+#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+use crate::swarm::pulsar::{SwarmPulsarClock, SwarmPulsarConfig};
 use crate::router::OrderRouter;
 use crate::sensory::emitter::SpectralBridge;
 use crate::sensory::governor::SensoryGovernor;
@@ -322,6 +325,61 @@ fn maybe_run_umg() -> Result<bool, QuantumError> {
     Ok(true)
 }
 
+#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+fn maybe_run_swarm_pulsar() -> Result<bool, QuantumError> {
+    let mut args = std::env::args().skip(1);
+    let mut enabled = false;
+    let mut input_dir = None;
+    let mut output_root = None;
+    let mut remote_provider = RemoteProvider::Grok;
+    let mut title_hint = None;
+    let mut product_family = None;
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--swarm-pulsar" => enabled = true,
+            "--swarm-dir" => input_dir = args.next().map(std::path::PathBuf::from),
+            "--swarm-output-root" => output_root = args.next().map(std::path::PathBuf::from),
+            "--umg-provider" => {
+                let Some(value) = args.next() else {
+                    return Err(critical_fault("--umg-provider requires a value"));
+                };
+                remote_provider = parse_umg_provider(&value)?;
+            }
+            "--forge-title" => title_hint = args.next(),
+            "--forge-product-family" => product_family = args.next(),
+            _ => {}
+        }
+    }
+
+    if !enabled {
+        return Ok(false);
+    }
+
+    if remote_provider != RemoteProvider::Grok {
+        return Err(critical_fault(
+            "--swarm-pulsar currently requires --umg-provider grok".to_string(),
+        ));
+    }
+
+    let input_dir = input_dir.ok_or_else(|| {
+        critical_fault("--swarm-pulsar requires --swarm-dir <image-directory>".to_string())
+    })?;
+    let mut config = SwarmPulsarConfig::default();
+    if let Some(path) = output_root {
+        config.output_root = path;
+    }
+    config.title_hint = title_hint;
+    config.product_family = product_family;
+
+    let report = SwarmPulsarClock::new(config).run_directory_pass(&input_dir)?;
+    let rendered = serde_json::to_string_pretty(&report).map_err(|error| {
+        critical_fault(format!("failed to render swarm pulsar report: {error}"))
+    })?;
+    println!("{rendered}");
+    Ok(true)
+}
+
 
 #[cfg(any(
     all(feature = "desktop", not(target_arch = "wasm32")),
@@ -387,6 +445,10 @@ fn desktop_entry() -> Result<(), QuantumError> {
     }
 
     if maybe_run_umg()? {
+        return Ok(());
+    }
+
+    if maybe_run_swarm_pulsar()? {
         return Ok(());
     }
 
@@ -657,6 +719,7 @@ mod stress_station_cli_tests {
         assert!(rendered.contains("maybe"));
     }
 }
+
 
 
 
