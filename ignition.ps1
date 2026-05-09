@@ -1,8 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$ApiKeysPath = 'E:\Downloads\AI Training\API Keys.txt',
-    [string]$TargetDir = 'V:\Ingress\TestBatch',
-    [string]$OutputRoot = 'V:\Metadata\Listings',
+    [string]$TargetDir = '',
+    [string]$OutputRoot = '',
     [string]$ProductFamily = 'shirt',
     [string]$TitleHint = ''
 )
@@ -64,31 +64,46 @@ function Read-KeyMaterial {
     return $keys
 }
 
-if (-not (Test-Path -LiteralPath $TargetDir -PathType Container)) {
-    Fail-Truth "Beautiful Truth: target ingress directory is missing at $TargetDir"
+function Get-SupportedIngressImages {
+    param([string]$Path)
+
+    Get-ChildItem -LiteralPath $Path -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -match '^(?i)\.(png|jpg|jpeg|gif)$' }
 }
 
-if (-not (Test-Path -LiteralPath 'V:\' -PathType Container)) {
-    Fail-Truth 'Beautiful Truth: hardware anchor V:\ is not mounted'
+$workspaceRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+if ([string]::IsNullOrWhiteSpace($TargetDir)) {
+    $TargetDir = Join-Path $workspaceRoot 'vault\Ingress\TestBatch'
+}
+if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
+    $OutputRoot = Join-Path $workspaceRoot 'vault\Metadata\Listings'
+}
+
+New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
+New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
+
+$images = @(Get-SupportedIngressImages -Path $TargetDir)
+if ($images.Count -eq 0) {
+    Fail-Truth "Beautiful Truth: ingress void at $TargetDir. Drop 2-3 merch PNG/JPG images into the batch before ignition."
 }
 
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
     Fail-Truth 'Beautiful Truth: cargo is not available in this shell'
 }
 
-$workspaceRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $keys = Read-KeyMaterial -Path $ApiKeysPath
 $prior = @{}
-$managedNames = @('XAI_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY')
+$managedNames = @('XAI_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'QUANTUM_WRITE_LOCK_ROOTS')
 
 foreach ($name in $managedNames) {
     $prior[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 
 try {
-    foreach ($name in $managedNames) {
-        [Environment]::SetEnvironmentVariable($name, $keys[$name], 'Process')
-    }
+    [Environment]::SetEnvironmentVariable('XAI_API_KEY', $keys.XAI_API_KEY, 'Process')
+    [Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $keys.OPENAI_API_KEY, 'Process')
+    [Environment]::SetEnvironmentVariable('GEMINI_API_KEY', $keys.GEMINI_API_KEY, 'Process')
+    [Environment]::SetEnvironmentVariable('QUANTUM_WRITE_LOCK_ROOTS', $OutputRoot, 'Process')
 
     Push-Location $workspaceRoot
     try {

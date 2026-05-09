@@ -11,6 +11,7 @@ use windows_sys::Win32::System::Threading::{
 };
 
 const V_DRIVE_LETTER: char = 'V';
+const WRITE_LOCK_ROOTS_ENV: &str = "QUANTUM_WRITE_LOCK_ROOTS";
 #[cfg(target_os = "windows")]
 const WAIT_OBJECT_0_CODE: u32 = 0;
 #[cfg(target_os = "windows")]
@@ -31,6 +32,10 @@ where
 }
 
 pub fn targets_v_drive(path: &Path) -> bool {
+    targets_anchor_drive(path) || targets_configured_write_root(path)
+}
+
+fn targets_anchor_drive(path: &Path) -> bool {
     let rendered = path.as_os_str().to_string_lossy();
     rendered
         .chars()
@@ -38,6 +43,47 @@ pub fn targets_v_drive(path: &Path) -> bool {
         .map(|letter| letter.eq_ignore_ascii_case(&V_DRIVE_LETTER))
         .unwrap_or(false)
         && rendered.chars().nth(1) == Some(':')
+}
+
+fn targets_configured_write_root(path: &Path) -> bool {
+    let rendered = normalize_path_for_gate(path);
+    configured_write_roots()
+        .iter()
+        .any(|root| path_matches_root(&rendered, root))
+}
+
+fn configured_write_roots() -> Vec<String> {
+    std::env::var(WRITE_LOCK_ROOTS_ENV)
+        .ok()
+        .into_iter()
+        .flat_map(|value| value.split(';').map(str::to_string).collect::<Vec<_>>())
+        .filter_map(|entry| normalize_root_entry(&entry))
+        .collect()
+}
+
+fn normalize_root_entry(value: &str) -> Option<String> {
+    let normalized = value.trim().replace('/', "\\").trim_end_matches('\\').to_ascii_lowercase();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn normalize_path_for_gate(path: &Path) -> String {
+    path.as_os_str()
+        .to_string_lossy()
+        .replace('/', "\\")
+        .trim_end_matches('\\')
+        .to_ascii_lowercase()
+}
+
+fn path_matches_root(path: &str, root: &str) -> bool {
+    path == root
+        || path
+            .strip_prefix(root)
+            .map(|suffix| suffix.starts_with('\\'))
+            .unwrap_or(false)
 }
 
 struct VDriveWriteGuard {
@@ -101,7 +147,7 @@ impl Drop for VDriveWriteGuard {
 
 #[cfg(test)]
 mod tests {
-    use super::targets_v_drive;
+    use super::{path_matches_root, targets_v_drive};
     use std::path::Path;
 
     #[test]
@@ -110,5 +156,20 @@ mod tests {
         assert!(targets_v_drive(Path::new(r"v:\Egress\HotSwap.raw")));
         assert!(!targets_v_drive(Path::new(r"C:\Temp\ColdVault.zst")));
     }
-}
 
+    #[test]
+    fn matches_configured_root_lexically() {
+        assert!(path_matches_root(
+            r"c:\omega\vault\metadata\listings\alpha.json",
+            r"c:\omega\vault\metadata\listings"
+        ));
+        assert!(path_matches_root(
+            r"c:\omega\vault\metadata\listings",
+            r"c:\omega\vault\metadata\listings"
+        ));
+        assert!(!path_matches_root(
+            r"c:\omega\vault\metadata\listing-set\alpha.json",
+            r"c:\omega\vault\metadata\listings"
+        ));
+    }
+}
